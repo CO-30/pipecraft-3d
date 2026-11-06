@@ -13,13 +13,14 @@ import { FIXTURE_CATALOG, fixtureCorners } from '../model/fixtures';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { underlayCorners } from '../model/underlay';
 import { pointInRing } from '../model/geo';
+import { findConnectCandidate } from '../model/connect';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
   | { kind: 'stroke'; tool: 'pipe' | 'wall'; startNodeId?: string; branchSegId?: string }
   | { kind: 'room'; start: Vec2 }
   | { kind: 'split'; start: Vec2 }
-  | { kind: 'dragNode'; nodeId: string }
+  | { kind: 'dragNode'; nodeId: string; startPx: Vec2 }
   | { kind: 'dragSeg'; segId: string; start: Vec2 }
   | { kind: 'dragFixture'; fixtureId: string; offset: Vec2 }
   | { kind: 'dragCorner'; cornerId: string }
@@ -108,6 +109,22 @@ export function PlanView() {
   }, []);
 
   const vw = view ?? { scale: 0.08, ox: 40, oy: 400 };
+  // 選んだ点・区間が（下のパネルが伸びるなどで）画面の外に出たら、見える位置まで表示を寄せる
+  const selPoint = (() => {
+    if (sel?.kind === 'node' && net.nodes[sel.id]) return net.nodes[sel.id].pos;
+    if (sel?.kind === 'segment' && net.segments[sel.id]) {
+      const a = net.nodes[net.segments[sel.id].a].pos, b = net.nodes[net.segments[sel.id].b].pos;
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    return null;
+  })();
+  useEffect(() => {
+    if (!selPoint || !view) return;
+    const sx = selPoint.x * view.scale + view.ox, sy = -selPoint.y * view.scale + view.oy;
+    const m = 40;
+    if (sx >= m && sx <= size.w - m && sy >= m && sy <= size.h - m) return;
+    setView({ ...view, ox: view.ox + (size.w / 2 - sx), oy: view.oy + (size.h / 2 - sy) });
+  }, [selPoint?.x, selPoint?.y, size.w, size.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const toWorld = (p: Vec2): Vec2 => ({ x: (p.x - vw.ox) / vw.scale, y: -(p.y - vw.oy) / vw.scale });
   const toScreen = (p: Vec2): Vec2 => ({ x: p.x * vw.scale + vw.ox, y: -p.y * vw.scale + vw.oy });
   const local = (e: React.PointerEvent): Vec2 => {
@@ -231,7 +248,7 @@ export function PlanView() {
       }
       st.select({ kind: 'node', id: ph.id });
       st.beginDrag();
-      gesture.current = { kind: 'dragNode', nodeId: ph.id };
+      gesture.current = { kind: 'dragNode', nodeId: ph.id, startPx: p };
       return;
     }
     if (ph?.type === 'segment') {
@@ -353,8 +370,11 @@ export function PlanView() {
     gesture.current = null;
     if (g?.kind === 'dragNode') {
       // 端点を別の配管のノード・区間の上で離すと接続（ドラッグと合わせて履歴1件）
-      const w = toWorld(local(e));
-      if (segmentsAt(st.doc.network, g.nodeId).length === 1) st.dropNode(g.nodeId, dropTargetFor(st.doc.network, g.nodeId, w, tol, zRange));
+      const up = local(e);
+      const w = toWorld(up);
+      // タップしただけ（ほとんど動かしていない）なら接続しない（選択だけ）
+      const movedPx = Math.hypot(up.x - g.startPx.x, up.y - g.startPx.y);
+      if (movedPx >= 6 && segmentsAt(st.doc.network, g.nodeId).length === 1) st.dropNode(g.nodeId, dropTargetFor(st.doc.network, g.nodeId, w, tol, zRange));
       setDropHit(null);
     }
     if (g?.kind.startsWith('drag')) st.endDrag();
@@ -444,6 +464,12 @@ export function PlanView() {
   const isSel = (kind: string, id: string) => sel?.kind === kind && sel.id === id;
 
   const rooms = Object.values(building.rooms).filter((r) => r.floorId === floorId);
+  // 端点を選んでいる時は、つなげる先を緑の点線で示す
+  const connectPreview = (() => {
+    if (sel?.kind !== 'node' || !net.nodes[sel.id]) return null;
+    const c = findConnectCandidate(net, fixtures, sel.id);
+    return c ? { from: net.nodes[sel.id].pos, to: c.point } : null;
+  })();
   const unders = showUnderlays ? Object.values(underlays ?? {}).filter((u) => u.floorId === floorId) : [];
   const attributions = [...new Set(unders.map((u) => u.attribution).filter(Boolean))] as string[];
   const walls = Object.values(building.walls).filter((w) => w.floorId === floorId);
@@ -584,6 +610,15 @@ export function PlanView() {
       <text x={8} y={18} fontSize={12} fill={pendingMerge ? '#b45309' : '#6b7280'} fontWeight={pendingMerge ? 'bold' : undefined}>
         {floor?.name ?? ''} 平面図（1目盛=1m） {pendingMerge ? '結合する隣の部屋をタップ（他をタップで取消）' : HINTS[tool]}
       </text>
+      {connectPreview && (() => {
+        const a = toScreen(connectPreview.from), b = toScreen(connectPreview.to);
+        return (
+          <g pointerEvents="none" data-testid="connect-preview">
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#16a34a" strokeWidth={3} strokeDasharray="6 4" />
+            <circle cx={b.x} cy={b.y} r={9} fill="none" stroke="#16a34a" strokeWidth={3} />
+          </g>
+        );
+      })()}
       {attributions.length > 0 && (
         <text x={8} y={H - 8} fontSize={11} fill="#334155" stroke="#fff" strokeWidth={3} paintOrder="stroke" pointerEvents="none" data-testid="attribution">{attributions.join('　')}</text>
       )}

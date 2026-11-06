@@ -11,6 +11,8 @@ import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
 import { defaultEstimate, measureSegment } from '../model/estimate';
+import { findConnectCandidate } from '../model/connect';
+import { SYSTEM_NAME } from '../model/systems';
 import { actualSlope, defaultSlope, isDrain, slopeEnough, slopeLabel } from '../model/slope';
 import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
@@ -102,6 +104,7 @@ export function PropertyPanel() {
             if (window.confirm(`分岐点から先の枝管 ${preview.length}区間（計 ${Math.round(len)}mm）を削除します。よろしいですか？`)) st.deleteSelectedBranch();
           }}>枝管ごと削除</button>
         </div>
+        <DetachEnds segId={seg.id} />
         <div className="subhead">つながった配管全体（{run.segmentIds.length}区間・{Math.round(runLen)}mm）</div>
         <div className="row">
           <button onClick={() => st.setRunHeightDelta(seg.id, -100)}>高さ−100</button>
@@ -126,6 +129,7 @@ export function PropertyPanel() {
       <div className="props">
         <div className="ptitle">{fx ? `${FIXTURE_CATALOG[fx.type].label}の接続口（${portLabel}）` : `配管の点（${KIND[n.kind] ?? n.kind}）`}
           <span className="muted small"> 床から {Math.round(rel)}mm</span></div>
+        <ConnectBox nodeId={n.id} />
         {!fx && (
           <>
             <NumField label="床からの高さ" value={rel} testId="node-height" onCommit={(v) => st.setNodeHeight(n.id, floorElev + v)} />
@@ -144,7 +148,7 @@ export function PropertyPanel() {
         <NumField label="立て管の上端/下端（床から）" value={rel} testId="riser-to" onCommit={(v) => st.addRiserFromNode(n.id, floorElev + v)} />
         {!fx && (
           <div className="row">
-            <button data-testid="detach-node" disabled={deg < 2} onClick={() => st.detachSelectedNode()}>接続解除</button>
+            <button data-testid="detach-node" disabled={deg < 2} onClick={() => st.detachSelectedNode()}>つながりを全部外す</button>
             <button className="danger" data-testid="delete-fitting" disabled={deg >= 3 && n.kind !== 'valve'} title={deg >= 3 ? '分岐点は「枝管ごと削除」を使ってください' : ''}
               onClick={() => st.deleteSelectedFitting()}>{n.kind === 'valve' ? 'バルブを外す' : deg === 1 ? 'この区間を削除' : 'この部品を削除'}</button>
           </div>
@@ -326,6 +330,53 @@ function MeasureFields({ segId }: { segId: string }) {
         </select></label>
       {(showCustom || custom) && <OptNumField label="余長率" unit="%" max={1000} value={seg.extraRate === undefined ? undefined : seg.extraRate * 100} onCommit={(v) => st.setSegmentExtraRate(seg.id, v === undefined ? undefined : v / 100)} />}
     </>
+  );
+}
+
+/** 端点・器具の接続口: 近くの配管へワンタップでつなぐ／つながっている点: 外す */
+function ConnectBox({ nodeId }: { nodeId: string }) {
+  const doc = useStore((s) => s.doc);
+  const st = useStore.getState();
+  const deg = segmentsAt(doc.network, nodeId).length;
+  if (deg >= 2) {
+    return (
+      <div className="connect-box">
+        <button data-testid="detach-here" onClick={() => st.detachSelectedNode()}>✂ この点のつながりを外す</button>
+        <span className="muted small">区間ごとに外すときは配管を選んで「端を外す」</span>
+      </div>
+    );
+  }
+  const c = findConnectCandidate(doc.network, doc.fixtures, nodeId);
+  if (!c) return <div className="muted small">近く（60cm以内）につなげる同じ種類の配管はありません。端をドラッグして配管の上で離してもつながります</div>;
+  const dz = Math.round(c.dz);
+  return (
+    <div className="connect-box">
+      <button className="primary" data-testid="connect-near" onClick={() => st.connectNearest(nodeId)}>
+        🔗 近くの{SYSTEM_NAME[c.system]}管{c.diameter ? ` φ${c.diameter}` : ''}に{c.type === 'segment' ? '分岐でつなぐ' : 'つなぐ'}（{Math.round(c.planDist)}mm{Math.abs(dz) >= 1 ? `・高さ${dz > 0 ? '+' : ''}${dz}mm` : ''}）
+      </button>
+      {Math.abs(dz) > 150 && <span className="warn small">高さが違うため、端の高さを相手の配管に合わせます</span>}
+    </div>
+  );
+}
+
+/** 区間の端を片方ずつ外す（方角で表示） */
+function DetachEnds({ segId }: { segId: string }) {
+  const net = useStore((s) => s.doc.network);
+  const st = useStore.getState();
+  const s = net.segments[segId];
+  const pa = net.nodes[s.a], pb = net.nodes[s.b];
+  const dir = (p: typeof pa, q: typeof pa) => {
+    const dx = p.pos.x - q.pos.x, dy = p.pos.y - q.pos.y, dzz = p.pos.z - q.pos.z;
+    if (Math.hypot(dx, dy) < 1) return dzz > 0 ? '上' : '下';
+    return Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? '西' : '東') : (dy < 0 ? '南' : '北');
+  };
+  const can = (id: string) => segmentsAt(net, id).length >= 2 || !!net.nodes[id].fixtureId;
+  if (!can(s.a) && !can(s.b)) return null;
+  return (
+    <div className="row">
+      {can(s.a) && <button data-testid="detach-end-a" onClick={() => st.detachSegmentEnd(segId, 'a')}>✂ {dir(pa, pb)}側の端を外す</button>}
+      {can(s.b) && <button data-testid="detach-end-b" onClick={() => st.detachSegmentEnd(segId, 'b')}>✂ {dir(pb, pa)}側の端を外す</button>}
+    </div>
   );
 }
 

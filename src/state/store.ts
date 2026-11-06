@@ -7,7 +7,7 @@ import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
   deleteFitting, deleteSegment, deleteSegments, detachNode, duplicateSegments, emptyNetwork, insertValve, mergeNodes, moveNode,
   setSegmentLength as setSegLen, translateNodes, validateNetwork,
-  type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
+  detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc } from '../model/doc';
 import { deleteFixture, moveFixture, placeFixture, syncAllFixturePorts, type FixtureType, type Rotation } from '../model/fixtures';
@@ -22,6 +22,7 @@ import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem 
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
 import { applySlope } from '../model/slope';
+import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
 import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
 
@@ -152,6 +153,10 @@ type State = {
   setSegmentExtraRate(segId: string, rate: number | undefined): void;
   /** 部品の確定。undefined で自動判定に戻す */
   setNodeFitting(nodeId: string, type: FittingChoice | undefined): void;
+  /** 選んだ端点・接続口を一番近いつなげる配管へつなぐ（履歴1件） */
+  connectNearest(nodeId: string): void;
+  /** 区間の片方の端だけを外す */
+  detachSegmentEnd(segId: string, end: 'a' | 'b'): void;
   /** 排水: この点を流末にして勾配をつける（'auto' = 管径別の最小勾配）。履歴1件 */
   setSlopeFromOutlet(nodeId: string, slope: number | 'auto'): void;
   /** 区間の支持金具・取付下地（undefined = 自動・現場の既定） */
@@ -566,6 +571,20 @@ export const useStore = create<State>((set, get) => {
       const node = type === undefined ? rest : { ...rest, fitting: { type, degree } };
       if (type === undefined && !n.fitting) return;
       commit({ ...get().doc, network: { ...net, nodes: { ...net.nodes, [nodeId]: node } } });
+    },
+    connectNearest: (nodeId) => {
+      const { network, fixtures } = get().doc;
+      const c = findConnectCandidate(network, fixtures, nodeId);
+      if (!c) { set({ notice: '近く（60cm以内）につなげる同じ種類の配管がありません' }); return; }
+      const next = connectToCandidate(network, nodeId, c);
+      if (next === network) { set({ notice: 'この位置ではつなげません（配管が重なる・短すぎるなど）' }); return; }
+      commit(withNet(next), { selection: null, notice: c.type === 'segment' ? '配管の途中につなぎました（分岐）' : '配管の端どうしをつなぎました' });
+    },
+    detachSegmentEnd: (segId, end) => {
+      const net = get().doc.network;
+      const next = detachSegEnd(net, segId, end);
+      if (next === net) { set({ notice: 'この端は外せません（区間が短すぎる・他につながっていない）' }); return; }
+      commit(withNet(next), { selection: { kind: 'segment', id: segId } });
     },
     setSlopeFromOutlet: (nodeId, slope) => {
       const r = applySlope(get().doc.network, nodeId, slope);

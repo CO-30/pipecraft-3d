@@ -609,3 +609,21 @@ export function addRiser(net: Network, fromNodeId: string, z: number, attrs?: Se
   ({ net: cur, id: sid } = addSegment(cur, fromNodeId, nid, at));
   return { net: normalize(cur), nodeId: nid, segmentId: sid };
 }
+
+/**
+ * 区間の片方の端だけを点から外す（反対側へ pull mm 戻した所に新しい端点を作る）。
+ * 点に他の配管が残る場合、または器具の接続口からだけ外せる。
+ */
+export function detachSegmentEnd(net: Network, segId: string, end: 'a' | 'b', pull = 30): Network {
+  const s = net.segments[segId];
+  if (!s) return net;
+  const nodeId = s[end];
+  const n = net.nodes[nodeId];
+  if (segmentsAt(net, nodeId).length < 2 && !n.fixtureId) return net;
+  const o = net.nodes[other(s, nodeId)].pos;
+  const L = dist(o, n.pos);
+  if (L - pull < MIN_PIECE_MM) return net;
+  const { net: cur, id } = addNode({ nodes: { ...net.nodes }, segments: { ...net.segments } }, lerp(n.pos, o, pull / L));
+  cur.segments[segId] = { ...s, [end]: id };
+  return normalize(cur);
+}
