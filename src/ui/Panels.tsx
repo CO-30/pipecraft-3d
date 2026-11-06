@@ -148,10 +148,11 @@ export function PropertyPanel() {
     return (
       <div className="props">
         <div className="ptitle">{def.label} <span className="muted small">{def.size.w}×{def.size.d}mm・向き {f.rotation}°</span></div>
-        <div className="ports">接続口: {def.ports.map((p) => {
+        <div className="subhead">接続口（押すと選択して立て管などを追加できます。✓=配管あり）</div>
+        <div className="row">{def.ports.map((p) => {
           const n = ports.find((x) => x.portId === p.id);
           const used = n ? segmentsAt(net, n.id).length > 0 : false;
-          return <span key={p.id}>{p.label}{used ? '✓' : ''}（φ{p.diameter}） </span>;
+          return <button key={p.id} data-testid={`port-${p.id}`} disabled={!n} onClick={() => n && st.select({ kind: 'node', id: n.id })}>{p.label} φ{p.diameter}{used ? ' ✓' : ''}</button>;
         })}</div>
         <div className="row">
           <button data-testid="rotate-fixture" onClick={() => st.rotateFixture(f.id)}>⟳ 90°回転</button>

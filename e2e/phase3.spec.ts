@@ -194,4 +194,44 @@ test.describe('Phase 3 配管・配線', () => {
     const { net } = await state(page);
     expect(Object.keys(net.nodes).length).toBe(Object.keys(before.nodes).length);
   });
+
+  test('高さが違う配管の上で描き終えてもつながらない／同じ高さならつながる', async ({ page }) => {
+    await createProject(page, '高さ違いテスト', { blank: true });
+    await show(page, '2D');
+    const touch = await touchSession(page);
+    await page.getByTestId('tool-pipe').click();
+    await strokeMm(page, [[0, 0], [4000, 0]], touch); // 床上 100mm
+    await page.getByTestId('tool-select').click();
+    await tapMm(page, 3000, 0, touch);
+    await page.getByTestId('seg-height').fill('2600');
+    await page.getByTestId('seg-height').press('Enter');
+    await page.getByTestId('tool-pipe').click();
+    await strokeMm(page, [[2000, 3000], [2000, 0]], touch);
+    let d = await full(page);
+    expect(tees(d)).toBe(0);
+    expect(Object.keys(d.segs)).toHaveLength(2);
+    await page.getByTestId('tool-pipe').click();
+    await strokeMm(page, [[1000, 3000], [1000, 0]], touch);
+    d = await full(page);
+    expect(Object.keys(d.segs)).toHaveLength(3); // 床上の配管は z=100 → 天井の配管(2600)とは別
+    expect(tees(d)).toBe(0);
+  });
+
+  test('小さい器具（コンセント）もタップで選択・移動できる', async ({ page }) => {
+    await createProject(page, '小さい器具', { blank: true });
+    await show(page, '2D');
+    const touch = await touchSession(page);
+    await page.getByTestId('tool-fixture').click();
+    await page.getByTestId('fixture-outlet').click();
+    await tapMm(page, 3000, 3000, touch);
+    await page.getByTestId('tool-select').click();
+    await tapMm(page, 3000, 3000, touch);
+    let d = await full(page);
+    expect(d.selection?.kind).toBe('fixture');
+    await strokeMm(page, [[3000, 3000], [3500, 3000], [4000, 3000]], touch);
+    d = await full(page);
+    expect(Object.values(d.fixtures)[0]).toMatchObject({ x: 4000, y: 3000 });
+    await page.getByTestId('port-power').click();
+    expect((await full(page)).selection?.kind).toBe('node');
+  });
 });

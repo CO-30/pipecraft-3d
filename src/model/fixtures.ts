@@ -135,10 +135,14 @@ export function validateFixtures(doc: Doc): string[] {
     if (!FIXTURE_CATALOG[f.type]) { errors.push(`fixture ${f.id}: 不明な種類`); continue; }
     if (!floorById(doc.building, f.floorId)) errors.push(`fixture ${f.id}: 階が存在しない`);
     const ports = portNodes(doc.network, f.id);
-    for (const def of FIXTURE_CATALOG[f.type].ports) {
-      const c = ports.filter((n) => n.portId === def.id).length;
-      if (c !== 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} が ${c} 個`);
+    const floor = floorById(doc.building, f.floorId);
+    const defs = FIXTURE_CATALOG[f.type].ports;
+    for (const def of defs) {
+      const ns = ports.filter((n) => n.portId === def.id);
+      if (ns.length !== 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} が ${ns.length} 個`);
+      else if (floor && dist(ns[0].pos, portWorldPos(f, floor, def)) > 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} の位置が器具とずれている`);
     }
+    for (const n of ports) if (!defs.some((d) => d.id === n.portId)) errors.push(`node ${n.id}: 器具 ${f.id} にない接続口 ${n.portId}`);
   }
   for (const n of Object.values(doc.network.nodes)) {
     if (n.fixtureId && !doc.fixtures[n.fixtureId]) errors.push(`node ${n.id}: 存在しない器具 ${n.fixtureId} の接続口`);

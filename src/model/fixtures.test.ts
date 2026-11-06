@@ -86,3 +86,13 @@ describe('設備機器', () => {
     expect(p.fixtures).toEqual({});
   });
 });
+
+it('接続口の位置が器具とずれている・カタログにない接続口は検出', () => {
+  const d = { building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {} } as Doc;
+  const r = placeFixture(d, d.building.floors[0].id, 'toilet', { x: 0, y: 0 });
+  const n = Object.values(r.doc.network.nodes)[0];
+  const moved = { ...r.doc, network: { ...r.doc.network, nodes: { ...r.doc.network.nodes, [n.id]: { ...n, pos: { ...n.pos, x: n.pos.x + 500 } } } } };
+  expect(validateFixtures(moved).join()).toMatch(/ずれ/);
+  const unknown = { ...r.doc, network: { ...r.doc.network, nodes: { ...r.doc.network.nodes, [n.id]: { ...n, portId: 'zzz' } } } };
+  expect(validateFixtures(unknown).join()).toMatch(/ない接続口/);
+});

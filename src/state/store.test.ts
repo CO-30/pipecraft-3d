@@ -321,3 +321,28 @@ describe('Phase 3: 配管の編集操作（ストア）', () => {
     expect(totalLength(net())).toBeCloseTo(2500, 6);
   });
 });
+
+describe('Phase 3 レビュー対応', () => {
+  it('配管全体の高さを上の階まで上げると所属階が付け直され、階高変更に正しく追従', () => {
+    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 3000, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'x', createdAt: 1 });
+    const [f1, f2] = bld().floors;
+    s().drawPolyline([v(0, 0, 100), v(2000, 0, 100)]);
+    const sid = Object.keys(net().segments)[0];
+    s().setRunHeightDelta(sid, 3000);
+    expect(Object.values(net().nodes).every((n) => n.floorId === f2.id)).toBe(true);
+    s().updateFloor(f1.id, { height: 3500 });
+    expect(Object.values(net().nodes).every((n) => n.pos.z === 3600)).toBe(true);
+  });
+  it('cancelDrag はドラッグ開始前に戻し、履歴を増やさない', () => {
+    s().drawPolyline([v(0, 0, 100), v(2000, 0, 100)]);
+    const before = net();
+    const h = s().past.length;
+    const id = Object.keys(net().nodes)[0];
+    s().beginDrag();
+    s().dragNode(id, v(500, 500, 100));
+    s().cancelDrag();
+    expect(net()).toBe(before);
+    expect(s().past.length).toBe(h);
+    expect(s().dragBase).toBeNull();
+  });
+});

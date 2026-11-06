@@ -16,15 +16,18 @@ export function floorIndexForZ(floors: Floor[], z: number): number {
 export const zOnFloor = (f: Floor, z: number) => z >= f.elevation - 1000 && z < f.elevation + f.height;
 
 /**
- * floorId が未設定・存在しない階を指すノードに所属階を付ける。
+ * floorId が未設定・存在しない階を指す・高さがその階の範囲（床下1000mm〜天井）外のノードに所属階を付ける。
  * 同じ高さでつながった隣のノードの階 → 既定の階（その階の範囲内なら）→ 高さから判定、の順。
  */
 export function tagNodeFloors(net: Network, floors: Floor[], defaultFloorId?: string): Network {
   if (!floors.length) return net;
-  const valid = new Set(floors.map((f) => f.id));
-  const need = Object.values(net.nodes).filter((n) => !n.floorId || !valid.has(n.floorId));
+  const byId = new Map(floors.map((f) => [f.id, f]));
+  // 所属階が無い・存在しない・高さがその階の範囲外（高さを変えた）ノードを付け直す
+  const fits = (fid: string | undefined, z: number) => { const f = fid ? byId.get(fid) : undefined; return !!f && zOnFloor(f, z); };
+  const need = Object.values(net.nodes).filter((n) => !fits(n.floorId, n.pos.z));
   if (!need.length) return net;
   const nodes = { ...net.nodes };
+  for (const n of need) nodes[n.id] = { ...n, floorId: undefined };
   const def = floors.find((f) => f.id === defaultFloorId);
   const neighbors = new Map<string, string[]>();
   for (const s of Object.values(net.segments)) {
@@ -35,8 +38,8 @@ export function tagNodeFloors(net: Network, floors: Floor[], defaultFloorId?: st
   for (let pass = 0; pass < 2; pass++) {
     for (const n0 of need) {
       const n = nodes[n0.id];
-      if (n.floorId && valid.has(n.floorId)) continue;
-      const same = (neighbors.get(n.id) ?? []).map((id) => nodes[id]).find((o) => o.floorId && valid.has(o.floorId) && Math.abs(o.pos.z - n.pos.z) < 1);
+      if (fits(n.floorId, n.pos.z)) continue;
+      const same = (neighbors.get(n.id) ?? []).map((id) => nodes[id]).find((o) => fits(o.floorId, n.pos.z) && Math.abs(o.pos.z - n.pos.z) < 1);
       if (same) nodes[n.id] = { ...n, floorId: same.floorId };
       else if (pass === 1) nodes[n.id] = { ...n, floorId: def && zOnFloor(def, n.pos.z) ? def.id : floors[floorIndexForZ(floors, n.pos.z)].id };
     }

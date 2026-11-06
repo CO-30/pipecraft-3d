@@ -493,9 +493,12 @@ export function deleteFitting(net: Network, nodeId: string): Network {
   const k = pairKey(a, b);
   if (Object.values(segments).some((x) => pairKey(x.a, x.b) === k)) return net;
   const healed: Segment = { ...attrsOf(s1), id: s1.id, a, b };
-  if (s1.measuredLength !== undefined && s2.measuredLength !== undefined) {
-    healed.measuredLength = s1.measuredLength + s2.measuredLength;
-    healed.measuredApprox = !isCollinear(net, nodeId, s1, s2) || !!(s1.measuredApprox || s2.measuredApprox) || undefined;
+  if (s1.measuredLength !== undefined || s2.measuredLength !== undefined) {
+    // 実測長は捨てない。片側だけ実測なら残りはモデル長で補い、概算として印を付ける
+    const m1 = s1.measuredLength ?? segmentLength(net, s1.id), m2 = s2.measuredLength ?? segmentLength(net, s2.id);
+    healed.measuredLength = m1 + m2;
+    const exact = s1.measuredLength !== undefined && s2.measuredLength !== undefined && isCollinear(net, nodeId, s1, s2) && !s1.measuredApprox && !s2.measuredApprox;
+    if (!exact) healed.measuredApprox = true;
   }
   segments[s1.id] = healed;
   const nodes = { ...net.nodes };

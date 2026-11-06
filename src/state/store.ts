@@ -121,6 +121,8 @@ type State = {
   dragCorner(cornerId: string, p: Vec2): void;
   dragWall(wallId: string, dx: number, dy: number): void;
   endDrag(): void;
+  /** ドラッグを取り消して開始前に戻す（ピンチへの切替・ジェスチャーのキャンセル） */
+  cancelDrag(): void;
 
   // 建物
   addWall(p: Vec2, q: Vec2): void;
@@ -351,7 +353,8 @@ export const useStore = create<State>((set, get) => {
     },
     setNodeHeight: (nodeId, z) => {
       const n = get().doc.network.nodes[nodeId];
-      if (n) commit(withNet(moveNode(get().doc.network, nodeId, { ...n.pos, z })));
+      // 設備の接続口の高さは器具で決まるので単独では変えない
+      if (n && !n.fixtureId) commit(withNet(moveNode(get().doc.network, nodeId, { ...n.pos, z })));
     },
     updateSegment: (segId, patch) => {
       const net = get().doc.network;
@@ -391,6 +394,10 @@ export const useStore = create<State>((set, get) => {
     dragWall: (wallId, dx, dy) => {
       const base = get().dragBase;
       if (base) set({ doc: { ...get().doc, building: B.moveWall(base.building, wallId, dx, dy) } });
+    },
+    cancelDrag: () => {
+      const base = get().dragBase;
+      if (base) set({ doc: base, dragBase: null });
     },
     endDrag: () => {
       const { dragBase, doc, past } = get();

@@ -230,3 +230,15 @@ it('splitSegment/segmentsAt/nodeDegree は既存のまま使える', () => {
   expect(nodeDegree(s.net, s.nodeId)).toBe(2);
   expect(segmentsAt(s.net, s.nodeId)).toHaveLength(2);
 });
+
+it('部品削除: 片側だけ実測のエルボを消しても実測長を失わない（概算として残す）', () => {
+  const r = line([v(0, 0), v(3000, 0), v(3000, 4000)]);
+  const [s1, s2] = r.segmentIds;
+  const net = { ...r.net, segments: { ...r.net.segments, [s1]: { ...r.net.segments[s1], measuredLength: 3100 } } };
+  const out = deleteFitting(net, r.nodeIds[1]);
+  ok(out);
+  const seg = Object.values(out.segments)[0];
+  expect(seg.measuredLength).toBe(3100 + 4000);
+  expect(seg.measuredApprox).toBe(true);
+  expect(s2).toBeTruthy();
+});

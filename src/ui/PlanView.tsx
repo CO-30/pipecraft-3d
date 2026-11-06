@@ -34,12 +34,26 @@ const isVertical = (net: Network, segId: string) => {
   const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos;
   return Math.hypot(a.x - b.x, a.y - b.y) < 1;
 };
-/** ドラッグ中のノードを落とせる相手を探す（自分・直接つながった相手は除く） */
-function dropTargetFor(net: Network, nodeId: string, w: Vec2, tol: number, zRange: HitFilter['zRange']) {
+/** 高さがこの差(mm)以内の配管にだけ自動で接続する（平面で交差する別高さの配管にはつながない） */
+export const CONNECT_Z_TOL = 150;
+const nearZ = (zRange: NonNullable<HitFilter['zRange']>, z: number) => (z0: number, z1: number) =>
+  zRange(z0, z1) && z1 >= z - CONNECT_Z_TOL && z0 <= z + CONNECT_Z_TOL;
+/** ドラッグ中のノードを落とせる相手を探す（自分・直接つながった相手・高さが違う配管は除く） */
+function dropTargetFor(net: Network, nodeId: string, w: Vec2, tol: number, zRange: NonNullable<HitFilter['zRange']>) {
   const segs = segmentsAt(net, nodeId);
   const excludeNodes = new Set([nodeId, ...segs.map((s) => (s.a === nodeId ? s.b : s.a))]);
   const excludeSegments = new Set(segs.map((s) => s.id));
-  return hitTestPlan(net, w, tol, { zRange, excludeNodes, excludeSegments });
+  const hit = hitTestPlan(net, w, tol, { zRange: nearZ(zRange, net.nodes[nodeId].pos.z), excludeNodes, excludeSegments });
+  return hit && segZOk(net, hit, w, net.nodes[nodeId].pos.z) ? hit : null;
+}
+/** 区間に接続する場合、接続点での区間の高さが z に近いか（斜めの区間も考慮） */
+function segZOk(net: Network, hit: NonNullable<ReturnType<typeof hitTestPlan>>, w: Vec2, z: number) {
+  if (hit.type === 'node') return Math.abs(net.nodes[hit.id].pos.z - z) <= CONNECT_Z_TOL;
+  const s = net.segments[hit.id];
+  const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos;
+  const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  const t = L2 ? Math.max(0, Math.min(1, ((w.x - a.x) * (b.x - a.x) + (w.y - a.y) * (b.y - a.y)) / L2)) : 0.5;
+  return Math.abs(a.z + (b.z - a.z) * t - z) <= CONNECT_Z_TOL;
 }
 
 /** 表示範囲に建物全体が入る初期ビュー */
@@ -99,7 +113,12 @@ export function PlanView() {
   const zLo = (curFloor?.elevation ?? 0) - 1000, zHi = (curFloor?.elevation ?? 0) + (curFloor?.height ?? 3000);
   const zRange = (z0: number, z1: number) => z1 >= zLo && z0 < zHi;
   const hitPipe = (w: Vec2) => hitTestPlan(useStore.getState().doc.network, w, tol, { zRange });
-  const hitFixture = (w: Vec2) => Object.values(useStore.getState().doc.fixtures).find((f) => f.floorId === floorId && pointInPolygon(w, fixtureCorners(f)));
+  /** 器具のヒット（小さい器具も指で押せるよう、外形の外でも中心から許容半径内なら当たり） */
+  const hitFixture = (w: Vec2) => {
+    const fs = Object.values(useStore.getState().doc.fixtures).filter((f) => f.floorId === floorId);
+    return fs.find((f) => pointInPolygon(w, fixtureCorners(f)))
+      ?? fs.map((f) => ({ f, d: Math.hypot(f.x - w.x, f.y - w.y) })).filter((x) => x.d <= tol).sort((p, q) => p.d - q.d)[0]?.f;
+  };
   if (import.meta.env.MODE === 'e2e') {
     (window as unknown as { __plan: unknown }).__plan = {
       toScreen: (x: number, y: number) => {
@@ -117,7 +136,7 @@ export function PlanView() {
     const st = useStore.getState();
     if (pointers.current.size === 2) {
       // 2本指になったら作図・移動を取り消して拡大縮小へ
-      if (gesture.current && gesture.current.kind.startsWith('drag')) st.endDrag();
+      if (gesture.current && gesture.current.kind.startsWith('drag')) st.cancelDrag();
       setDropHit(null);
       setStroke(null);
       setRoomPreview(null);
@@ -181,11 +200,18 @@ export function PlanView() {
     // 選択ツール: 配管 > 器具 > 建物
     const ph = hitPipe(w);
     if (ph?.type === 'node') {
-      st.select({ kind: 'node', id: ph.id });
-      if (!st.doc.network.nodes[ph.id].fixtureId) {
+      const fid = st.doc.network.nodes[ph.id].fixtureId;
+      const fx = fid ? st.doc.fixtures[fid] : undefined;
+      if (fx) {
+        // 器具の接続口をタップ → 器具を選択・ドラッグ（接続口の個別操作は器具のパネルから）
+        st.select({ kind: 'fixture', id: fx.id });
         st.beginDrag();
-        gesture.current = { kind: 'dragNode', nodeId: ph.id };
-      } else gesture.current = null;
+        gesture.current = { kind: 'dragFixture', fixtureId: fx.id, offset: { x: fx.x - w.x, y: fx.y - w.y } };
+        return;
+      }
+      st.select({ kind: 'node', id: ph.id });
+      st.beginDrag();
+      gesture.current = { kind: 'dragNode', nodeId: ph.id };
       return;
     }
     if (ph?.type === 'segment') {
@@ -280,6 +306,19 @@ export function PlanView() {
     }
   };
 
+  /** ジェスチャーがキャンセルされた（着信・OSのジェスチャー等）: 確定せずに元に戻す */
+  const onCancel = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    const g = gesture.current;
+    if (g?.kind === 'pinch' && pointers.current.size > 0) return;
+    gesture.current = null;
+    if (g?.kind.startsWith('drag')) useStore.getState().cancelDrag();
+    setDropHit(null);
+    setStroke(null);
+    setRoomPreview(null);
+    setSplitPreview(null);
+  };
+
   const onUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
     const g = gesture.current;
@@ -331,7 +370,13 @@ export function PlanView() {
       return;
     }
     const net = st.doc.network;
-    const endHit = hitPipe(pts[pts.length - 1]);
+    const drawZ = g.branchSegId
+      ? (net.nodes[net.segments[g.branchSegId].a].pos.z + net.nodes[net.segments[g.branchSegId].b].pos.z) / 2
+      : g.startNodeId ? net.nodes[g.startNodeId].pos.z : activeFloorElevation() + st.drawHeight;
+    // 終点の接続先は描く高さに近い配管だけ（高さが違う配管とは交差するだけでつながない）
+    const endW = pts[pts.length - 1];
+    const eh = hitTestPlan(net, endW, tol, { zRange: nearZ(zRange, drawZ) });
+    const endHit = eh && segZOk(net, eh, endW, drawZ) ? eh : null;
     const endNodeId = endHit?.type === 'node' && endHit.id !== g.startNodeId ? endHit.id : undefined;
     // 終点が既存の区間の上なら、その区間の途中に接続（始点の区間・始点ノードにつながる区間は除く）
     const startSegs = g.startNodeId ? segmentsAt(net, g.startNodeId).map((s) => s.id) : [];
@@ -382,7 +427,7 @@ export function PlanView() {
 
   return (
     <svg ref={svgRef} data-testid="plan" className="plan"
-      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel}
       onWheel={(e) => {
         const p = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
         const scale = Math.min(2, Math.max(0.005, vw.scale * Math.exp(-e.deltaY * 0.001)));
