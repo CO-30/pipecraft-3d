@@ -54,7 +54,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
           </aside>
         )}
         <main className={`views ${eff}`}>
-          {eff !== '3d' && (elevId ? <ElevationView /> : <PlanView />)}
+          {eff !== '3d' && (elevId ? <ElevationView key={elevId} /> : <PlanView />)}
           {eff !== '2d' && <Suspense fallback={<div className="view3d loading">3D を準備中…</div>}><View3D /></Suspense>}
           {!isWide && showVis && <div className="sheet"><VisibilityPanel /></div>}
         </main>

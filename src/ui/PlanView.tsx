@@ -13,6 +13,7 @@ import { FIXTURE_CATALOG, fixtureCorners } from '../model/fixtures';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { underlayCorners } from '../model/underlay';
 import { pointInRing } from '../model/geo';
+import { memberCorners, membersOf, stairSteps } from '../model/members';
 import { findConnectCandidate } from '../model/connect';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
@@ -286,7 +287,15 @@ export function PlanView() {
       return;
     }
     const bh = hitTestBuilding(b, st.activeFloorId, w, tol);
-    if (bh?.kind === 'corner') {
+    // 部屋の中の梁は、その部屋を選んだ状態でもう一度タップすると選べる
+    const mh = !bh || bh.kind === 'room'
+      ? membersOf(b).find((m) => m.floorId === st.activeFloorId && pointInPolygon(w, memberCorners(m))
+        && (bh?.kind !== 'room' || (st.selection?.kind === 'room' && st.selection.id === bh.id)))
+      : undefined;
+    if (mh) {
+      st.select({ kind: 'member', id: mh.id });
+      gesture.current = { kind: 'pan', last: p };
+    } else if (bh?.kind === 'corner') {
       st.select({ kind: 'corner', id: bh.id });
       st.beginDrag();
       gesture.current = { kind: 'dragCorner', cornerId: bh.id };
@@ -542,6 +551,24 @@ export function PlanView() {
                 </g>
               );
             })()}
+          </g>
+        );
+      })}
+      {membersOf(building).filter((m) => m.floorId === floorId).map((m) => {
+        const cs = memberCorners(m).map(toScreen);
+        const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : '#7c3aed';
+        const selected = isSel('member', m.id);
+        const steps = m.kind === 'stair' ? stairSteps(m) : 0;
+        return (
+          <g key={m.id} data-member={m.id} data-kind={m.kind}>
+            <polygon points={cs.map((q) => `${q.x},${q.y}`).join(' ')} fill={color} fillOpacity={m.kind === 'balcony' ? 0.15 : 0.08}
+              stroke={selected ? SELECT_COLOR : color} strokeWidth={selected ? 3 : 1.5} strokeDasharray={m.kind === 'beam' || m.kind === 'eave' ? '6 4' : undefined} />
+            {Array.from({ length: Math.max(0, steps - 1) }, (_, i) => {
+              const t = (i + 1) / steps;
+              const p0 = { x: cs[0].x + (cs[1].x - cs[0].x) * t, y: cs[0].y + (cs[1].y - cs[0].y) * t };
+              const p1 = { x: cs[3].x + (cs[2].x - cs[3].x) * t, y: cs[3].y + (cs[2].y - cs[3].y) * t };
+              return <line key={i} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={color} strokeWidth={1} pointerEvents="none" />;
+            })}
           </g>
         );
       })}

@@ -4,6 +4,8 @@
  */
 import { newId } from './id';
 
+import type { Member } from './members';
+
 export type Vec2 = { x: number; y: number };
 
 export type Floor = {
@@ -39,6 +41,8 @@ export type Building = {
   walls: Record<string, Wall>;
   openings: Record<string, Opening>;
   rooms: Record<string, Room>;
+  /** 梁・軒/庇・バルコニー・階段（省略可） */
+  members?: Record<string, Member>;
 };
 
 export const SNAP_CORNER_MM = 150;
@@ -110,7 +114,7 @@ function openingProblem(b: Building, o: Opening): string | null {
 }
 
 /** 壁の整合性（長さ・開口部・重複）が保たれているかを、変更された壁だけ検査 */
-function wallsOk(b: Building, wallIds: Iterable<string>): boolean {
+export function wallsOk(b: Building, wallIds: Iterable<string>): boolean {
   const ids = new Set(wallIds);
   const pairs = new Set<string>();
   for (const w of Object.values(b.walls)) {
@@ -187,7 +191,8 @@ export function deleteFloor(b: Building, floorId: string): Building {
   const openings = Object.fromEntries(Object.entries(b.openings).filter(([, o]) => walls[o.wallId]));
   const rooms = Object.fromEntries(Object.entries(b.rooms).filter(([, r]) => r.floorId !== floorId));
   const corners = Object.fromEntries(Object.entries(b.corners).filter(([, c]) => c.floorId !== floorId));
-  return { floors: recomputeElevations(b.floors.filter((f) => f.id !== floorId)), corners, walls, openings, rooms };
+  const members = Object.fromEntries(Object.entries(b.members ?? {}).filter(([, m]) => m.floorId !== floorId));
+  return { floors: recomputeElevations(b.floors.filter((f) => f.id !== floorId)), corners, walls, openings, rooms, ...(b.members ? { members } : {}) };
 }
 
 // ---------- 壁 ----------
@@ -263,7 +268,7 @@ export function addWall(b: Building, floorId: string, p: Vec2, q: Vec2, opts: { 
 /** 部屋の頂点のうち、移動前の角位置（1mm以内）にあるものを角と一緒に動かす */
 const ROOM_FOLLOW_MM = 1;
 /** 多角形が自己交差していないか（隣接しない辺どうしが交わらない） */
-function isSimplePolygon(p: Vec2[]): boolean {
+export function isSimplePolygon(p: Vec2[]): boolean {
   const n = p.length;
   const orient = (a: Vec2, c: Vec2, d: Vec2) => Math.sign((c.x - a.x) * (d.y - a.y) - (c.y - a.y) * (d.x - a.x));
   for (let i = 0; i < n; i++) {
@@ -279,7 +284,7 @@ function isSimplePolygon(p: Vec2[]): boolean {
 const MIN_ROOM_M2 = 0.1;
 
 /** 部屋の頂点を角に追従させる。追従で部屋がつぶれる・ねじれる場合は null（移動を拒否） */
-function followRooms(b: Building, moves: { floorId: string; from: Vec2; to: Vec2 }[]): Building | null {
+export function followRooms(b: Building, moves: { floorId: string; from: Vec2; to: Vec2 }[]): Building | null {
   let changed = false;
   const rooms: Record<string, Room> = {};
   for (const r of Object.values(b.rooms)) {
@@ -298,7 +303,7 @@ function followRooms(b: Building, moves: { floorId: string; from: Vec2; to: Vec2
 }
 
 /** 手描きで寸法を管理している壁（lengthSet あり）の長さが変わったら未確定に戻す */
-function unsetLengths(b: Building, wallIds: string[]): Building {
+export function unsetLengths(b: Building, wallIds: string[]): Building {
   const ids = wallIds.filter((id) => b.walls[id]?.lengthSet === true);
   if (!ids.length) return b;
   const walls = { ...b.walls };

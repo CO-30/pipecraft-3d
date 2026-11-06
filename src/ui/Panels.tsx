@@ -6,6 +6,7 @@ import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, 
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
+import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
@@ -199,6 +200,7 @@ export function PropertyPanel() {
         <div className="row">
           <button onClick={() => st.setTool('door')}>ドアを付ける</button>
           <button onClick={() => st.setTool('window')}>窓を付ける</button>
+          {w.kind === 'exterior' && <button data-testid="wall-face" onClick={() => { const err = st.openWallFace(w.id); if (err) useStore.setState({ notice: err }); }}>🏠 正面を向いて描く（窓・梁・軒・張り出し・階段）</button>}
           {w.kind === 'exterior' && <button data-testid="wall-dims" onClick={() => st.openDimWizard(w.floorId, w.id)}>📏 外形の寸法を順番に入れる</button>}
           <button data-testid="wall-photo" onClick={() => setPhotoWall(w.id)}>📷 写真から窓・ドア</button>
           <button data-testid="wall-elevation" onClick={() => {
@@ -209,6 +211,23 @@ export function PropertyPanel() {
         </div>
         {photoWall === w.id && <WallPhotoDialog wallId={w.id} onClose={() => setPhotoWall(null)} />}
         {elevWall === w.id && <ElevationDialog wallId={w.id} onClose={() => setElevWall(null)} />}
+      </div>
+    );
+  }
+  if (sel?.kind === 'member' && b.members?.[sel.id]) {
+    const m = b.members[sel.id];
+    const len = Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y);
+    return (
+      <div className="props" data-testid="member-panel">
+        <div className="ptitle">{MEMBER_LABEL[m.kind]} 長さ <b>{Math.round(len)}</b>mm{m.kind === 'stair' && <>（{stairSteps(m)}段）</>}</div>
+        <NumField label={m.kind === 'beam' || m.kind === 'stair' ? '幅' : '出幅'} testId="member-width" value={m.width} min={50} max={5000} onCommit={(v) => st.updateMember(m.id, { width: v })} />
+        {m.kind !== 'balcony' && m.kind !== 'stair' && <>
+          <NumField label="下端（床から）" value={m.z0} onCommit={(v) => st.updateMember(m.id, { z0: v })} />
+          <NumField label="上端（床から）" value={m.z1} onCommit={(v) => st.updateMember(m.id, { z1: v })} />
+        </>}
+        {m.kind === 'balcony' && <NumField label="手すりの高さ" value={m.z1} min={300} max={2000} onCommit={(v) => st.updateMember(m.id, { z1: v })} />}
+        <ElementVisibility id={m.id} />
+        <div className="row"><button className="danger" data-testid="member-delete" onClick={() => st.deleteSelected()}>削除</button></div>
       </div>
     );
   }

@@ -28,11 +28,12 @@ import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underla
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
 import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
+import { addFaceMember, addFaceStair, bumpFace, deleteMember, faceWallAt, updateMember, type FaceRect, type Member, type MemberKind } from '../model/members';
 import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineLoop, straightenOutline, type FixedEnd, type OutlineLengthResult } from '../model/sketch';
 
 export type { Doc };
 export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
-export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture';
+export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture' | 'member';
 /** at: 区間をタップした位置（切断・バルブ挿入に使う） */
 export type Selection = { kind: SelKind; id: string; at?: Vec3 } | null;
 export type VisCategory = BoxCategory | 'pipes' | 'fixtures';
@@ -45,11 +46,11 @@ export type ProjectMeta = { id: string; name: string; address?: string; createdA
 const HISTORY_LIMIT = 200;
 export const VIS_CATEGORIES: { id: VisCategory; label: string }[] = [
   { id: 'exteriorWall', label: '外壁' }, { id: 'interiorWall', label: '内壁' }, { id: 'floor', label: '床' },
-  { id: 'ceiling', label: '天井' }, { id: 'door', label: 'ドア' }, { id: 'window', label: '窓' }, { id: 'pipes', label: '配管・配線' },
+  { id: 'ceiling', label: '天井' }, { id: 'door', label: 'ドア' }, { id: 'window', label: '窓' }, { id: 'member', label: '梁・軒・バルコニー・階段' }, { id: 'pipes', label: '配管・配線' },
   { id: 'fixtures', label: '設備機器' },
 ];
 const defaultVisibility = (): Record<VisCategory, VisMode> => ({
-  exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', pipes: 'show', fixtures: 'show',
+  exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', member: 'show', pipes: 'show', fixtures: 'show',
 });
 
 export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {} });
@@ -203,6 +204,16 @@ type State = {
   sketchOutline(raw: Vec2[], tolerance: number): boolean;
   /** 外形の辺に実測の長さを入れる（確定済みの辺を保護。force で強行） */
   setOutlineLength(wallId: string, mm: number, fixed: FixedEnd, force?: boolean): OutlineLengthResult;
+  /** 立面で描く対象: 配管 / 建物（窓・ドア・梁・軒・バルコニー・張り出し・階段） */
+  elevDraw: 'pipe' | 'build';
+  setElevDraw(m: 'pipe' | 'build'): void;
+  /** 壁を正面に向けた立面を開く（なければ作る） */
+  openWallFace(wallId: string, mode?: 'pipe' | 'build'): string | null;
+  /** 立面の四角から 窓・ドア／梁・軒・バルコニー／張り出し・押し込み を作る。失敗はメッセージ */
+  addFromFace(elId: string, what: 'door' | 'window' | Exclude<MemberKind, 'stair'> | 'bump' | 'setback', r: FaceRect, size: number): string | null;
+  /** 立面の斜め線から外階段 */
+  addStairFromFace(elId: string, p: UV, q: UV): string | null;
+  updateMember(id: string, patch: Partial<Pick<Member, 'width' | 'z0' | 'z1'>>): void;
   /** 寸法入力（外形の辺を順に）。null で閉じる */
   dimWizard: { floorId: string; index: number } | null;
   openDimWizard(floorId?: string, wallId?: string): boolean;
@@ -335,6 +346,7 @@ export const useStore = create<State>((set, get) => {
     drawHeight: 100,
     orthoSnap: true,
     dimWizard: null,
+    elevDraw: 'pipe',
     fixtureType: 'toilet',
     setFixtureType: (fixtureType) => set({ fixtureType }),
     selection: null,
@@ -372,7 +384,7 @@ export const useStore = create<State>((set, get) => {
       if (m) set({ meta: { ...m, name, address }, revision: get().revision + 1 });
     },
 
-    setTool: (tool) => set({ tool, pendingMerge: null, ...(tool !== 'underlay' ? { scalePick: null } : {}) }),
+    setTool: (tool) => set({ tool, pendingMerge: null, ...(tool === 'pipe' ? { elevDraw: 'pipe' as const } : {}), ...(tool !== 'underlay' ? { scalePick: null } : {}) }),
     setDrawAttrs: (a) => set({ drawAttrs: { ...get().drawAttrs, ...a } }),
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
@@ -381,7 +393,7 @@ export const useStore = create<State>((set, get) => {
 
     drawPolyline: (points, opts) => drawCore(points, get().drawAttrs, opts),
     activeElevationId: null,
-    openElevation: (id) => { const ok = !!(id && get().doc.elevations?.[id]); set({ activeElevationId: ok ? id : null, selection: null, pendingMerge: null, ...(ok ? { tool: 'pipe' as Tool } : {}) }); },
+    openElevation: (id) => { const ok = !!(id && get().doc.elevations?.[id]); set({ activeElevationId: ok ? id : null, selection: null, pendingMerge: null, ...(ok ? { tool: 'pipe' as Tool, elevDraw: 'pipe' as const } : {}) }); },
     addElevation: (el0, opts) => {
       let el = el0;
       if (!elevationSchema.safeParse(el).success) return '立面の寸法が正しくありません';
@@ -396,7 +408,7 @@ export const useStore = create<State>((set, get) => {
         const g = elevationFromWall(building, r.wallIds[0], { width: el.width, height: el.height });
         el = { ...el, wallId: g.wallId, origin: g.origin, dir: g.dir, normal: g.normal, faceOffset: g.faceOffset, baseZ: g.baseZ, label: g.label };
       }
-      commit({ ...doc, building, elevations: { ...(doc.elevations ?? {}), [el.id]: el } }, { activeElevationId: el.id, selection: null, tool: 'pipe' });
+      commit({ ...doc, building, elevations: { ...(doc.elevations ?? {}), [el.id]: el } }, { activeElevationId: el.id, selection: null, tool: 'pipe', elevDraw: 'pipe' });
       return null;
     },
     updateElevation: (id, patch) => {
@@ -834,6 +846,68 @@ export const useStore = create<State>((set, get) => {
       set({ dimWizard: { ...w, index: i }, selection: { kind: 'wall', id: loop.walls[i] } });
     },
     closeDimWizard: () => set({ dimWizard: null }),
+    setElevDraw: (elevDraw) => set({ elevDraw, tool: elevDraw === 'pipe' ? 'pipe' : 'select', selection: null }),
+    openWallFace: (wallId, mode = 'build') => {
+      const doc = get().doc;
+      if (!doc.building.walls[wallId]) return '壁が見つかりません';
+      const ex = Object.values(doc.elevations ?? {}).find((e) => e.wallId === wallId);
+      if (ex) get().openElevation(ex.id);
+      else { const err = get().addElevation(elevationFromWall(doc.building, wallId)); if (err) return err; }
+      get().setElevDraw(mode);
+      return null;
+    },
+    addFromFace: (elId, what, r, size) => {
+      const doc = get().doc, el = doc.elevations?.[elId];
+      if (!el) return '立面が見つかりません';
+      const b = doc.building;
+      if (what === 'door' || what === 'window') {
+        const u0 = Math.min(r.u0, r.u1), u1 = Math.max(r.u0, r.u1), v0 = Math.min(r.v0, r.v1), v1 = Math.max(r.v0, r.v1);
+        const fw = faceWallAt(b, el, (u0 + u1) / 2, v0 + 1);
+        if (!fw) return '四角を外壁の上に描いてください';
+        const f = B.floorById(b, fw.floorId)!;
+        const sill = what === 'door' ? 0 : Math.max(0, Math.round(el.baseZ + v0 - f.elevation));
+        const height = Math.round(v1 - (what === 'door' ? f.elevation - el.baseZ : v0));
+        const res = B.addOpening(b, fw.wall.id, what, fw.offset, { width: Math.round(u1 - u0), height, sill });
+        if (!res.openingId) return `${what === 'door' ? 'ドア' : '窓'}を付けられません（壁からはみ出す・天井より高い・他と重なる）`;
+        commit(withBld(res.b), { selection: { kind: 'opening', id: res.openingId } });
+        return null;
+      }
+      const res = what === 'bump' || what === 'setback'
+        ? bumpFace(b, el, r, what === 'bump' ? size : -size)
+        : addFaceMember(b, el, what, r, size);
+      if (!res.ok) return res.error;
+      let elevations = doc.elevations;
+      if (what === 'bump' || what === 'setback') {
+        // 立面の元の壁が分割・移動したら、立面をこの面の上の壁に付け替える（面の位置も合わせる）
+        const nb = res.b;
+        const own = el.wallId ? nb.walls[el.wallId] : undefined;
+        let next = el;
+        if (own && el.wallId) {
+          const g = elevationFromWall(nb, el.wallId);
+          next = { ...el, origin: g.origin, dir: g.dir, normal: g.normal };
+        } else if (el.wallId) {
+          const onFace = B.wallsOnFloor(nb, el.floorId).find((w) => {
+            if (w.kind !== 'exterior') return false;
+            const da = worldToElev(el, { ...nb.corners[w.a], z: 0 }).depth, db = worldToElev(el, { ...nb.corners[w.b], z: 0 }).depth;
+            return Math.abs(da + el.faceOffset) <= 60 && Math.abs(db + el.faceOffset) <= 60;
+          });
+          next = { ...el, wallId: onFace?.id };
+          if (!onFace) delete next.wallId;
+        }
+        if (next !== el) elevations = { ...elevations, [el.id]: next };
+      }
+      commit({ ...withBld(res.b), elevations }, { selection: what === 'bump' || what === 'setback' ? null : { kind: 'member', id: res.ids[0] } });
+      return null;
+    },
+    addStairFromFace: (elId, p, q) => {
+      const doc = get().doc, el = doc.elevations?.[elId];
+      if (!el) return '立面が見つかりません';
+      const res = addFaceStair(doc.building, el, p, q);
+      if (!res.ok) return res.error;
+      commit(withBld(res.b), { selection: { kind: 'member', id: res.ids[0] } });
+      return null;
+    },
+    updateMember: (id, patch) => commit(withBld(updateMember(get().doc.building, id, patch))),
     addWall: (p, q) => {
       const r = B.addWall(get().doc.building, get().activeFloorId, p, q);
       if (r.wallIds[0]) commit(withBld(r.b), { selection: { kind: 'wall', id: r.wallIds[0] } });
@@ -897,6 +971,7 @@ export const useStore = create<State>((set, get) => {
       else if (sel.kind === 'wall') next = withBld(B.deleteWall(building, sel.id));
       else if (sel.kind === 'opening') next = withBld(B.deleteOpening(building, sel.id));
       else if (sel.kind === 'room') next = withBld(B.deleteRoom(building, sel.id));
+      else if (sel.kind === 'member') next = withBld(deleteMember(building, sel.id));
       if (next) commit(next, { selection: null });
     },
 

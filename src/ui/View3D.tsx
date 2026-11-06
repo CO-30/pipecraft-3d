@@ -39,7 +39,7 @@ const toThree = (p: Vec3) => new THREE.Vector3(p.x / 1000, p.z / 1000, -p.y / 10
 const UP = new THREE.Vector3(0, 1, 0);
 
 const CAT_COLOR: Record<Box['category'], string> = {
-  exteriorWall: '#e7e5e4', interiorWall: '#f5f5f4', floor: '#d6d3d1', ceiling: '#fafaf9', door: '#a16207', window: '#7dd3fc',
+  exteriorWall: '#e7e5e4', interiorWall: '#f5f5f4', floor: '#d6d3d1', ceiling: '#fafaf9', door: '#a16207', window: '#7dd3fc', member: '#a8a29e',
 };
 
 function Pipe({ a, b, radius, color, selected, mode, onSelect, clip }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
@@ -179,7 +179,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     return 'show';
   };
   const selKindFor = (b: Box): SelKind | null =>
-    b.category.endsWith('Wall') ? 'wall' : b.category === 'door' || b.category === 'window' ? 'opening' : null;
+    b.category.endsWith('Wall') ? 'wall' : b.category === 'door' || b.category === 'window' ? 'opening' : b.category === 'member' ? 'member' : null;
 
   const startDrag = (e: ThreeEvent<PointerEvent>, nodeId: string) => {
     if (tool !== 'select') return;
