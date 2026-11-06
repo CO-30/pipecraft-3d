@@ -4,9 +4,10 @@
  */
 import type { Building, Opening, Wall } from './building';
 import { wallLength } from './building';
+import { memberBoxes } from './members3d';
 import type { Vec3 } from './network';
 
-export type BoxCategory = 'exteriorWall' | 'interiorWall' | 'floor' | 'ceiling' | 'door' | 'window';
+export type BoxCategory = 'exteriorWall' | 'interiorWall' | 'floor' | 'ceiling' | 'door' | 'window' | 'member';
 
 export type Box = {
   key: string;
@@ -95,5 +96,6 @@ export function buildingBoxes(b: Building): Box[] {
       out.push({ ...base, key: `${f.id}:ceiling`, category: 'ceiling', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation + clear - CEILING_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: CEILING_THICKNESS } });
     }
   }
+  out.push(...memberBoxes(b));
   return out;
 }

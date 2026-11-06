@@ -11,12 +11,39 @@ import { elevToWorld, faceNodes, MOUNT_LABEL, worldToElev, type Elevation, type 
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { MountFields } from './ElevationDialog';
 import { PhotoRectify } from './PhotoRectify';
+import { membersOf, MEMBER_LABEL, type FaceRect } from '../model/members';
+
+/** 立面に描いた形: 四角 or 斜め線 */
+type Shape = { kind: 'rect'; r: FaceRect } | { kind: 'line'; p: UV; q: UV };
+type BuildWhat = 'door' | 'window' | 'beam' | 'eave' | 'balcony' | 'bump' | 'setback';
+const WHAT_LABEL: Record<BuildWhat, string> = { door: 'ドア', window: '窓', beam: '梁', eave: '軒・庇', balcony: 'バルコニー', bump: '張り出し', setback: '押し込み' };
+/** 大きさを聞く部材と、その初期値・聞き方 */
+const SIZE_ASK: Partial<Record<BuildWhat, { label: string; def: number }>> = {
+  beam: { label: '梁の幅', def: 300 }, eave: { label: '出幅', def: 600 }, balcony: { label: '出幅', def: 910 },
+  bump: { label: '外へ出す長さ', def: 910 }, setback: { label: '内へ下げる長さ', def: 910 },
+};
+
+/** なぞった線を 四角（外接矩形） か 斜め線 に分ける。小さすぎれば null */
+function classify(raw: UV[], scale: number): Shape | null {
+  if (raw.length < 2) return null;
+  let len = 0;
+  for (let i = 1; i < raw.length; i++) len += Math.hypot(raw[i].u - raw[i - 1].u, raw[i].v - raw[i - 1].v);
+  if (len * scale < 30) return null;
+  const a = raw[0], b = raw[raw.length - 1];
+  const us = raw.map((q) => q.u), vs = raw.map((q) => q.v);
+  const r: FaceRect = { u0: r10(Math.min(...us)), u1: r10(Math.max(...us)), v0: r10(Math.min(...vs)), v1: r10(Math.max(...vs)) };
+  const chord = Math.hypot(b.u - a.u, b.v - a.v);
+  if (chord / len > 0.85 && r.u1 - r.u0 >= 300 && r.v1 - r.v0 >= 300) return { kind: 'line', p: { u: r10(a.u), v: r10(a.v) }, q: { u: r10(b.u), v: r10(b.v) } };
+  if (r.u1 - r.u0 < 100 || r.v1 - r.v0 < 50) return null;
+  return { kind: 'rect', r };
+}
 
 type ViewT = { scale: number; ox: number; oy: number };
 type P = { x: number; y: number };
 type Hit = { type: 'node' | 'segment'; id: string } | null;
 type Gesture =
   | { kind: 'stroke'; startNodeId?: string; startSegId?: string }
+  | { kind: 'shape' }
   | { kind: 'dragNode'; nodeId: string; depth: number }
   | { kind: 'pan'; last: P }
   | { kind: 'pinch'; dist: number; mid: P; view: ViewT };
@@ -64,6 +91,9 @@ export function ElevationView() {
   const building = useStore((s) => s.doc.building);
   const tool = useStore((s) => s.tool);
   const sel = useStore((s) => s.selection);
+  const draw = useStore((s) => s.elevDraw);
+  const [shape, setShape] = useState<Shape | null>(null);
+  const [asking, setAsking] = useState<{ what: BuildWhat; size: string } | null>(null);
   useColors((c) => c.overrides);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -116,6 +146,13 @@ export function ElevationView() {
     }
     if (pointers.current.size > 2) return;
     const q = toUV(p);
+    if (s.elevDraw === 'build') {
+      gesture.current = { kind: 'shape' };
+      setShape(null);
+      setAsking(null);
+      setStroke([q]);
+      return;
+    }
     const hit = hitUV(s.doc.network, el, q, tol);
     if (s.tool === 'pipe') {
       if (hit?.type === 'node') {
@@ -162,7 +199,7 @@ export function ElevationView() {
     } else if (g.kind === 'pan') {
       setView({ ...vw, ox: vw.ox + p.x - g.last.x, oy: vw.oy + p.y - g.last.y });
       g.last = p;
-    } else if (g.kind === 'stroke') {
+    } else if (g.kind === 'stroke' || g.kind === 'shape') {
       const q = toUV(p);
       setStroke((s) => (s ? [...s, q] : s));
     } else if (g.kind === 'dragNode') {
@@ -181,6 +218,11 @@ export function ElevationView() {
     const s = useStore.getState();
     if (g?.kind === 'dragNode') { if (cancel) s.cancelDrag(); else s.endDrag(); }
     if (!cancel && g?.kind === 'stroke' && stroke && stroke.length >= 2) finish(g, stroke);
+    if (!cancel && g?.kind === 'shape' && stroke) {
+      const sh = classify(stroke, vw.scale);
+      setShape(sh);
+      if (!sh) setMsg('もう少し大きく描いてください（四角＝窓・ドア・梁など、斜め線＝階段）');
+    }
     setStroke(null);
   };
 
@@ -207,6 +249,18 @@ export function ElevationView() {
     setView({ scale, ox: p.x - (p.x - vw.ox) * k, oy: p.y - (p.y - vw.oy) * k });
   };
 
+  const build = (what: BuildWhat, size: number) => {
+    if (shape?.kind !== 'rect') return;
+    const err = st.addFromFace(el.id, what, shape.r, size);
+    setMsg(err ?? `${WHAT_LABEL[what]}を作りました`);
+    if (!err) { setShape(null); setAsking(null); }
+  };
+  const choose = (what: BuildWhat) => {
+    const ask = SIZE_ASK[what];
+    if (ask) setAsking({ what, size: String(ask.def) });
+    else build(what, 0);
+  };
+
   // ---- 描画 ----
   const { uv, segs } = facePipes(net, el);
   const o = toS({ u: 0, v: el.height });
@@ -225,6 +279,16 @@ export function ElevationView() {
     const cu = ea.u + sign * op.offset;
     return [{ id: op.id, type: op.type, u0: cu - op.width / 2, u1: cu + op.width / 2, v0: f.elevation - el.baseZ + op.sill, v1: f.elevation - el.baseZ + op.sill + op.height }];
   });
+  // この面の近くの部材（梁・軒・バルコニー・階段）
+  const faceMembers = membersOf(building).flatMap((m) => {
+    const f = building.floors.find((x) => x.id === m.floorId);
+    if (!f) return [];
+    const ea = worldToElev(el, { x: m.a.x, y: m.a.y, z: 0 }), eb = worldToElev(el, { x: m.b.x, y: m.b.y, z: 0 });
+    const near = (d: number) => Math.abs(d) <= m.width / 2 + el.faceOffset + 300;
+    if (!near(ea.depth) || !near(eb.depth) || Math.abs(ea.u - eb.u) < 1) return [];
+    const z0 = f.elevation + m.z0 - el.baseZ, z1 = f.elevation + m.z1 - el.baseZ;
+    return [{ m, ua: ea.u, ub: eb.u, z0, z1 }];
+  });
   const strokePath = stroke?.map(toS).map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
   const selSeg = sel?.kind === 'segment' ? sel.id : null, selNode = sel?.kind === 'node' ? sel.id : null;
 
@@ -237,8 +301,33 @@ export function ElevationView() {
         <button data-testid="elev-settings" className={showSettings ? 'on' : ''} onClick={() => setShowSettings(!showSettings)}>
           ⚙ {el.mount.type === 'tBracket' ? `T字 ${el.mount.standoff}mm` : 'サドル直付け'}
         </button>
+        <span className="seg-btns small">
+          <button data-testid="elev-draw-pipe" className={draw === 'pipe' ? 'on' : ''} onClick={() => { st.setElevDraw('pipe'); setShape(null); }}>〰️ 配管</button>
+          <button data-testid="elev-draw-build" className={draw === 'build' ? 'on' : ''} onClick={() => st.setElevDraw('build')}>🏠 建物</button>
+        </span>
         {msg && <span className="small" data-testid="elev-msg" role="status">{msg}</span>}
       </div>
+      {draw === 'build' && shape && (
+        <div className="elev-bar elev-build" data-testid="elev-build-panel">
+          {shape.kind === 'rect' && !asking && (<>
+            <span className="small">四角（{Math.round(shape.r.u1 - shape.r.u0)}×{Math.round(shape.r.v1 - shape.r.v0)}）を</span>
+            {(Object.keys(WHAT_LABEL) as BuildWhat[]).map((w) => <button key={w} data-testid={`build-${w}`} onClick={() => choose(w)}>{WHAT_LABEL[w]}</button>)}
+          </>)}
+          {shape.kind === 'rect' && asking && (
+            <form className="row" onSubmit={(e) => { e.preventDefault(); const n = Number(asking.size); if (Number.isFinite(n) && n > 0) build(asking.what, n); else setMsg('長さを mm で入力してください'); }}>
+              <span className="small">{WHAT_LABEL[asking.what]}：{SIZE_ASK[asking.what]!.label}</span>
+              <span className="unit-input"><input type="number" inputMode="numeric" autoFocus data-testid="build-size" value={asking.size} onChange={(e) => setAsking({ ...asking, size: e.target.value })} /><span>mm</span></span>
+              <button type="submit" className="primary" data-testid="build-ok">作成</button>
+              <button type="button" onClick={() => setAsking(null)}>戻る</button>
+            </form>
+          )}
+          {shape.kind === 'line' && (<>
+            <span className="small">斜め線を</span>
+            <button data-testid="build-stair" onClick={() => { const err = st.addStairFromFace(el.id, shape.p, shape.q); setMsg(err ?? '階段を作りました'); if (!err) setShape(null); }}>階段にする</button>
+          </>)}
+          <button onClick={() => { setShape(null); setAsking(null); }}>やめる</button>
+        </div>
+      )}
       {showSettings && (
         <div className="elev-bar elev-settings" data-testid="elev-settings-panel">
           <MountFields key={`${el.mount.type}-${el.mount.standoff}`} mount={el.mount} onChange={(m) => { const r = st.updateElevation(el.id, { mount: m }); setMsg(r ?? `取付を「${MOUNT_LABEL[m.type]}${m.type === 'tBracket' ? ` ${m.standoff}mm` : ''}」にしました（この面の配管に反映）`); }} />
@@ -266,6 +355,23 @@ export function ElevationView() {
         {openings.map((op) => { const a = toS({ u: op.u0, v: op.v1 }); return (
           <rect key={op.id} x={a.x} y={a.y} width={(op.u1 - op.u0) * vw.scale} height={(op.v1 - op.v0) * vw.scale} fill={op.type === 'door' ? 'rgba(180,83,9,0.15)' : 'rgba(2,132,199,0.15)'} stroke={op.type === 'door' ? '#b45309' : '#0284c7'} strokeDasharray="4 3" pointerEvents="none" />
         ); })}
+        {faceMembers.map(({ m, ua, ub, z0, z1 }) => {
+          const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : '#7c3aed';
+          const selected = sel?.kind === 'member' && sel.id === m.id;
+          if (m.kind === 'stair') {
+            const a = toS({ u: ua, v: z0 }), b = toS({ u: ub, v: z1 });
+            return <line key={m.id} data-member={m.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected ? SELECT_COLOR : color} strokeWidth={6} strokeLinecap="round" pointerEvents="none" />;
+          }
+          const a = toS({ u: Math.min(ua, ub), v: z1 });
+          return (
+            <g key={m.id} data-member={m.id} pointerEvents="none">
+              <rect x={a.x} y={a.y} width={Math.abs(ub - ua) * vw.scale} height={(z1 - z0) * vw.scale} fill={color} fillOpacity={0.25} stroke={selected ? SELECT_COLOR : color} strokeWidth={2} />
+              <text x={a.x + 4} y={a.y + 12} fontSize={11} fill={color}>{MEMBER_LABEL[m.kind]}</text>
+            </g>
+          );
+        })}
+        {shape?.kind === 'rect' && (() => { const a = toS({ u: shape.r.u0, v: shape.r.v1 }); return <rect data-testid="elev-shape" x={a.x} y={a.y} width={(shape.r.u1 - shape.r.u0) * vw.scale} height={(shape.r.v1 - shape.r.v0) * vw.scale} fill="rgba(37,99,235,0.12)" stroke="#2563eb" strokeWidth={2} strokeDasharray="6 4" pointerEvents="none" />; })()}
+        {shape?.kind === 'line' && (() => { const a = toS(shape.p), b = toS(shape.q); return <line data-testid="elev-shape" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2563eb" strokeWidth={3} strokeDasharray="6 4" pointerEvents="none" />; })()}
         {segs.map((s) => {
           const a = toS(uv.get(s.a)!), b = toS(uv.get(s.b)!);
           const selected = selSeg === s.id;
@@ -289,7 +395,8 @@ export function ElevationView() {
         })}
         {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} pointerEvents="none" />}
         <text x={8} y={size.h - 8} fontSize={11} fill="#334155" stroke="#fff" strokeWidth={3} paintOrder="stroke" pointerEvents="none">
-          {tool === 'pipe' ? '写真の上を指でなぞると、壁の外側に配管を描きます' : '「配管」を選んで壁の上をなぞると描けます'}（{MOUNT_LABEL[el.mount.type]}{el.mount.type === 'tBracket' ? ` ${el.mount.standoff}mm` : ''}）
+          {draw === 'build' ? '四角を描く → 窓・ドア・梁・軒・バルコニー・張り出し／斜め線 → 階段'
+            : <>{tool === 'pipe' ? '写真の上を指でなぞると、壁の外側に配管を描きます' : '「配管」を選んで壁の上をなぞると描けます'}（{MOUNT_LABEL[el.mount.type]}{el.mount.type === 'tBracket' ? ` ${el.mount.standoff}mm` : ''}）</>}
         </text>
       </svg>
       {photoOpen && (
