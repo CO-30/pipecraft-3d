@@ -241,7 +241,7 @@ describe('メーカー参考単価（初期値）', () => {
     const e = est(net);
     expect(e.pipes[0]).toMatchObject({ material: 'HIVP', priceSource: 'catalog', orderQty: 2, materialAmount: 4020 });
     expect(e.fittings[0]).toMatchObject({ type: 'elbow90', priceSource: 'catalog', materialAmount: 166 });
-    expect(e.materialTotal).toBe(4186);
+    expect(e.materialTotal).toBe(4186 + 1089); // ＋接着剤（HI用 500g）1缶
     expect(e.issues.filter((i) => i.kind === 'noPrice').every((i) => /施工単価/.test(i.message))).toBe(true);
   });
   it('現場で入力した単価が優先。販売単位を変えると参考単価は使わない', () => {

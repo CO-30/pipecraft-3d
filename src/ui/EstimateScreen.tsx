@@ -13,6 +13,7 @@ import {
 } from '../model/estimate';
 import { ISSUE_LABEL, yen } from '../export/report';
 import { CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice, catalogSupportPrice, SUPPORT_CATALOG_SOURCE } from '../model/priceCatalog';
+import { defaultConsumableSettings, type ConsumableSettings } from '../model/consumables';
 import { defaultSupportSettings, SUBSTRATE_LABEL, type SupportSettings } from '../model/supports';
 import type { SupportLine } from '../model/estimate';
 import { NumField, OptNumField } from './Panels';
@@ -144,6 +145,18 @@ function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
           </tbody>
         </table>
       )}
+      <h3 className="h-sub">シールテープ・接着剤</h3>
+      {est.consumables.length === 0 ? <p className="empty">ネジ・接着の継手がありません（または「単価」タブで集計しない設定）。</p> : (
+        <table className="est-table" data-testid="consumables-table">
+          <thead><tr><th>品名</th><th>仕様</th><th>数量</th><th>備考</th></tr></thead>
+          <tbody>
+            {est.consumables.map((l) => (
+              <tr key={l.key}><td>{l.name}</td><td>{l.spec}</td><td className="num"><b>{l.count}</b>{l.unit}</td><td className="small">{l.note}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="muted small">シールテープは水栓・給湯器などネジでつなぐ箇所ごと（13・16 は0.5m、20 は0.7m、25 は0.9m、それ以上 1.2m）、接着剤は塩ビ継手の受口ごとの目安量（φ13 約1g〜φ100 約20g）から巻・缶に切り上げ。HIVP=HI用、VP・VU=VP用、HTVP=HT用。</p>
       <p className="muted small">床から400mm以内の排水横管はレベルバンド、その他の配管はサドルバンド。継手で区切られた区間ごとに「長さ÷支持間隔」（最低1個）。区間ごとの変更は図面で配管を選んで「支持金具」から。</p>
     </div>
   );
@@ -249,10 +262,12 @@ function PriceTab({ est }: { est: Estimate }) {
         {est.fittings.map((f) => <PriceRow key={f.key} line={f} pipe={false} />)}
       </section>
       <section>
-        <h3>支持金具・ビスの単価</h3>
+        <h3>支持金具・ビス・消耗品の単価</h3>
         <SupportSettingsForm />
         {est.supports.map((l) => <SupportPriceRow key={l.key} line={l} />)}
-        <p className="muted small" data-testid="support-catalog-note">支持金具・ビス・キリはメーカー希望価格のない「オープン価格」品のため、参考単価は {SUPPORT_CATALOG_SOURCE} です（サドル: 昭和コーポレーション ステンレス片サドル、コンクリートビス: マーベル SCS-432、ステンレスビス: 皿木ねじ 4.1×38、キリ: 大西工業 No.24 3.4mm）。レベルバンドはサイズ別の価格が得られないため入力してください。</p>
+        <ConsumableSettingsForm />
+        {est.consumables.map((l) => <SupportPriceRow key={l.key} line={l} />)}
+        <p className="muted small" data-testid="support-catalog-note">支持金具・ビス・キリはメーカー希望価格のない「オープン価格」品のため、参考単価は {SUPPORT_CATALOG_SOURCE} です（サドル: 昭和コーポレーション ステンレス片サドル、コンクリートビス: マーベル SCS-432、ステンレスビス: 皿木ねじ 4.1×38、キリ: 大西工業 No.24 3.4mm）。レベルバンドはサイズ別の価格が得られないため入力してください。シールテープは日東電工 ニトフロン No.95S 13mm×15m、接着剤はクボタケミックス HI用・HT用 500g の通販税抜価格です。VP・VU用の接着剤は入力してください。</p>
       </section>
       <p className="muted small">単価はこの現場に保存されます。材料費 = 発注数量 × 材料単価、施工費 = 施工数量 × 施工単価（行ごとに円未満四捨五入）。</p>
       <p className="muted small" data-testid="catalog-note">「メーカー参考単価」は {CATALOG_SOURCE} の材料価格です（配管は定尺4mのとき）。実際の仕入れ値に合わせて上書きしてください。施工単価は含まれません。材質を空欄にした配管は、給水=HIVP・給湯=HTVP・排水/汚水/通気/ドレン=VP として扱います。</p>
@@ -365,7 +380,7 @@ function IssuesTab({ est, onClose, onPrice }: { est: Estimate; onClose: () => vo
 }
 
 function ExportButtons() {
-  const [busy, setBusy] = useState<'' | 'pdf' | 'xlsx' | 'img'>('');
+  const [busy, setBusy] = useState<'' | 'pdf' | 'xlsx' | 'img' | 'drawing'>('');
   const [err, setErr] = useState('');
   const run = async (kind: 'pdf' | 'xlsx') => {
     const { doc, meta } = useStore.getState();
@@ -393,6 +408,23 @@ function ExportButtons() {
       setBusy('');
     }
   };
+  /** 部材図: 平面・立面に継手・サドルなどを記号で描いた施工用の図（見積とは別） */
+  const drawing = async () => {
+    const { doc, meta } = useStore.getState();
+    setBusy('drawing'); setErr('');
+    try {
+      const [{ buildDrawing }, { buildDrawingPdf }, { downloadBytes, safeName }, { dateStamp }, { systemColor, SYSTEMS }, font] = await Promise.all([
+        import('../export/drawing'), import('../export/drawingPdf'), import('../export/download'), import('../export/report'), import('./colors'),
+        fetch(`${import.meta.env.BASE_URL}fonts/NotoSansJP-JIS.ttf`).then((r) => { if (!r.ok) throw new Error('フォントを読み込めません'); return r.arrayBuffer(); }),
+      ]);
+      const date = new Date();
+      const name = meta?.name ?? '現場';
+      const colors = Object.fromEntries(SYSTEMS.map((x) => [x.id, systemColor(x.id)])) as Parameters<typeof buildDrawingPdf>[2];
+      downloadBytes(await buildDrawingPdf(buildDrawing(doc), { name, date }, colors, font), `${safeName(name)}_部材図_${dateStamp(date)}.pdf`, 'application/pdf');
+    } catch (e) {
+      setErr(`部材図を作れませんでした: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setBusy(''); }
+  };
   const image = async (kind: 'plan' | '3d') => {
     const { meta, doc, activeFloorId } = useStore.getState();
     setBusy('img'); setErr('');
@@ -418,6 +450,7 @@ function ExportButtons() {
       <button data-testid="export-plan" disabled={!!busy} onClick={() => void image('plan')}>平面図PNG</button>
       <button data-testid="export-3d" disabled={!!busy} onClick={() => void image('3d')}>3D PNG</button>
       <button data-testid="export-pdf" disabled={!!busy} onClick={() => run('pdf')}>{busy === 'pdf' ? '作成中…' : 'PDF'}</button>
+      <button data-testid="export-drawing" disabled={!!busy} onClick={() => void drawing()}>{busy === 'drawing' ? '作成中…' : '🖨 部材図PDF（金額なし）'}</button>
       <button data-testid="export-xlsx" disabled={!!busy} onClick={() => run('xlsx')}>{busy === 'xlsx' ? '作成中…' : 'Excel'}</button>
       {err && <span className="err" role="alert">{err}</span>}
     </div>
@@ -440,6 +473,20 @@ function SupportSettingsForm() {
       <NumField label="（100以上）" value={sst.spacingLarge} min={100} onCommit={(v) => set({ spacingLarge: v })} />
       <NumField label="ビス" unit="本/個" value={sst.screwsPerSupport} min={0} max={10} onCommit={(v) => set({ screwsPerSupport: Math.round(v) })} />
       <NumField label="キリ1本で" unit="穴" value={sst.holesPerBit} min={1} onCommit={(v) => set({ holesPerBit: Math.round(v) })} />
+    </div>
+  );
+}
+
+function ConsumableSettingsForm() {
+  const raw = useStore((s) => s.doc.estimate?.consumables);
+  const cst = raw ?? defaultConsumableSettings();
+  const st = useStore.getState();
+  const set = (patch: Partial<ConsumableSettings>) => st.updateEstimate({ consumables: { ...cst, ...patch } });
+  return (
+    <div className="row" data-testid="consumable-settings">
+      <label className="field inline"><input type="checkbox" data-testid="consumable-enabled" checked={cst.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> シールテープ・接着剤を集計する</label>
+      <NumField label="シールテープ1巻" unit="m" decimals={1} value={cst.tapeRoll} min={0.1} onCommit={(v) => set({ tapeRoll: v })} />
+      <NumField label="接着剤1缶" unit="g" value={cst.glueCan} min={1} onCommit={(v) => set({ glueCan: v })} />
     </div>
   );
 }

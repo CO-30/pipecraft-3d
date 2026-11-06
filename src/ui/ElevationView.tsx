@@ -301,6 +301,7 @@ export function ElevationView() {
         <button data-testid="elev-settings" className={showSettings ? 'on' : ''} onClick={() => setShowSettings(!showSettings)}>
           ⚙ {el.mount.type === 'tBracket' ? `T字 ${el.mount.standoff}mm` : 'サドル直付け'}
         </button>
+        <button data-testid="elev-photo" onClick={() => setPhotoOpen(true)}>📷 {el.photo ? '写真を変える' : '写真を敷く'}</button>
         <span className="seg-btns small">
           <button data-testid="elev-draw-pipe" className={draw === 'pipe' ? 'on' : ''} onClick={() => { st.setElevDraw('pipe'); setShape(null); }}>〰️ 配管</button>
           <button data-testid="elev-draw-build" className={draw === 'build' ? 'on' : ''} onClick={() => st.setElevDraw('build')}>🏠 建物</button>
@@ -336,7 +337,6 @@ export function ElevationView() {
               <OpacitySlider value={el.opacity} onPreview={setPreviewOpacity} onCommit={(v) => st.updateElevation(el.id, { opacity: v })} />
             </label>
           )}
-          <button data-testid="elev-photo" onClick={() => setPhotoOpen(true)}>📷 {el.photo ? '写真を変える' : '写真を敷く'}</button>
           <button className="danger" data-testid="elev-delete" onClick={() => { if (window.confirm(`立面「${el.label}」を削除します（描いた配管は残ります）`)) st.deleteElevation(el.id); }}>立面を削除</button>
         </div>
       )}

@@ -38,12 +38,13 @@ test.describe('Phase 4 自動積算', () => {
     await fillCommit(page, 'price-material', '1000');
     await fillCommit(page, 'price-labor', '500');
     // 材料 2本×1000=2000 ＋ 90°エルボ 166（HIVP 参考単価）
-    //   ＋ サドル (3100→4)+(2000→2)=6個×159=954 ＋ コンクリートビス 12本×23=276 ＋ コンクリキリ 1本 979 → 4375
-    // 施工 5.1m×500=2550 → 小計 6925、税 692、合計 7617
+    //   ＋ サドル (3100→4)+(2000→2)=6個×159=954 ＋ コンクリートビス 12本×23=276 ＋ コンクリキリ 1本 979
+    //   ＋ 接着剤 HI用 500g 1缶 1089（エルボの受口2口）→ 5464
+    // 施工 5.1m×500=2550 → 小計 8014、税 801、合計 8815
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-subtotal')).toHaveText('¥6,925');
-    await expect(page.getByTestId('t-tax')).toHaveText('¥692');
-    await expect(page.getByTestId('t-total')).toHaveText('¥7,617');
+    await expect(page.getByTestId('t-subtotal')).toHaveText('¥8,014');
+    await expect(page.getByTestId('t-tax')).toHaveText('¥801');
+    await expect(page.getByTestId('t-total')).toHaveText('¥8,815');
     await fillCommit(page, 'q-client', '沖縄 太郎');
     await page.screenshot({ path: evidence('p4-01-quote') });
 
@@ -61,7 +62,7 @@ test.describe('Phase 4 自動積算', () => {
     await page.getByTestId('undo').click();
     await page.getByTestId('open-estimate').click();
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-total')).toHaveText('¥4,812'); // 施工単価が消え 材料4375＋税437
+    await expect(page.getByTestId('t-total')).toHaveText('¥6,010'); // 施工単価が消え 材料5464＋税546
     await expect(page.getByTestId('q-client')).toHaveValue('');
   });
 
