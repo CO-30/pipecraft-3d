@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { addPolyline, branchFromSegment, emptyNetwork, type Network, type SegmentAttrs } from './network';
 import { computeEstimate, defaultEstimate, fittingKey, pipeKey, type EstimateSettings } from './estimate';
 import { analyzeFittings } from './fittings';
+import { defaultSupportSettings } from './supports';
 import { emptyBuilding } from './building';
 
 const v = (x: number, y: number, z = 100) => ({ x, y, z });
@@ -13,8 +14,9 @@ const W20: SegmentAttrs = { system: 'water', diameter: 20, material: 'VP' };
 const W13: SegmentAttrs = { system: 'water', diameter: 13, material: 'VP' };
 const E: SegmentAttrs = { system: 'electric', diameter: 2, material: 'VVF' };
 
+// 支持金具・ビスは supports.test.ts で検証するため、ここでは集計しない
 const est = (net: Network, s: Partial<EstimateSettings> = {}) =>
-  computeEstimate({ building: emptyBuilding(), network: net, fixtures: {}, estimate: { ...defaultEstimate(), ...s } });
+  computeEstimate({ building: emptyBuilding(), network: net, fixtures: {}, estimate: { ...defaultEstimate(), supports: { ...defaultSupportSettings(), enabled: false }, ...s } });
 const line = (net: Network, pts: ReturnType<typeof v>[], a = W20) => addPolyline(net, pts, a);
 const fitCount = (e: ReturnType<typeof est>, type: string) => e.fittings.filter((f) => f.type === type).reduce((a, f) => a + f.count, 0);
 

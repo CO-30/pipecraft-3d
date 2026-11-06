@@ -63,9 +63,10 @@ export async function buildExcel(r: Report): Promise<Uint8Array> {
   q.addRow([]);
   q.addRow([DISCLAIMER]).font = { size: 9, color: { argb: 'FF6B7280' } };
 
-  const [quant, fits] = r.tables;
+  const [quant, fits, sups] = r.tables;
   addTable(sheet(wb, '数量表', [12, 18, 12, 16, 13, 12, 12, 13]), quant);
   addTable(sheet(wb, '部品一覧', [22, 30, 8, 36]), fits);
+  addTable(sheet(wb, '支持金具・ビス', [26, 18, 8, 6, 50]), sups);
   addTable(sheet(wb, '区間明細', [6, 8, 16, 13, 13, 13, 16, 8, 50]), r.segments);
   addTable(sheet(wb, '要確認', [16, 80]), r.issues);
 

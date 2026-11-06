@@ -57,3 +57,23 @@ export function catalogFittingPrice(type: FittingType, s: { system: SystemType; 
   if (size.includes('×')) return undefined;
   return FITTING[norm(effectiveMaterial(s))]?.[type]?.[Number(size)];
 }
+
+// ---------- 支持金具・ビス（メーカー希望価格が公表されていない「オープン価格」品のため、通販の税抜価格を参考に） ----------
+export const SUPPORT_CATALOG_SOURCE = '通販の税抜価格（2026年11月時点・参考）';
+/** ステンレス片サドル（昭和コーポレーション S-KS、VP用）円/個 */
+const SADDLE: Record<number, number> = { 13: 139, 16: 139, 20: 159, 25: 219, 30: 239, 40: 299, 50: 499, 65: 719 };
+/** コンクリートビス（マーベル ステンレスコンクリートビス SCS-432 4×32、参考基準価格 2,200円/95本）円/本 */
+const SCREW_CONCRETE = 23;
+/** ステンレス皿木ねじ 4.1×38（約27本 528円税込）円/本 */
+const SCREW_WOOD = 18;
+/** インパクト用 六角軸コンクリートドリル 3.4mm（大西工業 No.24）円/本 */
+const CONCRETE_BIT = 979;
+
+export function catalogSupportPrice(key: string): number | undefined {
+  const [, kind, d] = key.split('|');
+  if (kind === 'saddle') return SADDLE[Number(d)];
+  if (kind === 'screwConcrete') return SCREW_CONCRETE;
+  if (kind === 'screwWood') return SCREW_WOOD;
+  if (kind === 'bit') return CONCRETE_BIT;
+  return undefined; // レベルバンドはサイズ別の価格が得られないため未設定
+}

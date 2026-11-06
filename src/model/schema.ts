@@ -28,6 +28,9 @@ export const segmentSchema = z.object({
   measuredApprox: z.boolean().optional(),
   extraRate: z.number().nonnegative().optional(),
   note: z.string().optional(),
+  slope: z.number().finite().min(0).max(1).optional(),
+  support: z.enum(['saddle', 'levelBand', 'none']).optional(),
+  substrate: z.enum(['concrete', 'wood']).optional(),
 });
 
 export const networkSchema = z.object({
@@ -72,6 +75,14 @@ export const estimateSchema = z.object({
   overhead: z.object({ mode: z.enum(['rate', 'amount']), value: money }),
   prices: z.record(z.string(), z.object({ material: money, labor: money, saleUnit: saleUnitSchema.optional() })),
   extras: z.array(z.object({ id: z.string().min(1), name: z.string(), quantity: z.number().finite(), unit: z.string(), unitPrice: z.number().finite() })),
+  supports: z.object({
+    enabled: z.boolean(),
+    substrate: z.enum(['concrete', 'wood']),
+    spacingSmall: z.number().finite().positive(),
+    spacingLarge: z.number().finite().positive(),
+    screwsPerSupport: z.number().int().min(0).max(10),
+    holesPerBit: z.number().int().positive(),
+  }).optional(),
   client: z.string().optional(),
   title: z.string().optional(),
   issuer: z.string().optional(),

@@ -61,6 +61,12 @@ export function buildReport(doc: Doc, meta: ReportMeta): Report {
     numeric: [false, false, true, false],
     rows: est.fittings.map((f) => [f.name, fittingSpec(f), f.count, f.stockJoints ? `定尺の継ぎ足し ${f.stockJoints}個を含む` : '']),
   };
+  const supportsT: Table = {
+    title: '支持金具・ビス',
+    head: ['品名', '仕様', '数量', '単位', '備考'],
+    numeric: [false, false, true, false, false],
+    rows: est.supports.map((l) => [l.name, l.spec, l.count, l.unit, l.note]),
+  };
   const confirm = new Set(est.nodeFittings.filter((n) => n.needsConfirm).map((n) => n.nodeId));
   if (confirm.size) fittings.rows.push(['（要確認の点）', '', confirm.size, '部品を確定してください']);
 
@@ -83,7 +89,7 @@ export function buildReport(doc: Doc, meta: ReportMeta): Report {
     numeric: [false, false],
     rows: est.issues.map((i) => [ISSUE_LABEL[i.kind], i.message]),
   };
-  return { meta, settings, est, quote, totals, tables: [quantities, fittings], segments, issues };
+  return { meta, settings, est, quote, totals, tables: [quantities, fittings, supportsT], segments, issues };
 }
 
 export const ISSUE_LABEL = { confirmFitting: '部品の確定', lengthDiff: '長さの差', approx: '概算の実測長', noPrice: '単価未登録' } as const;

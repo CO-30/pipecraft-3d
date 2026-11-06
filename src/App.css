@@ -139,3 +139,4 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .backup-all { width: 100%; margin-bottom: 10px; }
 .narrow header .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .view3d.loading { display: grid; place-items: center; color: #64748b; }
+.h-sub { font-size: 14px; margin: 14px 0 6px; }

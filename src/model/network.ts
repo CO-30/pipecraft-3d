@@ -58,6 +58,12 @@ export type Segment = SegmentAttrs & {
   /** 余長率（0.05 = 5%）。実測長・図面長とは別に保持 */
   extraRate?: number;
   note?: string;
+  /** 設計勾配（0.02 = 1/50）。排水管に勾配をつけたときに記録 */
+  slope?: number;
+  /** 支持金具（未指定 = 自動） */
+  support?: 'saddle' | 'levelBand' | 'none';
+  /** 取付下地（未指定 = 現場の既定） */
+  substrate?: 'concrete' | 'wood';
 };
 
 export type Network = {
@@ -276,7 +282,8 @@ export function moveNode(net: Network, nodeId: string, pos: Vec3): Network {
 }
 
 const sameAttrs = (s: Segment, t: Segment) =>
-  s.system === t.system && s.diameter === t.diameter && s.material === t.material && (s.extraRate ?? 0) === (t.extraRate ?? 0);
+  s.system === t.system && s.diameter === t.diameter && s.material === t.material && (s.extraRate ?? 0) === (t.extraRate ?? 0)
+  && s.support === t.support && s.substrate === t.substrate && s.slope === t.slope;
 
 /**
  * 指定ノードが「同じ属性の2区間がほぼ完全に一直線につながるだけの点」なら、2区間を1本に結合する。
