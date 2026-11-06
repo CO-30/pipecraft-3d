@@ -366,6 +366,19 @@ describe('共通ストア: 積算', () => {
     expect(net().segments[id].measuredLength).toBe(3150);
   });
 
+  it('保存形式の範囲外の積算設定・単価・実測長0は受け付けない（保存失敗を防ぐ）', () => {
+    s().drawPolyline([v(0, 0), v(3000, 0)]);
+    const id = Object.keys(net().segments)[0];
+    const h = s().past.length;
+    s().updateEstimate({ extraRate: 15 });
+    s().updateEstimate({ taxRate: 1.5 });
+    s().setPrice('k', { material: -1, labor: 0 });
+    s().setPrice('k', { material: Number.NaN, labor: 0 });
+    s().setSegmentMeasured(id, 0);
+    expect(s().past.length).toBe(h);
+    expect(s().toProjectData()!.estimate.extraRate).toBe(0);
+  });
+
   it('部品の確定は接続数と一緒に保存し、undefined で自動に戻る', () => {
     s().drawPolyline([v(0, 0), v(2000, 0), v(2000, 2000)]);
     const mid = Object.values(net().nodes).find((n) => n.kind === 'elbow')!.id;

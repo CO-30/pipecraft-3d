@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs';
 import { dateJa, DISCLAIMER, type Report, type Table } from './report';
 
 const YEN = '"¥"#,##0';
+const YEN_PRICE = '"¥"#,##0.##';
 const NUM = '#,##0.###';
 const thin = { style: 'thin' as const, color: { argb: 'FFBFC4CC' } };
 const border = { top: thin, left: thin, bottom: thin, right: thin };
@@ -18,7 +19,7 @@ function addTable(ws: ExcelJS.Worksheet, t: Pick<Table, 'head' | 'rows' | 'numer
     const row = ws.addRow(r);
     row.eachCell({ includeEmpty: true }, (c, i) => {
       c.border = border;
-      if (typeof c.value === 'number') c.numFmt = money[i - 1] ? YEN : NUM;
+      if (typeof c.value === 'number') c.numFmt = money[i - 1] ? (Number.isInteger(c.value) ? YEN : YEN_PRICE) : NUM;
     });
   }
 }

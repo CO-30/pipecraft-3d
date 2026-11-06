@@ -126,6 +126,19 @@ describe('継手', () => {
     expect(fitCount(e, 'socket')).toBe(0); // チーズで区切られ 2000mm×2
   });
 
+  it('枝が本管より太いチーズも「太い方×細い方」で同じ単価キー（レビュー指摘）', () => {
+    const r = line(emptyNetwork(), [v(0, 0), v(4000, 0)], W13);
+    const b = branchFromSegment(r.net, r.segmentIds[0], v(2000, 0), [v(2000, 1500)], W20);
+    expect(est(b.net).fittings.find((f) => f.type === 'tee')!.size).toBe('20×13');
+  });
+
+  it('分岐点を「なし」に確定しても、定尺の継ぎ足しは枝ごとに数える（レビュー指摘）', () => {
+    const r = line(emptyNetwork(), [v(0, 0), v(6000, 0)]);
+    const b = branchFromSegment(r.net, r.segmentIds[0], v(3000, 0), [v(3000, 3000)]);
+    const net = { ...b.net, nodes: { ...b.net.nodes, [b.teeId]: { ...b.net.nodes[b.teeId], fitting: { type: 'none', degree: 3 } } } };
+    expect(fitCount(est(net), 'socket')).toBe(0); // 3000mm ×3本 → 継ぎ足しなし（まとめると 9000mm→2個と誤る）
+  });
+
   it('45°の分岐は Y管', () => {
     const r = line(emptyNetwork(), [v(0, 0), v(4000, 0)]);
     const b = branchFromSegment(r.net, r.segmentIds[0], v(2000, 0), [v(3000, 1000)]);

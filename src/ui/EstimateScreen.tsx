@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import {
-  computeEstimate, defaultEstimate, defaultSaleUnit, fittingSpec, formatLength, pipeSpec, priceLineName, roundTo, saleUnitLabel,
+  computeEstimate, defaultEstimate, roundYen, defaultSaleUnit, fittingSpec, formatLength, pipeSpec, priceLineName, roundTo, saleUnitLabel,
   type Estimate, type FittingLine, type Issue, type PipeLine, type SaleUnit,
 } from '../model/estimate';
 import { ISSUE_LABEL, yen } from '../export/report';
@@ -39,7 +39,11 @@ export function EstimateScreen({ onClose }: { onClose: () => void }) {
   const setUnit = usePrefs((s) => s.setLengthUnit);
   const tabs: [Tab, string][] = [['qty', '数量'], ['parts', '部品'], ['price', '単価'], ['quote', '見積'], ['issues', `要確認${est.issues.length ? `(${est.issues.length})` : ''}`]];
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      (document.activeElement as HTMLElement | null)?.blur?.(); // 入力中の値を確定してから閉じる
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -164,8 +168,8 @@ function PriceRow({ line, pipe }: { line: PipeLine | FittingLine; pipe: boolean 
     <div className="price-row" data-testid="price-row" data-key={line.key}>
       <div className="pname-s">{priceLineName(line)}{!line.price && <span className="warn small"> 未登録</span>}</div>
       <div className="row">
-        <NumField label="材料単価" unit={matUnit} value={line.price?.material ?? 0} min={0} testId="price-material" onCommit={(v) => set({ material: v })} />
-        <NumField label="施工単価" unit={pipe ? '円/m' : '円/個'} value={line.price?.labor ?? 0} min={0} testId="price-labor" onCommit={(v) => set({ labor: v })} />
+        <NumField label="材料単価" unit={matUnit} decimals={2} value={line.price?.material ?? 0} min={0} testId="price-material" onCommit={(v) => set({ material: v })} />
+        <NumField label="施工単価" unit={pipe ? '円/m' : '円/個'} decimals={2} value={line.price?.labor ?? 0} min={0} testId="price-labor" onCommit={(v) => set({ labor: v })} />
         {pipe && <SaleUnitField line={line as PipeLine} />}
       </div>
     </div>
@@ -185,8 +189,8 @@ function PriceTab({ est }: { est: Estimate }) {
               onChange={(e) => e.target.value !== 'custom' && st.updateEstimate({ extraRate: Number(e.target.value) })}>
               <option value="0">なし</option><option value="0.05">5%</option><option value="0.1">10%</option><option value="custom">任意</option>
             </select></label>
-          <OptNumField label="余長率" unit="%" value={roundTo(settings.extraRate * 100, 3)} onCommit={(v) => st.updateEstimate({ extraRate: (v ?? 0) / 100 })} />
-          <OptNumField label="消費税" unit="%" testId="tax-rate" value={roundTo(settings.taxRate * 100, 3)} onCommit={(v) => v !== undefined && v <= 100 && st.updateEstimate({ taxRate: v / 100 })} />
+          <OptNumField label="余長率" unit="%" max={1000} value={roundTo(settings.extraRate * 100, 3)} onCommit={(v) => st.updateEstimate({ extraRate: (v ?? 0) / 100 })} />
+          <OptNumField label="消費税" unit="%" max={100} testId="tax-rate" value={roundTo(settings.taxRate * 100, 3)} onCommit={(v) => st.updateEstimate({ taxRate: (v ?? 0) / 100 })} />
         </div>
         <div className="row">
           <label className="field inline">諸経費
@@ -194,7 +198,7 @@ function PriceTab({ est }: { est: Estimate }) {
               <option value="rate">率（%）</option><option value="amount">金額（円）</option>
             </select></label>
           {settings.overhead.mode === 'rate'
-            ? <OptNumField label="" unit="%" testId="overhead-value" value={roundTo(settings.overhead.value * 100, 3)} onCommit={(v) => st.updateEstimate({ overhead: { mode: 'rate', value: (v ?? 0) / 100 } })} />
+            ? <OptNumField label="" unit="%" max={1000} testId="overhead-value" value={roundTo(settings.overhead.value * 100, 3)} onCommit={(v) => st.updateEstimate({ overhead: { mode: 'rate', value: (v ?? 0) / 100 } })} />
             : <OptNumField label="" unit="円" testId="overhead-value" value={settings.overhead.value} onCommit={(v) => st.updateEstimate({ overhead: { mode: 'amount', value: v ?? 0 } })} />}
         </div>
       </section>
@@ -285,7 +289,7 @@ function ExtraRow({ id }: { id: string }) {
       <td><input key={x.unit} aria-label="単位" defaultValue={x.unit} onBlur={(e) => e.target.value !== x.unit && st.updateExtraItem(id, { unit: e.target.value })} /></td>
       <td><input key={x.unitPrice} aria-label="単価" type="number" inputMode="numeric" data-testid="extra-price" defaultValue={x.unitPrice}
         onBlur={(e) => { const n = Number(e.target.value); if (Number.isFinite(n) && n !== x.unitPrice) st.updateExtraItem(id, { unitPrice: n }); }} /></td>
-      <td className="num">{yen(Math.round(x.quantity * x.unitPrice))} <button className="danger" aria-label="削除" onClick={() => st.removeExtraItem(id)}>×</button></td>
+      <td className="num">{yen(roundYen(x.quantity * x.unitPrice))} <button className="danger" aria-label="削除" onClick={() => st.removeExtraItem(id)}>×</button></td>
     </tr>
   );
 }

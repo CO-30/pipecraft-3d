@@ -16,7 +16,7 @@ import * as B from '../model/building';
 import type { Building, OpeningType, Vec2 } from '../model/building';
 import { mergeRooms, splitRoom } from '../model/roomOps';
 import { clampSection, defaultSectionValue, type Section, type SectionMode } from '../model/section';
-import { SCHEMA_VERSION, type ProjectData } from '../model/schema';
+import { estimateSchema, SCHEMA_VERSION, type ProjectData } from '../model/schema';
 import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
@@ -381,7 +381,7 @@ export const useStore = create<State>((set, get) => {
     setSegmentMeasured: (segId, mm) => {
       const net = get().doc.network;
       const s = net.segments[segId];
-      if (!s || (mm !== undefined && !(Number.isFinite(mm) && mm >= 0))) return;
+      if (!s || (mm !== undefined && !(Number.isFinite(mm) && mm > 0))) return;
       const { measuredLength: _m, measuredApprox: _a, ...rest } = s;
       if (mm === s.measuredLength && !s.measuredApprox) return;
       const seg: Segment = mm === undefined ? rest : { ...rest, measuredLength: mm };
@@ -406,9 +406,13 @@ export const useStore = create<State>((set, get) => {
     },
     updateEstimate: (patch) => {
       const doc = get().doc;
-      commit({ ...doc, estimate: { ...(doc.estimate ?? defaultEstimate()), ...patch } });
+      const next = { ...(doc.estimate ?? defaultEstimate()), ...patch };
+      // 保存形式の範囲外は受け付けない（保存失敗を防ぐ）
+      if (!estimateSchema.safeParse(next).success) return;
+      commit({ ...doc, estimate: next });
     },
     setPrice: (key, item) => {
+      if (item && !estimateSchema.shape.prices.valueType.safeParse(item).success) return;
       const doc = get().doc;
       const e = doc.estimate ?? defaultEstimate();
       const prices = { ...e.prices };
@@ -424,6 +428,7 @@ export const useStore = create<State>((set, get) => {
     updateExtraItem: (id, patch) => {
       const doc = get().doc;
       const e = doc.estimate ?? defaultEstimate();
+      if ((patch.quantity !== undefined && !Number.isFinite(patch.quantity)) || (patch.unitPrice !== undefined && !Number.isFinite(patch.unitPrice))) return;
       commit({ ...doc, estimate: { ...e, extras: e.extras.map((x) => (x.id === id ? { ...x, ...patch } : x)) } });
     },
     removeExtraItem: (id) => {

@@ -56,8 +56,8 @@ function dirs(net: Network, n: PipeNode, segs: Segment[]): Vec3[] {
 }
 
 function sizeOf(main: Segment[], branch: Segment[] = []): string {
-  const m = Math.max(...main.map((s) => s.diameter));
   const all = [...main, ...branch].map((s) => s.diameter);
+  const m = Math.max(...all);
   if (all.every((d) => d === m)) return String(m);
   const rest = [...new Set(all)].filter((d) => d !== m).sort((a, b) => b - a);
   return [m, ...rest].join('×');

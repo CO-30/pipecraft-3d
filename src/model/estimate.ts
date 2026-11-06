@@ -167,7 +167,7 @@ export function measureSegment(net: Network, s: Segment, defaultExtra: number): 
 function straightRuns(net: Network, segs: Segment[], through: Set<string>): Segment[][] {
   const bySeg = new Map(segs.map((s) => [s.id, s]));
   const byNode = new Map<string, Segment[]>();
-  for (const s of segs) for (const n of [s.a, s.b]) byNode.set(n, [...(byNode.get(n) ?? []), s]);
+  for (const s of segs) for (const n of [s.a, s.b]) { const arr = byNode.get(n); if (arr) arr.push(s); else byNode.set(n, [s]); }
   const seen = new Set<string>();
   const runs: Segment[][] = [];
   for (const s of segs) {
@@ -204,11 +204,18 @@ export function computeEstimate(doc: Doc): Estimate {
   // --- 部品判定（ノードごと） ---
   const nodeFittings = analyzeFittings(net);
   for (const f of nodeFittings) if (f.needsConfirm) issues.push({ kind: 'confirmFitting', target: { kind: 'node', id: f.nodeId }, message: f.reason ?? '部品を確定してください' });
-  const passThrough = new Set(nodeFittings.filter((f) => f.type === 'none' && !f.needsConfirm).map((f) => f.nodeId));
+  // 継手なしで通り抜ける点（接続数2のみ。分岐を「なし」に確定しても1本の直管にはならない）
+  const deg2 = new Set<string>();
+  {
+    const cnt = new Map<string, number>();
+    for (const s of Object.values(net.segments)) for (const n of [s.a, s.b]) cnt.set(n, (cnt.get(n) ?? 0) + 1);
+    for (const [n, c] of cnt) if (c === 2) deg2.add(n);
+  }
+  const passThrough = new Set(nodeFittings.filter((f) => f.type === 'none' && !f.needsConfirm && deg2.has(f.nodeId)).map((f) => f.nodeId));
 
   // --- 材料（配管・配線） ---
   const groups = new Map<string, Segment[]>();
-  for (const s of Object.values(net.segments)) groups.set(pipeKey(s), [...(groups.get(pipeKey(s)) ?? []), s]);
+  for (const s of Object.values(net.segments)) { const k = pipeKey(s); const arr = groups.get(k); if (arr) arr.push(s); else groups.set(k, [s]); }
   const stockJointsByKey = new Map<string, { count: number; seg: Segment }>();
   const pipes: PipeLine[] = [];
   for (const [key, segs] of groups) {
@@ -243,7 +250,7 @@ export function computeEstimate(doc: Doc): Estimate {
       materialAmount: roundYen(orderQty * (price?.material ?? 0)), laborAmount: roundYen(laborQty * (price?.labor ?? 0)),
     });
   }
-  pipes.sort((a, b) => a.key.localeCompare(b.key, 'ja') || a.diameter - b.diameter);
+  pipes.sort((a, b) => a.system.localeCompare(b.system) || a.material.localeCompare(b.material, 'ja') || a.diameter - b.diameter);
 
   // --- 部品 ---
   const fitMap = new Map<string, FittingLine>();

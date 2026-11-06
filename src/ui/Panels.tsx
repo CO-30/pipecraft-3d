@@ -17,24 +17,27 @@ const HEIGHT_PRESETS: { label: string; z: number }[] = [
 ];
 
 /** 確定時（フォーカスを外す・Enter）だけ反映する数値入力 */
-export function NumField({ label, value, onCommit, unit = 'mm', testId, min }: { label: string; value: number; onCommit: (v: number) => void; unit?: string; testId?: string; min?: number }) {
-  const [text, setText] = useState(String(Math.round(value)));
-  useEffect(() => setText(String(Math.round(value))), [value]);
+export function NumField({ label, value, onCommit, unit = 'mm', testId, min, max, decimals = 0 }: { label: string; value: number; onCommit: (v: number) => void; unit?: string; testId?: string; min?: number; max?: number; decimals?: number }) {
+  const [text, setText] = useState(fmtDec(value, decimals));
+  useEffect(() => setText(fmtDec(value, decimals)), [value, decimals]);
   const commit = () => {
+    if (text === fmtDec(value, decimals)) return; // 表示上の丸めだけで値を変えない
     const n = Number(text);
-    if (text.trim() !== '' && Number.isFinite(n) && (min === undefined || n >= min)) onCommit(n);
-    else setText(String(Math.round(value)));
+    if (text.trim() !== '' && Number.isFinite(n) && (min === undefined || n >= min) && (max === undefined || n <= max)) onCommit(n);
+    else setText(fmtDec(value, decimals));
   };
   return (
     <label className="field inline">{label}
       <span className="unit-input">
-        <input type="number" inputMode="numeric" data-testid={testId} value={text} onChange={(e) => setText(e.target.value)}
+        <input type="number" inputMode={decimals ? 'decimal' : 'numeric'} data-testid={testId} value={text} onChange={(e) => setText(e.target.value)}
           onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
         <span>{unit}</span>
       </span>
     </label>
   );
 }
+
+const fmtDec = (x: number, d: number) => String(Math.round(x * 10 ** d) / 10 ** d);
 
 function ElementVisibility({ id }: { id: string }) {
   const hidden = useStore((s) => s.hiddenIds.includes(id));
@@ -81,7 +84,7 @@ export function PropertyPanel() {
         <SystemColor system={seg.system} />
         <NumField label="長さ" value={segmentLength(net, seg.id)} min={1} testId="seg-length" onCommit={(v) => st.setSegmentLength(seg.id, v)} />
         {!vertical && <NumField label="床からの高さ" value={(za + zb) / 2 - floorElev} testId="seg-height" onCommit={(v) => st.setSegmentHeight(seg.id, floorElev + v)} />}
-        <MeasureFields segId={seg.id} />
+        <MeasureFields key={seg.id} segId={seg.id} />
         <div className="row">
           <button onClick={() => st.setTool('pipe')}>ここから分岐</button>
           <button data-testid="cut-seg" onClick={() => st.cutSelected()}>✂ ここで切断</button>
@@ -140,7 +143,7 @@ export function PropertyPanel() {
               onClick={() => st.deleteSelectedFitting()}>{n.kind === 'valve' ? 'バルブを外す' : deg === 1 ? 'この区間を削除' : 'この部品を削除'}</button>
           </div>
         )}
-        {deg > 0 && <FittingField nodeId={n.id} />}
+        {deg > 0 && <FittingField key={n.id} nodeId={n.id} />}
         {deg === 1 && !fx && <div className="muted small">端点をドラッグして他の配管の上で離すとつながります</div>}
       </div>
     );
@@ -260,14 +263,14 @@ function FixturePicker() {
 }
 
 /** 空欄を許す数値入力（確定時のみ反映）。空欄 → undefined */
-export function OptNumField({ label, value, onCommit, unit = 'mm', testId, placeholder }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; unit?: string; testId?: string; placeholder?: string }) {
+export function OptNumField({ label, value, onCommit, unit = 'mm', testId, placeholder, max, positive }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; unit?: string; testId?: string; placeholder?: string; max?: number; positive?: boolean }) {
   const fmt = (x: number | undefined) => (x === undefined ? '' : String(Math.round(x * 100) / 100));
   const [text, setText] = useState(fmt(value));
   useEffect(() => setText(fmt(value)), [value]);
   const commit = () => {
     if (text.trim() === '') { if (value !== undefined) onCommit(undefined); return; }
     const n = Number(text);
-    if (Number.isFinite(n) && n >= 0) onCommit(n);
+    if (Number.isFinite(n) && (positive ? n > 0 : n >= 0) && (max === undefined || n <= max)) onCommit(n);
     else setText(fmt(value));
   };
   return (
@@ -295,7 +298,7 @@ function MeasureFields({ segId }: { segId: string }) {
   return (
     <>
       <div className="subhead">積算</div>
-      <OptNumField label="現場実測長" value={seg.measuredLength} testId="seg-measured" placeholder="未入力" onCommit={(v) => st.setSegmentMeasured(seg.id, v)} />
+      <OptNumField label="現場実測長" positive value={seg.measuredLength} testId="seg-measured" placeholder="未入力" onCommit={(v) => st.setSegmentMeasured(seg.id, v)} />
       <div className="small" data-testid="seg-used">積算に使う長さ: <b>{m.method === 'field' ? '実測' : 'モデル'} {Math.round(m.usedLength)}mm</b>
         {m.approx && m.method === 'field' && <span className="warn">（按分した概算値）</span>}</div>
       {m.warning && <div className="warn small" data-testid="seg-diff-warning">⚠ {m.warning}</div>}
@@ -311,7 +314,7 @@ function MeasureFields({ segId }: { segId: string }) {
           {EXTRA_CHOICES.map((r) => <option key={r} value={String(r)}>{r === 0 ? 'なし' : `${r * 100}%`}</option>)}
           <option value="custom">任意</option>
         </select></label>
-      {(showCustom || custom) && <OptNumField label="余長率" unit="%" value={seg.extraRate === undefined ? undefined : seg.extraRate * 100} onCommit={(v) => st.setSegmentExtraRate(seg.id, v === undefined ? undefined : v / 100)} />}
+      {(showCustom || custom) && <OptNumField label="余長率" unit="%" max={1000} value={seg.extraRate === undefined ? undefined : seg.extraRate * 100} onCommit={(v) => st.setSegmentExtraRate(seg.id, v === undefined ? undefined : v / 100)} />}
     </>
   );
 }
