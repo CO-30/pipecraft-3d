@@ -4,9 +4,10 @@
 import { useEffect, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
-import { segmentLength, type SystemType } from '../model/network';
+import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
-import { SYSTEMS, systemLabel } from './colors';
+import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
+import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
 
 const DIAMETERS = [13, 16, 20, 25, 30, 40, 50, 65, 75, 100, 125, 150];
 const HEIGHT_PRESETS: { label: string; z: number }[] = [
@@ -62,37 +63,104 @@ export function PropertyPanel() {
   if (sel?.kind === 'segment' && net.segments[sel.id]) {
     const seg = net.segments[sel.id];
     const preview = branchDeletionPreview(net, seg.id);
+    const za = net.nodes[seg.a].pos.z, zb = net.nodes[seg.b].pos.z;
+    const vertical = Math.hypot(net.nodes[seg.a].pos.x - net.nodes[seg.b].pos.x, net.nodes[seg.a].pos.y - net.nodes[seg.b].pos.y) < 1;
+    const run = connectedComponent(net, seg.id);
+    const runLen = run.segmentIds.reduce((a, id) => a + segmentLength(net, id), 0);
     return (
       <div className="props">
-        <div className="ptitle">配管区間 <b data-testid="sel-length">{Math.round(segmentLength(net, seg.id))}</b>mm</div>
-        <label className="field inline">種類<select value={seg.system} onChange={(e) => st.updateSegment(seg.id, { system: e.target.value as SystemType })}>
+        <div className="ptitle">{vertical ? '立て管' : '配管区間'} <b data-testid="sel-length">{Math.round(segmentLength(net, seg.id))}</b>mm
+          {seg.measuredLength !== undefined && <span className="muted small">（実測 {Math.round(seg.measuredLength)}mm{seg.measuredApprox ? '・概算' : ''}）</span>}</div>
+        <label className="field inline">種類<select data-testid="seg-system" value={seg.system} onChange={(e) => st.updateSegment(seg.id, { system: e.target.value as SystemType })}>
           {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
-        <label className="field inline">口径<select value={seg.diameter} onChange={(e) => st.updateSegment(seg.id, { diameter: Number(e.target.value) })}>
+        <label className="field inline">口径<select data-testid="seg-diameter" value={seg.diameter} onChange={(e) => st.updateSegment(seg.id, { diameter: Number(e.target.value) })}>
           {[...new Set([...DIAMETERS, seg.diameter])].sort((x, y) => x - y).map((d) => <option key={d} value={d}>φ{d}</option>)}</select></label>
+        <MaterialField id={seg.id} value={seg.material ?? ''} />
+        <SystemColor system={seg.system} />
+        <NumField label="長さ" value={segmentLength(net, seg.id)} min={1} testId="seg-length" onCommit={(v) => st.setSegmentLength(seg.id, v)} />
+        {!vertical && <NumField label="床からの高さ" value={(za + zb) / 2 - floorElev} testId="seg-height" onCommit={(v) => st.setSegmentHeight(seg.id, floorElev + v)} />}
         <div className="row">
           <button onClick={() => st.setTool('pipe')}>ここから分岐</button>
-          <button className="danger" onClick={() => st.deleteSelected()}>区間削除</button>
+          <button data-testid="cut-seg" onClick={() => st.cutSelected()}>✂ ここで切断</button>
+          <button data-testid="add-valve" onClick={() => st.insertValveAtSelection()}>バルブを入れる</button>
+          <button className="danger" data-testid="delete-seg" onClick={() => st.deleteSelected()}>区間削除</button>
           <button className="danger" disabled={!preview} title={preview ? '' : '本管の途中、または分岐のない配管です'} onClick={() => {
             if (!preview) return;
             const len = preview.reduce((a, id) => a + segmentLength(net, id), 0);
             if (window.confirm(`分岐点から先の枝管 ${preview.length}区間（計 ${Math.round(len)}mm）を削除します。よろしいですか？`)) st.deleteSelectedBranch();
           }}>枝管ごと削除</button>
         </div>
+        <div className="subhead">つながった配管全体（{run.segmentIds.length}区間・{Math.round(runLen)}mm）</div>
+        <div className="row">
+          <button onClick={() => st.setRunHeightDelta(seg.id, -100)}>高さ−100</button>
+          <button onClick={() => st.setRunHeightDelta(seg.id, 100)}>高さ＋100</button>
+          <button data-testid="duplicate-run" onClick={() => st.duplicateRun(seg.id)}>複製</button>
+          <button className="danger" data-testid="delete-run" onClick={() => {
+            if (window.confirm(`つながった配管 ${run.segmentIds.length}区間（計 ${Math.round(runLen)}mm）をすべて削除します。よろしいですか？`)) st.deleteRun(seg.id);
+          }}>全体を削除</button>
+        </div>
+        <div className="muted small">選択した区間をもう一度ドラッグすると移動できます</div>
       </div>
     );
   }
   if (sel?.kind === 'node' && net.nodes[sel.id]) {
     const n = net.nodes[sel.id];
     const rel = n.pos.z - floorElev;
+    const deg = segmentsAt(net, n.id).length;
+    const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
+    const portLabel = fx ? FIXTURE_CATALOG[fx.type].ports.find((p) => p.id === n.portId)?.label : undefined;
+    const fi = b.floors.findIndex((f) => f.id === (n.floorId ?? st.activeFloorId));
     return (
       <div className="props">
-        <div className="ptitle">配管の点（{KIND[n.kind] ?? n.kind}）</div>
-        <NumField label="床からの高さ" value={rel} testId="node-height" onCommit={(v) => st.setNodeHeight(n.id, floorElev + v)} />
+        <div className="ptitle">{fx ? `${FIXTURE_CATALOG[fx.type].label}の接続口（${portLabel}）` : `配管の点（${KIND[n.kind] ?? n.kind}）`}
+          <span className="muted small"> 床から {Math.round(rel)}mm</span></div>
+        {!fx && (
+          <>
+            <NumField label="床からの高さ" value={rel} testId="node-height" onCommit={(v) => st.setNodeHeight(n.id, floorElev + v)} />
+            <div className="row">
+              <button onClick={() => st.setNodeHeight(n.id, n.pos.z - 100)}>−100</button>
+              <button onClick={() => st.setNodeHeight(n.id, n.pos.z + 100)}>＋100</button>
+              {HEIGHT_PRESETS.map((h) => <button key={h.label} onClick={() => st.setNodeHeight(n.id, floorElev + h.z)}>{h.label}</button>)}
+            </div>
+          </>
+        )}
+        <div className="subhead">立て管（この点から縦に配管）</div>
         <div className="row">
-          <button onClick={() => st.setNodeHeight(n.id, n.pos.z - 100)}>−100</button>
-          <button onClick={() => st.setNodeHeight(n.id, n.pos.z + 100)}>＋100</button>
-          {HEIGHT_PRESETS.map((h) => <button key={h.label} onClick={() => st.setNodeHeight(n.id, floorElev + h.z)}>{h.label}</button>)}
+          <button data-testid="riser-up" disabled={fi < 0 || fi >= b.floors.length - 1} onClick={() => st.addRiserFromNode(n.id, 'up')}>↑ 上の階へ</button>
+          <button data-testid="riser-down" disabled={fi <= 0} onClick={() => st.addRiserFromNode(n.id, 'down')}>↓ 下の階へ</button>
         </div>
+        <NumField label="立て管の上端/下端（床から）" value={rel} testId="riser-to" onCommit={(v) => st.addRiserFromNode(n.id, floorElev + v)} />
+        {!fx && (
+          <div className="row">
+            <button data-testid="detach-node" disabled={deg < 2} onClick={() => st.detachSelectedNode()}>接続解除</button>
+            <button className="danger" data-testid="delete-fitting" disabled={deg >= 3 && n.kind !== 'valve'} title={deg >= 3 ? '分岐点は「枝管ごと削除」を使ってください' : ''}
+              onClick={() => st.deleteSelectedFitting()}>{n.kind === 'valve' ? 'バルブを外す' : deg === 1 ? 'この区間を削除' : 'この部品を削除'}</button>
+          </div>
+        )}
+        {deg === 1 && !fx && <div className="muted small">端点をドラッグして他の配管の上で離すとつながります</div>}
+      </div>
+    );
+  }
+  if (sel?.kind === 'fixture' && doc.fixtures[sel.id]) {
+    const f = doc.fixtures[sel.id];
+    const def = FIXTURE_CATALOG[f.type];
+    const ports = portNodes(net, f.id);
+    return (
+      <div className="props">
+        <div className="ptitle">{def.label} <span className="muted small">{def.size.w}×{def.size.d}mm・向き {f.rotation}°</span></div>
+        <div className="ports">接続口: {def.ports.map((p) => {
+          const n = ports.find((x) => x.portId === p.id);
+          const used = n ? segmentsAt(net, n.id).length > 0 : false;
+          return <span key={p.id}>{p.label}{used ? '✓' : ''}（φ{p.diameter}） </span>;
+        })}</div>
+        <div className="row">
+          <button data-testid="rotate-fixture" onClick={() => st.rotateFixture(f.id)}>⟳ 90°回転</button>
+          <button onClick={() => st.setTool('pipe')}>接続口から配管</button>
+          <button className="danger" data-testid="delete-fixture" onClick={() => {
+            if (!fixtureConnected(doc, f.id) || window.confirm(`${def.label}を削除します。つながっている配管は残ります。よろしいですか？`)) st.deleteSelected();
+          }}>器具を削除</button>
+        </div>
+        <div className="muted small">ドラッグで移動。配管の端も一緒に動きます</div>
       </div>
     );
   }
@@ -152,6 +220,7 @@ export function PropertyPanel() {
   // 選択なし: ツールの設定
   return (
     <div className="props">
+      {tool === 'fixture' && <FixturePicker />}
       {tool === 'pipe' ? (
         <>
           <label className="field inline">種類<select data-testid="draw-system" value={drawAttrs.system} onChange={(e) => st.setDrawAttrs({ system: e.target.value as SystemType })}>
@@ -169,6 +238,41 @@ export function PropertyPanel() {
         <label className="field inline"><input type="checkbox" checked={ortho} onChange={(e) => st.setOrthoSnap(e.target.checked)} /> 直角に補正</label>
       )}
     </div>
+  );
+}
+
+function FixturePicker() {
+  const t = useStore((s) => s.fixtureType);
+  const st = useStore.getState();
+  return (
+    <>
+      <div className="ptitle muted">種類を選んで図面をタップ</div>
+      <div className="fixture-grid">
+        {FIXTURE_TYPES.map((x) => <button key={x} data-testid={`fixture-${x}`} className={t === x ? 'on' : ''} onClick={() => st.setFixtureType(x)}>{FIXTURE_CATALOG[x].label}</button>)}
+      </div>
+    </>
+  );
+}
+
+function MaterialField({ id, value }: { id: string; value: string }) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  return (
+    <label className="field inline">材質<input value={v} placeholder="例: VP, HIVP, VVF" data-testid="seg-material" onChange={(e) => setV(e.target.value)}
+      onBlur={() => { if (v.trim() !== value) useStore.getState().updateSegment(id, { material: v.trim() || undefined }); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} /></label>
+  );
+}
+
+/** 種類ごとの表示色（この端末の設定） */
+function SystemColor({ system }: { system: SystemType }) {
+  useColors((c) => c.overrides[system]);
+  const custom = useColors.getState().overrides[system];
+  return (
+    <label className="field inline">{systemLabel(system)}の色
+      <input type="color" data-testid="seg-color" value={systemColor(system)} onChange={(e) => useColors.getState().setColor(system, e.target.value)} />
+      {custom && <button onClick={() => useColors.getState().setColor(system, null)} title={`初期色 ${defaultSystemColor(system)}`}>初期色</button>}
+    </label>
   );
 }
 
@@ -217,7 +321,7 @@ export function FloorBar() {
           <NumField label="階高" value={f.height} min={1000} testId="floor-height" onCommit={(v) => st.updateFloor(f.id, { height: v })} />
           <span className="muted small">床高 {activeFloorElevation()}mm</span>
           <button className="danger" disabled={floors.length <= 1} onClick={() => {
-            if (window.confirm(`${f.name}を削除します。この階の壁・部屋・ドア・窓も削除されます。（「戻す」で取り消せます）`)) st.deleteFloor(f.id);
+            if (window.confirm(`${f.name}を削除します。この階の壁・部屋・ドア・窓・器具も削除されます（配管は残ります）。上の階は下がります。（「戻す」で取り消せます）`)) st.deleteFloor(f.id);
           }}>この階を削除</button>
         </div>
       )}
@@ -291,6 +395,7 @@ function SectionControls() {
 const TOOLS: { id: Tool; icon: string; label: string }[] = [
   { id: 'select', icon: '👆', label: '選択' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'wall', icon: '▭', label: '壁' },
   { id: 'room', icon: '⬚', label: '部屋' }, { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' },
+  { id: 'fixture', icon: '🚽', label: '器具' },
 ];
 
 export function Toolbar() {

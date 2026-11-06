@@ -49,3 +49,14 @@ describe('ヒットテスト', () => {
     expect(hitTestPlan(net, { x: 2000, y: 500 }, 100)).toBeNull();
   });
 });
+
+import { addPolyline as addPl, emptyNetwork as emptyNet } from './network';
+import { hitTestPlan as hit } from './geometry';
+import { it as it2, expect as expect2 } from 'vitest';
+it2('hitTestPlan: 高さの範囲外・除外指定の要素は当たらない', () => {
+  const r = addPl(emptyNet(), [{ x: 0, y: 0, z: 3100 }, { x: 1000, y: 0, z: 3100 }], { system: 'water', diameter: 20 });
+  const f1 = (z0: number, z1: number) => z1 >= -1000 && z0 < 3000;
+  expect2(hit(r.net, { x: 500, y: 0 }, 50)).toEqual({ type: 'segment', id: r.segmentIds[0] });
+  expect2(hit(r.net, { x: 500, y: 0 }, 50, { zRange: f1 })).toBeNull();
+  expect2(hit(r.net, { x: 0, y: 0 }, 50, { excludeNodes: new Set([r.nodeIds[0]]) })).toEqual({ type: 'segment', id: r.segmentIds[0] });
+});

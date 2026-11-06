@@ -65,15 +65,26 @@ function dedupeCollinear(pts: Vec2[]): Vec2[] {
 
 export type Hit = { type: 'node'; id: string } | { type: 'segment'; id: string } | null;
 
+export type HitFilter = {
+  /** 高さの範囲 [z0, z1] がこの条件を満たす要素だけを対象にする（階の表示範囲など） */
+  zRange?: (z0: number, z1: number) => boolean;
+  excludeNodes?: Set<string>;
+  excludeSegments?: Set<string>;
+};
+
 /** 平面上のヒットテスト（ノード優先）。tolerance は mm */
-export function hitTestPlan(net: Network, p: Vec2, tolerance: number): Hit {
+export function hitTestPlan(net: Network, p: Vec2, tolerance: number, filter: HitFilter = {}): Hit {
   let best: Hit = null, bestD = Infinity;
+  const zOk = filter.zRange ?? (() => true);
   for (const n of Object.values(net.nodes)) {
+    if (filter.excludeNodes?.has(n.id) || !zOk(n.pos.z, n.pos.z)) continue;
     const d = d2(p, n.pos);
     if (d <= tolerance && d < bestD) { best = { type: 'node', id: n.id }; bestD = d; }
   }
   if (best) return best;
   for (const s of Object.values(net.segments)) {
+    const za = net.nodes[s.a].pos.z, zb = net.nodes[s.b].pos.z;
+    if (filter.excludeSegments?.has(s.id) || !zOk(Math.min(za, zb), Math.max(za, zb))) continue;
     const d = distToSegment2(p, net.nodes[s.a].pos, net.nodes[s.b].pos);
     if (d <= tolerance && d < bestD) { best = { type: 'segment', id: s.id }; bestD = d; }
   }

@@ -4,11 +4,13 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { activeFloorElevation, useStore } from '../state/store';
-import { hitTestPlan, orthoSnap, simplify, type Vec2 } from '../model/geometry';
+import { hitTestPlan, orthoSnap, simplify, type HitFilter, type Vec2 } from '../model/geometry';
 import { hitTestBuilding } from '../model/buildingHit';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { pointInPolygon } from '../model/roomOps';
-import { SELECT_COLOR, systemColor } from './colors';
+import { connectedComponent, segmentLength, segmentsAt, type Network } from '../model/network';
+import { FIXTURE_CATALOG, fixtureCorners } from '../model/fixtures';
+import { SELECT_COLOR, systemColor, useColors } from './colors';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
@@ -16,6 +18,8 @@ type Gesture =
   | { kind: 'room'; start: Vec2 }
   | { kind: 'split'; start: Vec2 }
   | { kind: 'dragNode'; nodeId: string }
+  | { kind: 'dragSeg'; segId: string; start: Vec2 }
+  | { kind: 'dragFixture'; fixtureId: string; offset: Vec2 }
   | { kind: 'dragCorner'; cornerId: string }
   | { kind: 'dragWall'; wallId: string; start: Vec2 }
   | { kind: 'pan'; last: Vec2 }
@@ -24,6 +28,19 @@ type Gesture =
 const HIT_PX = 22; // 指で押しやすいヒット半径
 const GRID_SNAP = 50; // 壁・部屋の座標を50mm単位に丸める
 const snapGrid = (p: Vec2): Vec2 => ({ x: Math.round(p.x / GRID_SNAP) * GRID_SNAP, y: Math.round(p.y / GRID_SNAP) * GRID_SNAP });
+/** 縦の区間（立て管）か（平面上の長さがほぼ0） */
+const isVertical = (net: Network, segId: string) => {
+  const s = net.segments[segId];
+  const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos;
+  return Math.hypot(a.x - b.x, a.y - b.y) < 1;
+};
+/** ドラッグ中のノードを落とせる相手を探す（自分・直接つながった相手は除く） */
+function dropTargetFor(net: Network, nodeId: string, w: Vec2, tol: number, zRange: HitFilter['zRange']) {
+  const segs = segmentsAt(net, nodeId);
+  const excludeNodes = new Set([nodeId, ...segs.map((s) => (s.a === nodeId ? s.b : s.a))]);
+  const excludeSegments = new Set(segs.map((s) => s.id));
+  return hitTestPlan(net, w, tol, { zRange, excludeNodes, excludeSegments });
+}
 
 /** 表示範囲に建物全体が入る初期ビュー */
 function fitView(w: number, h: number, bounds: { x0: number; y0: number; x1: number; y1: number } | null): ViewT {
@@ -46,6 +63,9 @@ export function PlanView() {
   const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const [splitPreview, setSplitPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const pendingMerge = useStore((s) => s.pendingMerge);
+  const fixtures = useStore((s) => s.doc.fixtures);
+  useColors((c) => c.overrides);
+  const [dropHit, setDropHit] = useState<ReturnType<typeof hitTestPlan>>(null);
   const pointers = useRef(new Map<number, Vec2>());
   const gesture = useRef<Gesture | null>(null);
 
@@ -74,6 +94,12 @@ export function PlanView() {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   const tol = HIT_PX / vw.scale;
+  // 現在の階に表示されている配管だけをタップ対象にする（他の階の配管は薄く表示・当たり判定なし）
+  const curFloor = floorById(building, floorId);
+  const zLo = (curFloor?.elevation ?? 0) - 1000, zHi = (curFloor?.elevation ?? 0) + (curFloor?.height ?? 3000);
+  const zRange = (z0: number, z1: number) => z1 >= zLo && z0 < zHi;
+  const hitPipe = (w: Vec2) => hitTestPlan(useStore.getState().doc.network, w, tol, { zRange });
+  const hitFixture = (w: Vec2) => Object.values(useStore.getState().doc.fixtures).find((f) => f.floorId === floorId && pointInPolygon(w, fixtureCorners(f)));
   if (import.meta.env.MODE === 'e2e') {
     (window as unknown as { __plan: unknown }).__plan = {
       toScreen: (x: number, y: number) => {
@@ -92,6 +118,7 @@ export function PlanView() {
     if (pointers.current.size === 2) {
       // 2本指になったら作図・移動を取り消して拡大縮小へ
       if (gesture.current && gesture.current.kind.startsWith('drag')) st.endDrag();
+      setDropHit(null);
       setStroke(null);
       setRoomPreview(null);
       setSplitPreview(null);
@@ -103,8 +130,15 @@ export function PlanView() {
     const w = toWorld(p);
     const b = st.doc.building;
 
+    if (st.tool === 'fixture') {
+      const f = hitFixture(w);
+      if (f) st.select({ kind: 'fixture', id: f.id });
+      else st.placeFixtureAt(snapGrid(w));
+      gesture.current = null;
+      return;
+    }
     if (st.tool === 'pipe') {
-      const hit = hitTestPlan(st.doc.network, w, tol);
+      const hit = hitPipe(w);
       if (hit?.type === 'node') {
         const n = st.doc.network.nodes[hit.id].pos;
         gesture.current = { kind: 'stroke', tool: 'pipe', startNodeId: hit.id };
@@ -144,17 +178,35 @@ export function PlanView() {
       gesture.current = null;
       return;
     }
-    // 選択ツール: 配管 > 建物
-    const ph = hitTestPlan(st.doc.network, w, tol);
+    // 選択ツール: 配管 > 器具 > 建物
+    const ph = hitPipe(w);
     if (ph?.type === 'node') {
       st.select({ kind: 'node', id: ph.id });
-      st.beginDrag();
-      gesture.current = { kind: 'dragNode', nodeId: ph.id };
+      if (!st.doc.network.nodes[ph.id].fixtureId) {
+        st.beginDrag();
+        gesture.current = { kind: 'dragNode', nodeId: ph.id };
+      } else gesture.current = null;
       return;
     }
     if (ph?.type === 'segment') {
-      st.select({ kind: 'segment', id: ph.id });
-      gesture.current = null;
+      const net0 = st.doc.network, sg = net0.segments[ph.id];
+      const at = { ...w, z: (net0.nodes[sg.a].pos.z + net0.nodes[sg.b].pos.z) / 2 };
+      // 選択済みの区間をもう一度つかむとドラッグで移動（未選択ならまず選択だけ）
+      if (st.selection?.kind === 'segment' && st.selection.id === ph.id) {
+        st.select({ kind: 'segment', id: ph.id, at });
+        st.beginDrag();
+        gesture.current = { kind: 'dragSeg', segId: ph.id, start: w };
+      } else {
+        st.select({ kind: 'segment', id: ph.id, at });
+        gesture.current = null;
+      }
+      return;
+    }
+    const fx = hitFixture(w);
+    if (fx) {
+      st.select({ kind: 'fixture', id: fx.id });
+      st.beginDrag();
+      gesture.current = { kind: 'dragFixture', fixtureId: fx.id, offset: { x: fx.x - w.x, y: fx.y - w.y } };
       return;
     }
     if (st.pendingMerge) {
@@ -211,7 +263,15 @@ export function PlanView() {
       setSplitPreview({ a: g.start, b: q });
     } else if (g.kind === 'dragNode') {
       const n = st.doc.network.nodes[g.nodeId];
-      if (n) st.dragNode(g.nodeId, { ...toWorld(p), z: n.pos.z });
+      const w = toWorld(p);
+      if (n) st.dragNode(g.nodeId, { ...w, z: n.pos.z });
+      if (n && segmentsAt(st.doc.network, g.nodeId).length === 1) setDropHit(dropTargetFor(useStore.getState().doc.network, g.nodeId, w, tol, zRange));
+    } else if (g.kind === 'dragSeg') {
+      const w = toWorld(p);
+      st.dragSegment(g.segId, { x: Math.round((w.x - g.start.x) / GRID_SNAP) * GRID_SNAP, y: Math.round((w.y - g.start.y) / GRID_SNAP) * GRID_SNAP, z: 0 });
+    } else if (g.kind === 'dragFixture') {
+      const w = toWorld(p);
+      st.dragFixture(g.fixtureId, snapGrid({ x: w.x + g.offset.x, y: w.y + g.offset.y }));
     } else if (g.kind === 'dragCorner') {
       st.dragCorner(g.cornerId, snapGrid(toWorld(p)));
     } else if (g.kind === 'dragWall') {
@@ -229,6 +289,12 @@ export function PlanView() {
       return;
     }
     gesture.current = null;
+    if (g?.kind === 'dragNode') {
+      // 端点を別の配管のノード・区間の上で離すと接続（ドラッグと合わせて履歴1件）
+      const w = toWorld(local(e));
+      if (segmentsAt(st.doc.network, g.nodeId).length === 1) st.dropNode(g.nodeId, dropTargetFor(st.doc.network, g.nodeId, w, tol, zRange));
+      setDropHit(null);
+    }
     if (g?.kind.startsWith('drag')) st.endDrag();
     if (g?.kind === 'room' && roomPreview) st.addRoom(roomPreview.a, roomPreview.b);
     if (g?.kind === 'split' && splitPreview) finishSplit(splitPreview.a, splitPreview.b);
@@ -265,15 +331,22 @@ export function PlanView() {
       return;
     }
     const net = st.doc.network;
-    const endHit = hitTestPlan(net, pts[pts.length - 1], tol);
+    const endHit = hitPipe(pts[pts.length - 1]);
     const endNodeId = endHit?.type === 'node' && endHit.id !== g.startNodeId ? endHit.id : undefined;
+    // 終点が既存の区間の上なら、その区間の途中に接続（始点の区間・始点ノードにつながる区間は除く）
+    const startSegs = g.startNodeId ? segmentsAt(net, g.startNodeId).map((s) => s.id) : [];
+    const endSegId = endHit?.type === 'segment' && endHit.id !== g.branchSegId && !startSegs.includes(endHit.id) ? endHit.id : undefined;
+    if (endNodeId || endSegId) {
+      const ep = endNodeId ? net.nodes[endNodeId].pos : null;
+      if (ep) pts[pts.length - 1] = { x: ep.x, y: ep.y };
+    }
     if (g.branchSegId) {
       const seg = net.segments[g.branchSegId];
       const z = (net.nodes[seg.a].pos.z + net.nodes[seg.b].pos.z) / 2;
-      st.branch(g.branchSegId, { ...raw[0], z }, pts.slice(1).map((q) => ({ ...q, z })));
+      st.branch(g.branchSegId, { ...raw[0], z }, pts.slice(1).map((q) => ({ ...q, z })), { endNodeId, endSegId });
     } else {
       const z = g.startNodeId ? net.nodes[g.startNodeId].pos.z : activeFloorElevation() + st.drawHeight;
-      st.drawPolyline(pts.map((q) => ({ ...q, z })), { startNodeId: g.startNodeId, endNodeId });
+      st.drawPolyline(pts.map((q) => ({ ...q, z })), { startNodeId: g.startNodeId, endNodeId, endSegId });
     }
   };
 
@@ -292,9 +365,14 @@ export function PlanView() {
     }
   }
 
-  const floor = floorById(building, floorId);
-  const z0 = floor?.elevation ?? 0, z1 = z0 + (floor?.height ?? 3000);
-  const onThisFloor = (z: number) => z >= z0 - 1000 && z < z1; // 床下配管も含める
+  const floor = curFloor;
+  const onThisFloor = (z: number) => zRange(z, z); // 床下配管も含める
+  const segHere = (sid: string) => {
+    const s = net.segments[sid];
+    const za = net.nodes[s.a].pos.z, zb = net.nodes[s.b].pos.z;
+    return zRange(Math.min(za, zb), Math.max(za, zb));
+  };
+  const run = sel?.kind === 'segment' && net.segments[sel.id] ? new Set(connectedComponent(net, sel.id).segmentIds) : null;
   const isSel = (kind: string, id: string) => sel?.kind === kind && sel.id === id;
 
   const rooms = Object.values(building.rooms).filter((r) => r.floorId === floorId);
@@ -355,24 +433,56 @@ export function PlanView() {
         const p = toScreen(c);
         return <rect key={c.id} data-corner={c.id} x={p.x - 4} y={p.y - 4} width={8} height={8} fill={isSel('corner', c.id) ? SELECT_COLOR : '#fff'} stroke="#334155" />;
       })}
+      {Object.values(fixtures).filter((f) => f.floorId === floorId).map((f) => {
+        const pts = fixtureCorners(f).map(toScreen);
+        const c = toScreen(f);
+        const selected = isSel('fixture', f.id);
+        return (
+          <g key={f.id} data-fixture={f.id} data-type={f.type}>
+            <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
+            <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize={11} fill="#0e7490" pointerEvents="none">{FIXTURE_CATALOG[f.type].label}</text>
+          </g>
+        );
+      })}
       {Object.values(net.segments).map((s) => {
         const na = net.nodes[s.a].pos, nb = net.nodes[s.b].pos;
-        const here = onThisFloor(na.z) || onThisFloor(nb.z);
+        const here = segHere(s.id);
         const a = toScreen(na), b = toScreen(nb);
         const selected = isSel('segment', s.id);
+        const drop = dropHit?.type === 'segment' && dropHit.id === s.id;
         return (
           <g key={s.id} data-seg={s.id} opacity={here ? 1 : 0.2}>
-            {selected && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={SELECT_COLOR} strokeWidth={14} strokeLinecap="round" opacity={0.6} />}
+            {(selected || drop) && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={drop ? '#16a34a' : SELECT_COLOR} strokeWidth={14} strokeLinecap="round" opacity={0.6} />}
+            {!selected && run?.has(s.id) && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={SELECT_COLOR} strokeWidth={9} strokeLinecap="round" opacity={0.25} />}
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={systemColor(s.system)} strokeWidth={Math.max(3, s.diameter * vw.scale * 3)} strokeLinecap="round" />
+            {selected && !isVertical(net, s.id) && (
+              <text data-testid="seg-label" x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 12} textAnchor="middle" fontSize={12} fill="#b45309" fontWeight="bold">{Math.round(segmentLength(net, s.id))}mm</text>
+            )}
+          </g>
+        );
+      })}
+      {Object.keys(net.segments).filter((id) => isVertical(net, id)).map((id) => {
+        // 立て管: 通っている階すべてで ◎ を表示
+        const s = net.segments[id];
+        const p = toScreen(net.nodes[s.a].pos);
+        const here = segHere(id);
+        const selected = isSel('segment', id);
+        return (
+          <g key={'r' + id} data-riser={id} opacity={here ? 1 : 0.2} pointerEvents="none">
+            <circle cx={p.x} cy={p.y} r={12} fill="none" stroke={selected ? SELECT_COLOR : systemColor(s.system)} strokeWidth={3} />
+            <text x={p.x + 14} y={p.y - 10} fontSize={10} fill="#334155">立管</text>
           </g>
         );
       })}
       {Object.values(net.nodes).map((n) => {
         const p = toScreen(n.pos);
         const big = n.kind === 'tee' || n.kind === 'cross';
+        const drop = dropHit?.type === 'node' && dropHit.id === n.id;
+        const port = !!n.fixtureId;
         return (
-          <circle key={n.id} data-node={n.id} data-kind={n.kind} cx={p.x} cy={p.y} r={big ? 7 : 5} opacity={onThisFloor(n.pos.z) ? 1 : 0.2}
-            fill={isSel('node', n.id) ? SELECT_COLOR : big ? '#111827' : '#fff'} stroke="#111827" strokeWidth={2} />
+          <circle key={n.id} data-node={n.id} data-kind={n.kind} cx={p.x} cy={p.y} r={drop ? 10 : big ? 7 : port ? 6 : 5} opacity={onThisFloor(n.pos.z) ? 1 : 0.2}
+            fill={isSel('node', n.id) ? SELECT_COLOR : drop ? '#16a34a' : n.kind === 'valve' ? '#f97316' : big ? '#111827' : port ? '#0e7490' : '#fff'}
+            stroke="#111827" strokeWidth={2} />
         );
       })}
       {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} />}
@@ -399,4 +509,5 @@ const HINTS: Record<string, string> = {
   split: '部屋を横切る線を引いて分割',
   door: '壁をタップしてドアを付ける',
   window: '壁をタップして窓を付ける',
+  fixture: '図面をタップして器具を置く',
 };
