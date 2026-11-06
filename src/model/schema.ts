@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { addFloor, emptyBuilding } from './building';
+import { defaultEstimate } from './estimate';
 
 const vec3 = z.object({ x: z.number().finite(), y: z.number().finite(), z: z.number().finite() });
 const vec2 = z.object({ x: z.number().finite(), y: z.number().finite() });
@@ -12,6 +13,7 @@ export const nodeSchema = z.object({
   fixtureId: z.string().min(1).optional(),
   portId: z.string().min(1).optional(),
   floorId: z.string().min(1).optional(),
+  fitting: z.object({ type: z.string().min(1), degree: z.number().int().nonnegative() }).optional(),
 });
 
 export const segmentSchema = z.object({
@@ -57,7 +59,25 @@ export const fixtureSchema = z.object({
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
 });
 
-export const SCHEMA_VERSION = 3;
+const money = z.number().finite().nonnegative();
+const saleUnitSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('perLength'), step: z.number().positive() }),
+  z.object({ kind: z.literal('straight'), length: z.number().positive() }),
+  z.object({ kind: z.literal('roll'), length: z.number().positive() }),
+]);
+export const estimateSchema = z.object({
+  extraRate: z.number().finite().min(0).max(10),
+  taxRate: z.number().finite().min(0).max(1),
+  overhead: z.object({ mode: z.enum(['rate', 'amount']), value: money }),
+  prices: z.record(z.string(), z.object({ material: money, labor: money, saleUnit: saleUnitSchema.optional() })),
+  extras: z.array(z.object({ id: z.string().min(1), name: z.string(), quantity: z.number().finite(), unit: z.string(), unitPrice: z.number().finite() })),
+  client: z.string().optional(),
+  title: z.string().optional(),
+  issuer: z.string().optional(),
+  note: z.string().optional(),
+});
+
+export const SCHEMA_VERSION = 4;
 
 export const projectSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -69,6 +89,7 @@ export const projectSchema = z.object({
   building: buildingSchema,
   network: networkSchema,
   fixtures: z.record(z.string(), fixtureSchema),
+  estimate: estimateSchema,
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;
@@ -93,13 +114,17 @@ const projectV2Schema = z.object({
   network: networkSchema,
 });
 
+const projectV3Schema = projectV2Schema.extend({ schemaVersion: z.literal(3), fixtures: z.record(z.string(), fixtureSchema) });
+
 /** 旧形式を現行形式へ変換（未知の形式はそのまま返し、後段の検証で拒否される） */
 export function migrate(raw: unknown): unknown {
   const v1 = projectV1Schema.safeParse(raw);
   if (v1.success) {
-    return { ...v1.data, schemaVersion: SCHEMA_VERSION, building: addFloor(emptyBuilding()).b, fixtures: {} };
+    return { ...v1.data, schemaVersion: SCHEMA_VERSION, building: addFloor(emptyBuilding()).b, fixtures: {}, estimate: defaultEstimate() };
   }
   const v2 = projectV2Schema.safeParse(raw);
-  if (v2.success) return { ...v2.data, schemaVersion: SCHEMA_VERSION, fixtures: {} };
+  if (v2.success) return { ...v2.data, schemaVersion: SCHEMA_VERSION, fixtures: {}, estimate: defaultEstimate() };
+  const v3 = projectV3Schema.safeParse(raw);
+  if (v3.success) return { ...v3.data, schemaVersion: SCHEMA_VERSION, estimate: defaultEstimate() };
   return raw;
 }

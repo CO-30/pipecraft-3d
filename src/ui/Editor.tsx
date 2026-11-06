@@ -5,6 +5,8 @@ import { useStore } from '../state/store';
 import { totalLength } from '../model/network';
 import { FloorBar, PropertyPanel, Toolbar, VisibilityPanel } from './Panels';
 import type { SaveState } from './autosave';
+import { EstimateBar, EstimateScreen } from './EstimateScreen';
+import { usePrefs } from './prefs';
 
 type Layout = '2d' | '3d' | 'split';
 
@@ -15,6 +17,8 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
   const isWide = useWide();
   const [layout, setLayout] = useState<Layout>('split');
   const [showVis, setShowVis] = useState(false);
+  const [showEst, setShowEst] = useState(false);
+  const unit = usePrefs((s) => s.lengthUnit);
   const eff: Layout = !isWide && layout === 'split' ? '2d' : layout;
 
   return (
@@ -27,8 +31,9 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
             <button key={l} className={eff === l ? 'on' : ''} onClick={() => setLayout(l)}>{l === '2d' ? '2D' : l === '3d' ? '3D' : '2D+3D'}</button>
           ))}
         </div>
+        <button data-testid="open-estimate" className="est-open" onClick={() => setShowEst(true)}>積算</button>
         {!isWide && <button data-testid="toggle-vis" className={showVis ? 'on' : ''} onClick={() => setShowVis(!showVis)}>表示</button>}
-        <span className="sum">総延長 <b data-testid="total-length">{Math.round(totalLength(net))}</b>mm／<b data-testid="seg-count">{Object.keys(net.segments).length}</b>区間</span>
+        <span className="sum">総延長 <b data-testid="total-length">{unit === 'm' ? (totalLength(net) / 1000).toFixed(2) : Math.round(totalLength(net))}</b>{unit}／<b data-testid="seg-count">{Object.keys(net.segments).length}</b>区間</span>
         <span data-testid="save-state" className={`save ${save}`}>{save === 'saved' ? '保存済み' : save === 'saving' ? '保存中…' : '保存失敗'}</span>
       </header>
 
@@ -60,7 +65,10 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
           <PropertyPanel />
         </section>
       )}
+      {isWide && <EstimateBar onOpen={() => setShowEst(true)} />}
+      <Notice />
       <Toolbar />
+      {showEst && <EstimateScreen onClose={() => setShowEst(false)} />}
     </div>
   );
 }
@@ -75,4 +83,16 @@ function useWide() {
     return () => m.removeEventListener('change', on);
   }, []);
   return wide;
+}
+
+/** つなげない配管などの短いお知らせ（4秒で消える。タップでも消える） */
+function Notice() {
+  const notice = useStore((s) => s.notice);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => useStore.getState().clearNotice(), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  if (!notice) return null;
+  return <div className="toast notice" role="status" data-testid="notice" onClick={() => useStore.getState().clearNotice()}>{notice}</div>;
 }

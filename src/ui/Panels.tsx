@@ -8,6 +8,8 @@ import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '
 import { floorById, roomArea, wallLength } from '../model/building';
 import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
+import { defaultEstimate, measureSegment } from '../model/estimate';
+import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
 
 const DIAMETERS = [13, 16, 20, 25, 30, 40, 50, 65, 75, 100, 125, 150];
 const HEIGHT_PRESETS: { label: string; z: number }[] = [
@@ -15,24 +17,27 @@ const HEIGHT_PRESETS: { label: string; z: number }[] = [
 ];
 
 /** 確定時（フォーカスを外す・Enter）だけ反映する数値入力 */
-export function NumField({ label, value, onCommit, unit = 'mm', testId, min }: { label: string; value: number; onCommit: (v: number) => void; unit?: string; testId?: string; min?: number }) {
-  const [text, setText] = useState(String(Math.round(value)));
-  useEffect(() => setText(String(Math.round(value))), [value]);
+export function NumField({ label, value, onCommit, unit = 'mm', testId, min, max, decimals = 0 }: { label: string; value: number; onCommit: (v: number) => void; unit?: string; testId?: string; min?: number; max?: number; decimals?: number }) {
+  const [text, setText] = useState(fmtDec(value, decimals));
+  useEffect(() => setText(fmtDec(value, decimals)), [value, decimals]);
   const commit = () => {
+    if (text === fmtDec(value, decimals)) return; // 表示上の丸めだけで値を変えない
     const n = Number(text);
-    if (text.trim() !== '' && Number.isFinite(n) && (min === undefined || n >= min)) onCommit(n);
-    else setText(String(Math.round(value)));
+    if (text.trim() !== '' && Number.isFinite(n) && (min === undefined || n >= min) && (max === undefined || n <= max)) onCommit(n);
+    else setText(fmtDec(value, decimals));
   };
   return (
     <label className="field inline">{label}
       <span className="unit-input">
-        <input type="number" inputMode="numeric" data-testid={testId} value={text} onChange={(e) => setText(e.target.value)}
+        <input type="number" inputMode={decimals ? 'decimal' : 'numeric'} data-testid={testId} value={text} onChange={(e) => setText(e.target.value)}
           onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
         <span>{unit}</span>
       </span>
     </label>
   );
 }
+
+const fmtDec = (x: number, d: number) => String(Math.round(x * 10 ** d) / 10 ** d);
 
 function ElementVisibility({ id }: { id: string }) {
   const hidden = useStore((s) => s.hiddenIds.includes(id));
@@ -79,6 +84,7 @@ export function PropertyPanel() {
         <SystemColor system={seg.system} />
         <NumField label="長さ" value={segmentLength(net, seg.id)} min={1} testId="seg-length" onCommit={(v) => st.setSegmentLength(seg.id, v)} />
         {!vertical && <NumField label="床からの高さ" value={(za + zb) / 2 - floorElev} testId="seg-height" onCommit={(v) => st.setSegmentHeight(seg.id, floorElev + v)} />}
+        <MeasureFields key={seg.id} segId={seg.id} />
         <div className="row">
           <button onClick={() => st.setTool('pipe')}>ここから分岐</button>
           <button data-testid="cut-seg" onClick={() => st.cutSelected()}>✂ ここで切断</button>
@@ -137,6 +143,7 @@ export function PropertyPanel() {
               onClick={() => st.deleteSelectedFitting()}>{n.kind === 'valve' ? 'バルブを外す' : deg === 1 ? 'この区間を削除' : 'この部品を削除'}</button>
           </div>
         )}
+        {deg > 0 && <FittingField key={n.id} nodeId={n.id} />}
         {deg === 1 && !fx && <div className="muted small">端点をドラッグして他の配管の上で離すとつながります</div>}
       </div>
     );
@@ -251,6 +258,85 @@ function FixturePicker() {
       <div className="fixture-grid">
         {FIXTURE_TYPES.map((x) => <button key={x} data-testid={`fixture-${x}`} className={t === x ? 'on' : ''} onClick={() => st.setFixtureType(x)}>{FIXTURE_CATALOG[x].label}</button>)}
       </div>
+    </>
+  );
+}
+
+/** 空欄を許す数値入力（確定時のみ反映）。空欄 → undefined */
+export function OptNumField({ label, value, onCommit, unit = 'mm', testId, placeholder, max, positive }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; unit?: string; testId?: string; placeholder?: string; max?: number; positive?: boolean }) {
+  const fmt = (x: number | undefined) => (x === undefined ? '' : String(Math.round(x * 100) / 100));
+  const [text, setText] = useState(fmt(value));
+  useEffect(() => setText(fmt(value)), [value]);
+  const commit = () => {
+    if (text.trim() === '') { if (value !== undefined) onCommit(undefined); return; }
+    const n = Number(text);
+    if (Number.isFinite(n) && (positive ? n > 0 : n >= 0) && (max === undefined || n <= max)) onCommit(n);
+    else setText(fmt(value));
+  };
+  return (
+    <label className="field inline">{label}
+      <span className="unit-input">
+        <input type="number" inputMode="decimal" data-testid={testId} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)}
+          onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+        <span>{unit}</span>
+      </span>
+    </label>
+  );
+}
+
+const EXTRA_CHOICES = [0, 0.05, 0.1];
+
+/** 区間の実測長・余長（積算） */
+function MeasureFields({ segId }: { segId: string }) {
+  const net = useStore((s) => s.doc.network);
+  const defExtra = useStore((s) => (s.doc.estimate ?? defaultEstimate()).extraRate);
+  const st = useStore.getState();
+  const seg = net.segments[segId];
+  const m = measureSegment(net, seg, defExtra);
+  const custom = seg.extraRate !== undefined && !EXTRA_CHOICES.includes(seg.extraRate);
+  const [showCustom, setShowCustom] = useState(custom);
+  return (
+    <>
+      <div className="subhead">積算</div>
+      <OptNumField label="現場実測長" positive value={seg.measuredLength} testId="seg-measured" placeholder="未入力" onCommit={(v) => st.setSegmentMeasured(seg.id, v)} />
+      <div className="small" data-testid="seg-used">積算に使う長さ: <b>{m.method === 'field' ? '実測' : 'モデル'} {Math.round(m.usedLength)}mm</b>
+        {m.approx && m.method === 'field' && <span className="warn">（按分した概算値）</span>}</div>
+      {m.warning && <div className="warn small" data-testid="seg-diff-warning">⚠ {m.warning}</div>}
+      <label className="field inline">余長
+        <select data-testid="seg-extra" value={showCustom || custom ? 'custom' : seg.extraRate === undefined ? 'default' : String(seg.extraRate)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setShowCustom(v === 'custom');
+            if (v === 'default') st.setSegmentExtraRate(seg.id, undefined);
+            else if (v !== 'custom') st.setSegmentExtraRate(seg.id, Number(v));
+          }}>
+          <option value="default">現場の既定（{Math.round(defExtra * 1000) / 10}%）</option>
+          {EXTRA_CHOICES.map((r) => <option key={r} value={String(r)}>{r === 0 ? 'なし' : `${r * 100}%`}</option>)}
+          <option value="custom">任意</option>
+        </select></label>
+      {(showCustom || custom) && <OptNumField label="余長率" unit="%" max={1000} value={seg.extraRate === undefined ? undefined : seg.extraRate * 100} onCommit={(v) => st.setSegmentExtraRate(seg.id, v === undefined ? undefined : v / 100)} />}
+    </>
+  );
+}
+
+/** 点の部品（自動判定・確定） */
+function FittingField({ nodeId }: { nodeId: string }) {
+  const net = useStore((s) => s.doc.network);
+  const st = useStore.getState();
+  const f = analyzeFittings(net).find((x) => x.nodeId === nodeId);
+  if (!f) return null;
+  const autoLabel = f.auto === 'none' ? 'なし' : fittingName(f.auto, f.size);
+  return (
+    <>
+      <div className="subhead">部品（積算）</div>
+      <label className="field inline">部品
+        <select data-testid="node-fitting" value={f.confirmed ? f.type : 'auto'} onChange={(e) => st.setNodeFitting(nodeId, e.target.value === 'auto' ? undefined : (e.target.value as FittingChoice))}>
+          <option value="auto">自動（{autoLabel}）</option>
+          {FITTING_TYPES.map((t) => <option key={t} value={t}>{FITTING_LABEL[t]}</option>)}
+          <option value="none">なし</option>
+        </select></label>
+      <span className="small muted">{f.size.split('×').map((d) => `φ${d}`).join('×')}</span>
+      {f.needsConfirm && <div className="warn small" data-testid="fitting-confirm">⚠ {f.reason ?? '部品を確定してください'}</div>}
     </>
   );
 }

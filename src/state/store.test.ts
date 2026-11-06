@@ -346,3 +346,131 @@ describe('Phase 3 レビュー対応', () => {
     expect(s().dragBase).toBeNull();
   });
 });
+
+describe('共通ストア: 積算', () => {
+  it('実測長の入力・削除、余長の上書きは履歴1件ずつで Undo できる', () => {
+    s().drawPolyline([v(0, 0), v(3000, 0)]);
+    const id = Object.keys(net().segments)[0];
+    const h = s().past.length;
+    s().setSegmentMeasured(id, 3150);
+    expect(net().segments[id].measuredLength).toBe(3150);
+    s().setSegmentMeasured(id, 3150); // 変化なしは履歴を増やさない
+    expect(s().past.length).toBe(h + 1);
+    s().setSegmentExtraRate(id, 0.1);
+    expect(net().segments[id].extraRate).toBe(0.1);
+    s().setSegmentMeasured(id, undefined);
+    expect(net().segments[id].measuredLength).toBeUndefined();
+    s().undo();
+    expect(net().segments[id].measuredLength).toBe(3150);
+    s().setSegmentMeasured(id, -5); // 不正値は無視
+    expect(net().segments[id].measuredLength).toBe(3150);
+  });
+
+  it('保存形式の範囲外の積算設定・単価・実測長0は受け付けない（保存失敗を防ぐ）', () => {
+    s().drawPolyline([v(0, 0), v(3000, 0)]);
+    const id = Object.keys(net().segments)[0];
+    const h = s().past.length;
+    s().updateEstimate({ extraRate: 15 });
+    s().updateEstimate({ taxRate: 1.5 });
+    s().setPrice('k', { material: -1, labor: 0 });
+    s().setPrice('k', { material: Number.NaN, labor: 0 });
+    s().setSegmentMeasured(id, 0);
+    expect(s().past.length).toBe(h);
+    expect(s().toProjectData()!.estimate.extraRate).toBe(0);
+  });
+
+  it('部品の確定は接続数と一緒に保存し、undefined で自動に戻る', () => {
+    s().drawPolyline([v(0, 0), v(2000, 0), v(2000, 2000)]);
+    const mid = Object.values(net().nodes).find((n) => n.kind === 'elbow')!.id;
+    s().setNodeFitting(mid, 'none');
+    expect(net().nodes[mid].fitting).toEqual({ type: 'none', degree: 2 });
+    s().setNodeFitting(mid, undefined);
+    expect(net().nodes[mid].fitting).toBeUndefined();
+  });
+
+  it('単価・積算設定・その他項目は Doc に入り Undo/Redo・保存の対象', () => {
+    s().setPrice('pipe|water||20', { material: 1000, labor: 500 });
+    s().updateEstimate({ taxRate: 0.08, client: '○○様' });
+    s().addExtraItem();
+    const x = s().doc.estimate!.extras[0];
+    s().updateExtraItem(x.id, { name: '水圧試験', unitPrice: 5000 });
+    expect(s().doc.estimate).toMatchObject({ taxRate: 0.08, client: '○○様', prices: { 'pipe|water||20': { material: 1000 } } });
+    expect(s().toProjectData()!.estimate.extras[0]).toMatchObject({ name: '水圧試験', unitPrice: 5000 });
+    s().undo();
+    expect(s().doc.estimate!.extras[0].name).toBe('その他');
+    s().removeExtraItem(x.id);
+    expect(s().doc.estimate!.extras).toEqual([]);
+    s().setPrice('pipe|water||20', undefined);
+    expect(s().doc.estimate!.prices).toEqual({});
+  });
+});
+
+describe('共通ストア: 種類の違う配管はつながない', () => {
+  const sys = (id: string) => net().segments[id].system;
+  const nodeAt = (x: number, y: number) => Object.values(net().nodes).find((n) => n.pos.x === x && n.pos.y === y)!.id;
+  it('給水の端から排水で描くと、給水として続ける（お知らせあり）', () => {
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    s().drawPolyline([v(0, 0), v(2000, 0)]);
+    const end = nodeAt(2000, 0);
+    s().setDrawAttrs({ system: 'drain', diameter: 50 });
+    s().drawPolyline([v(2000, 0), v(2000, 2000)], { startNodeId: end });
+    expect(Object.values(net().segments).every((x) => x.system === 'water')).toBe(true);
+    expect(s().notice).toMatch(/排水は給水につなげない/);
+  });
+  it('排水の線を給水の配管の上で終えても接続しない（分岐を作らない）', () => {
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    s().drawPolyline([v(0, 0), v(4000, 0)]);
+    const water = Object.keys(net().segments)[0];
+    s().setDrawAttrs({ system: 'drain', diameter: 50 });
+    s().drawPolyline([v(2000, 2000), v(2000, 0)], { endSegId: water });
+    expect(Object.values(net().nodes).some((n) => n.kind === 'tee')).toBe(false);
+    expect(sys(water)).toBe('water');
+    expect(s().notice).toMatch(/給水.*つなげません|排水と給水の配管はつなげません/);
+    expect(validateNetwork(net())).toEqual([]);
+  });
+  it('排水の端点を給水の端点・区間へドラッグしても結合しない。汚水・通気は排水とつながる', () => {
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    s().drawPolyline([v(0, 0), v(4000, 0)]);
+    const water = Object.keys(net().segments)[0];
+    s().setDrawAttrs({ system: 'drain', diameter: 50 });
+    s().drawPolyline([v(0, 3000), v(0, 1000)]);
+    const drainEnd = nodeAt(0, 1000);
+    s().beginDrag();
+    s().dragNode(drainEnd, v(2000, 0));
+    s().dropNode(drainEnd, { type: 'segment', id: water });
+    s().endDrag();
+    expect(Object.values(net().nodes).some((n) => n.kind === 'tee')).toBe(false);
+    expect(s().notice).toMatch(/つなげません/);
+    // 汚水 → 排水 はつながる
+    s().setDrawAttrs({ system: 'sewage', diameter: 75 });
+    const drainSeg = Object.values(net().segments).find((x) => x.system === 'drain')!.id;
+    s().drawPolyline([v(-2000, 2000), v(0, 2000)], { endSegId: drainSeg });
+    expect(Object.values(net().nodes).some((n) => n.kind === 'tee')).toBe(true);
+  });
+  it('器具の接続口: 給水口に排水はつながらず、口から描くと口の種類・口径で描く。立て管も元の種類', () => {
+    s().setTool('fixture');
+    s().placeFixtureAt({ x: 0, y: 0 });
+    const ports = Object.values(net().nodes).filter((n) => n.fixtureId);
+    const waterPort = ports.find((n) => n.portId === 'water')!;
+    s().setDrawAttrs({ system: 'drain', diameter: 50 });
+    s().drawPolyline([v(3000, 3000), { ...waterPort.pos }], { endNodeId: waterPort.id });
+    expect(Object.values(net().segments).some((x) => x.a === waterPort.id || x.b === waterPort.id)).toBe(false);
+    s().drawPolyline([{ ...waterPort.pos }, { ...waterPort.pos, x: waterPort.pos.x + 1000 }], { startNodeId: waterPort.id });
+    const fromPort = Object.values(net().segments).find((x) => x.a === waterPort.id || x.b === waterPort.id)!;
+    expect(fromPort).toMatchObject({ system: 'water', diameter: 13 });
+    s().addRiserFromNode(waterPort.id, waterPort.pos.z + 1000);
+    expect(Object.values(net().segments).filter((x) => x.system === 'drain')).toHaveLength(1);
+  });
+
+  it('分岐は元の配管の種類で作り、違う種類の配管には終点をつながない', () => {
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    s().drawPolyline([v(0, 0), v(4000, 0)]);
+    const water = Object.keys(net().segments)[0];
+    s().setDrawAttrs({ system: 'drain', diameter: 50 });
+    s().drawPolyline([v(0, 2000), v(4000, 2000)]);
+    const drain = Object.values(net().segments).find((x) => x.system === 'drain')!.id;
+    s().branch(water, v(2000, 0), [v(2000, 2000)], { endSegId: drain });
+    expect(Object.values(net().nodes).filter((n) => n.kind === 'tee')).toHaveLength(1); // 給水側の分岐だけ
+    expect(Object.values(net().segments).filter((x) => x.system === 'water')).toHaveLength(3);
+  });
+});

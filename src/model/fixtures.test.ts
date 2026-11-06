@@ -1,3 +1,4 @@
+import { defaultEstimate } from './estimate';
 import { describe, expect, it } from 'vitest';
 import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
@@ -72,13 +73,13 @@ describe('設備機器', () => {
   });
   it('parseProject rejects dangling fixture port', () => {
     const { doc, id } = toilet();
-    const p = { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'x', createdAt: 1, updatedAt: 1, ...doc };
+    const p = { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'x', createdAt: 1, updatedAt: 1, estimate: defaultEstimate(), ...doc };
     expect(() => parseProject(JSON.stringify(p))).not.toThrow();
     const bad = { ...p, fixtures: {} };
     expect(() => parseProject(JSON.stringify(bad))).toThrow(/器具/);
     expect(id).toBeTruthy();
   });
-  it('v2 の保存データは v3 に変換される', () => {
+  it('v2 の保存データは現行形式に変換される', () => {
     const d = doc0();
     const v2 = { schemaVersion: 2, id: 'p1', name: 'x', createdAt: 1, updatedAt: 1, building: d.building, network: d.network };
     const p = parseProject(JSON.stringify(v2));

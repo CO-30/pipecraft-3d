@@ -1,3 +1,4 @@
+import { defaultEstimate } from '../model/estimate';
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { DexieProjectRepository, InvalidProjectError, parseProject } from './repository';
@@ -9,7 +10,7 @@ function sample(): ProjectData {
   const a = addPolyline(emptyNetwork(), [{ x: 0, y: 0, z: 0 }, { x: 4000, y: 0, z: 0 }], { system: 'water', diameter: 20 });
   const b = branchFromSegment(a.net, a.segmentIds[0], { x: 2000, y: 0, z: 0 }, [{ x: 2000, y: 1500, z: 0 }]);
   const building = createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
-  return { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2, building, network: b.net, fixtures: {} };
+  return { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2, building, network: b.net, fixtures: {}, estimate: defaultEstimate() };
 }
 
 let n = 0;
@@ -59,6 +60,29 @@ describe('IndexedDB 保存', () => {
     expect(r.schemaVersion).toBe(SCHEMA_VERSION);
     expect(r.network).toEqual(p.network);
     expect(r.building.floors).toHaveLength(1);
+  });
+
+  it('v3 は積算設定の初期値を入れて v4 に変換、部品の確定・単価は往復で保持', () => {
+    const p = sample();
+    const { estimate: _e, ...rest } = p;
+    const r = parseProject(JSON.stringify({ ...rest, schemaVersion: 3 }));
+    expect(r.schemaVersion).toBe(4);
+    expect(r.estimate).toEqual(defaultEstimate());
+    const nid = Object.keys(p.network.nodes)[0];
+    const q = structuredClone(p);
+    q.network.nodes[nid].fitting = { type: 'elbow45', degree: 1 };
+    q.estimate.prices['pipe|water||20'] = { material: 1200, labor: 400, saleUnit: { kind: 'roll', length: 50000 } };
+    q.estimate.extras.push({ id: 'x1', name: '試験', quantity: 1, unit: '式', unitPrice: 5000 });
+    expect(parseProject(JSON.stringify(q))).toEqual(q);
+  });
+
+  it('積算設定の不正値（負の単価・税率>1）は拒否', () => {
+    const q = structuredClone(sample());
+    q.estimate.prices.k = { material: -1, labor: 0 };
+    expect(() => parseProject(JSON.stringify(q))).toThrow(InvalidProjectError);
+    const t = structuredClone(sample());
+    t.estimate.taxRate = 1.5;
+    expect(() => parseProject(JSON.stringify(t))).toThrow(InvalidProjectError);
   });
 
   it('接続情報が壊れたデータの保存は拒否し、既存の正常データを残す', async () => {
