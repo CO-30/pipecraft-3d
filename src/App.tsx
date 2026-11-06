@@ -9,6 +9,7 @@ import { createBuildingFromDims } from './model/building';
 import { emptyNetwork } from './model/network';
 import { newId } from './model/id';
 import './App.css';
+import { UpdatePrompt } from './ui/UpdatePrompt';
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
@@ -52,6 +53,7 @@ export default function App() {
     <>
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}（タップで閉じる）</div>}
       {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} /> : <Editor save={save} onBack={back} />}
+      <UpdatePrompt />
     </>
   );
 }

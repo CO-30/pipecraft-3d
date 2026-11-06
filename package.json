@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:pwa": "playwright test -c playwright.pwa.config.ts"
   },
   "dependencies": {
     "@react-three/drei": "10.7.9",
@@ -35,6 +36,7 @@
     "oxlint": "1.91.0",
     "typescript": "7.0.2",
     "vite": "8.3.6",
+    "vite-plugin-pwa": "2.0.0",
     "vitest": "5.1.0"
   }
 }

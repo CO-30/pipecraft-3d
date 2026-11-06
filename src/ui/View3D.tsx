@@ -3,7 +3,7 @@
  * ノードをドラッグすると同じ高さの水平面上で移動し、共通ストアを更新する（→ 2D平面図にも即時反映）。
  * 座標変換: 共通座標(mm, z=高さ) → three(m, y=上): (x, z, -y)/1000
  */
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
@@ -257,13 +257,14 @@ const FOV = 50;
 function AutoFit({ onTarget }: { onTarget: (t: [number, number, number]) => void }) {
   const { camera, size } = useThree();
   const done = useRef(false);
-  if (!done.current && size.width > 0 && size.height > 0) {
+  useLayoutEffect(() => {
+    if (done.current || size.width <= 0 || size.height <= 0) return;
     done.current = true;
     const c = fitCamera(size.width / size.height, FOV);
     camera.position.set(...c.pos);
     camera.lookAt(...c.target);
-    queueMicrotask(() => onTarget(c.target));
-  }
+    onTarget(c.target);
+  }, [camera, size.width, size.height, onTarget]);
   return null;
 }
 

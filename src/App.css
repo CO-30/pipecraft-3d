@@ -90,3 +90,5 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .section-slider { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .section-slider input[type=range] { flex: 1; min-width: 0; min-height: 32px; }
 .section-slider span { white-space: nowrap; }
+.pwa-toast { top: auto; position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 50; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #111827; color: #fff; font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.25); max-width: calc(100vw - 24px); }
+.pwa-toast button { min-height: 40px; border: 0; border-radius: 8px; padding: 0 12px; background: #2563eb; color: #fff; }
