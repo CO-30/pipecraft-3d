@@ -207,3 +207,32 @@ describe('レビュー指摘の回帰テスト', () => {
     expect(validateBuilding({ ...b, floors: [b.floors[0], b.floors[0]] })).not.toEqual([]);
   });
 });
+
+describe('建物: 部屋が壁に追従する（Phase 2）', () => {
+  const rect = () => createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+  const cornerAt = (b: ReturnType<typeof rect>, x: number, y: number) => Object.values(b.corners).find((c) => c.x === x && c.y === y)!;
+
+  it('角を動かすと部屋の頂点も同じだけ動く', () => {
+    const b = rect();
+    const c = cornerAt(b, 8000, 6000);
+    const n = moveCorner(b, c.id, { x: 9000, y: 6500 });
+    const room = Object.values(n.rooms)[0];
+    expect(room.polygon).toContainEqual({ x: 9000, y: 6500 });
+    expect(room.polygon).not.toContainEqual({ x: 8000, y: 6000 });
+  });
+
+  it('壁を動かすと両端の頂点が動く', () => {
+    const b = rect();
+    const w = Object.values(b.walls).find((x) => b.corners[x.a].x === 8000 && b.corners[x.b].x === 8000)!;
+    const n = moveWall(b, w.id, 1000, 0);
+    const xs = Object.values(n.rooms)[0].polygon.map((p) => p.x).sort((a, c) => a - c);
+    expect(xs).toEqual([0, 0, 9000, 9000]);
+  });
+
+  it('rejected corner move leaves rooms', () => {
+    const b = rect();
+    const c = cornerAt(b, 8000, 6000);
+    const n = moveCorner(b, c.id, { x: 8000, y: 50 }); // 壁が短すぎる
+    expect(n).toBe(b);
+  });
+});

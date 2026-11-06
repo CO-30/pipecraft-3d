@@ -22,10 +22,28 @@ export type Box = {
 
 const CEILING_THICKNESS = 10;
 
+/**
+ * 壁端の延長量。角に一直線の続きの壁がなく、角度のついた壁がある場合（出隅・入隅・T字の足）に、
+ * それらの最大厚さ/2 だけ延長して角の欠けを埋める。
+ */
+function endExtension(b: Building, w: Wall, cornerId: string, ux: number, uy: number): number {
+  let ext = 0;
+  for (const o of Object.values(b.walls)) {
+    if (o.id === w.id || (o.a !== cornerId && o.b !== cornerId)) continue;
+    const far = b.corners[o.a === cornerId ? o.b : o.a], here = b.corners[cornerId];
+    const lo = Math.hypot(far.x - here.x, far.y - here.y);
+    const cross = (ux * (far.y - here.y) - uy * (far.x - here.x)) / lo;
+    if (Math.abs(cross) <= 0.1) return 0; // 一直線の続きがある
+    ext = Math.max(ext, o.thickness / 2);
+  }
+  return ext;
+}
+
 function wallPieces(b: Building, w: Wall, elevation: number, clearHeight: number): Box[] {
   const A = b.corners[w.a], B = b.corners[w.b];
   const L = wallLength(b, w.id);
   const ux = (B.x - A.x) / L, uy = (B.y - A.y) / L;
+  const extA = endExtension(b, w, w.a, ux, uy), extB = endExtension(b, w, w.b, ux, uy);
   const rot = Math.atan2(uy, ux);
   const cat: BoxCategory = w.kind === 'exterior' ? 'exteriorWall' : 'interiorWall';
   const out: Box[] = [];
@@ -42,7 +60,7 @@ function wallPieces(b: Building, w: Wall, elevation: number, clearHeight: number
     });
   };
   const ops: Opening[] = Object.values(b.openings).filter((o) => o.wallId === w.id).sort((p, q) => p.offset - q.offset);
-  let s = 0;
+  let s = -extA;
   ops.forEach((o, i) => {
     const lo = o.offset - o.width / 2, hi = o.offset + o.width / 2;
     const top = Math.min(clearHeight, o.sill + o.height);
@@ -52,7 +70,7 @@ function wallPieces(b: Building, w: Wall, elevation: number, clearHeight: number
     piece(lo, hi, o.sill, top, o.type, o.type, o.type === 'window' ? 20 : 40, o.id);
     s = Math.max(s, hi);
   });
-  piece(s, L, 0, clearHeight, 'end');
+  piece(s, L + extB, 0, clearHeight, 'end');
   return out;
 }
 
