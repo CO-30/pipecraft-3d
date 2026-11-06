@@ -3,6 +3,8 @@
  * 表示はすべて computeEstimate(doc) から作る（保存しない）。
  */
 import { unconfirmedWallCount } from '../model/sketch';
+import { fittingContext, penetrationsOf } from '../model/obstacles';
+import type { Doc } from '../model/doc';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import {
@@ -104,7 +106,16 @@ function QuantityTab({ est }: { est: Estimate }) {
   );
 }
 
+/** 継手の内訳（梁かわし 4・軒下 2・出隅・入隅 1 など） */
+function contextNote(doc: Doc, nodeIds: string[]): string {
+  const c = new Map<string, number>();
+  for (const id of nodeIds) { const k = fittingContext(doc, id); if (k) c.set(k, (c.get(k) ?? 0) + 1); }
+  return [...c].map(([k, n]) => `${k} ${n}`).join('・');
+}
+
 function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
+  const doc = useStore((s) => s.doc);
+  const sleeves = useMemo(() => penetrationsOf(doc), [doc]);
   const confirm = est.nodeFittings.filter((n) => n.needsConfirm).length;
   return (
     <div className="table-wrap">
@@ -115,12 +126,13 @@ function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
           <tbody>
             {est.fittings.map((f) => (
               <tr key={f.key}><td>{f.name}</td><td>{fittingSpec(f)}</td><td className="num"><b>{f.count}</b></td>
-                <td className="small">{f.stockJoints ? `定尺の継ぎ足し ${f.stockJoints}個を含む` : ''}</td></tr>
+                <td className="small" data-testid="fitting-note">{[f.stockJoints ? `定尺の継ぎ足し ${f.stockJoints}個を含む` : '', contextNote(doc, f.nodeIds)].filter(Boolean).join('／')}</td></tr>
             ))}
           </tbody>
         </table>
       )}
       <p className="muted small">点ごとの部品は、図面で点を選んで「部品」から確定・変更できます。</p>
+      {sleeves.length > 0 && <p className="warn" data-testid="sleeve-note">⚠ 貫通（スリーブ）{sleeves.length}か所: 構造の確認が必要です（要確認タブ）。スリーブの部材・単価は「単価」タブの「その他」に入れてください</p>}
       <h3 className="h-sub">支持金具・ビス</h3>
       {est.supports.length === 0 ? <p className="empty">支持金具はありません（配線のみ、または「単価」タブで集計しない設定）。</p> : (
         <table className="est-table" data-testid="supports-table">

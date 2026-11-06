@@ -1,12 +1,13 @@
 /**
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
+import { detour, findHits } from '../model/obstacles';
 import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
@@ -61,6 +62,41 @@ function ElementVisibility({ id }: { id: string }) {
   );
 }
 
+/** 梁・軒などにぶつかっている区間: 避け方を選ぶ */
+function AvoidFields({ segId }: { segId: string }) {
+  const doc = useStore((s) => s.doc);
+  const [msg, setMsg] = useState('');
+  const hits = useMemo(() => findHits(doc, [segId]).map((h) => ({ h, sq: detour(doc, h, 'square'), dg: detour(doc, h, 'diagonal') })), [doc, segId]);
+  const seg = doc.network.segments[segId];
+  const pens = (seg?.penetrations ?? []).filter((id) => doc.building.members?.[id]);
+  if (!hits.length && !pens.length) return null;
+  const st = useStore.getState();
+  return (
+    <div className="avoid" data-testid="avoid-panel">
+      {hits.map(({ h, sq, dg }) => {
+        return (
+          <div key={h.memberId} className="avoid-hit">
+            <b>⚠ {MEMBER_LABEL[h.kind]}にぶつかっています</b>
+            <div className="row">
+              <button data-testid="avoid-square" disabled={'error' in sq} title={'error' in sq ? sq.error : undefined} onClick={() => setMsg(st.avoidObstacle(segId, h.memberId, 'square') ?? '')}>
+                A {'error' in sq ? '回れません' : sq.label}：90°エルボ×4</button>
+              <button data-testid="avoid-diagonal" disabled={'error' in dg} title={'error' in dg ? dg.error : undefined} onClick={() => setMsg(st.avoidObstacle(segId, h.memberId, 'diagonal') ?? '')}>
+                B 45°で逃げる：45°エルボ×4</button>
+              <button data-testid="avoid-sleeve" onClick={() => st.setPenetration(segId, h.memberId, true)}>C 貫通（スリーブ・要確認）</button>
+            </div>
+            {[...new Set(['error' in sq ? `A: ${sq.error}` : '', 'error' in dg ? `B: ${dg.error}` : ''].filter(Boolean))].map((t) => <p key={t} className="muted small">{t}</p>)}
+          </div>
+        );
+      })}
+      {pens.map((id) => (
+        <div key={id} className="avoid-hit">貫通（スリーブ）: {MEMBER_LABEL[doc.building.members![id].kind]}・構造の確認が必要
+          <button data-testid="avoid-unsleeve" onClick={() => st.setPenetration(segId, id, false)}>貫通をやめる</button></div>
+      ))}
+      {msg && <p className="err" role="alert">{msg}</p>}
+    </div>
+  );
+}
+
 export function PropertyPanel() {
   const [photoWall, setPhotoWall] = useState<string | null>(null);
   const [elevWall, setElevWall] = useState<string | null>(null);
@@ -94,6 +130,7 @@ export function PropertyPanel() {
         <SystemColor system={seg.system} />
         <NumField label="長さ" value={segmentLength(net, seg.id)} min={1} testId="seg-length" onCommit={(v) => st.setSegmentLength(seg.id, v)} />
         {!vertical && <NumField label="床からの高さ" value={(za + zb) / 2 - floorElev} testId="seg-height" onCommit={(v) => st.setSegmentHeight(seg.id, floorElev + v)} />}
+        <AvoidFields segId={seg.id} />
         <MeasureFields key={seg.id} segId={seg.id} />
         <SupportFields key={'s' + seg.id} segId={seg.id} />
         <div className="row">

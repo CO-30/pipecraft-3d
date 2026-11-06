@@ -4,6 +4,8 @@
  * - 必要長 = 使用長 ×（1＋余長率）、発注数量 = 販売単位へ切り上げ。
  * - 金額: 行ごとに 数量×単価 を円未満四捨五入。諸経費（率 or 金額）、消費税 = floor(小計×税率)。
  */
+import { findHits, penetrationsOf } from './obstacles';
+import { MEMBER_LABEL } from './members';
 import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
@@ -149,7 +151,7 @@ export type QuoteLine = {
 };
 
 export type Issue = {
-  kind: 'confirmFitting' | 'lengthDiff' | 'approx' | 'noPrice';
+  kind: 'confirmFitting' | 'lengthDiff' | 'approx' | 'noPrice' | 'obstacle' | 'sleeve';
   target: { kind: 'node' | 'segment' | 'price'; id: string };
   message: string;
 };
@@ -224,6 +226,10 @@ export function computeEstimate(doc: Doc): Estimate {
     if (m.warning) issues.push({ kind: 'lengthDiff', target: { kind: 'segment', id: s.id }, message: m.warning });
     if (m.method === 'field' && m.approx) issues.push({ kind: 'approx', target: { kind: 'segment', id: s.id }, message: '実測長は区間の分割で按分した概算値です。再実測してください' });
   }
+
+  // --- 梁・軒などとのぶつかり・貫通 ---
+  for (const h of findHits(doc)) issues.push({ kind: 'obstacle', target: { kind: 'segment', id: h.segId }, message: `配管が${MEMBER_LABEL[h.kind]}にぶつかっています。区間を選んで避け方（下をくぐる・45°・貫通）を選んでください` });
+  for (const p of penetrationsOf(doc)) issues.push({ kind: 'sleeve', target: { kind: 'segment', id: p.segId }, message: `${MEMBER_LABEL[p.kind]}を貫通（スリーブ）: 構造の確認が必要です。スリーブの部材・単価は「その他」に入れてください` });
 
   // --- 部品判定（ノードごと） ---
   const nodeFittings = analyzeFittings(net);

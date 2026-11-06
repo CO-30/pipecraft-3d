@@ -28,7 +28,8 @@ import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underla
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
 import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
-import { addFaceMember, addFaceStair, bumpFace, deleteMember, faceWallAt, updateMember, type FaceRect, type Member, type MemberKind } from '../model/members';
+import { applyDetour, findHits, markPenetration, type DetourStyle } from '../model/obstacles';
+import { addFaceMember, addFaceStair, bumpFace, deleteMember, faceWallAt, MEMBER_LABEL, updateMember, type FaceRect, type Member, type MemberKind } from '../model/members';
 import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineLoop, straightenOutline, type FixedEnd, type OutlineLengthResult } from '../model/sketch';
 
 export type { Doc };
@@ -214,6 +215,10 @@ type State = {
   /** 立面の斜め線から外階段 */
   addStairFromFace(elId: string, p: UV, q: UV): string | null;
   updateMember(id: string, patch: Partial<Pick<Member, 'width' | 'z0' | 'z1'>>): void;
+  /** 部材にぶつかった区間を迂回する（A 90°×4 / B 45°×4）。失敗はメッセージ */
+  avoidObstacle(segId: string, memberId: string, style: DetourStyle): string | null;
+  /** 貫通（スリーブ）の印を付け外しする */
+  setPenetration(segId: string, memberId: string, on: boolean): void;
   /** 寸法入力（外形の辺を順に）。null で閉じる */
   dimWizard: { floorId: string; index: number } | null;
   openDimWizard(floorId?: string, wallId?: string): boolean;
@@ -249,6 +254,22 @@ export const useStore = create<State>((set, get) => {
     const { doc, past } = get();
     if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
+    // 新しく描いた・動かした配管が梁・軒などにぶつかったらお知らせ
+    if (next.network !== doc.network && next.building.members && Object.keys(next.building.members).length) {
+      const changed = Object.values(next.network.segments).filter((x) => {
+        const o = doc.network.segments[x.id];
+        if (!o) return true;
+        const pa = doc.network.nodes[o.a]?.pos, pb = doc.network.nodes[o.b]?.pos, qa = next.network.nodes[x.a].pos, qb = next.network.nodes[x.b].pos;
+        return !pa || !pb || pa.x !== qa.x || pa.y !== qa.y || pa.z !== qa.z || pb.x !== qb.x || pb.y !== qb.y || pb.z !== qb.z;
+      }).map((x) => x.id);
+      const hits = changed.length ? findHits(next, changed) : [];
+      if (hits.length) {
+        const kinds = [...new Set(hits.map((h) => MEMBER_LABEL[h.kind]))].join('・');
+        const msg = `配管が${kinds}にぶつかっています（区間を選ぶと避け方を選べます）`;
+        const cur = get().notice;
+        if (!cur?.includes(msg)) set({ notice: [cur, msg].filter(Boolean).join('。') });
+      }
+    }
     if (get().activeElevationId && !next.elevations?.[get().activeElevationId!]) set({ activeElevationId: null });
     return true;
   };
@@ -908,6 +929,22 @@ export const useStore = create<State>((set, get) => {
       return null;
     },
     updateMember: (id, patch) => commit(withBld(updateMember(get().doc.building, id, patch))),
+    avoidObstacle: (segId, memberId, style) => {
+      const doc = get().doc;
+      const hit = findHits(doc, [segId]).find((h) => h.memberId === memberId);
+      if (!hit) return 'ぶつかっていません';
+      const r = applyDetour(doc, hit, style);
+      if (!r.ok) return r.error;
+      commit(r.doc, { selection: { kind: 'segment', id: r.segIds[2] ?? r.segIds[0] }, notice: style === 'square' ? '90°エルボ4つで回りました' : '45°エルボ4つで回りました' });
+      return null;
+    },
+    setPenetration: (segId, memberId, on) => {
+      const doc = get().doc;
+      const s = doc.network.segments[segId];
+      if (!s) return;
+      const m = doc.building.members?.[memberId];
+      commit(markPenetration(doc, { segId, memberId, kind: m?.kind ?? 'beam', t0: 0, t1: 0 }, on), { notice: on ? '貫通（スリーブ）にしました。構造の確認が必要です（積算の要確認に出ます）' : null });
+    },
     addWall: (p, q) => {
       const r = B.addWall(get().doc.building, get().activeFloorId, p, q);
       if (r.wallIds[0]) commit(withBld(r.b), { selection: { kind: 'wall', id: r.wallIds[0] } });

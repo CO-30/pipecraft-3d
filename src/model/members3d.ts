@@ -32,7 +32,11 @@ function boxesOf(m: Member, base: number): Box[] {
     });
   };
   const h = m.width / 2;
-  if (m.kind === 'beam' || m.kind === 'eave') box('body', 0, L, -h, h, m.z0, m.z1);
+  if (m.kind === 'beam') {
+    // 外面は壁の外面と重なるので、ちらつかないよう 2mm 内側へ
+    const side = m.outward && m.outward.x * n.x + m.outward.y * n.y < 0 ? -1 : 1;
+    box('body', 0, L, side > 0 ? -h : -h + 2, side > 0 ? h - 2 : h, m.z0, m.z1);
+  } else if (m.kind === 'eave') box('body', 0, L, -h, h, m.z0, m.z1);
   else if (m.kind === 'balcony') {
     box('slab', 0, L, -h, h, m.z0, 0);
     const side = m.outward && m.outward.x * n.x + m.outward.y * n.y < 0 ? -1 : 1;
