@@ -1,0 +1,1 @@
+function e(e,t,n){let r=new Blob([e],{type:n}),i=URL.createObjectURL(r),a=document.createElement(`a`);a.href=i,a.download=t,a.rel=`noopener`,a.dispatchEvent(new MouseEvent(`click`)),setTimeout(()=>URL.revokeObjectURL(i),4e4)}var t=e=>e.replace(/[\\/:*?"<>|\s]+/g,`_`).slice(0,60)||`現場`;export{e as downloadBytes,t as safeName};
