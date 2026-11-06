@@ -9,11 +9,12 @@ import {
 } from '../model/network';
 import * as B from '../model/building';
 import type { Building, OpeningType, Vec2 } from '../model/building';
+import { mergeRooms, splitRoom } from '../model/roomOps';
 import { SCHEMA_VERSION, type ProjectData } from '../model/schema';
 import type { BoxCategory } from '../model/building3d';
 
 export type Doc = { building: Building; network: Network };
-export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'door' | 'window';
+export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window';
 export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room';
 export type Selection = { kind: SelKind; id: string } | null;
 export type VisCategory = BoxCategory | 'pipes';
@@ -49,6 +50,11 @@ type State = {
   ghostIds: string[];
   dragBase: Doc | null;
   revision: number;
+  /** 結合待ちの部屋（次にタップした部屋と結合する） */
+  pendingMerge: string | null;
+  /** 部屋を分割するとき切断線に壁も作る */
+  splitWithWall: boolean;
+  setSplitWithWall(v: boolean): void;
 
   openProject(p: ProjectData): void;
   newDoc(doc: Doc, meta: ProjectMeta | null): void;
@@ -84,6 +90,11 @@ type State = {
   updateWall(wallId: string, patch: Partial<Pick<B.Wall, 'thickness' | 'kind'>>): void;
   updateOpening(id: string, patch: Partial<Pick<B.Opening, 'offset' | 'width' | 'height' | 'sill'>>): void;
   renameRoom(id: string, name: string): void;
+  /** p→q の直線で部屋を分割。withWall なら切断線に内壁も作る（1つの履歴） */
+  splitRoomAt(roomId: string, p: Vec2, q: Vec2, withWall: boolean): void;
+  startMerge(): void;
+  cancelMerge(): void;
+  mergeRoomWith(otherId: string): void;
   addFloor(copyExterior: boolean): void;
   updateFloor(id: string, patch: Partial<Pick<B.Floor, 'name' | 'height' | 'slabThickness'>>): void;
   deleteFloor(id: string): void;
@@ -111,7 +122,7 @@ export const useStore = create<State>((set, get) => {
   const fixActiveFloor = (doc: Doc, preferred: string) =>
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
-    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [],
+    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1,
   });
 
@@ -132,6 +143,9 @@ export const useStore = create<State>((set, get) => {
     ghostIds: [],
     dragBase: null,
     revision: 0,
+    pendingMerge: null,
+    splitWithWall: true,
+    setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
       const doc = { building: p.building, network: p.network };
@@ -149,7 +163,7 @@ export const useStore = create<State>((set, get) => {
       if (m) set({ meta: { ...m, name, address }, revision: get().revision + 1 });
     },
 
-    setTool: (tool) => set({ tool }),
+    setTool: (tool) => set({ tool, pendingMerge: null }),
     setDrawAttrs: (a) => set({ drawAttrs: { ...get().drawAttrs, ...a } }),
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
@@ -218,6 +232,25 @@ export const useStore = create<State>((set, get) => {
     updateWall: (id, patch) => { commit(withBld(B.updateWall(get().doc.building, id, patch))); },
     updateOpening: (id, patch) => { commit(withBld(B.updateOpening(get().doc.building, id, patch))); },
     renameRoom: (id, name) => { commit(withBld(B.renameRoom(get().doc.building, id, name))); },
+    splitRoomAt: (roomId, p, q, withWall) => {
+      const r = splitRoom(get().doc.building, roomId, p, q);
+      if (!r.roomIds.length) return;
+      let b = r.b;
+      if (withWall && r.cut) b = B.addWall(b, b.rooms[r.roomIds[0]].floorId, r.cut[0], r.cut[1]).b;
+      commit(withBld(b), { selection: { kind: 'room', id: r.roomIds[0] } });
+    },
+    startMerge: () => {
+      const sel = get().selection;
+      if (sel?.kind === 'room') set({ pendingMerge: sel.id });
+    },
+    cancelMerge: () => set({ pendingMerge: null }),
+    mergeRoomWith: (otherId) => {
+      const a = get().pendingMerge;
+      set({ pendingMerge: null });
+      if (!a) return;
+      const r = mergeRooms(get().doc.building, a, otherId);
+      if (r.roomId) commit(withBld(r.b), { selection: { kind: 'room', id: r.roomId } });
+    },
     addFloor: (copyExterior) => {
       const r = B.addFloor(get().doc.building, copyExterior ? { copyExteriorFrom: get().activeFloorId } : {});
       commit(withBld(r.b), { activeFloorId: r.floorId, selection: null });

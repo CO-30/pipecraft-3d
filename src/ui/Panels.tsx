@@ -53,6 +53,7 @@ export function PropertyPanel() {
   const drawAttrs = useStore((s) => s.drawAttrs);
   const drawHeight = useStore((s) => s.drawHeight);
   const ortho = useStore((s) => s.orthoSnap);
+  const splitWithWall = useStore((s) => s.splitWithWall);
   const floorElev = useStore((s) => floorById(s.doc.building, s.activeFloorId)?.elevation ?? 0);
   const st = useStore.getState();
   const { building: b, network: net } = doc;
@@ -134,7 +135,12 @@ export function PropertyPanel() {
         <div className="ptitle">部屋 {roomArea(r).toFixed(2)}㎡</div>
         <RoomName id={r.id} name={r.name} />
         <ElementVisibility id={r.id} />
-        <div className="row"><button className="danger" onClick={() => st.deleteSelected()}>部屋を削除</button></div>
+        <div className="row">
+          <button data-testid="merge-room" onClick={() => st.startMerge()}>隣の部屋と結合</button>
+          <button onClick={() => { st.setTool('split'); st.select(null); }}>✂ 分割</button>
+          <button className="danger" onClick={() => st.deleteSelected()}>部屋を削除</button>
+        </div>
+        <MergeHint />
       </div>
     );
   }
@@ -155,10 +161,22 @@ export function PropertyPanel() {
             {HEIGHT_PRESETS.map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
       ) : <div className="ptitle muted">{TOOL_HELP[tool]}</div>}
-      {(tool === 'pipe' || tool === 'wall') && (
+      {tool === 'split' && (
+        <label className="field inline"><input type="checkbox" data-testid="split-with-wall" checked={splitWithWall} onChange={(e) => st.setSplitWithWall(e.target.checked)} /> 分割線に壁も作る</label>
+      )}
+      {(tool === 'pipe' || tool === 'wall' || tool === 'split') && (
         <label className="field inline"><input type="checkbox" checked={ortho} onChange={(e) => st.setOrthoSnap(e.target.checked)} /> 直角に補正</label>
       )}
     </div>
+  );
+}
+
+function MergeHint() {
+  const pending = useStore((s) => s.pendingMerge);
+  if (!pending) return null;
+  return (
+    <div className="row muted small">結合する隣の部屋を図面でタップしてください
+      <button onClick={() => useStore.getState().cancelMerge()}>取消</button></div>
   );
 }
 
@@ -176,7 +194,7 @@ const KIND: Record<string, string> = { end: '端点', joint: '接続', elbow: '�
 const TOOL_HELP: Record<Tool, string> = {
   select: '図面や3Dをタップして選択できます',
   pipe: '', wall: '指でなぞって壁を描きます（既存の角・壁に自動でつながります）',
-  room: '対角にドラッグして部屋を作ります', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
+  room: '対角にドラッグして部屋を作ります', split: '部屋を横切るように線を引くと2つに分かれます', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
 };
 
 export function FloorBar() {

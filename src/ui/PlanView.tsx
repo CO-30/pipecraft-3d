@@ -7,12 +7,14 @@ import { activeFloorElevation, useStore } from '../state/store';
 import { hitTestPlan, orthoSnap, simplify, type Vec2 } from '../model/geometry';
 import { hitTestBuilding } from '../model/buildingHit';
 import { floorById, roomArea, wallLength } from '../model/building';
+import { pointInPolygon } from '../model/roomOps';
 import { SELECT_COLOR, systemColor } from './colors';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
   | { kind: 'stroke'; tool: 'pipe' | 'wall'; startNodeId?: string; branchSegId?: string }
   | { kind: 'room'; start: Vec2 }
+  | { kind: 'split'; start: Vec2 }
   | { kind: 'dragNode'; nodeId: string }
   | { kind: 'dragCorner'; cornerId: string }
   | { kind: 'dragWall'; wallId: string; start: Vec2 }
@@ -42,6 +44,8 @@ export function PlanView() {
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [stroke, setStroke] = useState<Vec2[] | null>(null);
   const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
+  const [splitPreview, setSplitPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
+  const pendingMerge = useStore((s) => s.pendingMerge);
   const pointers = useRef(new Map<number, Vec2>());
   const gesture = useRef<Gesture | null>(null);
 
@@ -90,6 +94,7 @@ export function PlanView() {
       if (gesture.current && gesture.current.kind.startsWith('drag')) st.endDrag();
       setStroke(null);
       setRoomPreview(null);
+      setSplitPreview(null);
       const [a, b] = [...pointers.current.values()];
       gesture.current = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, view: vw };
       return;
@@ -126,6 +131,12 @@ export function PlanView() {
       setRoomPreview({ a: s0, b: s0 });
       return;
     }
+    if (st.tool === 'split') {
+      const s0 = snapGrid(w);
+      gesture.current = { kind: 'split', start: s0 };
+      setSplitPreview({ a: s0, b: s0 });
+      return;
+    }
     if (st.tool === 'door' || st.tool === 'window') {
       const h = hitTestBuilding(b, st.activeFloorId, w, tol, false);
       if (h?.kind === 'wall') st.addOpening(h.id, st.tool, h.offset);
@@ -144,6 +155,13 @@ export function PlanView() {
     if (ph?.type === 'segment') {
       st.select({ kind: 'segment', id: ph.id });
       gesture.current = null;
+      return;
+    }
+    if (st.pendingMerge) {
+      const target = Object.values(b.rooms).find((r) => r.floorId === st.activeFloorId && r.id !== st.pendingMerge && pointInPolygon(w, r.polygon));
+      if (target) st.mergeRoomWith(target.id);
+      else st.cancelMerge();
+      gesture.current = { kind: 'pan', last: p };
       return;
     }
     const bh = hitTestBuilding(b, st.activeFloorId, w, tol);
@@ -186,6 +204,11 @@ export function PlanView() {
       setStroke((s) => (s ? [...s, w] : s));
     } else if (g.kind === 'room') {
       setRoomPreview({ a: g.start, b: snapGrid(toWorld(p)) });
+    } else if (g.kind === 'split') {
+      let q = snapGrid(toWorld(p));
+      // 直角補正: ほぼ水平・垂直なら揃える
+      if (st.orthoSnap) q = Math.abs(q.x - g.start.x) > Math.abs(q.y - g.start.y) ? { x: q.x, y: g.start.y } : { x: g.start.x, y: q.y };
+      setSplitPreview({ a: g.start, b: q });
     } else if (g.kind === 'dragNode') {
       const n = st.doc.network.nodes[g.nodeId];
       if (n) st.dragNode(g.nodeId, { ...toWorld(p), z: n.pos.z });
@@ -208,9 +231,26 @@ export function PlanView() {
     gesture.current = null;
     if (g?.kind.startsWith('drag')) st.endDrag();
     if (g?.kind === 'room' && roomPreview) st.addRoom(roomPreview.a, roomPreview.b);
+    if (g?.kind === 'split' && splitPreview) finishSplit(splitPreview.a, splitPreview.b);
     if (g?.kind === 'stroke' && stroke && stroke.length >= 2) finishStroke(g, stroke);
     setStroke(null);
     setRoomPreview(null);
+    setSplitPreview(null);
+  };
+
+  /** 線の始点・中点・終点を含む部屋を優先して分割。どれにも無ければ線が通る最初の部屋 */
+  const finishSplit = (a: Vec2, q: Vec2) => {
+    const st = useStore.getState();
+    if (Math.hypot(a.x - q.x, a.y - q.y) * vw.scale < 12) return;
+    const rooms = Object.values(st.doc.building.rooms).filter((r) => r.floorId === st.activeFloorId);
+    const mid = { x: (a.x + q.x) / 2, y: (a.y + q.y) / 2 };
+    const ordered = [...rooms].sort((r1, r2) => score(r2) - score(r1));
+    function score(r: (typeof rooms)[number]) { return [a, mid, q].filter((p) => pointInPolygon(p, r.polygon)).length; }
+    for (const r of ordered) {
+      const rev = useStore.getState().revision;
+      st.splitRoomAt(r.id, a, q, st.splitWithWall);
+      if (useStore.getState().revision !== rev) return;
+    }
   };
 
   const finishStroke = (g: Extract<Gesture, { kind: 'stroke' }>, raw: Vec2[]) => {
@@ -335,11 +375,17 @@ export function PlanView() {
         );
       })}
       {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} />}
+      {splitPreview && (() => {
+        const a = toScreen(splitPreview.a), b = toScreen(splitPreview.b);
+        return <line data-testid="split-preview" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#dc2626" strokeWidth={2} strokeDasharray="8 4" />;
+      })()}
       {roomPreview && (() => {
         const a = toScreen(roomPreview.a), b = toScreen(roomPreview.b);
         return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(a.x - b.x)} height={Math.abs(a.y - b.y)} fill="rgba(37,99,235,0.1)" stroke="#2563eb" strokeDasharray="6 4" />;
       })()}
-      <text x={8} y={18} fontSize={12} fill="#6b7280">{floor?.name ?? ''} 平面図（1目盛=1m） {HINTS[tool]}</text>
+      <text x={8} y={18} fontSize={12} fill={pendingMerge ? '#b45309' : '#6b7280'} fontWeight={pendingMerge ? 'bold' : undefined}>
+        {floor?.name ?? ''} 平面図（1目盛=1m） {pendingMerge ? '結合する隣の部屋をタップ（他をタップで取消）' : HINTS[tool]}
+      </text>
     </svg>
   );
 }
@@ -349,6 +395,7 @@ const HINTS: Record<string, string> = {
   pipe: '指でなぞって配管／既存配管からなぞると分岐',
   wall: '指でなぞって壁を描く',
   room: '対角にドラッグして部屋を作る',
+  split: '部屋を横切る線を引いて分割',
   door: '壁をタップしてドアを付ける',
   window: '壁をタップして窓を付ける',
 };

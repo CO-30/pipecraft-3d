@@ -90,3 +90,13 @@ export function splitRoom(b: Building, roomId: string, p: Vec2, q: Vec2): { b: B
   });
   return { b: { ...b, rooms }, roomIds, cut: cutSegment(room.polygon, p, d) };
 }
+
+/** 点が多角形の内側か（境界上は内側扱いしない場合あり） */
+export function pointInPolygon(p: Vec2, poly: Vec2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], c = poly[j];
+    if ((a.y > p.y) !== (c.y > p.y) && p.x < ((c.x - a.x) * (p.y - a.y)) / (c.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
