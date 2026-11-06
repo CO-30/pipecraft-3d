@@ -29,7 +29,8 @@ export const segmentSchema = z.object({
   extraRate: z.number().nonnegative().optional(),
   note: z.string().optional(),
   slope: z.number().finite().min(0).max(1).optional(),
-  support: z.enum(['saddle', 'levelBand', 'none']).optional(),
+  support: z.enum(['saddle', 'levelBand', 'tBracket', 'none']).optional(),
+  face: z.string().min(1).optional(),
   substrate: z.enum(['concrete', 'wood']).optional(),
 });
 
@@ -106,6 +107,27 @@ export const underlaySchema = z.object({
   attribution: z.string().optional(),
 });
 
+export const elevationSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  wallId: z.string().min(1).optional(),
+  floorId: z.string().min(1),
+  origin: vec2,
+  dir: vec2,
+  normal: vec2,
+  faceOffset: z.number().finite().nonnegative(),
+  baseZ: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+  mount: z.object({ type: z.enum(['tBracket', 'saddle']), standoff: z.number().finite().min(0).max(1000) }),
+  photo: z.object({
+    src: z.string().max(MAX_UNDERLAY_SRC).regex(/^data:image\/(jpeg|png|webp);base64,/),
+    w: z.number().int().positive(),
+    h: z.number().int().positive(),
+  }).optional(),
+  opacity: z.number().min(0).max(1),
+});
+
 export const SCHEMA_VERSION = 5;
 
 export const projectSchema = z.object({
@@ -120,6 +142,8 @@ export const projectSchema = z.object({
   fixtures: z.record(z.string(), fixtureSchema),
   estimate: estimateSchema,
   underlays: z.record(z.string(), underlaySchema),
+  /** 立面（外壁の写真と取付）。v5 の途中で追加したため省略可 */
+  elevations: z.record(z.string(), elevationSchema).optional(),
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;

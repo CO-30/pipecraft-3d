@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { PlanView } from './PlanView';
+import { ElevationView } from './ElevationView';
 // 3D（three.js）は大きいので必要になった時に読み込む
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 import { useStore } from '../state/store';
@@ -20,7 +21,10 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
   const [showVis, setShowVis] = useState(false);
   const [showEst, setShowEst] = useState(false);
   const unit = usePrefs((s) => s.lengthUnit);
+  const elevId = useStore((s) => s.activeElevationId);
   const eff: Layout = !isWide && layout === 'split' ? '2d' : layout;
+  // 立面図を開いたら、3Dだけの表示から図面の見える表示へ
+  useEffect(() => { if (elevId && layout === '3d') setLayout(isWide ? 'split' : '2d'); }, [elevId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className={`app ${isWide ? 'wide' : 'narrow'}`} data-testid="editor">
@@ -48,7 +52,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
           </aside>
         )}
         <main className={`views ${eff}`}>
-          {eff !== '3d' && <PlanView />}
+          {eff !== '3d' && (elevId ? <ElevationView /> : <PlanView />)}
           {eff !== '2d' && <Suspense fallback={<div className="view3d loading">3D を準備中…</div>}><View3D /></Suspense>}
           {!isWide && showVis && <div className="sheet"><VisibilityPanel /></div>}
         </main>
@@ -62,7 +66,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
 
       {!isWide && (
         <section className="panel">
-          {!sel && <FloorBar />}
+          {!sel && !elevId && <FloorBar />}
           <PropertyPanel />
         </section>
       )}

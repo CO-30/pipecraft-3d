@@ -11,7 +11,7 @@ import { isWire } from './fittings';
 import { isDrain, isRiserLike } from './slope';
 import type { SegmentMeasure } from './estimate';
 
-export type SupportKind = 'saddle' | 'levelBand';
+export type SupportKind = 'saddle' | 'levelBand' | 'tBracket';
 export type Substrate = 'concrete' | 'wood';
 export type SupportSettings = {
   enabled: boolean;
@@ -30,7 +30,7 @@ export const defaultSupportSettings = (): SupportSettings => ({
   enabled: true, substrate: 'concrete', spacingSmall: 1000, spacingLarge: 2000, screwsPerSupport: 2, holesPerBit: 100,
 });
 
-export const SUPPORT_LABEL: Record<SupportKind, string> = { saddle: 'サドルバンド', levelBand: 'レベルバンド' };
+export const SUPPORT_LABEL: Record<SupportKind, string> = { saddle: 'サドルバンド', levelBand: 'レベルバンド', tBracket: 'T字金具' };
 export const SUBSTRATE_LABEL: Record<Substrate, string> = { concrete: 'コンクリート', wood: '木' };
 /** 床からこの高さ(mm)以内の排水横管は「床上排水」としてレベルバンドで支持 */
 export const FLOOR_DRAIN_MAX = 400;

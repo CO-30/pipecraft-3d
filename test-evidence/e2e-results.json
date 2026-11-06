@@ -227,6 +227,262 @@
   },
   "suites": [
     {
+      "title": "connect.spec.ts",
+      "file": "connect.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "はみ出した配管の端を選んで「近くの配管につなぐ」→ 分岐。区間の「端を外す」で元どおり離れる",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 913,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:30:24.089Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 996,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:31:13.862Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 996,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:32:09.100Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "0fb99b082cac6f6b642b-f8e42f3dc400ff2f3733",
+          "file": "connect.spec.ts",
+          "line": 7,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "elevation.spec.ts",
+      "file": "elevation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "外壁の写真を立面図に敷き、なぞって縦管を描く（T字金具60mm → サドル直付けに切替）",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1860,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:30:25.188Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1835,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:31:15.040Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1822,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:32:10.297Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9b18b199f55f9fff9316-f55f6a32e5ee17b08f39",
+          "file": "elevation.spec.ts",
+          "line": 32,
+          "column": 1
+        },
+        {
+          "title": "壁がない現場は寸法だけで外壁を作って立面図で描ける",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1078,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:30:27.056Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1086,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:31:16.892Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1080,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:32:12.128Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "9b18b199f55f9fff9316-7e12eff45e1ad5c3e95b",
+          "file": "elevation.spec.ts",
+          "line": 91,
+          "column": 1
+        }
+      ]
+    },
+    {
       "title": "phase1.spec.ts",
       "file": "phase1.spec.ts",
       "column": 0,
@@ -255,12 +511,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5260,
+                      "duration": 3481,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:24.501Z",
+                      "startTime": "2026-11-06T07:30:28.170Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -278,12 +534,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5812,
+                      "duration": 3466,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:08.428Z",
+                      "startTime": "2026-11-06T07:31:18.023Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -301,12 +557,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6780,
+                      "duration": 4533,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:00.695Z",
+                      "startTime": "2026-11-06T07:32:13.224Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -335,12 +591,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1240,
+                      "duration": 1026,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:30.014Z",
+                      "startTime": "2026-11-06T07:30:31.661Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -358,12 +614,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1387,
+                      "duration": 1168,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:14.482Z",
+                      "startTime": "2026-11-06T07:31:21.496Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -381,12 +637,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1356,
+                      "duration": 1192,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:07.692Z",
+                      "startTime": "2026-11-06T07:32:17.767Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -415,12 +671,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 985,
+                      "duration": 748,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:31.278Z",
+                      "startTime": "2026-11-06T07:30:32.695Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -448,12 +704,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 529,
+                      "duration": 343,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:15.885Z",
+                      "startTime": "2026-11-06T07:31:22.690Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -491,12 +747,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 463,
+                      "duration": 350,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:09.066Z",
+                      "startTime": "2026-11-06T07:32:18.966Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -552,12 +808,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1150,
+                      "duration": 965,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:32.297Z",
+                      "startTime": "2026-11-06T07:30:33.474Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -575,12 +831,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1245,
+                      "duration": 1052,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:16.438Z",
+                      "startTime": "2026-11-06T07:31:23.051Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -598,12 +854,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1244,
+                      "duration": 999,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:09.571Z",
+                      "startTime": "2026-11-06T07:32:19.345Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -632,12 +888,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5431,
+                      "duration": 4700,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:33.460Z",
+                      "startTime": "2026-11-06T07:30:34.447Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -655,12 +911,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8764,
+                      "duration": 6453,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:17.702Z",
+                      "startTime": "2026-11-06T07:31:24.119Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -678,12 +934,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 11458,
+                      "duration": 8602,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:10.826Z",
+                      "startTime": "2026-11-06T07:32:20.360Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -712,12 +968,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3519,
+                      "duration": 2619,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:38.912Z",
+                      "startTime": "2026-11-06T07:30:39.159Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -735,12 +991,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3622,
+                      "duration": 3061,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:26.486Z",
+                      "startTime": "2026-11-06T07:31:30.579Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -758,12 +1014,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4636,
+                      "duration": 3695,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:22.295Z",
+                      "startTime": "2026-11-06T07:32:28.975Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -773,7 +1029,7 @@
               ],
               "id": "e4611f7184bd5eaa3983-e2c49cbe8fd19bf75511",
               "file": "phase2.spec.ts",
-              "line": 106,
+              "line": 109,
               "column": 3
             }
           ]
@@ -781,7 +1037,7 @@
         {
           "title": "Phase 2 断面・階ごとの表示",
           "file": "phase2.spec.ts",
-          "line": 121,
+          "line": 124,
           "column": 6,
           "specs": [
             {
@@ -800,12 +1056,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6137,
+                      "duration": 4157,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:42.452Z",
+                      "startTime": "2026-11-06T07:30:41.788Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -823,12 +1079,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9015,
+                      "duration": 6317,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:30.155Z",
+                      "startTime": "2026-11-06T07:31:33.647Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -846,12 +1102,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 11926,
+                      "duration": 8239,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:26.978Z",
+                      "startTime": "2026-11-06T07:32:32.681Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -861,7 +1117,7 @@
               ],
               "id": "e4611f7184bd5eaa3983-5b9fb79df36555d3582d",
               "file": "phase2.spec.ts",
-              "line": 124,
+              "line": 127,
               "column": 3
             }
           ]
@@ -897,12 +1153,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1821,
+                      "duration": 1543,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:48.635Z",
+                      "startTime": "2026-11-06T07:30:45.977Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -920,12 +1176,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2029,
+                      "duration": 1746,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:39.210Z",
+                      "startTime": "2026-11-06T07:31:40.002Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -943,12 +1199,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2207,
+                      "duration": 1771,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:38.938Z",
+                      "startTime": "2026-11-06T07:32:40.939Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -977,12 +1233,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1437,
+                      "duration": 1276,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:50.466Z",
+                      "startTime": "2026-11-06T07:30:47.536Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1000,12 +1256,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1536,
+                      "duration": 1299,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:41.248Z",
+                      "startTime": "2026-11-06T07:31:41.755Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1023,12 +1279,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1700,
+                      "duration": 1344,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:41.154Z",
+                      "startTime": "2026-11-06T07:32:42.725Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1057,12 +1313,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1315,
+                      "duration": 1174,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:51.924Z",
+                      "startTime": "2026-11-06T07:30:48.819Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1080,12 +1336,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1419,
+                      "duration": 1147,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:42.801Z",
+                      "startTime": "2026-11-06T07:31:43.075Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1103,12 +1359,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1581,
+                      "duration": 1183,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:42.868Z",
+                      "startTime": "2026-11-06T07:32:44.076Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1137,12 +1393,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1536,
+                      "duration": 1244,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:53.270Z",
+                      "startTime": "2026-11-06T07:30:50.004Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1160,12 +1416,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1512,
+                      "duration": 1307,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:44.231Z",
+                      "startTime": "2026-11-06T07:31:44.228Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1183,12 +1439,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1673,
+                      "duration": 1277,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:44.462Z",
+                      "startTime": "2026-11-06T07:32:45.270Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1217,12 +1473,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1418,
+                      "duration": 1227,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:54.841Z",
+                      "startTime": "2026-11-06T07:30:51.258Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1240,12 +1496,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1393,
+                      "duration": 1217,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:45.751Z",
+                      "startTime": "2026-11-06T07:31:45.546Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1263,12 +1519,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1543,
+                      "duration": 1214,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:46.146Z",
+                      "startTime": "2026-11-06T07:32:46.560Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1297,12 +1553,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3459,
+                      "duration": 3015,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:56.275Z",
+                      "startTime": "2026-11-06T07:30:52.500Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1320,12 +1576,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3523,
+                      "duration": 3026,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:47.153Z",
+                      "startTime": "2026-11-06T07:31:46.776Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1343,12 +1599,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3951,
+                      "duration": 3198,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:47.701Z",
+                      "startTime": "2026-11-06T07:32:47.780Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1377,12 +1633,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1547,
+                      "duration": 1299,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:12:59.744Z",
+                      "startTime": "2026-11-06T07:30:55.524Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1400,12 +1656,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1701,
+                      "duration": 1409,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:50.691Z",
+                      "startTime": "2026-11-06T07:31:49.811Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1423,12 +1679,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1765,
+                      "duration": 1393,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:51.661Z",
+                      "startTime": "2026-11-06T07:32:51.006Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1457,12 +1713,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1256,
+                      "duration": 1022,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:01.309Z",
+                      "startTime": "2026-11-06T07:30:56.830Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1480,12 +1736,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1473,
+                      "duration": 1225,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:52.400Z",
+                      "startTime": "2026-11-06T07:31:51.226Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1503,12 +1759,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1475,
+                      "duration": 1207,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:53.458Z",
+                      "startTime": "2026-11-06T07:32:52.404Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1519,6 +1775,760 @@
               "id": "a64b8b583ae028ac2231-a85ad608ca87b7125b9a",
               "file": "phase3.spec.ts",
               "line": 220,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase4.spec.ts",
+      "file": "phase4.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 4 自動積算",
+          "file": "phase4.spec.ts",
+          "line": 12,
+          "column": 6,
+          "specs": [
+            {
+              "title": "実測長入力 → 単価登録 → 見積合計が手計算と一致 → PDF・Excel を保存",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1977,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:30:57.872Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2068,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:52.468Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2106,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:32:53.637Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "598377eb1f598f6a1945-468f34c1f960701b93fe",
+              "file": "phase4.spec.ts",
+              "line": 15,
+              "column": 3
+            },
+            {
+              "title": "要確認の点を図面で選び、部品を確定すると要確認が消える",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 808,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:30:59.857Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 808,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:54.544Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 883,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:32:55.748Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "598377eb1f598f6a1945-b30f3b001022ee7531cb",
+              "file": "phase4.spec.ts",
+              "line": 68,
+              "column": 3
+            },
+            {
+              "title": "積算設定は保存され、再読み込み後も合計が同じ",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2124,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:00.674Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1958,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:55.365Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2003,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:32:56.641Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "598377eb1f598f6a1945-29da845e7d7d12cac6da",
+              "file": "phase4.spec.ts",
+              "line": 90,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "phase5.spec.ts",
+      "file": "phase5.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Phase 5 図面読み込み・実用化",
+          "file": "phase5.spec.ts",
+          "line": 23,
+          "column": 6,
+          "specs": [
+            {
+              "title": "画像の下敷き → 2点で縮尺 → ドラッグで移動 → Undo",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 997,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:02.906Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1084,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:57.439Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1105,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:32:58.735Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c5552fab8f8afd7202b3-ea616f54f7a57966b129",
+              "file": "phase5.spec.ts",
+              "line": 26,
+              "column": 3
+            },
+            {
+              "title": "PDF図面（2ページ）からページを選んで下敷きにする",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 881,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:03.909Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "ファイル選択の操作は PC で確認（スマホでも同じ部品）",
+                      "location": {
+                        "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                        "line": 72,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 312,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:58.533Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "ファイル選択の操作は PC で確認（スマホでも同じ部品）",
+                          "location": {
+                            "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                            "line": 72,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "skipped"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "ファイル選択の操作は PC で確認（スマホでも同じ部品）",
+                      "location": {
+                        "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                        "line": 72,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 311,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:32:59.848Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "ファイル選択の操作は PC で確認（スマホでも同じ部品）",
+                          "location": {
+                            "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                            "line": 72,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5552fab8f8afd7202b3-987ef2b708772125dad1",
+              "file": "phase5.spec.ts",
+              "line": 71,
+              "column": 3
+            },
+            {
+              "title": "住所検索 → 航空写真（地理院）＋建物外形（OSM）を取り込み、外壁4面と出典表示",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 836,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:04.800Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 864,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:58.867Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 971,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:33:00.165Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c5552fab8f8afd7202b3-0a8329f9569e4921fbd2",
+              "file": "phase5.spec.ts",
+              "line": 88,
+              "column": 3
+            },
+            {
+              "title": "現場写真から窓を作る（四隅→正面補正→四角でなぞる）",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 997,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:05.658Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1055,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:59.740Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 991,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:33:01.143Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c5552fab8f8afd7202b3-4edeaeff6748cbbae2e5",
+              "file": "phase5.spec.ts",
+              "line": 120,
+              "column": 3
+            },
+            {
+              "title": "全現場の一括バックアップを書き出せる",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 592,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:31:06.677Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "ダウンロードは PC で確認",
+                      "location": {
+                        "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                        "line": 159,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 342,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:32:00.805Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "ダウンロードは PC で確認",
+                          "location": {
+                            "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                            "line": 159,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "skipped"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [
+                    {
+                      "type": "skip",
+                      "description": "ダウンロードは PC で確認",
+                      "location": {
+                        "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                        "line": 159,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "skipped",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "skipped",
+                      "duration": 330,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-06T07:33:02.151Z",
+                      "annotations": [
+                        {
+                          "type": "skip",
+                          "description": "ダウンロードは PC で確認",
+                          "location": {
+                            "file": "/home/claude/pipecraft-3d/e2e/phase5.spec.ts",
+                            "line": 159,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5552fab8f8afd7202b3-2d7bb322f9093cec3215",
+              "file": "phase5.spec.ts",
+              "line": 158,
               "column": 3
             }
           ]
@@ -1554,12 +2564,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1592,
+                      "duration": 1371,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:02.584Z",
+                      "startTime": "2026-11-06T07:31:07.296Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1577,12 +2587,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1856,
+                      "duration": 1530,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:53.900Z",
+                      "startTime": "2026-11-06T07:32:01.160Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1600,12 +2610,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1846,
+                      "duration": 1526,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:54.962Z",
+                      "startTime": "2026-11-06T07:33:02.495Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1634,12 +2644,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2991,
+                      "duration": 2072,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:04.185Z",
+                      "startTime": "2026-11-06T07:31:08.677Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1657,12 +2667,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3389,
+                      "duration": 2891,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:55.766Z",
+                      "startTime": "2026-11-06T07:32:02.704Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1680,12 +2690,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3893,
+                      "duration": 3293,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:14:56.822Z",
+                      "startTime": "2026-11-06T07:33:04.032Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1724,12 +2734,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 679,
+                      "duration": 498,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:07.199Z",
+                      "startTime": "2026-11-06T07:31:10.756Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -1757,12 +2767,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1003,
+                      "duration": 769,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:13:59.164Z",
+                      "startTime": "2026-11-06T07:32:05.603Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1780,12 +2790,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1049,
+                      "duration": 836,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-06T04:15:00.730Z",
+                      "startTime": "2026-11-06T07:33:07.331Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1801,14 +2811,190 @@
           ]
         }
       ]
+    },
+    {
+      "title": "supports.spec.ts",
+      "file": "supports.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "床上排水: 流末を選んで勾配 → 上流ほど高い。レベルバンド・コンクリートビス・キリが集計され、区間ごとに支持金具を変えられる",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1175,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:31:11.264Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1204,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:32:06.387Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1215,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:33:08.182Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4b69a3765dfef40904b4-722af656f9f426dc70be",
+          "file": "supports.spec.ts",
+          "line": 7,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "systems.spec.ts",
+      "file": "systems.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "給水の配管の上で排水の線を終えても分岐しない（お知らせが出る）",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1010,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:31:12.447Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1108,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:32:07.614Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1206,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-06T07:33:09.407Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "92e68c7200cf7c3e24cd-6be704e5e5d186464407",
+          "file": "systems.spec.ts",
+          "line": 4,
+          "column": 1
+        }
+      ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-06T04:12:20.146Z",
-    "duration": 161815.53100000002,
-    "expected": 51,
-    "skipped": 3,
+    "startTime": "2026-11-06T07:30:19.752Z",
+    "duration": 170959.123,
+    "expected": 86,
+    "skipped": 7,
     "unexpected": 0,
     "flaky": 0
   }
