@@ -99,7 +99,6 @@ function AvoidFields({ segId }: { segId: string }) {
 
 export function PropertyPanel() {
   const [photoWall, setPhotoWall] = useState<string | null>(null);
-  const [elevWall, setElevWall] = useState<string | null>(null);
   const sel = useStore((s) => s.selection);
   const doc = useStore((s) => s.doc);
   const tool = useStore((s) => s.tool);
@@ -225,9 +224,17 @@ export function PropertyPanel() {
   }
   if (sel?.kind === 'wall' && b.walls[sel.id]) {
     const w = b.walls[sel.id];
+    const openFace = (mode: 'pipe' | 'build') => { const err = st.openWallFace(w.id, mode); if (err) useStore.setState({ notice: err }); };
     return (
       <div className="props">
         <div className="ptitle">{w.kind === 'exterior' ? '外壁' : '内壁'} 長さ <b data-testid="wall-length">{Math.round(wallLength(b, w.id))}</b>mm{w.lengthSet === false && <span className="tag-warn">寸法未確定</span>}</div>
+        <div className="face-open" data-testid="face-open">
+          <div className="small muted">🧱 この壁を正面から見る（壁の幅・高さはそのまま使います）</div>
+          <div className="row">
+            {w.kind === 'exterior' && <button data-testid="wall-face" onClick={() => openFace('build')}>🏠 窓・梁・軒・張り出し・階段</button>}
+            <button className="primary" data-testid="wall-elevation" onClick={() => openFace('pipe')}>〰️ 外配管を描く</button>
+          </div>
+        </div>
         <NumField label="厚さ" value={w.thickness} min={10} onCommit={(v) => st.updateWall(w.id, { thickness: v })} />
         <div className="seg-btns small">
           <button className={w.kind === 'exterior' ? 'on' : ''} onClick={() => st.updateWall(w.id, { kind: 'exterior' })}>外壁</button>
@@ -237,17 +244,11 @@ export function PropertyPanel() {
         <div className="row">
           <button onClick={() => st.setTool('door')}>ドアを付ける</button>
           <button onClick={() => st.setTool('window')}>窓を付ける</button>
-          {w.kind === 'exterior' && <button data-testid="wall-face" onClick={() => { const err = st.openWallFace(w.id); if (err) useStore.setState({ notice: err }); }}>🏠 正面を向いて描く（窓・梁・軒・張り出し・階段）</button>}
           {w.kind === 'exterior' && <button data-testid="wall-dims" onClick={() => st.openDimWizard(w.floorId, w.id)}>📏 外形の寸法を順番に入れる</button>}
           <button data-testid="wall-photo" onClick={() => setPhotoWall(w.id)}>📷 写真から窓・ドア</button>
-          <button data-testid="wall-elevation" onClick={() => {
-            const ex = Object.values(st.doc.elevations ?? {}).find((e) => e.wallId === w.id);
-            if (ex) st.openElevation(ex.id); else setElevWall(w.id);
-          }}>🧱 立面図で配管を描く</button>
           <button className="danger" onClick={() => st.deleteSelected()}>壁を削除</button>
         </div>
         {photoWall === w.id && <WallPhotoDialog wallId={w.id} onClose={() => setPhotoWall(null)} />}
-        {elevWall === w.id && <ElevationDialog wallId={w.id} onClose={() => setElevWall(null)} />}
       </div>
     );
   }
@@ -502,8 +503,9 @@ function SupportFields({ segId }: { segId: string }) {
 /** 点の部品（自動判定・確定） */
 function FittingField({ nodeId }: { nodeId: string }) {
   const net = useStore((s) => s.doc.network);
+  const fixtures = useStore((s) => s.doc.fixtures);
   const st = useStore.getState();
-  const f = analyzeFittings(net).find((x) => x.nodeId === nodeId);
+  const f = analyzeFittings(net, fixtures).find((x) => x.nodeId === nodeId);
   if (!f) return null;
   const autoLabel = f.auto === 'none' ? 'なし' : fittingName(f.auto, f.size);
   return (

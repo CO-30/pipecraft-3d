@@ -66,7 +66,7 @@ export const buildingSchema = z.object({
 export const fixtureSchema = z.object({
   id: z.string().min(1),
   floorId: z.string().min(1),
-  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon']),
+  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet']),
   x: z.number().finite(),
   y: z.number().finite(),
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
@@ -91,6 +91,12 @@ export const estimateSchema = z.object({
     spacingLarge: z.number().finite().positive(),
     screwsPerSupport: z.number().int().min(0).max(10),
     holesPerBit: z.number().int().positive(),
+  }).optional(),
+  /** シールテープ・接着剤（v5 の途中で追加したため省略可） */
+  consumables: z.object({
+    enabled: z.boolean(),
+    tapeRoll: z.number().finite().positive(),
+    glueCan: z.number().finite().positive(),
   }).optional(),
   client: z.string().optional(),
   title: z.string().optional(),

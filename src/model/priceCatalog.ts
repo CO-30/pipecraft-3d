@@ -43,6 +43,17 @@ const FITTING: Record<string, Partial<Record<FittingType, Record<number, number>
   },
 };
 
+/**
+ * ネジ付の給水継手（HI-TS・ゴールド、円/個）。メーカー設計価格が手元にないため通販（MISUMI）の税抜価格を参考に。
+ * 給水栓用エルボ・給水栓用ソケットは水栓をねじ込むため黄銅インサート付き、バルブ用ソケットはインサートなし。
+ */
+export const THREAD_CATALOG_SOURCE = '通販（MISUMI）の税抜価格（2026年11月時点・参考）';
+const THREAD_FITTING: Partial<Record<FittingType, Record<number, number>>> = {
+  faucetElbow: { 13: 740 },
+  faucetSocket: { 13: 697 },
+  threadSocket: { 13: 150, 16: 140, 20: 216, 25: 327 },
+};
+
 const norm = (m: string) => m.trim().toUpperCase().replace(/[‐－-]/g, '').replace(/^HIVPW?$/, 'HIVP').replace(/^HT(VP)?$/, 'HTVP').replace(/^VPW$/, 'VP');
 
 export const effectiveMaterial = (s: { system: SystemType; material?: string }) => (s.material?.trim() ? s.material : DEFAULT_MATERIAL[s.system] ?? '');
@@ -53,9 +64,13 @@ export function catalogPipePrice(s: { system: SystemType; material?: string; dia
 }
 
 /** 継手の参考価格（円/個）。同径のみ（径違いは undefined） */
+export { norm as normMaterial };
+
 export function catalogFittingPrice(type: FittingType, s: { system: SystemType; material?: string }, size: string): number | undefined {
   if (size.includes('×')) return undefined;
-  return FITTING[norm(effectiveMaterial(s))]?.[type]?.[Number(size)];
+  const mat = norm(effectiveMaterial(s));
+  if (THREAD_FITTING[type]) return mat === 'HIVP' ? THREAD_FITTING[type]![Number(size)] : undefined;
+  return FITTING[mat]?.[type]?.[Number(size)];
 }
 
 // ---------- 支持金具・ビス（メーカー希望価格が公表されていない「オープン価格」品のため、通販の税抜価格を参考に） ----------
@@ -69,8 +84,14 @@ const SCREW_WOOD = 18;
 /** インパクト用 六角軸コンクリートドリル 3.4mm（大西工業 No.24）円/本 */
 const CONCRETE_BIT = 979;
 
+/** シールテープ（日東電工 ニトフロン No.95S 13mm×15m）円/巻、塩ビ管用接着剤（クボタケミックス HI用 500g・HT用 500g）円/缶。VP用は未設定 */
+const SEAL_TAPE = 212;
+const GLUE: Record<string, number> = { hi: 1089, ht: 2714 };
+
 export function catalogSupportPrice(key: string): number | undefined {
   const [, kind, d] = key.split('|');
+  if (kind === 'sealTape') return SEAL_TAPE;
+  if (kind === 'glue') return GLUE[d];
   if (kind === 'saddle') return SADDLE[Number(d)];
   if (kind === 'screwConcrete') return SCREW_CONCRETE;
   if (kind === 'screwWood') return SCREW_WOOD;

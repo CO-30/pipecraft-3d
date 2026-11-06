@@ -6,7 +6,8 @@
  * - ビス: 支持金具1個あたり N 本（初期2本）。下地がコンクリートならコンクリートビス＋インパクト用コンクリキリ（M 穴ごとに1本）、木ならステンレスビス
  */
 import type { Doc } from './doc';
-import type { Network, Segment } from './network';
+import type { Network, Segment, Vec3 } from './network';
+import { orderChain, pointsAlong } from './chain';
 import { isWire } from './fittings';
 import { isDrain, isRiserLike } from './slope';
 import type { SegmentMeasure } from './estimate';
@@ -61,8 +62,11 @@ export type SupportCount = {
   bySubstrate: Record<Substrate, number>;
   segmentIds: string[];
 };
+/** 部材図用の支持金具の位置（数量と同じ個数） */
+export type SupportMark = { kind: SupportKind; diameter: number; pos: Vec3; segId: string };
 export type SupportResult = {
   supports: SupportCount[];
+  marks: SupportMark[];
   /** 下穴・ビスの数（下地別） */
   holes: Record<Substrate, number>;
   /** コンクリキリの本数 */
@@ -95,7 +99,7 @@ function runs(net: Network, segs: Segment[], through: Set<string>): Segment[][] 
 }
 
 export function computeSupports(doc: Doc, st: SupportSettings, measures: Record<string, SegmentMeasure>, passThrough: Set<string>): SupportResult {
-  const empty: SupportResult = { supports: [], holes: { concrete: 0, wood: 0 }, bits: 0 };
+  const empty: SupportResult = { supports: [], marks: [], holes: { concrete: 0, wood: 0 }, bits: 0 };
   if (!st.enabled) return empty;
   const groups = new Map<string, { kind: SupportKind; diameter: number; substrate: Substrate; segs: Segment[] }>();
   for (const s of Object.values(doc.network.segments)) {
@@ -108,12 +112,16 @@ export function computeSupports(doc: Doc, st: SupportSettings, measures: Record<
   }
   const merged = new Map<string, SupportCount>();
   const holes: Record<Substrate, number> = { concrete: 0, wood: 0 };
+  const marks: SupportMark[] = [];
   for (const g of groups.values()) {
     let n = 0;
     for (const run of runs(doc.network, g.segs, passThrough)) {
       const len = run.reduce((a, r) => a + (measures[r.id]?.usedLength ?? 0), 0);
       // 勾配による長さの増加（数mm）で1個増えないよう、1%の余裕を見る
-      n += Math.max(1, Math.ceil(len / spacingFor(st, g.diameter) - 0.01));
+      const k = Math.max(1, Math.ceil(len / spacingFor(st, g.diameter) - 0.01));
+      n += k;
+      // 位置: 全長を k 等分した各区間の中央
+      for (const p of pointsAlong(doc.network, orderChain(run), Array.from({ length: k }, (_, i) => (i + 0.5) / k))) marks.push({ kind: g.kind, diameter: g.diameter, ...p });
     }
     const key = `${g.kind}|${g.diameter}`;
     const m = merged.get(key) ?? { kind: g.kind, diameter: g.diameter, count: 0, bySubstrate: { concrete: 0, wood: 0 }, segmentIds: [] };
@@ -124,5 +132,5 @@ export function computeSupports(doc: Doc, st: SupportSettings, measures: Record<
     holes[g.substrate] += n * st.screwsPerSupport;
   }
   const supports = [...merged.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.diameter - b.diameter);
-  return { supports, holes, bits: holes.concrete > 0 ? Math.ceil(holes.concrete / st.holesPerBit) : 0 };
+  return { supports, marks, holes, bits: holes.concrete > 0 ? Math.ceil(holes.concrete / st.holesPerBit) : 0 };
 }

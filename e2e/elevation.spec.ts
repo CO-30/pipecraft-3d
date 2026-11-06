@@ -39,18 +39,21 @@ test('外壁の写真を立面図に敷き、なぞって縦管を描く（T字�
   const ax = doc0.building.corners[south.a].x, bx = doc0.building.corners[south.b].x;
   await page.getByTestId('tool-select').click();
   await tap(page, await planToScreen(page, (ax + bx) / 2, 0), touch);
+  await expect(page.getByTestId('face-open')).toBeVisible();
+  await page.screenshot({ path: evidence('el-00-wall-panel') });
+  // 壁があれば寸法の入力なしで、すぐ立面図（配管モード）が開く
   await page.getByTestId('wall-elevation').click();
-  await expect(page.getByTestId('elev-dialog')).toBeVisible();
-  await page.getByTestId('el-height').fill('9000');
-  await expect(page.getByTestId('mount-tBracket')).toHaveClass(/on/);
-  await expect(page.getByTestId('mount-standoff')).toHaveValue('60');
+  await expect(page.getByTestId('elev-dialog')).toHaveCount(0);
+  await expect(page.getByTestId('elev-view')).toBeVisible();
+  await expect(page.getByTestId('elev-settings')).toContainText('T字 60mm');
+  // 写真は立面図の上から敷く
+  await page.getByTestId('elev-photo').click();
   await page.getByTestId('wp-file').setInputFiles({ name: '外壁.jpg', mimeType: 'image/jpeg', buffer: await makeImage(page, 900, 700) });
   await expect(page.getByTestId('wp-photo')).toBeVisible();
   await page.getByTestId('wp-rectify').click();
-  await expect(page.getByTestId('el-face')).toBeVisible();
-  await page.getByTestId('el-create').click();
-  await expect(page.getByTestId('elev-view')).toBeVisible();
   await expect(page.getByTestId('elev-photo-img')).toBeVisible();
+  const elH = (Object.values((await full(page)).elevations as Record<string, any>)[0]).height as number;
+  expect(elH).toBeGreaterThan(8500);
   await expect(page.getByTestId('elev-title')).toContainText('南面');
 
   // 屋上付近から地面近くまでなぞる → 縦管、続けて横へ
@@ -82,6 +85,12 @@ test('外壁の写真を立面図に敷き、なぞって縦管を描く（T字�
 
   // 平面図に戻ると、壁の外に縦管が出ている（チップから立面を開き直せる）
   await expect(page.getByTestId('elev-settings')).toContainText('T字 100mm');
+  // 立面の大きさを変えられる（写真は外れる）
+  page.once('dialog', (dl) => dl.accept());
+  await page.getByTestId('elev-height').fill('7000');
+  await page.getByTestId('elev-height').press('Enter');
+  await expect(page.getByTestId('elev-size')).toContainText('7000');
+  await expect(page.getByTestId('elev-photo-img')).toHaveCount(0);
   await page.getByTestId('elev-close').click();
   await expect(page.getByTestId('elev-view')).toBeHidden();
   await page.getByTestId('elev-chip').first().click();

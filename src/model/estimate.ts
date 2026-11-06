@@ -10,7 +10,10 @@ import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
 import { catalogFittingPrice, catalogPipePrice, catalogSupportPrice, effectiveMaterial } from './priceCatalog';
-import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportSettings } from './supports';
+import { computeConsumables, defaultConsumableSettings, GLUE_LABEL, type ConsumableSettings, type GlueKind } from './consumables';
+import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportMark, type SupportSettings } from './supports';
+import { orderChain, pointsAlong } from './chain';
+import type { Vec3 } from './network';
 
 /** 単価の出どころ: user=現場で入力 / catalog=メーカー参考単価 / none=なし */
 export type PriceSource = 'user' | 'catalog' | 'none';
@@ -32,6 +35,8 @@ export type EstimateSettings = {
   extras: ExtraItem[];
   /** 支持金具・ビスの設定（未設定なら既定値） */
   supports?: SupportSettings;
+  /** シールテープ・接着剤の設定（未設定なら既定値） */
+  consumables?: ConsumableSettings;
   client?: string;
   title?: string;
   issuer?: string;
@@ -161,6 +166,12 @@ export type Estimate = {
   pipes: PipeLine[];
   fittings: FittingLine[];
   supports: SupportLine[];
+  /** シールテープ・接着剤 */
+  consumables: SupportLine[];
+  /** 部材図用: 支持金具の位置 */
+  supportMarks: SupportMark[];
+  /** 部材図用: 定尺の継ぎ足しソケットの位置 */
+  stockJointMarks: { pos: Vec3; segId: string; key: string }[];
   nodeFittings: NodeFitting[];
   lines: QuoteLine[];
   issues: Issue[];
@@ -232,7 +243,7 @@ export function computeEstimate(doc: Doc): Estimate {
   for (const p of penetrationsOf(doc)) issues.push({ kind: 'sleeve', target: { kind: 'segment', id: p.segId }, message: `${MEMBER_LABEL[p.kind]}を貫通（スリーブ）: 構造の確認が必要です。スリーブの部材・単価は「その他」に入れてください` });
 
   // --- 部品判定（ノードごと） ---
-  const nodeFittings = analyzeFittings(net);
+  const nodeFittings = analyzeFittings(net, doc.fixtures);
   for (const f of nodeFittings) if (f.needsConfirm) issues.push({ kind: 'confirmFitting', target: { kind: 'node', id: f.nodeId }, message: f.reason ?? '部品を確定してください' });
   // 継手なしで通り抜ける点（接続数2のみ。分岐を「なし」に確定しても1本の直管にはならない）
   const deg2 = new Set<string>();
@@ -247,6 +258,7 @@ export function computeEstimate(doc: Doc): Estimate {
   const groups = new Map<string, Segment[]>();
   for (const s of Object.values(net.segments)) { const k = pipeKey(s); const arr = groups.get(k); if (arr) arr.push(s); else groups.set(k, [s]); }
   const stockJointsByKey = new Map<string, { count: number; seg: Segment }>();
+  const stockJointMarks: Estimate['stockJointMarks'] = [];
   const pipes: PipeLine[] = [];
   for (const [key, segs] of groups) {
     const s0 = segs[0];
@@ -272,7 +284,10 @@ export function computeEstimate(doc: Doc): Estimate {
       let joints = 0;
       for (const run of straightRuns(net, segs, passThrough)) {
         const len = run.reduce((a, r) => a + measures[r.id].usedLength, 0);
-        joints += Math.max(0, ceilDiv(len, saleUnit.length) - 1);
+        const k = Math.max(0, ceilDiv(len, saleUnit.length) - 1);
+        joints += k;
+        // 位置: 端から定尺ごと
+        if (k > 0) for (const p of pointsAlong(net, orderChain(run), Array.from({ length: k }, (_, i) => ((i + 1) * saleUnit.length) / len))) stockJointMarks.push({ ...p, key: fittingKey('socket', s0, String(s0.diameter)) });
       }
       if (joints > 0) stockJointsByKey.set(key, { count: joints, seg: s0 });
     }
@@ -335,8 +350,22 @@ export function computeEstimate(doc: Doc): Estimate {
   addSup('sup|bit', 'コンクリキリ（インパクト用）', '六角軸 3.4mm', sup.bits, '本', `${sst.holesPerBit}穴ごとに1本`);
   addSup('sup|screwWood', 'ステンレスビス', '皿木ねじ 4.1×38', sup.holes.wood, '本', `支持金具1個につき${sst.screwsPerSupport}本`);
 
+  // --- シールテープ・接着剤 ---
+  const cst = st.consumables ?? defaultConsumableSettings();
+  const consumables: SupportLine[] = [];
+  if (cst.enabled) {
+    const con = computeConsumables(net, nodeFittings, [...stockJointsByKey.values()]);
+    const supLen = supports.length;
+    if (con.threads > 0) addSup('con|sealTape', 'シールテープ', `13mm×${cst.tapeRoll}m`, ceilDiv(con.tapeLength, cst.tapeRoll), '巻', `ネジ ${con.threads}か所・${roundTo(con.tapeLength, 1)}m`);
+    for (const k of ['hi', 'vp', 'ht'] as GlueKind[]) {
+      const g = con.glue[k];
+      if (g) addSup(`con|glue|${k}`, GLUE_LABEL[k], `${cst.glueCan}g`, ceilDiv(g.grams, cst.glueCan), '缶', `接着 ${g.joints}口・約${roundTo(g.grams, 0)}g`);
+    }
+    consumables.push(...supports.splice(supLen));
+  }
+
   // --- 単価未登録 ---
-  for (const l of supports) {
+  for (const l of [...supports, ...consumables]) {
     if (!l.price || (l.price.material === 0 && l.price.labor === 0)) issues.push({ kind: 'noPrice', target: { kind: 'price', id: l.key }, message: `${l.name} ${l.spec} の単価が未登録です` });
   }
   for (const l of [...pipes, ...fittings]) {
@@ -351,10 +380,10 @@ export function computeEstimate(doc: Doc): Estimate {
   const lines: QuoteLine[] = [];
   for (const p of pipes) lines.push({ section: 'material', name: p.name, spec: pipeSpec(p), quantity: p.orderQty, unit: p.orderUnit, unitPrice: p.price?.material ?? 0, amount: p.materialAmount, priceKey: p.key });
   for (const f of fittings) lines.push({ section: 'material', name: f.name, spec: fittingSpec(f), quantity: f.count, unit: '個', unitPrice: f.price?.material ?? 0, amount: f.materialAmount, priceKey: f.key });
-  for (const l of supports) lines.push({ section: 'material', name: l.name, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price?.material ?? 0, amount: l.materialAmount, priceKey: l.key });
+  for (const l of [...supports, ...consumables]) lines.push({ section: 'material', name: l.name, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price?.material ?? 0, amount: l.materialAmount, priceKey: l.key });
   for (const p of pipes) lines.push({ section: 'labor', name: `${p.name} 施工`, spec: pipeSpec(p), quantity: p.laborQty, unit: 'm', unitPrice: p.price?.labor ?? 0, amount: p.laborAmount, priceKey: p.key });
   for (const f of fittings) if ((f.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${f.name} 取付`, spec: fittingSpec(f), quantity: f.count, unit: '個', unitPrice: f.price!.labor, amount: f.laborAmount, priceKey: f.key });
-  for (const l of supports) if ((l.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${l.name} 取付`, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price!.labor, amount: l.laborAmount, priceKey: l.key });
+  for (const l of [...supports, ...consumables]) if ((l.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${l.name} 取付`, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price!.labor, amount: l.laborAmount, priceKey: l.key });
   for (const e of st.extras) lines.push({ section: 'extra', name: e.name, spec: '', quantity: e.quantity, unit: e.unit, unitPrice: e.unitPrice, amount: roundYen(e.quantity * e.unitPrice) });
 
   const sum = (sec: QuoteLine['section']) => lines.filter((l) => l.section === sec).reduce((a, l) => a + l.amount, 0);
@@ -363,7 +392,7 @@ export function computeEstimate(doc: Doc): Estimate {
   const overhead = st.overhead.mode === 'rate' ? roundYen(base * st.overhead.value) : roundYen(st.overhead.value);
   const subtotal = base + overhead;
   const tax = Math.floor(Number((subtotal * st.taxRate).toFixed(6)));
-  return { measures, pipes, fittings, supports, nodeFittings, lines, issues, materialTotal, laborTotal, extrasTotal, overhead, subtotal, tax, total: subtotal + tax };
+  return { measures, pipes, fittings, supports, consumables, supportMarks: sup.marks, stockJointMarks, nodeFittings, lines, issues, materialTotal, laborTotal, extrasTotal, overhead, subtotal, tax, total: subtotal + tax };
 }
 
 const spacingNote = (st: SupportSettings, d: number) => `${(d <= 80 ? st.spacingSmall : st.spacingLarge) / 1000}m`;

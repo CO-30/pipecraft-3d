@@ -11,6 +11,7 @@ import { elevToWorld, faceNodes, MOUNT_LABEL, worldToElev, type Elevation, type 
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { MountFields } from './ElevationDialog';
 import { PhotoRectify } from './PhotoRectify';
+import { NumField } from './Panels';
 import { membersOf, MEMBER_LABEL, type FaceRect } from '../model/members';
 
 /** 立面に描いた形: 四角 or 斜め線 */
@@ -100,6 +101,13 @@ export function ElevationView() {
   const [view, setView] = useState<ViewT | null>(null);
   const [stroke, setStroke] = useState<UV[] | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
+  /** 立面の横幅・高さを変える（写真は縦横比が変わるので外す） */
+  const resize = (patch: { width?: number; height?: number }) => {
+    if (!el) return;
+    if (el.photo && !window.confirm('大きさを変えると写真の補正が合わなくなるため、写真を外します。よろしいですか？')) return;
+    const r = useStore.getState().updateElevation(el.id, { ...patch, ...(el.photo ? { photo: undefined } : {}) });
+    setMsg(r ?? `大きさを ${Math.round(patch.width ?? el.width)}×${Math.round(patch.height ?? el.height)}mm にしました`);
+  };
   const [msg, setMsg] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [previewOpacity, setPreviewOpacity] = useState<number | null>(null);
@@ -301,6 +309,7 @@ export function ElevationView() {
         <button data-testid="elev-settings" className={showSettings ? 'on' : ''} onClick={() => setShowSettings(!showSettings)}>
           ⚙ {el.mount.type === 'tBracket' ? `T字 ${el.mount.standoff}mm` : 'サドル直付け'}
         </button>
+        <button data-testid="elev-photo" onClick={() => setPhotoOpen(true)}>📷 {el.photo ? '写真を変える' : '写真を敷く'}</button>
         <span className="seg-btns small">
           <button data-testid="elev-draw-pipe" className={draw === 'pipe' ? 'on' : ''} onClick={() => { st.setElevDraw('pipe'); setShape(null); }}>〰️ 配管</button>
           <button data-testid="elev-draw-build" className={draw === 'build' ? 'on' : ''} onClick={() => st.setElevDraw('build')}>🏠 建物</button>
@@ -336,7 +345,8 @@ export function ElevationView() {
               <OpacitySlider value={el.opacity} onPreview={setPreviewOpacity} onCommit={(v) => st.updateElevation(el.id, { opacity: v })} />
             </label>
           )}
-          <button data-testid="elev-photo" onClick={() => setPhotoOpen(true)}>📷 {el.photo ? '写真を変える' : '写真を敷く'}</button>
+          <NumField label="横幅" testId="elev-width" value={Math.round(el.width)} min={500} max={200000} onCommit={(v) => resize({ width: v })} />
+          <NumField label="高さ" testId="elev-height" value={Math.round(el.height)} min={500} max={200000} onCommit={(v) => resize({ height: v })} />
           <button className="danger" data-testid="elev-delete" onClick={() => { if (window.confirm(`立面「${el.label}」を削除します（描いた配管は残ります）`)) st.deleteElevation(el.id); }}>立面を削除</button>
         </div>
       )}

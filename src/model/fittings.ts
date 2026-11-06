@@ -3,18 +3,23 @@
  * 線の曲がりだけで確定せず、判断できないものは needsConfirm にしてユーザーの確定を待つ。
  * ユーザーの確定はノードの fitting に保存し、接続数が変わったら無効にする。
  */
+import { FIXTURE_CATALOG, type Fixture } from './fixtures';
 import { adjacency, type Network, type PipeNode, type Segment, type SystemType, type Vec3 } from './network';
 
 export type FittingType =
   | 'elbow90' | 'elbow45' | 'elbow' | 'socket' | 'reducer' | 'tee' | 'wye' | 'cross'
-  | 'valve' | 'adapter' | 'junctionBox' | 'cap' | 'other';
+  | 'valve' | 'adapter' | 'junctionBox' | 'cap' | 'other'
+  | 'faucetElbow' | 'faucetSocket' | 'threadSocket';
 export type FittingChoice = FittingType | 'none';
 
 export const FITTING_LABEL: Record<FittingType, string> = {
   elbow90: '90°エルボ', elbow45: '45°エルボ', elbow: 'エルボ', socket: 'ソケット', reducer: '径違いソケット',
   tee: 'チーズ', wye: 'Y管', cross: 'クロス', valve: 'バルブ', adapter: '器具接続継手',
   junctionBox: 'ジョイントボックス', cap: 'キャップ', other: 'その他部品',
+  faucetElbow: '給水栓用エルボ（ネジ）', faucetSocket: '給水栓用ソケット（ネジ）', threadSocket: 'バルブ用ソケット（ネジ）',
 };
+/** 片側がネジの継手（シールテープを巻く） */
+export const THREAD_FITTINGS: ReadonlySet<FittingType> = new Set(['faucetElbow', 'faucetSocket', 'threadSocket']);
 export const FITTING_TYPES = Object.keys(FITTING_LABEL) as FittingType[];
 
 /** 配線（継手の代わりに分岐でジョイントボックスを使う） */
@@ -67,7 +72,7 @@ const largest = (segs: Segment[]) => segs.reduce((a, b) => (b.diameter > a.diame
 
 type Auto = { auto: FittingChoice; needsConfirm: boolean; size: string; main: Segment; reason?: string };
 
-function judge(net: Network, n: PipeNode, segs: Segment[]): Auto | null {
+function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<string, Fixture>): Auto | null {
   if (segs.length === 0) return null;
   const main0 = largest(segs);
   const base = { size: sizeOf(segs), main: main0 };
@@ -81,7 +86,12 @@ function judge(net: Network, n: PipeNode, segs: Segment[]): Auto | null {
     if (wire) return { ...base, auto: 'other', needsConfirm: true, reason: '配線にバルブが入っています' };
     return { ...base, auto: 'valve', needsConfirm: segs.length !== 2, reason: segs.length !== 2 ? 'バルブの接続数が2ではありません' : undefined };
   }
-  if (n.fixtureId) return { ...base, auto: wire ? 'none' : 'adapter', needsConfirm: segs.length > 1, reason: segs.length > 1 ? '器具の接続口に複数の配管がつながっています' : undefined };
+  if (n.fixtureId) {
+    const f = fixtures?.[n.fixtureId];
+    const thread = f ? FIXTURE_CATALOG[f.type]?.ports.find((p) => p.id === n.portId)?.thread : undefined;
+    const auto: FittingChoice = wire ? 'none' : thread ?? 'adapter';
+    return { ...base, auto, needsConfirm: segs.length > 1, reason: segs.length > 1 ? '器具の接続口に複数の配管がつながっています' : undefined };
+  }
   if (segs.length === 1) return { ...base, auto: 'none', needsConfirm: false };
 
   if (wire) {
@@ -124,13 +134,13 @@ function judge(net: Network, n: PipeNode, segs: Segment[]): Auto | null {
   return { ...base, auto: 'other', needsConfirm: true, reason: `${segs.length}方向の分岐です` };
 }
 
-/** 全ノードの部品判定（接続のないノードは含めない） */
-export function analyzeFittings(net: Network): NodeFitting[] {
+/** 全ノードの部品判定（接続のないノードは含めない）。fixtures を渡すと器具の接続口のネジ継手を判定する */
+export function analyzeFittings(net: Network, fixtures?: Record<string, Fixture>): NodeFitting[] {
   const adj = adjacency(net);
   const out: NodeFitting[] = [];
   for (const n of Object.values(net.nodes)) {
     const segs = adj.get(n.id) ?? [];
-    const a = judge(net, n, segs);
+    const a = judge(net, n, segs, fixtures);
     if (!a) continue;
     const ov = n.fitting;
     const valid = !!ov && ov.degree === segs.length && (ov.type === 'none' || (FITTING_TYPES as string[]).includes(ov.type));
