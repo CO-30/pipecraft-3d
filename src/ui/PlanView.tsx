@@ -1,0 +1,354 @@
+/**
+ * 2D平面図。共通ストアの Doc（建物＋配管）から描画し、編集結果も共通ストアへ書き込む。
+ * 1本指: ツールに応じた作図・選択・移動 / 2本指: 拡大縮小・移動（編集と干渉しない）。
+ */
+import { useEffect, useRef, useState } from 'react';
+import { activeFloorElevation, useStore } from '../state/store';
+import { hitTestPlan, orthoSnap, simplify, type Vec2 } from '../model/geometry';
+import { hitTestBuilding } from '../model/buildingHit';
+import { floorById, roomArea, wallLength } from '../model/building';
+import { SELECT_COLOR, systemColor } from './colors';
+
+type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
+type Gesture =
+  | { kind: 'stroke'; tool: 'pipe' | 'wall'; startNodeId?: string; branchSegId?: string }
+  | { kind: 'room'; start: Vec2 }
+  | { kind: 'dragNode'; nodeId: string }
+  | { kind: 'dragCorner'; cornerId: string }
+  | { kind: 'dragWall'; wallId: string; start: Vec2 }
+  | { kind: 'pan'; last: Vec2 }
+  | { kind: 'pinch'; dist: number; mid: Vec2; view: ViewT };
+
+const HIT_PX = 22; // 指で押しやすいヒット半径
+const GRID_SNAP = 50; // 壁・部屋の座標を50mm単位に丸める
+const snapGrid = (p: Vec2): Vec2 => ({ x: Math.round(p.x / GRID_SNAP) * GRID_SNAP, y: Math.round(p.y / GRID_SNAP) * GRID_SNAP });
+
+/** 表示範囲に建物全体が入る初期ビュー */
+function fitView(w: number, h: number, bounds: { x0: number; y0: number; x1: number; y1: number } | null): ViewT {
+  const bx = bounds ?? { x0: 0, y0: 0, x1: 8000, y1: 6000 };
+  const pad = 40;
+  const scale = Math.min((w - pad * 2) / Math.max(1000, bx.x1 - bx.x0), (h - pad * 2) / Math.max(1000, bx.y1 - bx.y0), 0.3);
+  return { scale, ox: pad - bx.x0 * scale + (w - pad * 2 - (bx.x1 - bx.x0) * scale) / 2, oy: h - pad + bx.y0 * scale - (h - pad * 2 - (bx.y1 - bx.y0) * scale) / 2 };
+}
+
+export function PlanView() {
+  const building = useStore((s) => s.doc.building);
+  const net = useStore((s) => s.doc.network);
+  const tool = useStore((s) => s.tool);
+  const sel = useStore((s) => s.selection);
+  const floorId = useStore((s) => s.activeFloorId);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [view, setView] = useState<ViewT | null>(null);
+  const [size, setSize] = useState({ w: 800, h: 600 });
+  const [stroke, setStroke] = useState<Vec2[] | null>(null);
+  const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
+  const pointers = useRef(new Map<number, Vec2>());
+  const gesture = useRef<Gesture | null>(null);
+
+  // サイズ監視と初期フィット
+  useEffect(() => {
+    const el = svgRef.current!;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setSize({ w: r.width, h: r.height });
+      setView((v) => {
+        if (v) return v;
+        const cs = Object.values(useStore.getState().doc.building.corners);
+        const bounds = cs.length ? { x0: Math.min(...cs.map((c) => c.x)), y0: Math.min(...cs.map((c) => c.y)), x1: Math.max(...cs.map((c) => c.x)), y1: Math.max(...cs.map((c) => c.y)) } : null;
+        return fitView(r.width, r.height, bounds);
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const vw = view ?? { scale: 0.08, ox: 40, oy: 400 };
+  const toWorld = (p: Vec2): Vec2 => ({ x: (p.x - vw.ox) / vw.scale, y: -(p.y - vw.oy) / vw.scale });
+  const toScreen = (p: Vec2): Vec2 => ({ x: p.x * vw.scale + vw.ox, y: -p.y * vw.scale + vw.oy });
+  const local = (e: React.PointerEvent): Vec2 => {
+    const r = svgRef.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const tol = HIT_PX / vw.scale;
+  if (import.meta.env.MODE === 'e2e') {
+    (window as unknown as { __plan: unknown }).__plan = {
+      toScreen: (x: number, y: number) => {
+        const r = svgRef.current!.getBoundingClientRect();
+        const s = toScreen({ x, y });
+        return { x: r.left + s.x, y: r.top + s.y };
+      },
+    };
+  }
+
+  const onDown = (e: React.PointerEvent) => {
+    svgRef.current?.setPointerCapture?.(e.pointerId);
+    const p = local(e);
+    pointers.current.set(e.pointerId, p);
+    const st = useStore.getState();
+    if (pointers.current.size === 2) {
+      // 2本指になったら作図・移動を取り消して拡大縮小へ
+      if (gesture.current && gesture.current.kind.startsWith('drag')) st.endDrag();
+      setStroke(null);
+      setRoomPreview(null);
+      const [a, b] = [...pointers.current.values()];
+      gesture.current = { kind: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, view: vw };
+      return;
+    }
+    if (pointers.current.size > 2) return;
+    const w = toWorld(p);
+    const b = st.doc.building;
+
+    if (st.tool === 'pipe') {
+      const hit = hitTestPlan(st.doc.network, w, tol);
+      if (hit?.type === 'node') {
+        const n = st.doc.network.nodes[hit.id].pos;
+        gesture.current = { kind: 'stroke', tool: 'pipe', startNodeId: hit.id };
+        setStroke([{ x: n.x, y: n.y }]);
+      } else if (hit?.type === 'segment') {
+        gesture.current = { kind: 'stroke', tool: 'pipe', branchSegId: hit.id };
+        setStroke([w]);
+      } else {
+        gesture.current = { kind: 'stroke', tool: 'pipe' };
+        setStroke([w]);
+      }
+      return;
+    }
+    if (st.tool === 'wall') {
+      const h = hitTestBuilding(b, st.activeFloorId, w, tol);
+      const start = h?.kind === 'corner' ? { x: b.corners[h.id].x, y: b.corners[h.id].y } : snapGrid(w);
+      gesture.current = { kind: 'stroke', tool: 'wall' };
+      setStroke([start]);
+      return;
+    }
+    if (st.tool === 'room') {
+      const s0 = snapGrid(w);
+      gesture.current = { kind: 'room', start: s0 };
+      setRoomPreview({ a: s0, b: s0 });
+      return;
+    }
+    if (st.tool === 'door' || st.tool === 'window') {
+      const h = hitTestBuilding(b, st.activeFloorId, w, tol, false);
+      if (h?.kind === 'wall') st.addOpening(h.id, st.tool, h.offset);
+      else if (h?.kind === 'opening') st.select({ kind: 'opening', id: h.id });
+      gesture.current = null;
+      return;
+    }
+    // 選択ツール: 配管 > 建物
+    const ph = hitTestPlan(st.doc.network, w, tol);
+    if (ph?.type === 'node') {
+      st.select({ kind: 'node', id: ph.id });
+      st.beginDrag();
+      gesture.current = { kind: 'dragNode', nodeId: ph.id };
+      return;
+    }
+    if (ph?.type === 'segment') {
+      st.select({ kind: 'segment', id: ph.id });
+      gesture.current = null;
+      return;
+    }
+    const bh = hitTestBuilding(b, st.activeFloorId, w, tol);
+    if (bh?.kind === 'corner') {
+      st.select({ kind: 'corner', id: bh.id });
+      st.beginDrag();
+      gesture.current = { kind: 'dragCorner', cornerId: bh.id };
+    } else if (bh?.kind === 'wall') {
+      st.select({ kind: 'wall', id: bh.id });
+      st.beginDrag();
+      gesture.current = { kind: 'dragWall', wallId: bh.id, start: w };
+    } else if (bh?.kind === 'opening' || bh?.kind === 'room') {
+      st.select({ kind: bh.kind, id: bh.id });
+      gesture.current = { kind: 'pan', last: p };
+    } else {
+      st.select(null);
+      gesture.current = { kind: 'pan', last: p };
+    }
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    const p = local(e);
+    pointers.current.set(e.pointerId, p);
+    const g = gesture.current;
+    if (!g) return;
+    const st = useStore.getState();
+    if (g.kind === 'pinch' && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const scale = Math.min(2, Math.max(0.005, g.view.scale * (dist / g.dist)));
+      const kk = scale / g.view.scale;
+      setView({ scale, ox: mid.x - (g.mid.x - g.view.ox) * kk, oy: mid.y - (g.mid.y - g.view.oy) * kk });
+    } else if (g.kind === 'pan') {
+      setView({ ...vw, ox: vw.ox + p.x - g.last.x, oy: vw.oy + p.y - g.last.y });
+      g.last = p;
+    } else if (g.kind === 'stroke') {
+      const w = toWorld(p);
+      setStroke((s) => (s ? [...s, w] : s));
+    } else if (g.kind === 'room') {
+      setRoomPreview({ a: g.start, b: snapGrid(toWorld(p)) });
+    } else if (g.kind === 'dragNode') {
+      const n = st.doc.network.nodes[g.nodeId];
+      if (n) st.dragNode(g.nodeId, { ...toWorld(p), z: n.pos.z });
+    } else if (g.kind === 'dragCorner') {
+      st.dragCorner(g.cornerId, snapGrid(toWorld(p)));
+    } else if (g.kind === 'dragWall') {
+      const w = toWorld(p);
+      st.dragWall(g.wallId, Math.round((w.x - g.start.x) / GRID_SNAP) * GRID_SNAP, Math.round((w.y - g.start.y) / GRID_SNAP) * GRID_SNAP);
+    }
+  };
+
+  const onUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    const g = gesture.current;
+    const st = useStore.getState();
+    if (g?.kind === 'pinch') {
+      if (pointers.current.size === 0) gesture.current = null;
+      return;
+    }
+    gesture.current = null;
+    if (g?.kind.startsWith('drag')) st.endDrag();
+    if (g?.kind === 'room' && roomPreview) st.addRoom(roomPreview.a, roomPreview.b);
+    if (g?.kind === 'stroke' && stroke && stroke.length >= 2) finishStroke(g, stroke);
+    setStroke(null);
+    setRoomPreview(null);
+  };
+
+  const finishStroke = (g: Extract<Gesture, { kind: 'stroke' }>, raw: Vec2[]) => {
+    const st = useStore.getState();
+    let pts = orthoSnap(simplify(raw, 8 / vw.scale), st.orthoSnap ? 15 : 0);
+    const lenPx = pts.reduce((acc, q, i) => (i ? acc + Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y) * vw.scale : 0), 0);
+    if (lenPx < 12) return;
+    if (g.tool === 'wall') {
+      pts = pts.map((q, i) => (i === 0 ? q : snapGrid(q)));
+      for (let i = 1; i < pts.length; i++) st.addWall(pts[i - 1], pts[i]);
+      return;
+    }
+    const net = st.doc.network;
+    const endHit = hitTestPlan(net, pts[pts.length - 1], tol);
+    const endNodeId = endHit?.type === 'node' && endHit.id !== g.startNodeId ? endHit.id : undefined;
+    if (g.branchSegId) {
+      const seg = net.segments[g.branchSegId];
+      const z = (net.nodes[seg.a].pos.z + net.nodes[seg.b].pos.z) / 2;
+      st.branch(g.branchSegId, { ...raw[0], z }, pts.slice(1).map((q) => ({ ...q, z })));
+    } else {
+      const z = g.startNodeId ? net.nodes[g.startNodeId].pos.z : activeFloorElevation() + st.drawHeight;
+      st.drawPolyline(pts.map((q) => ({ ...q, z })), { startNodeId: g.startNodeId, endNodeId });
+    }
+  };
+
+  // ---------- 描画 ----------
+  const W = size.w, H = size.h;
+  const grid: React.ReactNode[] = [];
+  const tl = toWorld({ x: 0, y: 0 }), br = toWorld({ x: W, y: H });
+  if (vw.scale * 1000 > 8) {
+    for (let x = Math.floor(tl.x / 1000) * 1000; x <= br.x; x += 1000) {
+      const sx = toScreen({ x, y: 0 }).x;
+      grid.push(<line key={'gx' + x} x1={sx} x2={sx} y1={0} y2={H} stroke="#e5e7eb" strokeWidth={x === 0 ? 2 : 1} />);
+    }
+    for (let y = Math.floor(br.y / 1000) * 1000; y <= tl.y; y += 1000) {
+      const sy = toScreen({ x: 0, y }).y;
+      grid.push(<line key={'gy' + y} y1={sy} y2={sy} x1={0} x2={W} stroke="#e5e7eb" strokeWidth={y === 0 ? 2 : 1} />);
+    }
+  }
+
+  const floor = floorById(building, floorId);
+  const z0 = floor?.elevation ?? 0, z1 = z0 + (floor?.height ?? 3000);
+  const onThisFloor = (z: number) => z >= z0 - 1000 && z < z1; // 床下配管も含める
+  const isSel = (kind: string, id: string) => sel?.kind === kind && sel.id === id;
+
+  const rooms = Object.values(building.rooms).filter((r) => r.floorId === floorId);
+  const walls = Object.values(building.walls).filter((w) => w.floorId === floorId);
+
+  const strokePath = stroke?.map(toScreen).map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+
+  return (
+    <svg ref={svgRef} data-testid="plan" className="plan"
+      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      onWheel={(e) => {
+        const p = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
+        const scale = Math.min(2, Math.max(0.005, vw.scale * Math.exp(-e.deltaY * 0.001)));
+        const kk = scale / vw.scale;
+        setView({ scale, ox: p.x - (p.x - vw.ox) * kk, oy: p.y - (p.y - vw.oy) * kk });
+      }}>
+      {grid}
+      {rooms.map((r) => {
+        const pts = r.polygon.map(toScreen);
+        const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+        return (
+          <g key={r.id} data-room={r.id}>
+            <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={isSel('room', r.id) ? '#fde68a' : '#f1f5f9'} stroke="#cbd5e1" strokeDasharray="4 3" />
+            <text x={cx} y={cy} textAnchor="middle" fontSize={12} fill="#475569">{r.name}</text>
+            <text x={cx} y={cy + 14} textAnchor="middle" fontSize={10} fill="#94a3b8">{roomArea(r).toFixed(2)}㎡</text>
+          </g>
+        );
+      })}
+      {walls.map((w) => {
+        const a = toScreen(building.corners[w.a]), b = toScreen(building.corners[w.b]);
+        const selected = isSel('wall', w.id);
+        return (
+          <g key={w.id} data-wall={w.id}>
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected ? SELECT_COLOR : w.kind === 'exterior' ? '#334155' : '#64748b'}
+              strokeWidth={Math.max(3, w.thickness * vw.scale)} strokeLinecap="square" />
+            {selected && (
+              <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 10} textAnchor="middle" fontSize={12} fill="#b45309" fontWeight="bold">
+                {Math.round(wallLength(building, w.id))}mm
+              </text>
+            )}
+          </g>
+        );
+      })}
+      {Object.values(building.openings).filter((o) => building.walls[o.wallId]?.floorId === floorId).map((o) => {
+        const w = building.walls[o.wallId];
+        const A = building.corners[w.a], B = building.corners[w.b];
+        const L = wallLength(building, w.id);
+        const u = { x: (B.x - A.x) / L, y: (B.y - A.y) / L };
+        const p0 = toScreen({ x: A.x + u.x * (o.offset - o.width / 2), y: A.y + u.y * (o.offset - o.width / 2) });
+        const p1 = toScreen({ x: A.x + u.x * (o.offset + o.width / 2), y: A.y + u.y * (o.offset + o.width / 2) });
+        return (
+          <line key={o.id} data-opening={o.id} data-type={o.type} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y}
+            stroke={isSel('opening', o.id) ? SELECT_COLOR : o.type === 'door' ? '#fff' : '#bae6fd'}
+            strokeWidth={Math.max(3, w.thickness * vw.scale) - 1} strokeLinecap="butt" />
+        );
+      })}
+      {tool === 'select' && Object.values(building.corners).filter((c) => c.floorId === floorId).map((c) => {
+        const p = toScreen(c);
+        return <rect key={c.id} data-corner={c.id} x={p.x - 4} y={p.y - 4} width={8} height={8} fill={isSel('corner', c.id) ? SELECT_COLOR : '#fff'} stroke="#334155" />;
+      })}
+      {Object.values(net.segments).map((s) => {
+        const na = net.nodes[s.a].pos, nb = net.nodes[s.b].pos;
+        const here = onThisFloor(na.z) || onThisFloor(nb.z);
+        const a = toScreen(na), b = toScreen(nb);
+        const selected = isSel('segment', s.id);
+        return (
+          <g key={s.id} data-seg={s.id} opacity={here ? 1 : 0.2}>
+            {selected && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={SELECT_COLOR} strokeWidth={14} strokeLinecap="round" opacity={0.6} />}
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={systemColor(s.system)} strokeWidth={Math.max(3, s.diameter * vw.scale * 3)} strokeLinecap="round" />
+          </g>
+        );
+      })}
+      {Object.values(net.nodes).map((n) => {
+        const p = toScreen(n.pos);
+        const big = n.kind === 'tee' || n.kind === 'cross';
+        return (
+          <circle key={n.id} data-node={n.id} data-kind={n.kind} cx={p.x} cy={p.y} r={big ? 7 : 5} opacity={onThisFloor(n.pos.z) ? 1 : 0.2}
+            fill={isSel('node', n.id) ? SELECT_COLOR : big ? '#111827' : '#fff'} stroke="#111827" strokeWidth={2} />
+        );
+      })}
+      {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} />}
+      {roomPreview && (() => {
+        const a = toScreen(roomPreview.a), b = toScreen(roomPreview.b);
+        return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(a.x - b.x)} height={Math.abs(a.y - b.y)} fill="rgba(37,99,235,0.1)" stroke="#2563eb" strokeDasharray="6 4" />;
+      })()}
+      <text x={8} y={18} fontSize={12} fill="#6b7280">{floor?.name ?? ''} 平面図（1目盛=1m） {HINTS[tool]}</text>
+    </svg>
+  );
+}
+
+const HINTS: Record<string, string> = {
+  select: 'タップで選択・ドラッグで移動',
+  pipe: '指でなぞって配管／既存配管からなぞると分岐',
+  wall: '指でなぞって壁を描く',
+  room: '対角にドラッグして部屋を作る',
+  door: '壁をタップしてドアを付ける',
+  window: '壁をタップして窓を付ける',
+};
