@@ -17,6 +17,11 @@ export function HomeScreen({ onOpen, onCreate }: { onOpen: (id: string) => void;
 
   const filtered = (list ?? []).filter((p) => !q || p.name.includes(q) || (p.address ?? '').includes(q));
 
+  /** 操作を実行し、失敗したらメッセージを表示 */
+  const run = (label: string, fn: () => Promise<unknown>) => async () => {
+    try { await fn(); } catch (e) { setMsg(`${label}できませんでした: ${(e as Error).message}`); }
+  };
+
   const download = async (p: ProjectSummary) => {
     const json = await repo.exportJson(p.id);
     const a = document.createElement('a');
@@ -61,13 +66,13 @@ export function HomeScreen({ onOpen, onCreate }: { onOpen: (id: string) => void;
                 <span className="pmeta">{p.address ? `${p.address}・` : ''}更新 {fmt(p.updatedAt)}</span>
               </button>
               <div className="pbtns">
-                <button onClick={async () => { await repo.duplicate(p.id, `${p.name} のコピー`); await reload(); }}>複製</button>
-                <button onClick={() => void download(p)}>書き出し</button>
-                <button className="danger" onClick={async () => {
+                <button onClick={run('複製', async () => { await repo.duplicate(p.id, `${p.name} のコピー`); await reload(); })}>複製</button>
+                <button onClick={run('書き出し', () => download(p))}>書き出し</button>
+                <button className="danger" onClick={run('削除', async () => {
                   if (!window.confirm(`現場「${p.name}」を削除します。元に戻せません。よろしいですか？\n（必要なら先に「書き出し」でバックアップしてください）`)) return;
                   await repo.delete(p.id);
                   await reload();
-                }}>削除</button>
+                })}>削除</button>
               </div>
             </li>
           ))}

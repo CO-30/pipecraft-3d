@@ -42,7 +42,8 @@ export default function App() {
   };
 
   const back = async () => {
-    await flushNow();
+    const ok = await flushNow();
+    if (!ok && !window.confirm('最新の変更がまだ保存できていません。一覧に戻ると、この変更は失われるおそれがあります。それでも戻りますか？\n（「キャンセル」でこの画面に残り、自動で再保存を試みます）')) return;
     useStore.getState().closeProject();
     setScreen('home');
   };

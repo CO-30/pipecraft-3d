@@ -88,6 +88,25 @@ function openingFits(o: Opening, len: number): boolean {
   return o.width <= len + EPS && o.offset - o.width / 2 >= -EPS && o.offset + o.width / 2 <= len + EPS;
 }
 
+/** 階の天井高（階高 - 床厚） */
+function clearHeight(b: Building, floorId: string): number {
+  const f = floorById(b, floorId);
+  return f ? f.height - f.slabThickness : 0;
+}
+
+/** 開口部の妥当性: 壁に収まる・同じ壁の他の開口と重ならない・天井高に収まる */
+function openingProblem(b: Building, o: Opening): string | null {
+  const w = b.walls[o.wallId];
+  if (!w || !b.corners[w.a] || !b.corners[w.b]) return '壁が存在しない';
+  if (!openingFits(o, wallLength(b, o.wallId))) return '壁に収まらない';
+  if (!(o.height > 0) || o.sill < 0 || o.sill + o.height > clearHeight(b, w.floorId) + EPS) return '天井高に収まらない';
+  for (const p of Object.values(b.openings)) {
+    if (p.id === o.id || p.wallId !== o.wallId) continue;
+    if (Math.abs(p.offset - o.offset) < (p.width + o.width) / 2 - EPS) return '他の開口と重なる';
+  }
+  return null;
+}
+
 /** 壁の整合性（長さ・開口部・重複）が保たれているかを、変更された壁だけ検査 */
 function wallsOk(b: Building, wallIds: Iterable<string>): boolean {
   const ids = new Set(wallIds);
@@ -148,10 +167,15 @@ export function addFloor(b: Building, opts: { copyExteriorFrom?: string; height?
   return { b: next, floorId: id };
 }
 
+/** 階の設定変更。開口部が天井高に収まらなくなる変更は拒否 */
 export function updateFloor(b: Building, floorId: string, patch: Partial<Pick<Floor, 'name' | 'height' | 'slabThickness'>>): Building {
   if (!floorById(b, floorId)) return b;
   if (patch.height !== undefined && !(patch.height > 0)) return b;
-  return { ...b, floors: recomputeElevations(b.floors.map((f) => (f.id === floorId ? { ...f, ...patch } : f))) };
+  if (patch.slabThickness !== undefined && !(patch.slabThickness >= 0)) return b;
+  const next = { ...b, floors: recomputeElevations(b.floors.map((f) => (f.id === floorId ? { ...f, ...patch } : f))) };
+  if (clearHeight(next, floorId) <= 0) return b;
+  for (const o of Object.values(next.openings)) if (next.walls[o.wallId]?.floorId === floorId && openingProblem(next, o)) return b;
+  return next;
 }
 
 /** 階を削除（その階の壁・開口・部屋も削除）。最後の1階は削除しない */
@@ -236,7 +260,7 @@ export function addWall(b: Building, floorId: string, p: Vec2, q: Vec2, opts: { 
 
 export function moveCorner(b: Building, cornerId: string, p: Vec2): Building {
   const c = b.corners[cornerId];
-  if (!c) return b;
+  if (!c || (c.x === p.x && c.y === p.y)) return b;
   const next = { ...b, corners: { ...b.corners, [cornerId]: { ...c, x: p.x, y: p.y } } };
   const affected = Object.values(b.walls).filter((w) => w.a === cornerId || w.b === cornerId).map((w) => w.id);
   return wallsOk(next, affected) ? next : b;
@@ -244,7 +268,7 @@ export function moveCorner(b: Building, cornerId: string, p: Vec2): Building {
 
 export function moveWall(b: Building, wallId: string, dx: number, dy: number): Building {
   const w = b.walls[wallId];
-  if (!w) return b;
+  if (!w || (dx === 0 && dy === 0)) return b;
   const corners = { ...b.corners };
   for (const cid of [w.a, w.b]) corners[cid] = { ...corners[cid], x: corners[cid].x + dx, y: corners[cid].y + dy };
   const next = { ...b, corners };
@@ -278,6 +302,7 @@ export function addOpening(
   if (spec.width > L) return { b, openingId: null };
   const id = newId('o');
   const o: Opening = { id, wallId, type, ...spec, offset: Math.min(L - spec.width / 2, Math.max(spec.width / 2, offset)) };
+  if (openingProblem(b, o)) return { b, openingId: null };
   return { b: { ...b, openings: { ...b.openings, [id]: o } }, openingId: id };
 }
 
@@ -285,7 +310,7 @@ export function updateOpening(b: Building, openingId: string, patch: Partial<Pic
   const o = b.openings[openingId];
   if (!o) return b;
   const n = { ...o, ...patch };
-  return openingFits(n, wallLength(b, o.wallId)) && n.height > 0 && n.sill >= 0 ? { ...b, openings: { ...b.openings, [openingId]: n } } : b;
+  return openingProblem(b, n) ? b : { ...b, openings: { ...b.openings, [openingId]: n } };
 }
 
 export function deleteOpening(b: Building, openingId: string): Building {
@@ -332,7 +357,12 @@ export function createBuildingFromDims(d: { width: number; depth: number; floors
 
 export function validateBuilding(b: Building): string[] {
   const e: string[] = [];
+  if (b.floors.length === 0) e.push('階が1つもない');
   const floorIds = new Set(b.floors.map((f) => f.id));
+  if (floorIds.size !== b.floors.length) e.push('階IDの重複');
+  for (const [name, rec] of [['corner', b.corners], ['wall', b.walls], ['opening', b.openings], ['room', b.rooms]] as const) {
+    for (const [k, v] of Object.entries(rec)) if (k !== v.id) e.push(`${name} ${k}: キーとIDが不一致`);
+  }
   let z = 0;
   for (const f of b.floors) {
     if (f.elevation !== z) e.push(`floor ${f.id}: 高さ不整合`);
@@ -353,8 +383,8 @@ export function validateBuilding(b: Building): string[] {
   }
   for (const c of Object.values(b.corners)) if (!used.has(c.id)) e.push(`corner ${c.id}: 孤立`);
   for (const o of Object.values(b.openings)) {
-    if (!b.walls[o.wallId] || !b.corners[b.walls[o.wallId].a] || !b.corners[b.walls[o.wallId].b]) { e.push(`opening ${o.id}: 壁が存在しない`); continue; }
-    if (!openingFits(o, wallLength(b, o.wallId))) e.push(`opening ${o.id}: 壁に収まらない`);
+    const p = openingProblem(b, o);
+    if (p) e.push(`opening ${o.id}: ${p}`);
   }
   for (const r of Object.values(b.rooms)) {
     if (!floorIds.has(r.floorId)) e.push(`room ${r.id}: 階が存在しない`);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addFloor, addOpening, addRoomRect, addWall, createBuildingFromDims, deleteFloor, deleteWall, emptyBuilding,
-  moveCorner, moveWall, roomArea, updateFloor, validateBuilding, wallLength, wallsOnFloor,
+  moveCorner, moveWall, roomArea, updateFloor, updateOpening, validateBuilding, wallLength, wallsOnFloor,
   type Building,
 } from './building';
 
@@ -168,5 +168,42 @@ describe('建物: 不変条件', () => {
       }
       expect(validateBuilding(b)).toEqual([]);
     }
+  });
+});
+
+describe('レビュー指摘の回帰テスト', () => {
+  it('同じ壁で開口部が重なる追加・変更は拒否', () => {
+    const { b, f } = oneFloor();
+    const r = addWall(b, f, P(1000, 2000), P(6000, 2000));
+    const d1 = addOpening(r.b, r.wallIds[0], 'door', 2000);
+    const d2 = addOpening(d1.b, r.wallIds[0], 'door', 2300);
+    expect(d2.openingId).toBeNull();
+    const d3 = addOpening(d1.b, r.wallIds[0], 'window', 3500);
+    expect(d3.openingId).not.toBeNull();
+    expect(updateOpening(d3.b, d3.openingId!, { offset: 2500 })).toBe(d3.b);
+    expect(validateBuilding(d3.b)).toEqual([]);
+  });
+
+  it('階の天井高に収まらない開口部は拒否', () => {
+    const { b, f } = oneFloor(); // 階高2900・床厚200 → 天井高2700
+    const r = addWall(b, f, P(1000, 2000), P(6000, 2000));
+    expect(addOpening(r.b, r.wallIds[0], 'window', 2000, { sill: 1800, height: 1000 }).openingId).toBeNull();
+    const ok = addOpening(r.b, r.wallIds[0], 'door', 2000);
+    expect(updateOpening(ok.b, ok.openingId!, { height: 2800 })).toBe(ok.b);
+  });
+
+  it('移動量0の移動は同じ参照を返す（空の履歴を作らない）', () => {
+    const { b } = oneFloor();
+    const c = Object.values(b.corners)[0];
+    expect(moveCorner(b, c.id, P(c.x, c.y))).toBe(b);
+    expect(moveWall(b, Object.keys(b.walls)[0], 0, 0)).toBe(b);
+  });
+
+  it('階が0件・ID重複・キーとIDの不一致を検出', () => {
+    expect(validateBuilding(emptyBuilding())).not.toEqual([]);
+    const { b } = oneFloor();
+    const w = Object.values(b.walls)[0];
+    expect(validateBuilding({ ...b, walls: { ...b.walls, wrongKey: w } })).not.toEqual([]);
+    expect(validateBuilding({ ...b, floors: [b.floors[0], b.floors[0]] })).not.toEqual([]);
   });
 });

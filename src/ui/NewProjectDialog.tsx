@@ -22,7 +22,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
   });
   const invalid = FIELDS.filter((f) => {
     const n = v[f.key] as number;
-    return !(Number.isFinite(n) && n >= f.min && n <= f.max);
+    return !(Number.isFinite(n) && n >= f.min && n <= f.max && (f.key !== 'floors' || Number.isInteger(n)));
   });
   const ok = v.name.trim() !== '' && (v.mode === 'blank' || invalid.length === 0);
 
