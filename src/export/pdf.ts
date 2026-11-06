@@ -141,6 +141,10 @@ export async function buildPdf(r: Report, fontBytes: Uint8Array | ArrayBuffer): 
   table(c, r.tables[0], [12, 18, 10, 12, 11, 11, 10, 11]);
   heading(c, r.tables[1].title);
   table(c, r.tables[1], [22, 30, 10, 38]);
+  if (r.tables[2].rows.length) {
+    heading(c, r.tables[2].title);
+    table(c, r.tables[2], [22, 18, 9, 7, 44]);
+  }
   if (r.issues.rows.length) {
     heading(c, `${r.issues.title}（${r.issues.rows.length}件）`);
     table(c, r.issues, [18, 82]);

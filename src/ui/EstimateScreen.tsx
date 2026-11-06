@@ -9,7 +9,9 @@ import {
   type Estimate, type FittingLine, type Issue, type PipeLine, type SaleUnit,
 } from '../model/estimate';
 import { ISSUE_LABEL, yen } from '../export/report';
-import { CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice } from '../model/priceCatalog';
+import { CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice, catalogSupportPrice, SUPPORT_CATALOG_SOURCE } from '../model/priceCatalog';
+import { defaultSupportSettings, SUBSTRATE_LABEL, type SupportSettings } from '../model/supports';
+import type { SupportLine } from '../model/estimate';
 import { NumField, OptNumField } from './Panels';
 import { usePrefs } from './prefs';
 
@@ -116,6 +118,18 @@ function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
         </table>
       )}
       <p className="muted small">点ごとの部品は、図面で点を選んで「部品」から確定・変更できます。</p>
+      <h3 className="h-sub">支持金具・ビス</h3>
+      {est.supports.length === 0 ? <p className="empty">支持金具はありません（配線のみ、または「単価」タブで集計しない設定）。</p> : (
+        <table className="est-table" data-testid="supports-table">
+          <thead><tr><th>品名</th><th>仕様</th><th>数量</th><th>備考</th></tr></thead>
+          <tbody>
+            {est.supports.map((l) => (
+              <tr key={l.key}><td>{l.name}</td><td>{l.spec}</td><td className="num"><b>{l.count}</b>{l.unit}</td><td className="small">{l.note}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="muted small">床から400mm以内の排水横管はレベルバンド、その他の配管はサドルバンド。継手で区切られた区間ごとに「長さ÷支持間隔」（最低1個）。区間ごとの変更は図面で配管を選んで「支持金具」から。</p>
     </div>
   );
 }
@@ -184,7 +198,7 @@ function PriceRow({ line, pipe }: { line: PipeLine | FittingLine; pipe: boolean 
 }
 
 function PriceTab({ est }: { est: Estimate }) {
-  const settings = useStore((s) => s.doc.estimate ?? defaultEstimate());
+  const settings = useStore((s) => s.doc.estimate) ?? defaultEstimate();
   const st = useStore.getState();
   return (
     <div className="price-tab">
@@ -219,6 +233,12 @@ function PriceTab({ est }: { est: Estimate }) {
         {est.fittings.length === 0 && <p className="muted">部品がありません。</p>}
         {est.fittings.map((f) => <PriceRow key={f.key} line={f} pipe={false} />)}
       </section>
+      <section>
+        <h3>支持金具・ビスの単価</h3>
+        <SupportSettingsForm />
+        {est.supports.map((l) => <SupportPriceRow key={l.key} line={l} />)}
+        <p className="muted small" data-testid="support-catalog-note">支持金具・ビス・キリはメーカー希望価格のない「オープン価格」品のため、参考単価は {SUPPORT_CATALOG_SOURCE} です（サドル: 昭和コーポレーション ステンレス片サドル、コンクリートビス: マーベル SCS-432、ステンレスビス: 皿木ねじ 4.1×38、キリ: 大西工業 No.24 3.4mm）。レベルバンドはサイズ別の価格が得られないため入力してください。</p>
+      </section>
       <p className="muted small">単価はこの現場に保存されます。材料費 = 発注数量 × 材料単価、施工費 = 施工数量 × 施工単価（行ごとに円未満四捨五入）。</p>
       <p className="muted small" data-testid="catalog-note">「メーカー参考単価」は {CATALOG_SOURCE} の材料価格です（配管は定尺4mのとき）。実際の仕入れ値に合わせて上書きしてください。施工単価は含まれません。材質を空欄にした配管は、給水=HIVP・給湯=HTVP・排水/汚水/通気/ドレン=VP として扱います。</p>
       <section>
@@ -243,7 +263,7 @@ function TextField({ label, value, onCommit, testId, multiline }: { label: strin
 }
 
 function QuoteTab({ est }: { est: Estimate }) {
-  const settings = useStore((s) => s.doc.estimate ?? defaultEstimate());
+  const settings = useStore((s) => s.doc.estimate) ?? defaultEstimate();
   const st = useStore.getState();
   const sections: [string, string][] = [['material', '材料費'], ['labor', '施工費']];
   return (
@@ -385,6 +405,44 @@ function ExportButtons() {
       <button data-testid="export-pdf" disabled={!!busy} onClick={() => run('pdf')}>{busy === 'pdf' ? '作成中…' : 'PDF'}</button>
       <button data-testid="export-xlsx" disabled={!!busy} onClick={() => run('xlsx')}>{busy === 'xlsx' ? '作成中…' : 'Excel'}</button>
       {err && <span className="err" role="alert">{err}</span>}
+    </div>
+  );
+}
+
+function SupportSettingsForm() {
+  const raw = useStore((s) => s.doc.estimate?.supports);
+  const sst = raw ?? defaultSupportSettings();
+  const st = useStore.getState();
+  const set = (patch: Partial<SupportSettings>) => st.updateEstimate({ supports: { ...sst, ...patch } });
+  return (
+    <div className="row" data-testid="support-settings">
+      <label className="field inline"><input type="checkbox" data-testid="support-enabled" checked={sst.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> 支持金具・ビスを集計する</label>
+      <label className="field inline">既定の取付下地
+        <select data-testid="support-substrate" value={sst.substrate} onChange={(e) => set({ substrate: e.target.value as SupportSettings['substrate'] })}>
+          {(['concrete', 'wood'] as const).map((k) => <option key={k} value={k}>{SUBSTRATE_LABEL[k]}</option>)}
+        </select></label>
+      <NumField label="支持間隔（呼び径80以下）" value={sst.spacingSmall} min={100} onCommit={(v) => set({ spacingSmall: v })} />
+      <NumField label="（100以上）" value={sst.spacingLarge} min={100} onCommit={(v) => set({ spacingLarge: v })} />
+      <NumField label="ビス" unit="本/個" value={sst.screwsPerSupport} min={0} max={10} onCommit={(v) => set({ screwsPerSupport: Math.round(v) })} />
+      <NumField label="キリ1本で" unit="穴" value={sst.holesPerBit} min={1} onCommit={(v) => set({ holesPerBit: Math.round(v) })} />
+    </div>
+  );
+}
+
+function SupportPriceRow({ line }: { line: SupportLine }) {
+  const st = useStore.getState();
+  const set = (patch: { material?: number; labor?: number }) => st.setPrice(line.key, { material: line.price?.material ?? 0, labor: line.price?.labor ?? 0, ...patch });
+  const hasCatalog = catalogSupportPrice(line.key) !== undefined;
+  return (
+    <div className="price-row" data-testid="price-row" data-key={line.key}>
+      <div className="pname-s">{line.name} {line.spec}
+        {line.priceSource === 'none' && <span className="warn small"> 未登録</span>}
+        {line.priceSource === 'catalog' && <span className="tag-cat small"> 参考単価</span>}
+        {line.priceSource === 'user' && hasCatalog && <button className="small" onClick={() => st.setPrice(line.key, undefined)}>参考単価に戻す</button>}</div>
+      <div className="row">
+        <NumField label="材料単価" unit={`円/${line.unit}`} decimals={2} value={line.price?.material ?? 0} min={0} testId="price-material" onCommit={(v) => set({ material: v })} />
+        <NumField label="施工単価" unit={`円/${line.unit}`} decimals={2} value={line.price?.labor ?? 0} min={0} testId="price-labor" onCommit={(v) => set({ labor: v })} />
+      </div>
     </div>
   );
 }

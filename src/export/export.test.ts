@@ -49,7 +49,7 @@ describe('出力', () => {
     const r = sampleReport();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await buildExcel(r)).buffer as ArrayBuffer);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['見積書', '数量表', '部品一覧', '区間明細', '要確認']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['見積書', '数量表', '部品一覧', '支持金具・ビス', '区間明細', '要確認']);
     const q = wb.getWorksheet('見積書')!;
     let total: unknown;
     q.eachRow((row) => { if (row.getCell(1).value === '御見積金額（税込）') total = row.getCell(6).value; });

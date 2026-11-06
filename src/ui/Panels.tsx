@@ -11,6 +11,8 @@ import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
 import { defaultEstimate, measureSegment } from '../model/estimate';
+import { actualSlope, defaultSlope, isDrain, slopeEnough, slopeLabel } from '../model/slope';
+import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
 
 const DIAMETERS = [13, 16, 20, 25, 30, 40, 50, 65, 75, 100, 125, 150];
@@ -88,6 +90,7 @@ export function PropertyPanel() {
         <NumField label="長さ" value={segmentLength(net, seg.id)} min={1} testId="seg-length" onCommit={(v) => st.setSegmentLength(seg.id, v)} />
         {!vertical && <NumField label="床からの高さ" value={(za + zb) / 2 - floorElev} testId="seg-height" onCommit={(v) => st.setSegmentHeight(seg.id, floorElev + v)} />}
         <MeasureFields key={seg.id} segId={seg.id} />
+        <SupportFields key={'s' + seg.id} segId={seg.id} />
         <div className="row">
           <button onClick={() => st.setTool('pipe')}>ここから分岐</button>
           <button data-testid="cut-seg" onClick={() => st.cutSelected()}>✂ ここで切断</button>
@@ -147,6 +150,7 @@ export function PropertyPanel() {
           </div>
         )}
         {deg > 0 && <FittingField key={n.id} nodeId={n.id} />}
+        {segmentsAt(net, n.id).some((x) => isDrain(x.system)) && <SlopeField key={'sl' + n.id} nodeId={n.id} />}
         {deg === 1 && !fx && <div className="muted small">端点をドラッグして他の配管の上で離すとつながります</div>}
       </div>
     );
@@ -321,6 +325,60 @@ function MeasureFields({ segId }: { segId: string }) {
           <option value="custom">任意</option>
         </select></label>
       {(showCustom || custom) && <OptNumField label="余長率" unit="%" max={1000} value={seg.extraRate === undefined ? undefined : seg.extraRate * 100} onCommit={(v) => st.setSegmentExtraRate(seg.id, v === undefined ? undefined : v / 100)} />}
+    </>
+  );
+}
+
+const SLOPES = [1 / 50, 1 / 75, 1 / 100, 1 / 150, 1 / 200];
+
+/** 排水の勾配: この点を流末にして上流へ勾配をつける */
+function SlopeField({ nodeId }: { nodeId: string }) {
+  const [v, setV] = useState<string>('auto');
+  const st = useStore.getState();
+  return (
+    <>
+      <div className="subhead">排水の勾配（この点を流末＝下流の出口として、上流ほど高くします）</div>
+      <div className="row">
+        <select data-testid="slope-select" value={v} onChange={(e) => setV(e.target.value)}>
+          <option value="auto">管径別の標準（65以下 1/50・75〜100 1/100・125 1/150・150以上 1/200）</option>
+          {SLOPES.map((r) => <option key={r} value={String(r)}>{slopeLabel(r)}</option>)}
+        </select>
+        <button className="primary" data-testid="apply-slope" onClick={() => st.setSlopeFromOutlet(nodeId, v === 'auto' ? 'auto' : Number(v))}>この点を流末にして勾配をつける</button>
+      </div>
+    </>
+  );
+}
+
+/** 区間の勾配の確認・支持金具・取付下地 */
+function SupportFields({ segId }: { segId: string }) {
+  const doc = useStore((s) => s.doc);
+  const st = useStore.getState();
+  const seg = doc.network.segments[segId];
+  const sst = doc.estimate?.supports ?? defaultSupportSettings();
+  const auto = supportKindOf({ ...doc, network: { ...doc.network, segments: { ...doc.network.segments, [segId]: { ...seg, support: undefined } } } }, seg);
+  const slope = isDrain(seg.system) ? actualSlope(doc.network, seg) : null;
+  const need = defaultSlope(seg.diameter);
+  return (
+    <>
+      {slope !== null && (
+        <div className={`small ${!slopeEnough(doc.network, seg, need) ? 'warn' : ''}`} data-testid="seg-slope">
+          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}）` : ''}
+          {!slopeEnough(doc.network, seg, need) && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
+        </div>
+      )}
+      <label className="field inline">支持金具
+        <select data-testid="seg-support" value={seg.support ?? 'auto'} onChange={(e) => st.setSegmentSupport(segId, { support: e.target.value === 'auto' ? null : (e.target.value as 'saddle' | 'levelBand' | 'none') })}>
+          <option value="auto">自動（{auto ? SUPPORT_LABEL[auto] : 'なし'}）</option>
+          <option value="saddle">サドルバンド</option>
+          <option value="levelBand">レベルバンド</option>
+          <option value="none">支持しない</option>
+        </select></label>
+      <label className="field inline">取付下地
+        <select data-testid="seg-substrate" value={seg.substrate ?? 'default'} onChange={(e) => st.setSegmentSupport(segId, { substrate: e.target.value === 'default' ? null : (e.target.value as 'concrete' | 'wood') })}>
+          <option value="default">現場の既定（{SUBSTRATE_LABEL[sst.substrate]}）</option>
+          <option value="concrete">コンクリート</option>
+          <option value="wood">木</option>
+        </select></label>
     </>
   );
 }

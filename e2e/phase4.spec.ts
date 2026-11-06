@@ -37,11 +37,13 @@ test.describe('Phase 4 自動積算', () => {
     await page.getByTestId('tab-price').click();
     await fillCommit(page, 'price-material', '1000');
     await fillCommit(page, 'price-labor', '500');
-    // 材料 2本×1000=2000 ＋ 90°エルボ（HIVP 参考単価166円）、施工 5.1m×500=2550 → 小計 4716、税 471、合計 5187
+    // 材料 2本×1000=2000 ＋ 90°エルボ 166（HIVP 参考単価）
+    //   ＋ サドル (3100→4)+(2000→2)=6個×159=954 ＋ コンクリートビス 12本×23=276 ＋ コンクリキリ 1本 979 → 4375
+    // 施工 5.1m×500=2550 → 小計 6925、税 692、合計 7617
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-subtotal')).toHaveText('¥4,716');
-    await expect(page.getByTestId('t-tax')).toHaveText('¥471');
-    await expect(page.getByTestId('t-total')).toHaveText('¥5,187');
+    await expect(page.getByTestId('t-subtotal')).toHaveText('¥6,925');
+    await expect(page.getByTestId('t-tax')).toHaveText('¥692');
+    await expect(page.getByTestId('t-total')).toHaveText('¥7,617');
     await fillCommit(page, 'q-client', '沖縄 太郎');
     await page.screenshot({ path: evidence('p4-01-quote') });
 
@@ -59,7 +61,7 @@ test.describe('Phase 4 自動積算', () => {
     await page.getByTestId('undo').click();
     await page.getByTestId('open-estimate').click();
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-total')).toHaveText('¥2,382'); // 施工単価が消え 材料2166＋税216
+    await expect(page.getByTestId('t-total')).toHaveText('¥4,812'); // 施工単価が消え 材料4375＋税437
     await expect(page.getByTestId('q-client')).toHaveValue('');
   });
 
@@ -98,7 +100,8 @@ test.describe('Phase 4 自動積算', () => {
     await page.getByTestId('tab-qty').click();
     await expect(page.getByTestId('qty-order').first()).toHaveText('2本'); // 3700×1.1=4070 → 2本
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-total')).toHaveText('¥2,640'); // 2400 + 税240
+    // 2本×1200=2400 ＋ サドル4個 636 ＋ ビス8本 184 ＋ キリ1本 979 = 4199、税 419
+    await expect(page.getByTestId('t-total')).toHaveText('¥4,618');
     await page.getByTestId('close-estimate').click();
     await expect(page.getByTestId('save-state')).toHaveText('保存済み', { timeout: 10_000 });
     await page.reload();
@@ -106,6 +109,6 @@ test.describe('Phase 4 自動積算', () => {
     await expect(page.getByTestId('editor')).toBeVisible();
     await page.getByTestId('open-estimate').click();
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-total')).toHaveText('¥2,640');
+    await expect(page.getByTestId('t-total')).toHaveText('¥4,618');
   });
 });

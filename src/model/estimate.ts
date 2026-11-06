@@ -7,7 +7,8 @@
 import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
-import { catalogFittingPrice, catalogPipePrice, effectiveMaterial } from './priceCatalog';
+import { catalogFittingPrice, catalogPipePrice, catalogSupportPrice, effectiveMaterial } from './priceCatalog';
+import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportSettings } from './supports';
 
 /** 単価の出どころ: user=現場で入力 / catalog=メーカー参考単価 / none=なし */
 export type PriceSource = 'user' | 'catalog' | 'none';
@@ -27,6 +28,8 @@ export type EstimateSettings = {
   overhead: { mode: 'rate' | 'amount'; value: number };
   prices: Record<string, PriceItem>;
   extras: ExtraItem[];
+  /** 支持金具・ビスの設定（未設定なら既定値） */
+  supports?: SupportSettings;
   client?: string;
   title?: string;
   issuer?: string;
@@ -120,6 +123,20 @@ export type FittingLine = {
   laborAmount: number;
 };
 
+/** 支持金具・ビス・コンクリキリの行 */
+export type SupportLine = {
+  key: string;
+  name: string;
+  spec: string;
+  count: number;
+  unit: string;
+  note: string;
+  price: PriceItem | undefined;
+  priceSource: PriceSource;
+  materialAmount: number;
+  laborAmount: number;
+};
+
 export type QuoteLine = {
   section: 'material' | 'labor' | 'extra';
   name: string;
@@ -141,6 +158,7 @@ export type Estimate = {
   measures: Record<string, SegmentMeasure>;
   pipes: PipeLine[];
   fittings: FittingLine[];
+  supports: SupportLine[];
   nodeFittings: NodeFitting[];
   lines: QuoteLine[];
   issues: Issue[];
@@ -289,7 +307,32 @@ export function computeEstimate(doc: Doc): Estimate {
     l.laborAmount = roundYen(l.count * (l.price?.labor ?? 0));
   }
 
+  // --- 支持金具・ビス ---
+  const sst = st.supports ?? defaultSupportSettings();
+  const sup = computeSupports(doc, sst, measures, passThrough);
+  const supports: SupportLine[] = [];
+  const addSup = (key: string, name: string, spec: string, count: number, unit: string, note = '') => {
+    if (count <= 0) return;
+    const user = st.prices[key];
+    const cat = user ? undefined : catalogSupportPrice(key);
+    const price = user ?? (cat !== undefined ? { material: cat, labor: 0 } : undefined);
+    supports.push({
+      key, name, spec, count, unit, note, price, priceSource: user ? 'user' : cat !== undefined ? 'catalog' : 'none',
+      materialAmount: roundYen(count * (price?.material ?? 0)), laborAmount: roundYen(count * (price?.labor ?? 0)),
+    });
+  };
+  for (const g of sup.supports) {
+    const by = (['concrete', 'wood'] as const).filter((k) => g.bySubstrate[k] > 0).map((k) => `${SUBSTRATE_LABEL[k]}${g.bySubstrate[k]}`).join('・');
+    addSup(`sup|${g.kind}|${g.diameter}`, SUPPORT_LABEL[g.kind], `φ${g.diameter}`, g.count, '個', `間隔 ${spacingNote(sst, g.diameter)}／下地 ${by}`);
+  }
+  addSup('sup|screwConcrete', 'コンクリートビス', 'ステンレス 4×32', sup.holes.concrete, '本', `支持金具1個につき${sst.screwsPerSupport}本`);
+  addSup('sup|bit', 'コンクリキリ（インパクト用）', '六角軸 3.4mm', sup.bits, '本', `${sst.holesPerBit}穴ごとに1本`);
+  addSup('sup|screwWood', 'ステンレスビス', '皿木ねじ 4.1×38', sup.holes.wood, '本', `支持金具1個につき${sst.screwsPerSupport}本`);
+
   // --- 単価未登録 ---
+  for (const l of supports) {
+    if (!l.price || (l.price.material === 0 && l.price.labor === 0)) issues.push({ kind: 'noPrice', target: { kind: 'price', id: l.key }, message: `${l.name} ${l.spec} の単価が未登録です` });
+  }
   for (const l of [...pipes, ...fittings]) {
     if (!l.price || (l.price.material === 0 && l.price.labor === 0)) {
       issues.push({ kind: 'noPrice', target: { kind: 'price', id: l.key }, message: `${lineName(l)} の単価が未登録です` });
@@ -302,8 +345,10 @@ export function computeEstimate(doc: Doc): Estimate {
   const lines: QuoteLine[] = [];
   for (const p of pipes) lines.push({ section: 'material', name: p.name, spec: pipeSpec(p), quantity: p.orderQty, unit: p.orderUnit, unitPrice: p.price?.material ?? 0, amount: p.materialAmount, priceKey: p.key });
   for (const f of fittings) lines.push({ section: 'material', name: f.name, spec: fittingSpec(f), quantity: f.count, unit: '個', unitPrice: f.price?.material ?? 0, amount: f.materialAmount, priceKey: f.key });
+  for (const l of supports) lines.push({ section: 'material', name: l.name, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price?.material ?? 0, amount: l.materialAmount, priceKey: l.key });
   for (const p of pipes) lines.push({ section: 'labor', name: `${p.name} 施工`, spec: pipeSpec(p), quantity: p.laborQty, unit: 'm', unitPrice: p.price?.labor ?? 0, amount: p.laborAmount, priceKey: p.key });
   for (const f of fittings) if ((f.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${f.name} 取付`, spec: fittingSpec(f), quantity: f.count, unit: '個', unitPrice: f.price!.labor, amount: f.laborAmount, priceKey: f.key });
+  for (const l of supports) if ((l.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${l.name} 取付`, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price!.labor, amount: l.laborAmount, priceKey: l.key });
   for (const e of st.extras) lines.push({ section: 'extra', name: e.name, spec: '', quantity: e.quantity, unit: e.unit, unitPrice: e.unitPrice, amount: roundYen(e.quantity * e.unitPrice) });
 
   const sum = (sec: QuoteLine['section']) => lines.filter((l) => l.section === sec).reduce((a, l) => a + l.amount, 0);
@@ -312,8 +357,10 @@ export function computeEstimate(doc: Doc): Estimate {
   const overhead = st.overhead.mode === 'rate' ? roundYen(base * st.overhead.value) : roundYen(st.overhead.value);
   const subtotal = base + overhead;
   const tax = Math.floor(Number((subtotal * st.taxRate).toFixed(6)));
-  return { measures, pipes, fittings, nodeFittings, lines, issues, materialTotal, laborTotal, extrasTotal, overhead, subtotal, tax, total: subtotal + tax };
+  return { measures, pipes, fittings, supports, nodeFittings, lines, issues, materialTotal, laborTotal, extrasTotal, overhead, subtotal, tax, total: subtotal + tax };
 }
+
+const spacingNote = (st: SupportSettings, d: number) => `${(d <= 80 ? st.spacingSmall : st.spacingLarge) / 1000}m`;
 
 export const pipeSpec = (p: Pick<PipeLine, 'material' | 'diameter' | 'system'>) =>
   `${p.material ? `${p.material} ` : ''}${isWire(p.system) ? `${p.diameter}mm` : `φ${p.diameter}`}`;

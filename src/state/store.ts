@@ -21,6 +21,7 @@ import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
+import { applySlope } from '../model/slope';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
 import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
 
@@ -151,6 +152,10 @@ type State = {
   setSegmentExtraRate(segId: string, rate: number | undefined): void;
   /** 部品の確定。undefined で自動判定に戻す */
   setNodeFitting(nodeId: string, type: FittingChoice | undefined): void;
+  /** 排水: この点を流末にして勾配をつける（'auto' = 管径別の最小勾配）。履歴1件 */
+  setSlopeFromOutlet(nodeId: string, slope: number | 'auto'): void;
+  /** 区間の支持金具・取付下地（undefined = 自動・現場の既定） */
+  setSegmentSupport(segId: string, patch: { support?: 'saddle' | 'levelBand' | 'none' | null; substrate?: 'concrete' | 'wood' | null }): void;
   updateEstimate(patch: Partial<Omit<EstimateSettings, 'prices' | 'extras'>>): void;
   setPrice(key: string, item: PriceItem | undefined): void;
   addExtraItem(): void;
@@ -561,6 +566,21 @@ export const useStore = create<State>((set, get) => {
       const node = type === undefined ? rest : { ...rest, fitting: { type, degree } };
       if (type === undefined && !n.fitting) return;
       commit({ ...get().doc, network: { ...net, nodes: { ...net.nodes, [nodeId]: node } } });
+    },
+    setSlopeFromOutlet: (nodeId, slope) => {
+      const r = applySlope(get().doc.network, nodeId, slope);
+      if (!r) { set({ notice: '流末には排水の横管の端（立て管・器具とのつなぎ目を含む）を選んでください。横管の途中の点や、配管が重なる場合は変更できません' }); return; }
+      commit(withNet(r.net), { notice: `${r.segments}区間に勾配をつけ、${r.nodes}点の高さを変えました` });
+    },
+    setSegmentSupport: (segId, patch) => {
+      const net = get().doc.network;
+      const s0 = net.segments[segId];
+      if (!s0) return;
+      const s = { ...s0 };
+      if (patch.support !== undefined) { if (patch.support === null) delete s.support; else s.support = patch.support; }
+      if (patch.substrate !== undefined) { if (patch.substrate === null) delete s.substrate; else s.substrate = patch.substrate; }
+      if (s.support === s0.support && s.substrate === s0.substrate) return;
+      commit({ ...get().doc, network: { ...net, segments: { ...net.segments, [segId]: s } } });
     },
     updateEstimate: (patch) => {
       const doc = get().doc;
