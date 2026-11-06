@@ -5,6 +5,7 @@ import Dexie, { type Table } from 'dexie';
 import { migrate, projectSchema, type ProjectData } from '../model/schema';
 import { validateNetwork } from '../model/network';
 import { validateBuilding } from '../model/building';
+import { validateFixtures } from '../model/fixtures';
 import { newId } from '../model/id';
 
 export type ProjectSummary = Pick<ProjectData, 'id' | 'name' | 'address' | 'createdAt' | 'updatedAt'>;
@@ -45,6 +46,8 @@ export function parseProject(json: string): ProjectData {
   if (errs.length) throw new InvalidProjectError('配管の接続情報が壊れています: ' + errs[0]);
   const berrs = validateBuilding(r.data.building);
   if (berrs.length) throw new InvalidProjectError('建物データが壊れています: ' + berrs[0]);
+  const ferrs = validateFixtures(r.data);
+  if (ferrs.length) throw new InvalidProjectError('設備機器（器具）のデータが壊れています: ' + ferrs[0]);
   return r.data;
 }
 

@@ -9,6 +9,9 @@ export const nodeSchema = z.object({
   kind: z.enum(['end', 'joint', 'elbow', 'tee', 'cross', 'valve', 'fixture']),
   pos: vec3,
   fixedKind: z.boolean().optional(),
+  fixtureId: z.string().min(1).optional(),
+  portId: z.string().min(1).optional(),
+  floorId: z.string().min(1).optional(),
 });
 
 export const segmentSchema = z.object({
@@ -45,7 +48,16 @@ export const buildingSchema = z.object({
   rooms: z.record(z.string(), z.object({ id: z.string().min(1), floorId: z.string().min(1), name: z.string(), polygon: z.array(vec2) })),
 });
 
-export const SCHEMA_VERSION = 2;
+export const fixtureSchema = z.object({
+  id: z.string().min(1),
+  floorId: z.string().min(1),
+  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon']),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
+});
+
+export const SCHEMA_VERSION = 3;
 
 export const projectSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -56,6 +68,7 @@ export const projectSchema = z.object({
   updatedAt: z.number(),
   building: buildingSchema,
   network: networkSchema,
+  fixtures: z.record(z.string(), fixtureSchema),
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;
@@ -69,11 +82,24 @@ const projectV1Schema = z.object({
   network: networkSchema,
 });
 
+const projectV2Schema = z.object({
+  schemaVersion: z.literal(2),
+  id: z.string().min(1),
+  name: z.string(),
+  address: z.string().optional(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+  building: buildingSchema,
+  network: networkSchema,
+});
+
 /** 旧形式を現行形式へ変換（未知の形式はそのまま返し、後段の検証で拒否される） */
 export function migrate(raw: unknown): unknown {
   const v1 = projectV1Schema.safeParse(raw);
   if (v1.success) {
-    return { ...v1.data, schemaVersion: SCHEMA_VERSION, building: addFloor(emptyBuilding()).b };
+    return { ...v1.data, schemaVersion: SCHEMA_VERSION, building: addFloor(emptyBuilding()).b, fixtures: {} };
   }
+  const v2 = projectV2Schema.safeParse(raw);
+  if (v2.success) return { ...v2.data, schemaVersion: SCHEMA_VERSION, fixtures: {} };
   return raw;
 }

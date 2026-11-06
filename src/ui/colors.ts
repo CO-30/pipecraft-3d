@@ -1,3 +1,4 @@
+import { create } from 'zustand';
 import type { SystemType } from '../model/network';
 
 export const SYSTEMS: { id: SystemType; label: string; color: string }[] = [
@@ -14,6 +15,25 @@ export const SYSTEMS: { id: SystemType; label: string; color: string }[] = [
   { id: 'other', label: 'その他', color: '#475569' },
 ];
 
-export const systemColor = (s: SystemType) => SYSTEMS.find((x) => x.id === s)?.color ?? '#475569';
+const KEY = 'pipecraft3d.systemColors';
+type Overrides = Partial<Record<SystemType, string>>;
+const load = (): Overrides => {
+  try { return JSON.parse(localStorage.getItem(KEY) ?? '{}') as Overrides; } catch { return {}; }
+};
+
+/** 種類ごとの色のユーザー設定（端末ごと。現場データには含めない） */
+export const useColors = create<{ overrides: Overrides; setColor(s: SystemType, c: string | null): void }>((set, get) => ({
+  overrides: load(),
+  setColor: (s, c) => {
+    const overrides = { ...get().overrides };
+    if (c) overrides[s] = c;
+    else delete overrides[s];
+    set({ overrides });
+    try { localStorage.setItem(KEY, JSON.stringify(overrides)); } catch { /* 保存できない環境では今回のみ */ }
+  },
+}));
+
+export const defaultSystemColor = (s: SystemType) => SYSTEMS.find((x) => x.id === s)?.color ?? '#475569';
+export const systemColor = (s: SystemType) => useColors.getState().overrides[s] ?? defaultSystemColor(s);
 export const systemLabel = (s: SystemType) => SYSTEMS.find((x) => x.id === s)?.label ?? s;
 export const SELECT_COLOR = '#f59e0b';

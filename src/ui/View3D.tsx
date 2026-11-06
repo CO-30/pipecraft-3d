@@ -12,7 +12,26 @@ import type { Vec3 } from '../model/network';
 import { buildingBoxes, type Box } from '../model/building3d';
 import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
-import { SELECT_COLOR, systemColor } from './colors';
+import { SELECT_COLOR, systemColor, useColors } from './colors';
+import { FIXTURE_CATALOG, fixtureBaseZ, type Fixture } from '../model/fixtures';
+
+/** 器具の簡易3D形状（箱）。表示モードと選択強調つき */
+function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; selected: boolean; clip: THREE.Plane[] }) {
+  const floor = useStore((s) => s.doc.building.floors.find((x) => x.id === f.floorId));
+  if (mode === 'hide' || !floor) return null;
+  const { w, d, h } = FIXTURE_CATALOG[f.type].size;
+  const z = fixtureBaseZ(f, floor) + h / 2;
+  const ghost = mode === 'ghost';
+  return (
+    <mesh name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} renderOrder={1}
+      onClick={(e) => { e.stopPropagation(); useStore.getState().select({ kind: 'fixture', id: f.id }); }}
+      raycast={ghost ? () => null : undefined}>
+      <boxGeometry args={[w / 1000, h / 1000, d / 1000]} />
+      <meshStandardMaterial color={selected ? SELECT_COLOR : '#e0f2fe'} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.3 : 0}
+        transparent={ghost} opacity={ghost ? 0.3 : 1} clippingPlanes={clip} />
+    </mesh>
+  );
+}
 
 const GRID_SNAP = 50;
 const snap = (v: number) => Math.round(v / GRID_SNAP) * GRID_SNAP;
@@ -32,7 +51,7 @@ function Pipe({ a, b, radius, color, selected, mode, onSelect, clip }: { a: Vec3
   if (mode === 'hide') return null;
   return (
     <mesh position={pos} quaternion={quat} onClick={(e) => { e.stopPropagation(); onSelect(); }} renderOrder={2}>
-      <cylinderGeometry args={[radius, radius, len, 12]} />
+      <cylinderGeometry args={[selected ? radius * 1.6 : radius, selected ? radius * 1.6 : radius, len, 12]} />
       <meshStandardMaterial color={selected ? SELECT_COLOR : color} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.5 : 0}
         transparent={mode === 'ghost'} opacity={mode === 'ghost' ? 0.3 : 1} clippingPlanes={clip} />
     </mesh>
@@ -89,6 +108,8 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const section = useStore((s) => s.section);
   const floorFilter = useStore((s) => s.floorFilter);
   const activeFloorId = useStore((s) => s.activeFloorId);
+  const fixtures = useStore((s) => s.doc.fixtures);
+  useColors((c) => c.overrides);
   const allBoxes = useMemo(() => buildingBoxes(building), [building]);
   const boxes = useMemo(() => {
     if (floorFilter === 'all') return allBoxes;
@@ -244,14 +265,18 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
         });
       })()}
       {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => (
-        <Pipe clip={clip} key={s.id} a={net.nodes[s.a].pos} b={net.nodes[s.b].pos} radius={Math.max(0.02, s.diameter / 1500)}
+        <Pipe clip={clip} key={s.id} a={net.nodes[s.a].pos} b={net.nodes[s.b].pos} radius={Math.max(0.025, s.diameter / 1500)}
           color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} mode={pipeMode}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: s.id })} />
       ))}
+      {Object.values(fixtures).filter((f) => floorFilter === 'all' || shownFloorIds.has(f.floorId)).map((f) => (
+        <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={modeFor('fixtures', f.id)} />
+      ))}
       {pipeMode !== 'hide' && Object.values(net.nodes).filter((n) => zIn(n.pos.z)).map((n) => (
-        <mesh key={n.id} position={toThree(n.pos)} onPointerDown={(e) => startDrag(e, n.id)} renderOrder={3}>
-          <sphereGeometry args={[n.kind === 'tee' || n.kind === 'cross' ? 0.07 : 0.05, 16, 16]} />
-          <meshStandardMaterial clippingPlanes={clip} color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' ? '#111827' : '#f9fafb'} />
+        <mesh key={n.id} position={toThree(n.pos)} onPointerDown={n.fixtureId ? undefined : (e) => startDrag(e, n.id)}
+          onClick={n.fixtureId ? (e) => { e.stopPropagation(); useStore.getState().select({ kind: 'node', id: n.id }); } : undefined} renderOrder={3}>
+          <sphereGeometry args={[n.kind === 'tee' || n.kind === 'cross' ? 0.07 : n.fixtureId ? 0.045 : 0.05, 16, 16]} />
+          <meshStandardMaterial clippingPlanes={clip} color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' || n.kind === 'cross' ? '#111827' : n.kind === 'valve' ? '#f97316' : n.fixtureId ? '#0e7490' : '#f9fafb'} />
         </mesh>
       ))}
     </>

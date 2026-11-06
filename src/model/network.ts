@@ -25,6 +25,11 @@ export type PipeNode = {
   pos: Vec3;
   /** true の場合は kind をトポロジーから自動再計算しない（バルブ・設備接続点など） */
   fixedKind?: boolean;
+  /** 設備機器の接続口ノード: 器具ID と接続口ID */
+  fixtureId?: string;
+  portId?: string;
+  /** 所属階（階高の変更に追従するため） */
+  floorId?: string;
 };
 
 export type SystemType =
@@ -362,4 +367,236 @@ export function validateNetwork(net: Network): string[] {
     }
   }
   return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: 編集操作（すべて不変条件を守り、守れない場合は元の Network を返す）
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ATTRS: SegmentAttrs = { system: 'other', diameter: 20 };
+/** 切断・解除で残す区間の最小長(mm) */
+export const MIN_PIECE_MM = 25;
+
+const attrsOf = (s: Segment): SegmentAttrs & Pick<Segment, 'extraRate' | 'note'> => {
+  const { id: _i, a: _a, b: _b, measuredLength: _m, measuredApprox: _ma, ...rest } = s;
+  return rest;
+};
+const lerp = (p: Vec3, q: Vec3, t: number): Vec3 => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t });
+const add = (p: Vec3, d: Vec3): Vec3 => ({ x: p.x + d.x, y: p.y + d.y, z: p.z + d.z });
+
+/**
+ * タップ位置で区間を切断し、gap(mm) の隙間を空けて2本の端点にする。
+ * 区間が 150mm 未満・どちらかの残りが MIN_PIECE_MM 未満なら null。
+ */
+export function cutSegment(net: Network, segId: string, p: Vec3, gap = 50): { net: Network; nodeIds: [string, string] } | null {
+  const s = net.segments[segId];
+  if (!s) return null;
+  const A = net.nodes[s.a].pos, Bp = net.nodes[s.b].pos;
+  const L = dist(A, Bp);
+  if (L < 150) return null;
+  const { t } = projectOnSegment(net, segId, p);
+  const d1 = t * L - gap / 2, d2 = t * L + gap / 2;
+  if (d1 < MIN_PIECE_MM || L - d2 < MIN_PIECE_MM) return null;
+  const { [segId]: _removed, ...rest } = net.segments;
+  let cur: Network = { ...net, segments: rest };
+  let n1: string, n2: string, s1: string, s2: string;
+  ({ net: cur, id: n1 } = addNode(cur, lerp(A, Bp, d1 / L)));
+  ({ net: cur, id: n2 } = addNode(cur, lerp(A, Bp, d2 / L)));
+  const attrs = attrsOf(s);
+  ({ net: cur, id: s1 } = addSegment(cur, s.a, n1, attrs));
+  ({ net: cur, id: s2 } = addSegment(cur, n2, s.b, attrs));
+  if (s.measuredLength !== undefined) {
+    cur.segments[s1] = { ...cur.segments[s1], measuredLength: (s.measuredLength * d1) / L, measuredApprox: true };
+    cur.segments[s2] = { ...cur.segments[s2], measuredLength: (s.measuredLength * (L - d2)) / L, measuredApprox: true };
+  }
+  return { net: normalize(cur), nodeIds: [n1, n2] };
+}
+
+/** ノードにつながる区間をそれぞれ pull(mm) 手前の新しい端点で切り離す（接続解除） */
+export function detachNode(net: Network, nodeId: string, pull = 30): Network {
+  const n = net.nodes[nodeId];
+  if (!n) return net;
+  const segs = segmentsAt(net, nodeId);
+  if (segs.length < 2) return net;
+  let cur: Network = { nodes: { ...net.nodes }, segments: { ...net.segments } };
+  for (const s of segs) {
+    const o = net.nodes[other(s, nodeId)].pos;
+    const L = dist(o, n.pos);
+    if (L - pull < MIN_PIECE_MM) return net;
+    let nid: string;
+    ({ net: cur, id: nid } = addNode(cur, lerp(n.pos, o, pull / L)));
+    cur.segments[s.id] = s.a === nodeId ? { ...s, a: nid } : { ...s, b: nid };
+  }
+  // バルブなど種別固定のノードは切り離すと意味がないので消す（設備の接続口は残す）
+  if (!n.fixtureId) delete cur.nodes[nodeId];
+  return normalize(cur);
+}
+
+/** source の区間を target へ付け替えて1つのノードにする（接続）。設備の接続口は残す側にする */
+export function mergeNodes(net: Network, targetId: string, sourceId: string): Network {
+  let t = net.nodes[targetId], s = net.nodes[sourceId];
+  if (!t || !s || t.id === s.id) return net;
+  if (s.fixedKind && t.fixedKind) return net;
+  if (s.fixedKind) [t, s] = [s, t];
+  const segs = segmentsAt(net, s.id);
+  const pairs = new Set(Object.values(net.segments).filter((x) => x.a !== s.id && x.b !== s.id).map((x) => pairKey(x.a, x.b)));
+  const segments = { ...net.segments };
+  for (const x of segs) {
+    const o = other(x, s.id);
+    if (o === t.id) return net;
+    if (dist(net.nodes[o].pos, t.pos) < MIN_SEGMENT_MM) return net;
+    const k = pairKey(o, t.id);
+    if (pairs.has(k)) return net;
+    pairs.add(k);
+    segments[x.id] = x.a === s.id ? { ...x, a: t.id } : { ...x, b: t.id };
+  }
+  const nodes = { ...net.nodes };
+  delete nodes[s.id];
+  return normalize({ nodes, segments });
+}
+
+/** ノードを区間の途中（最寄り点）に接続する。区間を分割してから結合 */
+export function connectNodeToSegment(net: Network, nodeId: string, segId: string): Network {
+  const seg = net.segments[segId];
+  const n = net.nodes[nodeId];
+  if (!seg || !n || seg.a === nodeId || seg.b === nodeId) return net;
+  const sp = splitSegment(net, segId, n.pos);
+  const merged = mergeNodes(sp.net, sp.nodeId, nodeId);
+  return merged === sp.net ? net : merged;
+}
+
+/**
+ * 部品単位の削除。
+ * バルブ: 外して直管に戻す / 次数2（エルボ・ソケット）: 前後を1本の直線でつなぐ / 端点: その区間を削除 / 分岐点・設備の接続口(次数2以上): 削除しない
+ */
+export function deleteFitting(net: Network, nodeId: string): Network {
+  const n = net.nodes[nodeId];
+  if (!n) return net;
+  const segs = segmentsAt(net, nodeId);
+  if (n.fixtureId && segs.length !== 1) return net;
+  if (segs.length === 1) return deleteSegment(net, segs[0].id);
+  if (segs.length === 0) {
+    const nodes = { ...net.nodes };
+    delete nodes[nodeId];
+    return { ...net, nodes };
+  }
+  if (segs.length >= 3) {
+    if (n.fixedKind) return normalize({ ...net, nodes: { ...net.nodes, [nodeId]: { ...n, fixedKind: undefined } } });
+    return net;
+  }
+  const [s1, s2] = segs;
+  const a = other(s1, nodeId), b = other(s2, nodeId);
+  if (a === b || dist(net.nodes[a].pos, net.nodes[b].pos) < MIN_SEGMENT_MM) return net;
+  const segments = { ...net.segments };
+  delete segments[s1.id];
+  delete segments[s2.id];
+  const k = pairKey(a, b);
+  if (Object.values(segments).some((x) => pairKey(x.a, x.b) === k)) return net;
+  const healed: Segment = { ...attrsOf(s1), id: s1.id, a, b };
+  if (s1.measuredLength !== undefined || s2.measuredLength !== undefined) {
+    // 実測長は捨てない。片側だけ実測なら残りはモデル長で補い、概算として印を付ける
+    const m1 = s1.measuredLength ?? segmentLength(net, s1.id), m2 = s2.measuredLength ?? segmentLength(net, s2.id);
+    healed.measuredLength = m1 + m2;
+    const exact = s1.measuredLength !== undefined && s2.measuredLength !== undefined && isCollinear(net, nodeId, s1, s2) && !s1.measuredApprox && !s2.measuredApprox;
+    if (!exact) healed.measuredApprox = true;
+  }
+  segments[s1.id] = healed;
+  const nodes = { ...net.nodes };
+  delete nodes[nodeId];
+  return normalize({ nodes, segments });
+}
+
+/** 区間の途中にバルブを入れる。端に近すぎる位置は null */
+export function insertValve(net: Network, segId: string, p: Vec3): { net: Network; nodeId: string } | null {
+  if (!net.segments[segId]) return null;
+  const sp = splitSegment(net, segId, p);
+  if (sp.segmentIds.length !== 2) return null;
+  const n = sp.net.nodes[sp.nodeId];
+  return { net: { ...sp.net, nodes: { ...sp.net.nodes, [n.id]: { ...n, kind: 'valve', fixedKind: true } } }, nodeId: n.id };
+}
+
+/** 複数ノードを平行移動。長さ0の区間ができる移動は拒否 */
+export function translateNodes(net: Network, nodeIds: string[], d: Vec3): Network {
+  const set = new Set(nodeIds.filter((id) => net.nodes[id]));
+  if (!set.size) return net;
+  const nodes = { ...net.nodes };
+  for (const id of set) nodes[id] = { ...nodes[id], pos: add(nodes[id].pos, d) };
+  for (const s of Object.values(net.segments)) {
+    if ((set.has(s.a) || set.has(s.b)) && dist(nodes[s.a].pos, nodes[s.b].pos) < MIN_SEGMENT_MM) return net;
+  }
+  return normalize({ ...net, nodes });
+}
+
+/** 区間の長さを変更（a 端を固定し、b 端を区間の方向に沿って移動） */
+export function setSegmentLength(net: Network, segId: string, length: number): Network {
+  const s = net.segments[segId];
+  if (!s || !(length >= MIN_SEGMENT_MM) || !Number.isFinite(length)) return net;
+  const A = net.nodes[s.a].pos, Bp = net.nodes[s.b].pos;
+  const L = dist(A, Bp);
+  return moveNode(net, s.b, lerp(A, Bp, length / L));
+}
+
+/** 区間からつながっている配管全体（連結成分） */
+export function connectedComponent(net: Network, segId: string): { segmentIds: string[]; nodeIds: string[] } {
+  const s0 = net.segments[segId];
+  if (!s0) return { segmentIds: [], nodeIds: [] };
+  const adj = adjacency(net);
+  const segs = new Set<string>(), nodes = new Set<string>();
+  const stack = [s0.a, s0.b];
+  while (stack.length) {
+    const nid = stack.pop()!;
+    if (nodes.has(nid)) continue;
+    nodes.add(nid);
+    for (const s of adj.get(nid) ?? []) {
+      segs.add(s.id);
+      stack.push(other(s, nid));
+    }
+  }
+  return { segmentIds: [...segs], nodeIds: [...nodes] };
+}
+
+export function deleteSegments(net: Network, ids: string[]): Network {
+  const del = new Set(ids);
+  const ends = ids.flatMap((id) => (net.segments[id] ? [net.segments[id].a, net.segments[id].b] : []));
+  const segments = Object.fromEntries(Object.entries(net.segments).filter(([id]) => !del.has(id)));
+  return mergeAtNodes(normalize({ ...net, segments }), ends);
+}
+
+/** 区間を複製して offset だけずらす（実測長・設備の接続口は引き継がない） */
+export function duplicateSegments(net: Network, ids: string[], offset: Vec3): { net: Network; segmentIds: string[] } {
+  const map = new Map<string, string>();
+  let cur: Network = { nodes: { ...net.nodes }, segments: { ...net.segments } };
+  const segmentIds: string[] = [];
+  for (const id of ids) {
+    const s = net.segments[id];
+    if (!s) continue;
+    const ends = [s.a, s.b].map((nid) => {
+      let m = map.get(nid);
+      if (!m) {
+        const src = net.nodes[nid];
+        ({ net: cur, id: m } = addNode(cur, add(src.pos, offset)));
+        if (src.kind === 'valve' && src.fixedKind) cur.nodes[m] = { ...cur.nodes[m], kind: 'valve', fixedKind: true };
+        map.set(nid, m);
+      }
+      return m;
+    });
+    let sid: string;
+    ({ net: cur, id: sid } = addSegment(cur, ends[0], ends[1], attrsOf(s)));
+    segmentIds.push(sid);
+  }
+  return { net: normalize(cur), segmentIds };
+}
+
+/** ノードから同じ x,y で高さ z まで縦区間（立て管）を追加。高さが同じ・既にある場合は null */
+export function addRiser(net: Network, fromNodeId: string, z: number, attrs?: SegmentAttrs): { net: Network; nodeId: string; segmentId: string } | null {
+  const n = net.nodes[fromNodeId];
+  if (!n || !Number.isFinite(z) || Math.abs(z - n.pos.z) < MIN_SEGMENT_MM) return null;
+  const target = { x: n.pos.x, y: n.pos.y, z };
+  if (segmentsAt(net, fromNodeId).some((s) => dist(net.nodes[other(s, fromNodeId)].pos, target) < MIN_SEGMENT_MM)) return null;
+  const base = segmentsAt(net, fromNodeId)[0];
+  const at = base ? attrsOf(base) : attrs ?? DEFAULT_ATTRS;
+  let cur = net, nid: string, sid: string;
+  ({ net: cur, id: nid } = addNode(cur, target));
+  ({ net: cur, id: sid } = addSegment(cur, fromNodeId, nid, at));
+  return { net: normalize(cur), nodeId: nid, segmentId: sid };
 }
