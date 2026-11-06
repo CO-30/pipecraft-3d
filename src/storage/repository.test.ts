@@ -10,7 +10,7 @@ function sample(): ProjectData {
   const a = addPolyline(emptyNetwork(), [{ x: 0, y: 0, z: 0 }, { x: 4000, y: 0, z: 0 }], { system: 'water', diameter: 20 });
   const b = branchFromSegment(a.net, a.segmentIds[0], { x: 2000, y: 0, z: 0 }, [{ x: 2000, y: 1500, z: 0 }]);
   const building = createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
-  return { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2, building, network: b.net, fixtures: {}, estimate: defaultEstimate() };
+  return { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2, building, network: b.net, fixtures: {}, estimate: defaultEstimate(), underlays: {} };
 }
 
 let n = 0;
@@ -64,16 +64,56 @@ describe('IndexedDB 保存', () => {
 
   it('v3 は積算設定の初期値を入れて v4 に変換、部品の確定・単価は往復で保持', () => {
     const p = sample();
-    const { estimate: _e, ...rest } = p;
+    const { estimate: _e, underlays: _u, ...rest } = p;
     const r = parseProject(JSON.stringify({ ...rest, schemaVersion: 3 }));
-    expect(r.schemaVersion).toBe(4);
+    expect(r.schemaVersion).toBe(SCHEMA_VERSION);
     expect(r.estimate).toEqual(defaultEstimate());
+    expect(r.underlays).toEqual({});
+    const r4 = parseProject(JSON.stringify({ ...rest, estimate: p.estimate, schemaVersion: 4 }));
+    expect(r4.underlays).toEqual({});
     const nid = Object.keys(p.network.nodes)[0];
     const q = structuredClone(p);
     q.network.nodes[nid].fitting = { type: 'elbow45', degree: 1 };
     q.estimate.prices['pipe|water||20'] = { material: 1200, labor: 400, saleUnit: { kind: 'roll', length: 50000 } };
     q.estimate.extras.push({ id: 'x1', name: '試験', quantity: 1, unit: '式', unitPrice: 5000 });
     expect(parseProject(JSON.stringify(q))).toEqual(q);
+  });
+
+  it('下敷き: 画像の data URL のみ・存在する階のみ受け付ける', () => {
+    const p = sample();
+    const u = { id: 'u1', floorId: p.building.floors[0].id, kind: 'image', label: '図面', src: 'data:image/jpeg;base64,AAAA', widthPx: 10, heightPx: 10, center: { x: 0, y: 0 }, mmPerPx: 10, rotation: 0, opacity: 0.5, scaled: false };
+    expect(parseProject(JSON.stringify({ ...p, underlays: { u1: u } })).underlays.u1).toEqual(u);
+    expect(() => parseProject(JSON.stringify({ ...p, underlays: { u1: { ...u, src: 'data:image/svg+xml;base64,AAAA' } } }))).toThrow(InvalidProjectError);
+    expect(() => parseProject(JSON.stringify({ ...p, underlays: { u1: { ...u, floorId: 'nope' } } }))).toThrow(/下敷き/);
+  });
+
+  it('全現場の一括バックアップ → 読み込みで全件が新しいIDで追加。壊れた1件は数えて飛ばす', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const a = sample(), b = { ...sample(), id: 'p2', name: '二件目' };
+    await r.save(a); await r.save(b);
+    const json = await r.exportAll();
+    const r2 = new DexieProjectRepository(nextName());
+    const res = await r2.importAny(json);
+    expect(res.imported.map((p) => p.name).sort()).toEqual(['テスト現場', '二件目']);
+    expect(res.imported.every((p) => p.id !== 'p1' && p.id !== 'p2')).toBe(true);
+    const bad = JSON.parse(json);
+    bad.projects[0].network.segments[Object.keys(bad.projects[0].network.segments)[0]].b = 'missing';
+    const res2 = await r2.importAny(JSON.stringify(bad));
+    expect([res2.imported.length, res2.failed]).toEqual([1, 1]);
+    // 1現場のファイルもそのまま読める
+    expect((await r2.importAny(JSON.stringify(a))).imported).toHaveLength(1);
+  });
+
+  it('本体が壊れていたら直前の版から復旧し、recovered で知らせる', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const p = sample();
+    await r.save(p);
+    await r.save({ ...p, updatedAt: 5 });
+    await r._corrupt('p1', '{broken');
+    const got = await r.loadWithStatus('p1');
+    expect(got?.recovered).toBe(true);
+    expect(got?.project.updatedAt).toBe(2);
+    expect((await r.loadWithStatus('p1'))!.project.id).toBe('p1');
   });
 
   it('積算設定の不正値（負の単価・税率>1）は拒否', () => {

@@ -7,6 +7,8 @@ import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
+import { UnderlayPanel } from './UnderlayPanel';
+import { WallPhotoDialog } from './WallPhotoDialog';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
 import { defaultEstimate, measureSegment } from '../model/estimate';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
@@ -54,6 +56,7 @@ function ElementVisibility({ id }: { id: string }) {
 }
 
 export function PropertyPanel() {
+  const [photoWall, setPhotoWall] = useState<string | null>(null);
   const sel = useStore((s) => s.selection);
   const doc = useStore((s) => s.doc);
   const tool = useStore((s) => s.tool);
@@ -186,8 +189,10 @@ export function PropertyPanel() {
         <div className="row">
           <button onClick={() => st.setTool('door')}>ドアを付ける</button>
           <button onClick={() => st.setTool('window')}>窓を付ける</button>
+          <button data-testid="wall-photo" onClick={() => setPhotoWall(w.id)}>📷 写真から窓・ドア</button>
           <button className="danger" onClick={() => st.deleteSelected()}>壁を削除</button>
         </div>
+        {photoWall === w.id && <WallPhotoDialog wallId={w.id} onClose={() => setPhotoWall(null)} />}
       </div>
     );
   }
@@ -226,6 +231,7 @@ export function PropertyPanel() {
     return <div className="props"><div className="ptitle">壁の角（{Math.round(c.x)}, {Math.round(c.y)}）ドラッグで移動</div></div>;
   }
   // 選択なし: ツールの設定
+  if (tool === 'underlay') return <UnderlayPanel />;
   return (
     <div className="props">
       {tool === 'fixture' && <FixturePicker />}
@@ -388,6 +394,7 @@ const TOOL_HELP: Record<Tool, string> = {
   pipe: '', wall: '指でなぞって壁を描きます（既存の角・壁に自動でつながります）',
   room: '対角にドラッグして部屋を作ります', split: '部屋を横切るように線を引くと2つに分かれます', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
   fixture: '種類を選んで図面をタップすると器具を置きます',
+  underlay: '下敷き（図面・写真・航空写真）を読み込み、ドラッグで位置を合わせます',
 };
 
 export function FloorBar() {
@@ -482,7 +489,7 @@ function SectionControls() {
 const TOOLS: { id: Tool; icon: string; label: string }[] = [
   { id: 'select', icon: '👆', label: '選択' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'wall', icon: '▭', label: '壁' },
   { id: 'room', icon: '⬚', label: '部屋' }, { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' },
-  { id: 'fixture', icon: '🚽', label: '器具' },
+  { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'underlay', icon: '🗺️', label: '下敷き' },
 ];
 
 export function Toolbar() {

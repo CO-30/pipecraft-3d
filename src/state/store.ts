@@ -22,9 +22,10 @@ import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem 
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
+import { rescaleByTwoPoints, type Underlay } from '../model/underlay';
 
 export type { Doc };
-export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture';
+export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
 export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture';
 /** at: 区間をタップした位置（切断・バルブ挿入に使う） */
 export type Selection = { kind: SelKind; id: string; at?: Vec3 } | null;
@@ -45,7 +46,7 @@ const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', pipes: 'show', fixtures: 'show',
 });
 
-export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate() });
+export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} });
 
 type State = {
   doc: Doc;
@@ -118,6 +119,28 @@ type State = {
   /** 画面に短く出すお知らせ（つなげない配管など）。表示専用 */
   notice: string | null;
   clearNotice(): void;
+  // 下敷き
+  /** 操作対象の下敷き（表示状態。保存しない） */
+  activeUnderlayId: string | null;
+  /** 下敷きを表示するか（表示専用） */
+  showUnderlays: boolean;
+  setShowUnderlays(v: boolean): void;
+  /** 2点で縮尺: 指定済みの点（図面座標） */
+  scalePick: { id: string; pts: Vec2[] } | null;
+  setActiveUnderlay(id: string | null): void;
+  addUnderlay(u: Omit<Underlay, 'id'>): string;
+  updateUnderlay(id: string, patch: Partial<Pick<Underlay, 'label' | 'opacity' | 'rotation' | 'center' | 'mmPerPx'>>): void;
+  deleteUnderlay(id: string): void;
+  dragUnderlay(id: string, dx: number, dy: number): void;
+  startScalePick(id: string): void;
+  addScalePoint(p: Vec2): void;
+  cancelScalePick(): void;
+  /** 2点の実寸(mm)で縮尺を確定 */
+  applyScale(realMm: number): boolean;
+  /** 建物外形（外壁）と下敷きを1操作で取り込む。外壁が作れなかった辺の数を返す */
+  importSite(opts: { polygon?: Vec2[]; underlay?: Omit<Underlay, 'id'> }): { walls: number; failed: number } | null;
+  /** 写真から作った開口部を1操作で追加。作れなかった数を返す */
+  addOpeningsBatch(wallId: string, list: { type: OpeningType; offset: number; width: number; height: number; sill: number }[]): { added: number; failed: number };
 
   // 積算
   /** 実測長(mm)。undefined で削除（モデル長に戻す） */
@@ -175,7 +198,7 @@ export const useStore = create<State>((set, get) => {
   /** 新しい Doc を履歴付きで確定。変化がなければ何もしない */
   const commit = (next: Doc, extra: Partial<State> = {}) => {
     const { doc, past } = get();
-    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate) return false;
+    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
     return true;
   };
@@ -203,7 +226,10 @@ export const useStore = create<State>((set, get) => {
   /** 建物の階が変わったときに配管・器具を追従させる。配管が壊れる場合は null */
   const withFloors = (nextBld: Building, removedFloorId?: string): Doc | null => {
     let doc: Doc = get().doc;
-    if (removedFloorId) for (const f of Object.values(doc.fixtures)) if (f.floorId === removedFloorId) doc = deleteFixture(doc, f.id);
+    if (removedFloorId) {
+      for (const f of Object.values(doc.fixtures)) if (f.floorId === removedFloorId) doc = deleteFixture(doc, f.id);
+      if (doc.underlays) doc = { ...doc, underlays: Object.fromEntries(Object.entries(doc.underlays).filter(([, u]) => u.floorId !== removedFloorId)) };
+    }
     const network = followFloors(doc.network, doc.building.floors, nextBld.floors);
     const next = syncAllFixturePorts({ ...doc, building: nextBld, network });
     return validateNetwork(next.network).length ? null : next;
@@ -213,7 +239,7 @@ export const useStore = create<State>((set, get) => {
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
     past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
-    section: { mode: 'off', value: 0 }, floorFilter: 'all',
+    section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null,
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1,
   });
 
@@ -250,22 +276,22 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate };
+      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays };
       set({ doc, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(doc) });
     },
-    newDoc: (doc, meta) => set({ doc, meta, ...resetView(doc) }),
+    newDoc: (doc, meta) => set({ doc: { underlays: {}, ...doc }, meta, ...resetView(doc) }),
     closeProject: () => set({ meta: null, selection: null, dragBase: null }),
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
-      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate() };
+      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {} };
     },
     renameProject: (name, address) => {
       const m = get().meta;
       if (m) set({ meta: { ...m, name, address }, revision: get().revision + 1 });
     },
 
-    setTool: (tool) => set({ tool, pendingMerge: null }),
+    setTool: (tool) => set({ tool, pendingMerge: null, ...(tool !== 'underlay' ? { scalePick: null } : {}) }),
     setDrawAttrs: (a) => set({ drawAttrs: { ...get().drawAttrs, ...a } }),
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
@@ -412,6 +438,85 @@ export const useStore = create<State>((set, get) => {
       if (!s || (patch.diameter !== undefined && !(patch.diameter > 0))) return;
       commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch } } }));
     },
+    activeUnderlayId: null,
+    showUnderlays: true,
+    setShowUnderlays: (showUnderlays) => set({ showUnderlays }),
+    scalePick: null,
+    setActiveUnderlay: (activeUnderlayId) => set({ activeUnderlayId, scalePick: null }),
+    addUnderlay: (u) => {
+      const id = newId('u');
+      const doc = get().doc;
+      commit({ ...doc, underlays: { ...(doc.underlays ?? {}), [id]: { ...u, id } } }, { activeUnderlayId: id });
+      return id;
+    },
+    updateUnderlay: (id, patch) => {
+      const doc = get().doc;
+      const u = doc.underlays?.[id];
+      if (!u) return;
+      const n = { ...u, ...patch };
+      if (!(n.mmPerPx > 0) || !(n.opacity >= 0 && n.opacity <= 1) || !Number.isFinite(n.rotation)) return;
+      if (Object.keys(patch).every((k) => (patch as Record<string, unknown>)[k] === (u as Record<string, unknown>)[k])) return;
+      commit({ ...doc, underlays: { ...doc.underlays, [id]: n } });
+    },
+    deleteUnderlay: (id) => {
+      const doc = get().doc;
+      if (!doc.underlays?.[id]) return;
+      const underlays = { ...doc.underlays };
+      delete underlays[id];
+      commit({ ...doc, underlays }, { activeUnderlayId: get().activeUnderlayId === id ? null : get().activeUnderlayId, scalePick: null });
+    },
+    dragUnderlay: (id, dx, dy) => {
+      const base = get().dragBase;
+      const u = base?.underlays?.[id];
+      if (!base || !u) return;
+      set({ doc: { ...get().doc, underlays: { ...get().doc.underlays, [id]: { ...u, center: { x: u.center.x + dx, y: u.center.y + dy } } } } });
+    },
+    startScalePick: (id) => { if (get().doc.underlays?.[id]) set({ scalePick: { id, pts: [] }, activeUnderlayId: id, tool: 'underlay' }); },
+    addScalePoint: (p) => {
+      const sp = get().scalePick;
+      if (sp) set({ scalePick: { ...sp, pts: sp.pts.length >= 2 ? [p] : [...sp.pts, p] } });
+    },
+    cancelScalePick: () => set({ scalePick: null }),
+    applyScale: (realMm) => {
+      const sp = get().scalePick;
+      const doc = get().doc;
+      const u = sp && doc.underlays?.[sp.id];
+      if (!sp || !u || sp.pts.length !== 2) return false;
+      const n = rescaleByTwoPoints(u, sp.pts[0], sp.pts[1], realMm);
+      if (!n) return false;
+      commit({ ...doc, underlays: { ...doc.underlays, [u.id]: n } }, { scalePick: null });
+      return true;
+    },
+    importSite: ({ polygon, underlay }) => {
+      const doc = get().doc;
+      const floorId = get().activeFloorId;
+      let b = doc.building, walls = 0, failed = 0;
+      if (polygon) {
+        polygon.forEach((p, i) => {
+          const r = B.addWall(b, floorId, p, polygon[(i + 1) % polygon.length], { kind: 'exterior' });
+          if (r.wallIds.length) { b = r.b; walls += r.wallIds.length; } else failed++;
+        });
+      }
+      let underlays = doc.underlays ?? {};
+      let activeUnderlayId = get().activeUnderlayId;
+      if (underlay) {
+        const id = newId('u');
+        underlays = { ...underlays, [id]: { ...underlay, id } };
+        activeUnderlayId = id;
+      }
+      if (!walls && !underlay) return null;
+      commit({ ...doc, building: b, underlays }, { activeUnderlayId, selection: null });
+      return { walls, failed };
+    },
+    addOpeningsBatch: (wallId, list) => {
+      let b = get().doc.building, added = 0;
+      for (const o of list) {
+        const r = B.addOpening(b, wallId, o.type, o.offset, { width: o.width, height: o.height, sill: o.sill });
+        if (r.openingId) { b = r.b; added++; }
+      }
+      if (added) commit(withBld(b), { selection: { kind: 'wall', id: wallId } });
+      return { added, failed: list.length - added };
+    },
     setSegmentMeasured: (segId, mm) => {
       const net = get().doc.network;
       const s = net.segments[segId];
@@ -514,7 +619,7 @@ export const useStore = create<State>((set, get) => {
     endDrag: () => {
       const { dragBase, doc, past } = get();
       if (!dragBase) return;
-      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures;
+      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}) });
     },
 
