@@ -1,0 +1,4 @@
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; overscroll-behavior: none; }
+body { font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; color: #111827; -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
