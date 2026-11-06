@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useStore } from './store';
+import { findUpstreamBranchPoint, useStore } from './store';
 import { emptyNetwork, totalLength, validateNetwork } from '../model/network';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -40,5 +40,23 @@ describe('共通ストア', () => {
     s().deleteSelectedBranch();
     expect(totalLength(s().network)).toBe(4000);
     expect(validateNetwork(s().network)).toEqual([]);
+  });
+});
+
+describe('枝管ごと削除の対象', () => {
+  it('両側に分岐点がある本管区間は曖昧なので対象なし(null)', () => {
+    s().drawPolyline([v(0, 0), v(6000, 0)]);
+    let seg = Object.keys(s().network.segments)[0];
+    s().branch(seg, v(2000, 0), [v(2000, 1000)]);
+    seg = Object.values(s().network.segments).find((x) => s().network.nodes[x.b].pos.x === 6000 || s().network.nodes[x.a].pos.x === 6000)!.id;
+    s().branch(seg, v(4000, 0), [v(4000, 1000)]);
+    const mid = Object.values(s().network.segments).find((x) => {
+      const xs = [s().network.nodes[x.a].pos.x, s().network.nodes[x.b].pos.x].sort((a, b) => a - b);
+      return xs[0] === 2000 && xs[1] === 4000;
+    })!;
+    expect(findUpstreamBranchPoint(s().network, mid.id)).toBeNull();
+  });
+  it('存在しない区間IDでも例外を出さない', () => {
+    expect(findUpstreamBranchPoint(s().network, 'nope')).toBeNull();
   });
 });

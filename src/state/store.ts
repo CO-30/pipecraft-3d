@@ -3,7 +3,7 @@
  */
 import { create } from 'zustand';
 import {
-  addPolyline, branchFromSegment, deleteBranch, deleteSegment, emptyNetwork, moveNode,
+  addPolyline, branchFromSegment, collectBranch, deleteBranch, deleteSegment, emptyNetwork, moveNode,
   type Network, type SegmentAttrs, type Vec3,
 } from '../model/network';
 
@@ -61,7 +61,7 @@ export const useStore = create<State>((set, get) => {
     setTool: (tool) => set({ tool }),
     setDrawAttrs: (a) => set({ drawAttrs: { ...get().drawAttrs, ...a } }),
     select: ({ segmentId = null, nodeId = null }) => set({ selectedSegmentId: segmentId, selectedNodeId: nodeId }),
-    load: (network) => set({ network, past: [], future: [], selectedNodeId: null, selectedSegmentId: null, revision: get().revision + 1 }),
+    load: (network) => set({ network, past: [], future: [], dragBase: null, selectedNodeId: null, selectedSegmentId: null, revision: get().revision + 1 }),
 
     drawPolyline: (points, opts) => {
       if (points.length < 2) return;
@@ -98,12 +98,14 @@ export const useStore = create<State>((set, get) => {
       commit(deleteBranch(network, tee.nodeId, tee.segmentId), { selectedSegmentId: null });
     },
     undo: () => {
+      get().endDrag();
       const { past, network, future } = get();
       const prev = past.at(-1);
       if (!prev) return;
       set({ network: prev, past: past.slice(0, -1), future: [network, ...future], revision: get().revision + 1, selectedSegmentId: null, selectedNodeId: null });
     },
     redo: () => {
+      get().endDrag();
       const { past, network, future } = get();
       const next = future[0];
       if (!next) return;
@@ -115,6 +117,8 @@ export const useStore = create<State>((set, get) => {
 /** 区間から配管をたどり、最初に出会う分岐点（次数3以上）と、そこから枝側へ出る区間を返す */
 export function findUpstreamBranchPoint(net: Network, segId: string): { nodeId: string; segmentId: string } | null {
   const start = net.segments[segId];
+  if (!start) return null;
+  const found: { nodeId: string; segmentId: string }[] = [];
   for (const startNode of [start.a, start.b]) {
     let seg = start;
     let node = startNode;
@@ -122,11 +126,18 @@ export function findUpstreamBranchPoint(net: Network, segId: string): { nodeId: 
     while (!seen.has(seg.id)) {
       seen.add(seg.id);
       const segs = Object.values(net.segments).filter((s) => s.a === node || s.b === node);
-      if (segs.length >= 3) return { nodeId: node, segmentId: seg.id };
+      if (segs.length >= 3) { found.push({ nodeId: node, segmentId: seg.id }); break; }
       if (segs.length !== 2) break;
       seg = segs[0].id === seg.id ? segs[1] : segs[0];
       node = seg.a === node ? seg.b : seg.a;
     }
   }
-  return null;
+  // 両側に分岐点がある（本管の途中）場合はどちらを消すか曖昧なので対象なし
+  return found.length === 1 ? found[0] : null;
+}
+
+/** 「枝管ごと削除」で消える区間ID（対象なしなら null） */
+export function branchDeletionPreview(net: Network, segId: string): string[] | null {
+  const tee = findUpstreamBranchPoint(net, segId);
+  return tee ? collectBranch(net, tee.nodeId, tee.segmentId) : null;
 }

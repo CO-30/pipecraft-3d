@@ -17,6 +17,7 @@ export const segmentSchema = z.object({
   diameter: z.number().positive(),
   material: z.string().optional(),
   measuredLength: z.number().nonnegative().optional(),
+  measuredApprox: z.boolean().optional(),
   extraRate: z.number().nonnegative().optional(),
   note: z.string().optional(),
 });

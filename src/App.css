@@ -27,3 +27,6 @@ header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border
 .toolbar button.on { background: #2563eb; }
 .toolbar button:disabled { opacity: 0.35; }
 .wide .toolbar { grid-template-columns: repeat(4, 120px); justify-content: center; }
+
+.blocker { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(255,255,255,0.8); font-size: 16px; }
+.panel button:disabled { opacity: 0.4; }

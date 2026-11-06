@@ -15,6 +15,8 @@ export function useAutosave(): SaveState {
   const createdAt = useRef(Date.now());
 
   useEffect(() => {
+    // iOS Safari 等でのストレージ自動削除を避けるため永続化を要求（許可されなくても動作は継続）
+    navigator.storage?.persist?.().catch(() => undefined);
     repo.load(SPIKE_PROJECT_ID)
       .then((p) => {
         if (p) {
@@ -29,17 +31,32 @@ export function useAutosave(): SaveState {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let pending = false;
+    const flush = () => {
+      clearTimeout(timer);
+      if (!pending) return;
+      pending = false;
+      repo.save({ schemaVersion: SCHEMA_VERSION, id: SPIKE_PROJECT_ID, name: '技術検証', createdAt: createdAt.current, updatedAt: Date.now(), network: useStore.getState().network })
+        .then(() => setState('saved'))
+        .catch(() => setState('error')); // 不正データは保存されず、直前の正常データが残る
+    };
     const unsub = useStore.subscribe((s, prev) => {
       if (!ready.current || s.revision === prev.revision) return;
+      pending = true;
       setState('saving');
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        repo.save({ schemaVersion: SCHEMA_VERSION, id: SPIKE_PROJECT_ID, name: '技術検証', createdAt: createdAt.current, updatedAt: Date.now(), network: useStore.getState().network })
-          .then(() => setState('saved'))
-          .catch(() => setState('error'));
-      }, 500);
+      timer = setTimeout(flush, 500);
     });
-    return () => { unsub(); clearTimeout(timer); };
+    // アプリ切替・タブを閉じる直前に即保存
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      unsub();
+      flush();
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+    };
   }, []);
 
   return state;

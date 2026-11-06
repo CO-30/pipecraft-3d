@@ -44,9 +44,11 @@ export class DexieProjectRepository implements ProjectRepository {
     this.db = new PipeCraftDB(dbName);
   }
 
-  /** 保存時は直前の正常データを backupJson に残す（破損時の復旧用） */
+  /** 保存時は直前の正常データを backupJson に残す（破損時の復旧用）。不正データは InvalidProjectError */
   async save(p: ProjectData): Promise<void> {
-    const json = JSON.stringify(projectSchema.parse(p));
+    // 読み込めないデータは保存しない（保存時にも不変条件を強制）
+    const json = JSON.stringify(p);
+    parseProject(json);
     await this.db.transaction('rw', this.db.projects, async () => {
       const prev = await this.db.projects.get(p.id);
       await this.db.projects.put({ id: p.id, name: p.name, updatedAt: p.updatedAt, json, backupJson: prev?.json });

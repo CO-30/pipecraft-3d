@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PlanView } from './ui/PlanView';
 import { View3D } from './ui/View3D';
-import { useStore } from './state/store';
+import { branchDeletionPreview, useStore } from './state/store';
 import { useAutosave } from './ui/useAutosave';
 import { SYSTEMS, systemLabel } from './ui/colors';
 import { segmentLength, totalLength, type SystemType } from './model/network';
@@ -31,8 +31,11 @@ export default function App() {
   const seg = selSeg ? net.segments[selSeg] : null;
   const node = selNode ? net.nodes[selNode] : null;
 
+  const branchPreview = seg ? branchDeletionPreview(net, seg.id) : null;
   const confirmDeleteBranch = () => {
-    if (window.confirm('この枝管を分岐点から先まですべて削除します。よろしいですか？')) st.deleteSelectedBranch();
+    if (!branchPreview) return;
+    const len = branchPreview.reduce((a, id) => a + segmentLength(net, id), 0);
+    if (window.confirm(`分岐点から先の枝管 ${branchPreview.length}区間（計 ${Math.round(len)}mm）を削除します。よろしいですか？`)) st.deleteSelectedBranch();
   };
 
   return (
@@ -49,6 +52,7 @@ export default function App() {
       </header>
 
       <main className={`views ${effLayout}`}>
+        {save === 'loading' && <div className="blocker">読み込み中…</div>}
         {effLayout !== '3d' && <PlanView orthoDeg={ortho ? 15 : 0} />}
         {effLayout !== '2d' && <View3D />}
       </main>
@@ -58,7 +62,7 @@ export default function App() {
           <div className="row">
             <span>区間 {systemLabel(seg.system)} φ{seg.diameter} 長さ <b data-testid="sel-length">{Math.round(segmentLength(net, seg.id))}</b>mm</span>
             <button className="danger" onClick={() => st.deleteSelected()}>区間削除</button>
-            <button className="danger" onClick={confirmDeleteBranch}>枝管ごと削除</button>
+            <button className="danger" disabled={!branchPreview} title={branchPreview ? '' : '本管の途中、または分岐のない配管です'} onClick={confirmDeleteBranch}>枝管ごと削除</button>
             <button onClick={() => st.setTool('draw')}>ここから分岐</button>
           </div>
         ) : node ? (

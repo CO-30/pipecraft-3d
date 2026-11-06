@@ -44,3 +44,15 @@ describe('IndexedDB 保存', () => {
     expect(parseProject(JSON.stringify(p))).toEqual(p);
   });
 });
+
+describe('不正データは保存しない', () => {
+  it('接続情報が壊れたデータの保存は拒否し、既存の正常データを残す', async () => {
+    const r = new DexieProjectRepository('t3');
+    const p = sample();
+    await r.save(p);
+    const bad = structuredClone(p);
+    bad.network.segments[Object.keys(bad.network.segments)[0]].b = 'missing';
+    await expect(r.save({ ...bad, updatedAt: 9 })).rejects.toThrow(InvalidProjectError);
+    expect((await r.load('p1'))?.updatedAt).toBe(2);
+  });
+});

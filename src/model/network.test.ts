@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectBranch,
   addPolyline,
   branchFromSegment,
   deleteSegment,
@@ -194,5 +195,85 @@ describe('配管ネットワーク: 移動・削除', () => {
     const { net } = addPolyline(emptyNetwork(), [v(0, 0), v(1, 1)], { system: 'water', diameter: 20 });
     const s = Object.values(net.segments)[0];
     expect(segmentLength(net, s.id)).toBeCloseTo(Math.SQRT2, 10);
+  });
+});
+
+describe('レビュー指摘の回帰テスト', () => {
+  it('隣接ノードの位置へ移動すると長さ0区間ができるので移動を拒否', () => {
+    const { net, nodeIds } = addPolyline(emptyNetwork(), [v(0, 0), v(1000, 0), v(1000, 1000)], { system: 'water', diameter: 20 });
+    const moved = moveNode(net, nodeIds[1], v(0, 0));
+    expect(moved).toBe(net);
+    expect(validateNetwork(moved)).toEqual([]);
+  });
+
+  it('隣接しないノードと同じ位置への移動は可能（交差は許容）', () => {
+    const a = addPolyline(emptyNetwork(), [v(0, 0), v(1000, 0)], { system: 'water', diameter: 20 });
+    const b = addPolyline(a.net, [v(0, 500), v(1000, 500)], { system: 'gas', diameter: 20 });
+    const moved = moveNode(b.net, a.nodeIds[1], v(1000, 500, 0));
+    expect(validateNetwork(moved)).toEqual([]);
+  });
+
+  it('既存区間と同じ2点を結ぶ描画は重複区間を作らない', () => {
+    const a = addPolyline(emptyNetwork(), [v(0, 0), v(1000, 0)], { system: 'water', diameter: 20 });
+    const b = addPolyline(a.net, [v(0, 0), v(1000, 0)], { system: 'water', diameter: 20 }, { startNodeId: a.nodeIds[0], endNodeId: a.nodeIds[1] });
+    expect(Object.keys(b.net.segments)).toHaveLength(1);
+    expect(validateNetwork(b.net)).toEqual([]);
+  });
+
+  it('結合で既存区間と重複する場合は結合しない', () => {
+    // 三角形 A-B-C と A-C: B の枝を消しても A-C が既にあるので A-B, B-C は結合しない(一直線ではないが念のため一直線ケース)
+    const a = addPolyline(emptyNetwork(), [v(0, 0), v(1000, 0), v(2000, 0)], { system: 'water', diameter: 20 });
+    const [A, B, C] = a.nodeIds;
+    // A-C を別ルート(同一直線上の重複)で追加することはできないので、Bに枝を付けて消すケースで重複が出ないことを確認
+    const br = addPolyline(a.net, [v(1000, 0), v(1000, 500)], { system: 'water', diameter: 20 }, { startNodeId: B });
+    const d = deleteSegment(br.net, br.segmentIds[0]);
+    expect(validateNetwork(d)).toEqual([]);
+    expect(Object.values(d.segments).some((s) => [s.a, s.b].sort().join() === [A, C].sort().join())).toBe(true);
+  });
+
+  it('実測長のある区間で分岐すると実測長を按分し、概算フラグを立てる（値を黙って捨てない）', () => {
+    const { net, segId } = straight();
+    const withM = { ...net, segments: { ...net.segments, [segId]: { ...net.segments[segId], measuredLength: 4100 } } };
+    const r = branchFromSegment(withM, segId, v(1000, 0), [v(1000, 1000)]);
+    const parts = r.splitSegmentIds.map((id) => r.net.segments[id]);
+    expect(parts.reduce((acc, s) => acc + (s.measuredLength ?? 0), 0)).toBeCloseTo(4100, 6);
+    expect(parts.every((s) => s.measuredApprox)).toBe(true);
+    expect(r.net.segments[r.branchSegmentIds[0]].measuredLength).toBeUndefined();
+  });
+
+  it('collectBranch: 分岐点から枝側の区間一覧を返す（ループならnull）', () => {
+    const { net, segId } = straight();
+    const r = branchFromSegment(net, segId, v(2000, 0), [v(2000, 1000), v(3000, 1000)]);
+    expect(collectBranch(r.net, r.teeId, r.branchSegmentIds[0])?.sort()).toEqual([...r.branchSegmentIds].sort());
+  });
+
+  it('ランダム操作（衝突・重複描画を含む）300回で整合性が保たれる', () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    let net = straight().net;
+    for (let i = 0; i < 300; i++) {
+      const segs = Object.keys(net.segments);
+      const nodes = Object.keys(net.nodes);
+      const op = rnd();
+      if (segs.length === 0) net = addPolyline(net, [v(0, 0), v(4000, 0)], { system: 'water', diameter: 20 }).net;
+      else if (op < 0.3) {
+        const s = net.segments[segs[Math.floor(rnd() * segs.length)]];
+        const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos, t = rnd();
+        const p = v(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+        net = branchFromSegment(net, s.id, p, [v(Math.round(p.x / 500) * 500 + 500, p.y, p.z)]).net;
+      } else if (op < 0.45) {
+        net = deleteSegment(net, segs[Math.floor(rnd() * segs.length)]);
+      } else if (op < 0.7) {
+        // 他ノードの位置へ移動（隣接なら拒否されるはず）
+        const id = nodes[Math.floor(rnd() * nodes.length)];
+        const target = net.nodes[nodes[Math.floor(rnd() * nodes.length)]].pos;
+        net = moveNode(net, id, { ...target });
+      } else {
+        // 既存ノード間を結ぶ描画（重複の可能性）
+        const p = nodes[Math.floor(rnd() * nodes.length)], q = nodes[Math.floor(rnd() * nodes.length)];
+        net = addPolyline(net, [net.nodes[p].pos, net.nodes[q].pos], { system: 'water', diameter: 20 }, { startNodeId: p, endNodeId: q }).net;
+      }
+      expect(validateNetwork(net)).toEqual([]);
+    }
   });
 });
