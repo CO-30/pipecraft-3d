@@ -19,10 +19,11 @@ export default function App() {
 
   const open = async (id: string) => {
     try {
-      const p = await repo.load(id);
-      if (!p) throw new Error('現場が見つかりません');
-      useStore.getState().openProject(p);
+      const r = await repo.loadWithStatus(id);
+      if (!r) throw new Error('現場が見つかりません');
+      useStore.getState().openProject(r.project);
       setScreen('editor');
+      if (r.recovered) setError('保存データの一部が壊れていたため、直前に保存した版から復旧しました。内容を確認してください');
     } catch (e) {
       setError('現場を開けませんでした: ' + (e as Error).message);
     }
@@ -30,7 +31,7 @@ export default function App() {
 
   const create = async (v: NewProjectInput) => {
     const doc = v.mode === 'dims'
-      ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate() }
+      ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} }
       : emptyDoc();
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();
@@ -58,6 +59,9 @@ export default function App() {
     </>
   );
 }
+
+// 端末の空き容量が少ないときにブラウザがデータを消さないよう、永続保存を要求（対応ブラウザのみ）
+void navigator.storage?.persist?.().catch(() => undefined);
 
 // E2Eテスト用に共通ストアを公開（e2e ビルドのみ）
 if (import.meta.env.MODE === 'e2e') (window as unknown as { __pc: typeof useStore }).__pc = useStore;

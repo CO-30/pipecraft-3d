@@ -11,6 +11,8 @@ import { pointInPolygon } from '../model/roomOps';
 import { connectedComponent, segmentLength, segmentsAt, type Network } from '../model/network';
 import { FIXTURE_CATALOG, fixtureCorners } from '../model/fixtures';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
+import { underlayCorners } from '../model/underlay';
+import { pointInRing } from '../model/geo';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
@@ -22,6 +24,7 @@ type Gesture =
   | { kind: 'dragFixture'; fixtureId: string; offset: Vec2 }
   | { kind: 'dragCorner'; cornerId: string }
   | { kind: 'dragWall'; wallId: string; start: Vec2 }
+  | { kind: 'dragUnderlay'; id: string; start: Vec2 }
   | { kind: 'pan'; last: Vec2 }
   | { kind: 'pinch'; dist: number; mid: Vec2; view: ViewT };
 
@@ -77,6 +80,10 @@ export function PlanView() {
   const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const [splitPreview, setSplitPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const pendingMerge = useStore((s) => s.pendingMerge);
+  const underlays = useStore((s) => s.doc.underlays);
+  const showUnderlays = useStore((s) => s.showUnderlays);
+  const activeUnderlayId = useStore((s) => s.activeUnderlayId);
+  const scalePick = useStore((s) => s.scalePick);
   const fixtures = useStore((s) => s.doc.fixtures);
   useColors((c) => c.overrides);
   const [dropHit, setDropHit] = useState<ReturnType<typeof hitTestPlan>>(null);
@@ -190,6 +197,19 @@ export function PlanView() {
       setSplitPreview({ a: s0, b: s0 });
       return;
     }
+    if (st.tool === 'underlay') {
+      // 2点で縮尺: タップした点を記録 / それ以外: 下敷きをつかんで移動（何もない所はパン）
+      if (st.scalePick) { st.addScalePoint(w); gesture.current = null; return; }
+      const us = Object.values(st.doc.underlays ?? {}).filter((u) => u.floorId === st.activeFloorId);
+      const act = us.find((u) => u.id === st.activeUnderlayId && pointInRing(w, underlayCorners(u)));
+      const hit = act ?? [...us].reverse().find((u) => pointInRing(w, underlayCorners(u)));
+      if (hit) {
+        if (hit.id !== st.activeUnderlayId) st.setActiveUnderlay(hit.id);
+        st.beginDrag();
+        gesture.current = { kind: 'dragUnderlay', id: hit.id, start: w };
+      } else gesture.current = { kind: 'pan', last: p };
+      return;
+    }
     if (st.tool === 'door' || st.tool === 'window') {
       const h = hitTestBuilding(b, st.activeFloorId, w, tol, false);
       if (h?.kind === 'wall') st.addOpening(h.id, st.tool, h.offset);
@@ -298,6 +318,9 @@ export function PlanView() {
     } else if (g.kind === 'dragFixture') {
       const w = toWorld(p);
       st.dragFixture(g.fixtureId, snapGrid({ x: w.x + g.offset.x, y: w.y + g.offset.y }));
+    } else if (g.kind === 'dragUnderlay') {
+      const w = toWorld(p);
+      st.dragUnderlay(g.id, w.x - g.start.x, w.y - g.start.y);
     } else if (g.kind === 'dragCorner') {
       st.dragCorner(g.cornerId, snapGrid(toWorld(p)));
     } else if (g.kind === 'dragWall') {
@@ -421,6 +444,8 @@ export function PlanView() {
   const isSel = (kind: string, id: string) => sel?.kind === kind && sel.id === id;
 
   const rooms = Object.values(building.rooms).filter((r) => r.floorId === floorId);
+  const unders = showUnderlays ? Object.values(underlays ?? {}).filter((u) => u.floorId === floorId) : [];
+  const attributions = [...new Set(unders.map((u) => u.attribution).filter(Boolean))] as string[];
   const walls = Object.values(building.walls).filter((w) => w.floorId === floorId);
 
   const strokePath = stroke?.map(toScreen).map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
@@ -434,13 +459,30 @@ export function PlanView() {
         const kk = scale / vw.scale;
         setView({ scale, ox: p.x - (p.x - vw.ox) * kk, oy: p.y - (p.y - vw.oy) * kk });
       }}>
+      {unders.map((u) => {
+        const c = toScreen(u.center), k = u.mmPerPx * vw.scale;
+        return (
+          <g key={u.id} data-underlay={u.id} opacity={u.opacity} pointerEvents="none"
+            transform={`translate(${c.x} ${c.y}) rotate(${-u.rotation}) scale(${k})`}>
+            <image href={u.src} x={-u.widthPx / 2} y={-u.heightPx / 2} width={u.widthPx} height={u.heightPx} preserveAspectRatio="none" />
+          </g>
+        );
+      })}
       {grid}
+      {tool === 'underlay' && unders.filter((u) => u.id === activeUnderlayId).map((u) => (
+        <polygon key={'uo' + u.id} points={underlayCorners(u).map(toScreen).map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth={2} strokeDasharray="6 4" pointerEvents="none" />
+      ))}
+      {scalePick && scalePick.pts.map((q, i) => {
+        const p = toScreen(q);
+        return <g key={'sp' + i} pointerEvents="none"><circle cx={p.x} cy={p.y} r={7} fill="none" stroke="#dc2626" strokeWidth={2} /><line x1={p.x - 10} x2={p.x + 10} y1={p.y} y2={p.y} stroke="#dc2626" /><line y1={p.y - 10} y2={p.y + 10} x1={p.x} x2={p.x} stroke="#dc2626" /></g>;
+      })}
+      {scalePick?.pts.length === 2 && (() => { const a = toScreen(scalePick.pts[0]), b = toScreen(scalePick.pts[1]); return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#dc2626" strokeWidth={2} pointerEvents="none" />; })()}
       {rooms.map((r) => {
         const pts = r.polygon.map(toScreen);
         const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
         return (
           <g key={r.id} data-room={r.id}>
-            <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={isSel('room', r.id) ? '#fde68a' : '#f1f5f9'} stroke="#cbd5e1" strokeDasharray="4 3" />
+            <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={isSel('room', r.id) ? '#fde68a' : '#f1f5f9'} fillOpacity={unders.length ? 0.35 : 1} stroke="#cbd5e1" strokeDasharray="4 3" />
             <text x={cx} y={cy} textAnchor="middle" fontSize={12} fill="#475569">{r.name}</text>
             <text x={cx} y={cy + 14} textAnchor="middle" fontSize={10} fill="#94a3b8">{roomArea(r).toFixed(2)}㎡</text>
           </g>
@@ -542,6 +584,9 @@ export function PlanView() {
       <text x={8} y={18} fontSize={12} fill={pendingMerge ? '#b45309' : '#6b7280'} fontWeight={pendingMerge ? 'bold' : undefined}>
         {floor?.name ?? ''} 平面図（1目盛=1m） {pendingMerge ? '結合する隣の部屋をタップ（他をタップで取消）' : HINTS[tool]}
       </text>
+      {attributions.length > 0 && (
+        <text x={8} y={H - 8} fontSize={11} fill="#334155" stroke="#fff" strokeWidth={3} paintOrder="stroke" pointerEvents="none" data-testid="attribution">{attributions.join('　')}</text>
+      )}
     </svg>
   );
 }

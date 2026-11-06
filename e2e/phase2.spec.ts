@@ -60,15 +60,18 @@ test.describe('Phase 2 2D・3D編集連動', () => {
     d = await full(page);
     expect(d.selection).toEqual({ kind: 'wall', id: w.id });
 
-    // 2) tap selected wall in 3D adds no history
+    // 2) tap selected wall in 3D adds no history（選択でパネルが伸びて3Dの表示サイズが変わるので位置を測り直す）
+    await page.waitForTimeout(400);
+    const midSel = await on3D(page, 8000, 3000, 1350);
     const past0 = d.past;
-    await tap(page, mid, touch);
+    await tap(page, midSel, touch);
     d = await full(page);
     expect(d.past).toBe(past0);
 
     // 3) 選択済みの壁をドラッグ（東へ）
+    const mid2 = midSel;
     const east = await on3D(page, 9500, 3000, 1350);
-    await stroke(page, [mid, east], touch);
+    await stroke(page, [mid2, east], touch);
     d = await full(page);
     const xa = d.corners[w.a].x, xb = d.corners[w.b].x;
     expect(xa).toBe(xb);

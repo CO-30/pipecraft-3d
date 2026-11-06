@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { addFloor, emptyBuilding } from './building';
 import { defaultEstimate } from './estimate';
+import { MAX_UNDERLAY_SRC } from './underlay';
 
 const vec3 = z.object({ x: z.number().finite(), y: z.number().finite(), z: z.number().finite() });
 const vec2 = z.object({ x: z.number().finite(), y: z.number().finite() });
@@ -77,7 +78,24 @@ export const estimateSchema = z.object({
   note: z.string().optional(),
 });
 
-export const SCHEMA_VERSION = 4;
+export const underlaySchema = z.object({
+  id: z.string().min(1),
+  floorId: z.string().min(1),
+  kind: z.enum(['image', 'pdf', 'aerial']),
+  label: z.string(),
+  // 画像のみ（SVG 等は受け付けない）
+  src: z.string().max(MAX_UNDERLAY_SRC).regex(/^data:image\/(jpeg|png|webp);base64,/),
+  widthPx: z.number().int().positive(),
+  heightPx: z.number().int().positive(),
+  center: vec2,
+  mmPerPx: z.number().finite().positive(),
+  rotation: z.number().finite(),
+  opacity: z.number().min(0).max(1),
+  scaled: z.boolean(),
+  attribution: z.string().optional(),
+});
+
+export const SCHEMA_VERSION = 5;
 
 export const projectSchema = z.object({
   schemaVersion: z.literal(SCHEMA_VERSION),
@@ -90,6 +108,7 @@ export const projectSchema = z.object({
   network: networkSchema,
   fixtures: z.record(z.string(), fixtureSchema),
   estimate: estimateSchema,
+  underlays: z.record(z.string(), underlaySchema),
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;
@@ -115,16 +134,19 @@ const projectV2Schema = z.object({
 });
 
 const projectV3Schema = projectV2Schema.extend({ schemaVersion: z.literal(3), fixtures: z.record(z.string(), fixtureSchema) });
+const projectV4Schema = projectV3Schema.extend({ schemaVersion: z.literal(4), estimate: estimateSchema });
 
 /** 旧形式を現行形式へ変換（未知の形式はそのまま返し、後段の検証で拒否される） */
 export function migrate(raw: unknown): unknown {
   const v1 = projectV1Schema.safeParse(raw);
   if (v1.success) {
-    return { ...v1.data, schemaVersion: SCHEMA_VERSION, building: addFloor(emptyBuilding()).b, fixtures: {}, estimate: defaultEstimate() };
+    return { ...v1.data, schemaVersion: SCHEMA_VERSION, building: addFloor(emptyBuilding()).b, fixtures: {}, estimate: defaultEstimate(), underlays: {} };
   }
   const v2 = projectV2Schema.safeParse(raw);
-  if (v2.success) return { ...v2.data, schemaVersion: SCHEMA_VERSION, fixtures: {}, estimate: defaultEstimate() };
+  if (v2.success) return { ...v2.data, schemaVersion: SCHEMA_VERSION, fixtures: {}, estimate: defaultEstimate(), underlays: {} };
   const v3 = projectV3Schema.safeParse(raw);
-  if (v3.success) return { ...v3.data, schemaVersion: SCHEMA_VERSION, estimate: defaultEstimate() };
+  if (v3.success) return { ...v3.data, schemaVersion: SCHEMA_VERSION, estimate: defaultEstimate(), underlays: {} };
+  const v4 = projectV4Schema.safeParse(raw);
+  if (v4.success) return { ...v4.data, schemaVersion: SCHEMA_VERSION, underlays: {} };
   return raw;
 }

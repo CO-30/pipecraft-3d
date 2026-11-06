@@ -73,7 +73,7 @@ describe('設備機器', () => {
   });
   it('parseProject rejects dangling fixture port', () => {
     const { doc, id } = toilet();
-    const p = { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'x', createdAt: 1, updatedAt: 1, estimate: defaultEstimate(), ...doc };
+    const p = { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'x', createdAt: 1, updatedAt: 1, estimate: defaultEstimate(), underlays: {}, ...doc };
     expect(() => parseProject(JSON.stringify(p))).not.toThrow();
     const bad = { ...p, fixtures: {} };
     expect(() => parseProject(JSON.stringify(bad))).toThrow(/器具/);

@@ -132,3 +132,10 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .quote-tab .field input, .quote-tab .field textarea { width: 100%; box-sizing: border-box; }
 .tag-cat { background: #e0f2fe; color: #075985; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
 .toast.notice { background: #92400e; top: 56px; max-width: calc(100vw - 24px); }
+.grow { flex: 1; min-width: 160px; }
+.underlay-panel input[type=range] { min-width: 140px; }
+.modal.wide-modal { width: min(980px, 100%); }
+.wp-svg { width: 100%; max-height: 60dvh; background: #111; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 8px; }
+.backup-all { width: 100%; margin-bottom: 10px; }
+.narrow header .pname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view3d.loading { display: grid; place-items: center; color: #64748b; }

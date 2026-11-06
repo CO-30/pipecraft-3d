@@ -31,10 +31,20 @@ export function HomeScreen({ onOpen, onCreate }: { onOpen: (id: string) => void;
     URL.revokeObjectURL(a.href);
   };
 
+  const downloadAll = async () => {
+    const { json, skipped } = await repo.exportAll();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = `PipeCraft3D_全現場_${new Date().toISOString().slice(0, 10)}.pipecraft-backup.json`;
+    a.dispatchEvent(new MouseEvent('click'));
+    setTimeout(() => URL.revokeObjectURL(a.href), 40_000);
+    setMsg(skipped.length ? `バックアップしました。ただし ${skipped.join('、')} はデータが壊れていて含められませんでした（個別に開いて確認してください）` : 'すべての現場をバックアップしました');
+  };
+
   const importFile = async (f: File) => {
     try {
-      const p = await repo.importJson(await f.text());
-      setMsg(`「${p.name}」を読み込みました`);
+      const r = await repo.importAny(await f.text());
+      setMsg(r.imported.length === 1 && !r.failed ? `「${r.imported[0].name}」を読み込みました` : `${r.imported.length}件の現場を読み込みました${r.failed ? `（${r.failed}件は壊れていて読み込めませんでした）` : ''}`);
       await reload();
     } catch (e) {
       setMsg('読み込めませんでした: ' + (e as Error).message);
@@ -53,6 +63,7 @@ export function HomeScreen({ onOpen, onCreate }: { onOpen: (id: string) => void;
         <input ref={fileRef} type="file" accept=".json,application/json" hidden data-testid="import-file"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ''; }} />
       </div>
+      {!!list?.length && <button className="backup-all" data-testid="backup-all" onClick={run('バックアップ', downloadAll)}>全現場をまとめてバックアップ（{list.length}件）</button>}
       <input className="search" placeholder="現場名・住所で検索" value={q} onChange={(e) => setQ(e.target.value)} data-testid="search" />
       {msg && <div className="msg" role="status">{msg}</div>}
       {list === null ? <p className="empty">読み込み中…</p> : filtered.length === 0 ? (

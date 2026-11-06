@@ -89,7 +89,8 @@ function openingFits(o: Opening, len: number): boolean {
 }
 
 /** 階の天井高（階高 - 床厚） */
-function clearHeight(b: Building, floorId: string): number {
+/** 床から天井までの高さ（階高 − 床厚） */
+export function clearHeight(b: Building, floorId: string): number {
   const f = floorById(b, floorId);
   return f ? f.height - f.slabThickness : 0;
 }

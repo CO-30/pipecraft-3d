@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { PlanView } from './PlanView';
-import { View3D } from './View3D';
+// 3D（three.js）は大きいので必要になった時に読み込む
+const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 import { useStore } from '../state/store';
 import { totalLength } from '../model/network';
 import { FloorBar, PropertyPanel, Toolbar, VisibilityPanel } from './Panels';
@@ -48,7 +49,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
         )}
         <main className={`views ${eff}`}>
           {eff !== '3d' && <PlanView />}
-          {eff !== '2d' && <View3D />}
+          {eff !== '2d' && <Suspense fallback={<div className="view3d loading">3D を準備中…</div>}><View3D /></Suspense>}
           {!isWide && showVis && <div className="sheet"><VisibilityPanel /></div>}
         </main>
         {isWide && (

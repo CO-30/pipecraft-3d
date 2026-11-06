@@ -165,7 +165,7 @@ function PriceRow({ line, pipe }: { line: PipeLine | FittingLine; pipe: boolean 
   const set = (patch: { material?: number; labor?: number }) =>
     st.setPrice(line.key, { material: line.price?.material ?? 0, labor: line.price?.labor ?? 0, ...(line.price?.saleUnit ? { saleUnit: line.price.saleUnit } : {}), ...patch });
   const hasCatalog = pipe
-    ? catalogPipePrice((line as PipeLine)) !== undefined
+    ? catalogPipePrice((line as PipeLine)) !== undefined // 戻すと販売単位も既定（定尺4m）に戻るので参考単価の有無だけで判定
     : catalogFittingPrice((line as FittingLine).type, line as FittingLine, (line as FittingLine).size) !== undefined;
   const matUnit = !saleUnit ? '円/個' : saleUnit.kind === 'perLength' ? '円/m' : saleUnit.kind === 'straight' ? '円/本' : '円/巻';
   return (
@@ -330,7 +330,7 @@ function IssuesTab({ est, onClose, onPrice }: { est: Estimate; onClose: () => vo
 }
 
 function ExportButtons() {
-  const [busy, setBusy] = useState<'' | 'pdf' | 'xlsx'>('');
+  const [busy, setBusy] = useState<'' | 'pdf' | 'xlsx' | 'img'>('');
   const [err, setErr] = useState('');
   const run = async (kind: 'pdf' | 'xlsx') => {
     const { doc, meta } = useStore.getState();
@@ -358,8 +358,30 @@ function ExportButtons() {
       setBusy('');
     }
   };
+  const image = async (kind: 'plan' | '3d') => {
+    const { meta, doc, activeFloorId } = useStore.getState();
+    setBusy('img'); setErr('');
+    try {
+      const [{ planPng, view3dPng }, { downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/images'), import('../export/download'), import('../export/report')]);
+      const floor = doc.building.floors.find((f) => f.id === activeFloorId)?.name ?? '';
+      const base = `${safeName(meta?.name ?? '現場')}_${dateStamp(new Date())}`;
+      if (kind === 'plan') {
+        const svg = document.querySelector<SVGSVGElement>('[data-testid="plan"]');
+        if (!svg) throw new Error('2D平面図を表示してから保存してください');
+        downloadBytes(await planPng(svg), `${base}_平面図_${safeName(floor)}.png`, 'image/png');
+      } else {
+        const c = document.querySelector<HTMLCanvasElement>('.view3d canvas');
+        if (!c) throw new Error('3D表示（3D または 2D+3D）にしてから保存してください');
+        downloadBytes(await view3dPng(c), `${base}_3D.png`, 'image/png');
+      }
+    } catch (e) {
+      setErr(`画像を保存できませんでした: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setBusy(''); }
+  };
   return (
     <div className="row export-btns">
+      <button data-testid="export-plan" disabled={!!busy} onClick={() => void image('plan')}>平面図PNG</button>
+      <button data-testid="export-3d" disabled={!!busy} onClick={() => void image('3d')}>3D PNG</button>
       <button data-testid="export-pdf" disabled={!!busy} onClick={() => run('pdf')}>{busy === 'pdf' ? '作成中…' : 'PDF'}</button>
       <button data-testid="export-xlsx" disabled={!!busy} onClick={() => run('xlsx')}>{busy === 'xlsx' ? '作成中…' : 'Excel'}</button>
       {err && <span className="err" role="alert">{err}</span>}
