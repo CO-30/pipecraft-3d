@@ -17,7 +17,7 @@ import { findConnectCandidate } from '../model/connect';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
-  | { kind: 'stroke'; tool: 'pipe' | 'wall'; startNodeId?: string; branchSegId?: string }
+  | { kind: 'stroke'; tool: 'pipe' | 'wall' | 'outline'; startNodeId?: string; branchSegId?: string }
   | { kind: 'room'; start: Vec2 }
   | { kind: 'split'; start: Vec2 }
   | { kind: 'dragNode'; nodeId: string; startPx: Vec2 }
@@ -74,6 +74,7 @@ export function PlanView() {
   const tool = useStore((s) => s.tool);
   const sel = useStore((s) => s.selection);
   const floorId = useStore((s) => s.activeFloorId);
+  const dimFloor = useStore((s) => s.dimWizard?.floorId);
   const svgRef = useRef<SVGSVGElement>(null);
   const [view, setView] = useState<ViewT | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -193,6 +194,11 @@ export function PlanView() {
         gesture.current = { kind: 'stroke', tool: 'pipe' };
         setStroke([w]);
       }
+      return;
+    }
+    if (st.tool === 'outline') {
+      gesture.current = { kind: 'stroke', tool: 'outline' };
+      setStroke([w]);
       return;
     }
     if (st.tool === 'wall') {
@@ -404,6 +410,10 @@ export function PlanView() {
 
   const finishStroke = (g: Extract<Gesture, { kind: 'stroke' }>, raw: Vec2[]) => {
     const st = useStore.getState();
+    if (g.tool === 'outline') {
+      st.sketchOutline(raw, 8 / vw.scale);
+      return;
+    }
     let pts = orthoSnap(simplify(raw, 8 / vw.scale), st.orthoSnap ? 15 : 0);
     const lenPx = pts.reduce((acc, q, i) => (i ? acc + Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y) * vw.scale : 0), 0);
     if (lenPx < 12) return;
@@ -521,11 +531,17 @@ export function PlanView() {
           <g key={w.id} data-wall={w.id}>
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected ? SELECT_COLOR : w.kind === 'exterior' ? '#334155' : '#64748b'}
               strokeWidth={Math.max(3, w.thickness * vw.scale)} strokeLinecap="square" />
-            {selected && (
-              <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 10} textAnchor="middle" fontSize={12} fill="#b45309" fontWeight="bold">
-                {Math.round(wallLength(building, w.id))}mm
-              </text>
-            )}
+            {(selected || w.lengthSet === false || (dimFloor === floorId && w.kind === 'exterior')) && (() => {
+              const label = w.lengthSet === false ? '?' : `${Math.round(wallLength(building, w.id))}mm`;
+              const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 12;
+              const bw = label.length * 7 + 12;
+              return (
+                <g pointerEvents="none" data-testid="wall-dim" data-unset={w.lengthSet === false ? '1' : undefined}>
+                  <rect x={mx - bw / 2} y={my - 11} width={bw} height={16} rx={4} fill="#fff" stroke={w.lengthSet === false ? '#d97706' : '#cbd5e1'} />
+                  <text x={mx} y={my + 1} textAnchor="middle" fontSize={12} fill={w.lengthSet === false ? '#b45309' : '#334155'} fontWeight="bold">{label}</text>
+                </g>
+              );
+            })()}
           </g>
         );
       })}
@@ -628,6 +644,7 @@ export function PlanView() {
 
 const HINTS: Record<string, string> = {
   select: 'タップで選択・ドラッグで移動',
+  outline: '建物の外周を指で1周なぞる（寸法はあとで入れます）',
   pipe: '指でなぞって配管／既存配管からなぞると分岐',
   wall: '指でなぞって壁を描く',
   room: '対角にドラッグして部屋を作る',

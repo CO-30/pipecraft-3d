@@ -58,10 +58,11 @@ export async function freshApp(page: Page) {
   await expect(page.getByTestId('home')).toBeVisible();
 }
 
-export async function createProject(page: Page, name: string, opts: { blank?: boolean; floors?: number } = {}) {
+export async function createProject(page: Page, name: string, opts: { blank?: boolean; sketch?: boolean; floors?: number } = {}) {
   await page.getByTestId('new-project').click();
   await page.getByTestId('np-name').fill(name);
   if (opts.blank) await page.getByRole('button', { name: '白紙から描く' }).click();
+  else if (!opts.sketch) await page.getByTestId('np-mode-dims').click();
   if (opts.floors) await page.getByTestId('np-floors').fill(String(opts.floors));
   await page.getByTestId('np-create').click();
   await expect(page.getByTestId('editor')).toBeVisible();

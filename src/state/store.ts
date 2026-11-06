@@ -28,9 +28,10 @@ import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underla
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
 import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
+import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineLoop, straightenOutline, type FixedEnd, type OutlineLengthResult } from '../model/sketch';
 
 export type { Doc };
-export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
+export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
 export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture';
 /** at: 区間をタップした位置（切断・バルブ挿入に使う） */
 export type Selection = { kind: SelKind; id: string; at?: Vec3 } | null;
@@ -198,6 +199,15 @@ type State = {
 
   // 建物
   addWall(p: Vec2, q: Vec2): void;
+  /** 手描きの外形から外壁（寸法未確定）を作り、壁のない他の階にもコピー。成功で寸法入力を開く */
+  sketchOutline(raw: Vec2[], tolerance: number): boolean;
+  /** 外形の辺に実測の長さを入れる（確定済みの辺を保護。force で強行） */
+  setOutlineLength(wallId: string, mm: number, fixed: FixedEnd, force?: boolean): OutlineLengthResult;
+  /** 寸法入力（外形の辺を順に）。null で閉じる */
+  dimWizard: { floorId: string; index: number } | null;
+  openDimWizard(floorId?: string, wallId?: string): boolean;
+  setDimIndex(index: number): void;
+  closeDimWizard(): void;
   addRoom(p: Vec2, q: Vec2): void;
   addOpening(wallId: string, type: OpeningType, offset: number): void;
   updateWall(wallId: string, patch: Partial<Pick<B.Wall, 'thickness' | 'kind'>>): void;
@@ -296,13 +306,21 @@ export const useStore = create<State>((set, get) => {
   };
   const withBld = (building: Building): Doc => ({ ...get().doc, building });
   /** 表示中の立面が（Undo・階の削除などで）無くなったら平面図へ */
+  /** Undo/Redo 後も外壁が1周つながっていれば寸法入力を続ける（その辺を選び直す） */
+  const fixDim = (doc: Doc): Partial<State> => {
+    const w = get().dimWizard;
+    const loop = w && outlineLoop(doc.building, w.floorId);
+    if (!w || !loop) return { dimWizard: null };
+    const index = Math.min(w.index, loop.walls.length - 1);
+    return { dimWizard: { ...w, index }, selection: { kind: 'wall', id: loop.walls[index] } };
+  };
   const fixElev = (doc: Doc) => { const id = get().activeElevationId; return id && doc.elevations?.[id] ? id : null; };
   const fixActiveFloor = (doc: Doc, preferred: string) =>
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
     past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
     section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null, activeElevationId: null,
-    activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1,
+    activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1, dimWizard: null,
   });
 
   const initial = emptyDoc();
@@ -316,6 +334,7 @@ export const useStore = create<State>((set, get) => {
     drawAttrs: { system: 'water', diameter: 20 },
     drawHeight: 100,
     orthoSnap: true,
+    dimWizard: null,
     fixtureType: 'toilet',
     setFixtureType: (fixtureType) => set({ fixtureType }),
     selection: null,
@@ -358,7 +377,7 @@ export const useStore = create<State>((set, get) => {
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
     select: (selection) => set({ selection }),
-    setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null }),
+    setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null, ...(get().dimWizard?.floorId !== activeFloorId ? { dimWizard: null } : {}) }),
 
     drawPolyline: (points, opts) => drawCore(points, get().drawAttrs, opts),
     activeElevationId: null,
@@ -775,6 +794,46 @@ export const useStore = create<State>((set, get) => {
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}) });
     },
 
+    sketchOutline: (raw, tolerance) => {
+      const st = get(), floorId = st.activeFloorId, b0 = st.doc.building;
+      if (B.wallsOnFloor(b0, floorId).some((w) => w.kind === 'exterior')) {
+        set({ notice: 'この階にはもう外壁があります。描き直すときは外壁を消してからなぞってください' });
+        return false;
+      }
+      const poly = straightenOutline(raw, { tolerance, ortho: st.orthoSnap });
+      if (!poly) { set({ notice: '形になりませんでした。建物の外周を1周なぞってください' }); return false; }
+      const r = addOutlineWalls(b0, floorId, poly);
+      if (!r.wallIds.length) { set({ notice: '外壁を作れませんでした（既存の壁と重なっています）' }); return false; }
+      const b = copyOutlineToEmptyFloors(r.b, floorId);
+      const copied = b.floors.filter((f) => f.id !== floorId && B.wallsOnFloor(r.b, f.id).length === 0 && B.wallsOnFloor(b, f.id).length > 0).length;
+      commit(withBld(b), {
+        tool: 'select', selection: null,
+        notice: `外形を作りました${copied ? `（${copied}つの上の階にも同じ外壁）` : ''}。実測の寸法を入れましょう`,
+      });
+      get().openDimWizard(floorId);
+      return true;
+    },
+    setOutlineLength: (wallId, mm, fixed, force = false) => {
+      const r = applyOutlineLength(get().doc, wallId, mm, fixed, force);
+      if (r.ok) commit(r.doc, { selection: { kind: 'wall', id: wallId } });
+      return r;
+    },
+    openDimWizard: (floorId, wallId) => {
+      const f = floorId ?? get().activeFloorId;
+      const loop = outlineLoop(get().doc.building, f);
+      if (!loop) { set({ notice: '外壁が1周つながっていないため、順番に寸法を入れられません' }); return false; }
+      const index = Math.max(0, wallId ? loop.walls.indexOf(wallId) : loop.walls.findIndex((id) => get().doc.building.walls[id].lengthSet === false));
+      set({ dimWizard: { floorId: f, index }, activeFloorId: f, tool: 'select', selection: { kind: 'wall', id: loop.walls[index] } });
+      return true;
+    },
+    setDimIndex: (index) => {
+      const w = get().dimWizard;
+      const loop = w && outlineLoop(get().doc.building, w.floorId);
+      if (!w || !loop) { set({ dimWizard: null }); return; }
+      const i = ((index % loop.walls.length) + loop.walls.length) % loop.walls.length;
+      set({ dimWizard: { ...w, index: i }, selection: { kind: 'wall', id: loop.walls[i] } });
+    },
+    closeDimWizard: () => set({ dimWizard: null }),
     addWall: (p, q) => {
       const r = B.addWall(get().doc.building, get().activeFloorId, p, q);
       if (r.wallIds[0]) commit(withBld(r.b), { selection: { kind: 'wall', id: r.wallIds[0] } });
@@ -856,14 +915,14 @@ export const useStore = create<State>((set, get) => {
       const { past, doc, future } = get();
       const prev = past.at(-1);
       if (!prev) return;
-      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev) });
+      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev), ...fixDim(prev) });
     },
     redo: () => {
       get().endDrag();
       const { past, doc, future } = get();
       const next = future[0];
       if (!next) return;
-      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next) });
+      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next), ...fixDim(next) });
     },
   };
 

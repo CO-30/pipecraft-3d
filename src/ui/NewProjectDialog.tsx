@@ -3,7 +3,7 @@ import { useState } from 'react';
 export type NewProjectInput = {
   name: string;
   address: string;
-  mode: 'dims' | 'blank';
+  mode: 'sketch' | 'dims' | 'blank';
   width: number; depth: number; floors: number; floorHeight: number; wallThickness: number; slabThickness: number;
 };
 
@@ -18,9 +18,10 @@ const FIELDS: { key: keyof NewProjectInput; label: string; unit: string; min: nu
 
 export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (v: NewProjectInput) => void }) {
   const [v, setV] = useState<NewProjectInput>({
-    name: '', address: '', mode: 'dims', width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200,
+    name: '', address: '', mode: 'sketch', width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200,
   });
-  const invalid = FIELDS.filter((f) => {
+  const fields = v.mode === 'sketch' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
+  const invalid = fields.filter((f) => {
     const n = v[f.key] as number;
     return !(Number.isFinite(n) && n >= f.min && n <= f.max && (f.key !== 'floors' || Number.isInteger(n)));
   });
@@ -33,12 +34,14 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
         <label className="field">現場名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
         <label className="field">住所（任意）<input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
         <div className="seg-btns full">
-          <button type="button" className={v.mode === 'dims' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'dims' })}>寸法から作る</button>
+          <button type="button" data-testid="np-mode-sketch" className={v.mode === 'sketch' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'sketch' })}>なぞって描く</button>
+          <button type="button" data-testid="np-mode-dims" className={v.mode === 'dims' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'dims' })}>寸法から作る</button>
           <button type="button" className={v.mode === 'blank' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'blank' })}>白紙から描く</button>
         </div>
-        {v.mode === 'dims' && (
+        {v.mode === 'sketch' && <p className="hint">図面に建物の外周を指で1周なぞると、外壁を作って階数分積み上げます。寸法はあとで実測を入れます。</p>}
+        {v.mode !== 'blank' && (
           <div className="grid2">
-            {FIELDS.map((f) => (
+            {fields.map((f) => (
               <label key={f.key} className={`field ${invalid.includes(f) ? 'bad' : ''}`}>{f.label}
                 <span className="unit-input">
                   <input type="number" inputMode="numeric" data-testid={`np-${f.key}`} value={Number.isFinite(v[f.key] as number) ? (v[f.key] as number) : ''}
@@ -49,7 +52,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
             ))}
           </div>
         )}
-        {v.mode === 'dims' && invalid.length > 0 && <p className="err">{invalid.map((f) => `${f.label}は${f.min}〜${f.max}${f.unit}`).join('、')}で入力してください</p>}
+        {v.mode !== 'blank' && invalid.length > 0 && <p className="err">{invalid.map((f) => `${f.label}は${f.min}〜${f.max}${f.unit}`).join('、')}で入力してください</p>}
         <div className="modal-btns">
           <button type="button" className="big" onClick={onCancel}>やめる</button>
           <button type="submit" className="primary big" data-testid="np-create" disabled={!ok}>作成</button>

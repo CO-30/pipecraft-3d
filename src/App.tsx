@@ -6,7 +6,7 @@ import type { NewProjectInput } from './ui/NewProjectDialog';
 import { emptyDoc, useStore } from './state/store';
 import { repo } from './storage/instance';
 import { flushNow, useSaveState } from './ui/autosave';
-import { createBuildingFromDims } from './model/building';
+import { addFloor, createBuildingFromDims, emptyBuilding, type Building } from './model/building';
 import { emptyNetwork } from './model/network';
 import { newId } from './model/id';
 import './App.css';
@@ -32,10 +32,11 @@ export default function App() {
   const create = async (v: NewProjectInput) => {
     const doc = v.mode === 'dims'
       ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} }
-      : emptyDoc();
+      : v.mode === 'sketch' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();
     st.newDoc(doc, meta);
+    if (v.mode === 'sketch') st.setTool('outline');
     try {
       await repo.save(st.toProjectData()!);
       setScreen('editor');
@@ -65,3 +66,10 @@ void navigator.storage?.persist?.().catch(() => undefined);
 
 // E2Eテスト用に共通ストアを公開（e2e ビルドのみ）
 if (import.meta.env.MODE === 'e2e') (window as unknown as { __pc: typeof useStore }).__pc = useStore;
+
+/** 壁のない階を n 階分（外形をなぞると全階に外壁が入る） */
+function emptyFloors(n: number, height: number): Building {
+  let b = emptyBuilding();
+  for (let i = 0; i < n; i++) b = addFloor(b, { height }).b;
+  return b;
+}

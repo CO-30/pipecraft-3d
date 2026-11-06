@@ -2,6 +2,7 @@
  * 積算画面（数量・部品・単価・見積・要確認）と、PC 下部の積算結果の帯。
  * 表示はすべて computeEstimate(doc) から作る（保存しない）。
  */
+import { unconfirmedWallCount } from '../model/sketch';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import {
@@ -39,6 +40,7 @@ export function EstimateScreen({ onClose }: { onClose: () => void }) {
   const est = useEstimate();
   const [tab, setTab] = useState<Tab>('qty');
   const unit = usePrefs((s) => s.lengthUnit);
+  const unsetWalls = useStore((s) => unconfirmedWallCount(s.doc.building));
   const setUnit = usePrefs((s) => s.setLengthUnit);
   const tabs: [Tab, string][] = [['qty', '数量'], ['parts', '部品'], ['price', '単価'], ['quote', '見積'], ['issues', `要確認${est.issues.length ? `(${est.issues.length})` : ''}`]];
   useEffect(() => {
@@ -61,6 +63,7 @@ export function EstimateScreen({ onClose }: { onClose: () => void }) {
         </div>
         <ExportButtons />
       </header>
+      {unsetWalls > 0 && <p className="est-provisional" role="note" data-testid="est-provisional">寸法未確定の壁が {unsetWalls} 本あります。数量は仮の値です（壁を選んで「📏 外形の寸法を順番に入れる」）</p>}
       <nav className="seg-btns full est-tabs">
         {tabs.map(([t, l]) => <button key={t} data-testid={`tab-${t}`} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{l}</button>)}
       </nav>
