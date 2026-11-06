@@ -27,3 +27,5 @@ dist-ssr
 test-results/
 playwright-report/
 dist-e2e/
+dist-pwa/
+test-results-pwa/

@@ -2,7 +2,8 @@
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
 import { useEffect, useState } from 'react';
-import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type Tool, type VisMode } from '../state/store';
+import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
+import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { segmentLength, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { SYSTEMS, systemLabel } from './colors';
@@ -53,6 +54,7 @@ export function PropertyPanel() {
   const drawAttrs = useStore((s) => s.drawAttrs);
   const drawHeight = useStore((s) => s.drawHeight);
   const ortho = useStore((s) => s.orthoSnap);
+  const splitWithWall = useStore((s) => s.splitWithWall);
   const floorElev = useStore((s) => floorById(s.doc.building, s.activeFloorId)?.elevation ?? 0);
   const st = useStore.getState();
   const { building: b, network: net } = doc;
@@ -134,7 +136,12 @@ export function PropertyPanel() {
         <div className="ptitle">部屋 {roomArea(r).toFixed(2)}㎡</div>
         <RoomName id={r.id} name={r.name} />
         <ElementVisibility id={r.id} />
-        <div className="row"><button className="danger" onClick={() => st.deleteSelected()}>部屋を削除</button></div>
+        <div className="row">
+          <button data-testid="merge-room" onClick={() => st.startMerge()}>隣の部屋と結合</button>
+          <button onClick={() => { st.setTool('split'); st.select(null); }}>✂ 分割</button>
+          <button className="danger" onClick={() => st.deleteSelected()}>部屋を削除</button>
+        </div>
+        <MergeHint />
       </div>
     );
   }
@@ -155,10 +162,22 @@ export function PropertyPanel() {
             {HEIGHT_PRESETS.map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
       ) : <div className="ptitle muted">{TOOL_HELP[tool]}</div>}
-      {(tool === 'pipe' || tool === 'wall') && (
+      {tool === 'split' && (
+        <label className="field inline"><input type="checkbox" data-testid="split-with-wall" checked={splitWithWall} onChange={(e) => st.setSplitWithWall(e.target.checked)} /> 分割線に壁も作る</label>
+      )}
+      {(tool === 'pipe' || tool === 'wall' || tool === 'split') && (
         <label className="field inline"><input type="checkbox" checked={ortho} onChange={(e) => st.setOrthoSnap(e.target.checked)} /> 直角に補正</label>
       )}
     </div>
+  );
+}
+
+function MergeHint() {
+  const pending = useStore((s) => s.pendingMerge);
+  if (!pending) return null;
+  return (
+    <div className="row muted small">結合する隣の部屋を図面でタップしてください
+      <button onClick={() => useStore.getState().cancelMerge()}>取消</button></div>
   );
 }
 
@@ -176,7 +195,7 @@ const KIND: Record<string, string> = { end: '端点', joint: '接続', elbow: '�
 const TOOL_HELP: Record<Tool, string> = {
   select: '図面や3Dをタップして選択できます',
   pipe: '', wall: '指でなぞって壁を描きます（既存の角・壁に自動でつながります）',
-  room: '対角にドラッグして部屋を作ります', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
+  room: '対角にドラッグして部屋を作ります', split: '部屋を横切るように線を引くと2つに分かれます', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
 };
 
 export function FloorBar() {
@@ -224,7 +243,47 @@ export function VisibilityPanel() {
         </div>
       ))}
       {nHidden > 0 && <button onClick={() => st.resetElementVisibility()}>個別に隠した{nHidden}件を元に戻す</button>}
+      <SectionControls />
     </div>
+  );
+}
+
+const SECTION_MODES: { id: SectionMode; label: string }[] = [
+  { id: 'off', label: 'なし' }, { id: 'z', label: '水平' }, { id: 'x', label: '縦(東西)' }, { id: 'y', label: '縦(南北)' },
+];
+const FLOOR_FILTERS: { id: FloorFilter; label: string }[] = [
+  { id: 'all', label: '全部' }, { id: 'upToActive', label: 'この階まで' }, { id: 'activeOnly', label: 'この階だけ' },
+];
+
+/** 3D の断面・階ごとの表示 */
+function SectionControls() {
+  const rawSection = useStore((s) => s.section);
+  const ff = useStore((s) => s.floorFilter);
+  const building = useStore((s) => s.doc.building);
+  const st = useStore.getState();
+  const section = clampSection(building, rawSection); // 建物の変更（階の削除・Undo）で範囲外になっても表示は範囲内
+  const [lo, hi] = section.mode === 'off' ? [0, 0] : sectionRange(building, section.mode);
+  return (
+    <>
+      <div className="visrow stack">
+        <span>3Dで表示する階</span>
+        <div className="seg-btns small">
+          {FLOOR_FILTERS.map((f) => <button key={f.id} data-testid={`floor-filter-${f.id}`} className={ff === f.id ? 'on' : ''} onClick={() => st.setFloorFilter(f.id)}>{f.label}</button>)}
+        </div>
+      </div>
+      <div className="visrow stack">
+        <span>断面（建物を切って中を見る）</span>
+        <div className="seg-btns small">
+          {SECTION_MODES.map((m) => <button key={m.id} data-testid={`section-${m.id}`} className={section.mode === m.id ? 'on' : ''} onClick={() => st.setSectionMode(m.id)}>{m.label}</button>)}
+        </div>
+      </div>
+      {section.mode !== 'off' && (
+        <label className="section-slider"><span>{section.mode === 'z' ? '切る高さ' : '切る位置'}</span>
+          <input type="range" data-testid="section-value" min={lo} max={hi} step={50} value={section.value} onChange={(e) => st.setSectionValue(Number(e.target.value))} />
+          <span className="muted small">{Math.round(section.value)}mm</span>
+        </label>
+      )}
+    </>
   );
 }
 

@@ -207,3 +207,44 @@ describe('レビュー指摘の回帰テスト', () => {
     expect(validateBuilding({ ...b, floors: [b.floors[0], b.floors[0]] })).not.toEqual([]);
   });
 });
+
+describe('建物: 部屋が壁に追従する（Phase 2）', () => {
+  const rect = () => createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+  const cornerAt = (b: ReturnType<typeof rect>, x: number, y: number) => Object.values(b.corners).find((c) => c.x === x && c.y === y)!;
+
+  it('角を動かすと部屋の頂点も同じだけ動く', () => {
+    const b = rect();
+    const c = cornerAt(b, 8000, 6000);
+    const n = moveCorner(b, c.id, { x: 9000, y: 6500 });
+    const room = Object.values(n.rooms)[0];
+    expect(room.polygon).toContainEqual({ x: 9000, y: 6500 });
+    expect(room.polygon).not.toContainEqual({ x: 8000, y: 6000 });
+  });
+
+  it('壁を動かすと両端の頂点が動く', () => {
+    const b = rect();
+    const w = Object.values(b.walls).find((x) => b.corners[x.a].x === 8000 && b.corners[x.b].x === 8000)!;
+    const n = moveWall(b, w.id, 1000, 0);
+    const xs = Object.values(n.rooms)[0].polygon.map((p) => p.x).sort((a, c) => a - c);
+    expect(xs).toEqual([0, 0, 9000, 9000]);
+  });
+
+  it('rejected corner move leaves rooms', () => {
+    const b = rect();
+    const c = cornerAt(b, 8000, 6000);
+    const n = moveCorner(b, c.id, { x: 8000, y: 50 }); // 壁が短すぎる
+    expect(n).toBe(b);
+  });
+});
+
+describe('建物: 部屋の追従でねじれる移動は拒否（Phase 2 レビュー対応）', () => {
+  it('角を反対側の角の向こうまで動かすと部屋がねじれるので拒否', () => {
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    // 内側に小さい部屋（外壁の角と頂点を共有）
+    const f = b.floors[0].id;
+    const r = addRoomRect(b, f, { x: 0, y: 0 }, { x: 2000, y: 2000 });
+    const c = Object.values(r.b.corners).find((x) => x.x === 0 && x.y === 0)!;
+    const n = moveCorner(r.b, c.id, { x: 1000, y: 3000 }); // 小部屋が自己交差する
+    expect(n).toBe(r.b);
+  });
+});

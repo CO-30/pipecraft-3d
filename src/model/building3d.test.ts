@@ -62,3 +62,31 @@ describe('3D形状生成', () => {
     expect(rots.filter((c) => c < 1e-9)).toHaveLength(2);
   });
 });
+
+describe('3D形状生成: 外壁の出隅（Phase 2）', () => {
+  it('矩形の外壁は両端を壁厚/2ずつ延長して角の欠けをなくす', () => {
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    const lens = buildingBoxes(b).filter((x) => x.category === 'exteriorWall').map((x) => Math.round(x.size.x)).sort((a, c) => a - c);
+    expect(lens).toEqual([6150, 6150, 8150, 8150]);
+  });
+
+  it('一直線に続く壁（T字で分割された壁）は延長しない', () => {
+    const b0 = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    // 内壁を下の外壁の途中(x=3000)から立てる → 下の外壁は 3000 / 5000 に分割
+    const r = addWall(b0, b0.floors[0].id, { x: 3000, y: 0 }, { x: 3000, y: 3000 });
+    const ext = buildingBoxes(r.b).filter((x) => x.category === 'exteriorWall').map((x) => Math.round(x.size.x)).sort((a, c) => a - c);
+    expect(ext).toEqual([3075, 5075, 6150, 6150, 8150]); // 分割点側は一直線の続きがあるので延長しない
+    const inner = buildingBoxes(r.b).filter((x) => x.category === 'interiorWall').map((x) => Math.round(x.size.x));
+    expect(inner).toEqual([3000 + 75]); // 外壁側だけ延長、自由端は延長しない
+  });
+
+  it('延長しても開口部の位置は芯線基準のまま', () => {
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    const w = Object.values(b.walls).find((x) => Math.round(wallLength(b, x.id)) === 8000)!;
+    const o = addOpening(b, w.id, 'door', 4000);
+    const door = buildingBoxes(o.b).find((x) => x.category === 'door')!;
+    const A = o.b.corners[w.a], B = o.b.corners[w.b];
+    expect(door.center.x).toBeCloseTo((A.x + B.x) / 2, 6);
+    expect(door.center.y).toBeCloseTo((A.y + B.y) / 2, 6);
+  });
+});

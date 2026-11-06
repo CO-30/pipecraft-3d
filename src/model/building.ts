@@ -258,12 +258,49 @@ export function addWall(b: Building, floorId: string, p: Vec2, q: Vec2, opts: { 
   return { b: next, wallIds: [id] };
 }
 
+/** 部屋の頂点のうち、移動前の角位置（1mm以内）にあるものを角と一緒に動かす */
+const ROOM_FOLLOW_MM = 1;
+/** 多角形が自己交差していないか（隣接しない辺どうしが交わらない） */
+function isSimplePolygon(p: Vec2[]): boolean {
+  const n = p.length;
+  const orient = (a: Vec2, c: Vec2, d: Vec2) => Math.sign((c.x - a.x) * (d.y - a.y) - (c.y - a.y) * (d.x - a.x));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (j === i + 1 || (i === 0 && j === n - 1)) continue;
+      const a = p[i], c = p[(i + 1) % n], d = p[j], e = p[(j + 1) % n];
+      const o1 = orient(a, c, d), o2 = orient(a, c, e), o3 = orient(d, e, a), o4 = orient(d, e, c);
+      if (o1 !== o2 && o3 !== o4) return false;
+    }
+  }
+  return true;
+}
+const MIN_ROOM_M2 = 0.1;
+
+/** 部屋の頂点を角に追従させる。追従で部屋がつぶれる・ねじれる場合は null（移動を拒否） */
+function followRooms(b: Building, moves: { floorId: string; from: Vec2; to: Vec2 }[]): Building | null {
+  let changed = false;
+  const rooms: Record<string, Room> = {};
+  for (const r of Object.values(b.rooms)) {
+    let rc = false;
+    const polygon = r.polygon.map((v) => {
+      const m = moves.find((mv) => mv.floorId === r.floorId && d2(mv.from, v) <= ROOM_FOLLOW_MM);
+      if (!m) return v;
+      rc = true;
+      return { x: m.to.x, y: m.to.y };
+    });
+    if (rc && (!isSimplePolygon(polygon) || roomArea({ ...r, polygon }) < MIN_ROOM_M2)) return null;
+    rooms[r.id] = rc ? { ...r, polygon } : r;
+    changed ||= rc;
+  }
+  return changed ? { ...b, rooms } : b;
+}
+
 export function moveCorner(b: Building, cornerId: string, p: Vec2): Building {
   const c = b.corners[cornerId];
   if (!c || (c.x === p.x && c.y === p.y)) return b;
   const next = { ...b, corners: { ...b.corners, [cornerId]: { ...c, x: p.x, y: p.y } } };
   const affected = Object.values(b.walls).filter((w) => w.a === cornerId || w.b === cornerId).map((w) => w.id);
-  return wallsOk(next, affected) ? next : b;
+  return wallsOk(next, affected) ? followRooms(next, [{ floorId: c.floorId, from: c, to: p }]) ?? b : b;
 }
 
 export function moveWall(b: Building, wallId: string, dx: number, dy: number): Building {
@@ -273,7 +310,8 @@ export function moveWall(b: Building, wallId: string, dx: number, dy: number): B
   for (const cid of [w.a, w.b]) corners[cid] = { ...corners[cid], x: corners[cid].x + dx, y: corners[cid].y + dy };
   const next = { ...b, corners };
   const affected = Object.values(b.walls).filter((x) => [w.a, w.b].includes(x.a) || [w.a, w.b].includes(x.b)).map((x) => x.id);
-  return wallsOk(next, affected) ? next : b;
+  if (!wallsOk(next, affected)) return b;
+  return followRooms(next, [w.a, w.b].map((cid) => ({ floorId: w.floorId, from: b.corners[cid], to: corners[cid] }))) ?? b;
 }
 
 export function updateWall(b: Building, wallId: string, patch: Partial<Pick<Wall, 'thickness' | 'kind'>>): Building {

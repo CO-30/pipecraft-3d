@@ -128,3 +128,77 @@ describe('共通ストア: 建物', () => {
     expect(p.building).toBe(bld());
   });
 });
+
+describe('共通ストア: 部屋の結合・分割（Phase 2）', () => {
+  const load = () => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'x', createdAt: 1 });
+
+  it('壁つきで分割 → 部屋2つ＋内壁1本、Undo 1回で元に戻る', () => {
+    load();
+    const room = Object.keys(bld().rooms)[0];
+    const walls0 = Object.keys(bld().walls).length;
+    const past0 = s().past.length;
+    s().splitRoomAt(room, { x: 4000, y: 100 }, { x: 4000, y: 5900 }, true);
+    expect(Object.keys(bld().rooms)).toHaveLength(2);
+    expect(wallsOnFloor(bld(), bld().floors[0].id).filter((w) => w.kind === 'interior')).toHaveLength(1);
+    expect(Object.keys(bld().walls).length).toBeGreaterThan(walls0);
+    expect(s().past.length).toBe(past0 + 1);
+    expect(validateBuilding(bld())).toEqual([]);
+    s().undo();
+    expect(Object.keys(bld().rooms)).toEqual([room]);
+    expect(Object.keys(bld().walls).length).toBe(walls0);
+  });
+
+  it('壁なしで分割、部屋に掛からない線は履歴を増やさない', () => {
+    load();
+    const room = Object.keys(bld().rooms)[0];
+    const past0 = s().past.length;
+    s().splitRoomAt(room, { x: 0, y: 9000 }, { x: 100, y: 9000 }, false);
+    expect(s().past.length).toBe(past0);
+    s().splitRoomAt(room, { x: 0, y: 3000 }, { x: 100, y: 3000 }, false);
+    expect(Object.keys(bld().rooms)).toHaveLength(2);
+    expect(Object.keys(bld().walls)).toHaveLength(4);
+  });
+
+  it('結合モード: 選択中の部屋 + 次にタップした部屋 → 1部屋、選択も移る', () => {
+    load();
+    const room = Object.keys(bld().rooms)[0];
+    s().splitRoomAt(room, { x: 0, y: 3000 }, { x: 100, y: 3000 }, false);
+    const [a, b] = Object.keys(bld().rooms);
+    s().select({ kind: 'room', id: a });
+    s().startMerge();
+    expect(s().pendingMerge).toBe(a);
+    s().mergeRoomWith(b);
+    const ids = Object.keys(bld().rooms);
+    expect(ids).toHaveLength(1);
+    expect(s().selection).toEqual({ kind: 'room', id: ids[0] });
+    expect(s().pendingMerge).toBeNull();
+  });
+});
+
+describe('共通ストア: レビュー対応（Phase 2）', () => {
+  it('Undo でドラッグが打ち切られた後の移動は無視され、壁が飛ばない', () => {
+    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'x', createdAt: 1 });
+    const w = Object.values(bld().walls)[0];
+    s().beginDrag();
+    s().dragWall(w.id, 500, 0);
+    s().undo(); // ドラッグを確定・終了
+    const after = bld();
+    s().dragWall(w.id, 1000, 0);
+    expect(bld()).toBe(after);
+  });
+
+  it('Undo・階の切り替えで結合モードが解除される', () => {
+    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'x', createdAt: 1 });
+    const room = Object.values(bld().rooms)[0];
+    s().select({ kind: 'room', id: room.id });
+    s().startMerge();
+    s().setActiveFloor(bld().floors[1].id);
+    expect(s().pendingMerge).toBeNull();
+    s().select({ kind: 'room', id: room.id });
+    s().startMerge();
+    s().renameRoom(room.id, '別名');
+    s().startMerge();
+    s().undo();
+    expect(s().pendingMerge).toBeNull();
+  });
+});

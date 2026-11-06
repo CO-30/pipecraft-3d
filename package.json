@@ -9,12 +9,14 @@
     "lint": "oxlint",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:pwa": "playwright test -c playwright.pwa.config.ts"
   },
   "dependencies": {
     "@react-three/drei": "10.7.9",
     "@react-three/fiber": "9.8.2",
     "dexie": "4.4.7",
+    "polyclip-ts": "0.16.8",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "three": "0.187.0",
@@ -34,6 +36,7 @@
     "oxlint": "1.91.0",
     "typescript": "7.0.2",
     "vite": "8.3.6",
+    "vite-plugin-pwa": "2.0.0",
     "vitest": "5.1.0"
   }
 }
