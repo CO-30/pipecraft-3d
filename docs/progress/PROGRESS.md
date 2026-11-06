@@ -34,5 +34,30 @@
   - PWA（オフライン起動）は未導入（Phase 5 予定だが、完成条件13に関わるため Phase 2 で前倒し検討）
   - 実機（iPhone Safari / Android Chrome）での確認は未実施
 
-## 次の作業: Phase 2（2D・3D編集連動）
-- 3Dでの壁・角の移動、断面表示の基礎、部屋の結合・分割、外壁出隅の処理、PWA導入
+## 公開・main 反映（2026-11-06）
+- Phase 1 を main にマージ（ユーザー承認、`8939d81`）
+- リポジトリを公開（ユーザー操作）。GitHub Pages: `gh-pages` ブランチを配信 → https://co-30.github.io/pipecraft-3d/ （実機確認用。ユーザー承認済み）
+- `gh-pages` はビルド成果物のみ。各Phase完了時（PR作成時点）に更新する
+
+## Phase 2 2D・3D編集連動 — 完了（2026-11-06）
+- 計画: `docs/superpowers/plans/2026-11-06-phase2-edit-sync.md`／ブランチ: `phase2/edit-sync`（main `8939d81` から派生）
+- 実装した機能
+  - 部屋の分割（✂：部屋を横切る線、切断線に内壁も作成・凹んだ部屋は内側の区間ごと）と結合（辺を共有する同じ階の部屋）。`src/model/roomOps.ts`（polyclip-ts 0.16.8）
+  - 壁・角を動かすと部屋の頂点も追従（部屋がねじれる・0.1㎡未満になる移動は拒否）
+  - 3Dで**選択済み**の壁をドラッグ移動、壁の両端の角ハンドルで角を移動（50mm単位、1操作=履歴1件）。未選択要素の上のドラッグは従来通り回転。つかんだ指以外は無視、OrbitControls を同期停止
+  - 断面表示の基礎（水平／縦 東西／縦 南北＋位置スライダー。建物・配管とも切る。切られて見えない部分はタップ対象外）、3Dで表示する階（全部／この階まで／この階だけ）
+  - 外壁の出隅・T字の足の欠けを解消（壁端を相手壁の厚さ/2 延長）
+  - 3D初期カメラを画面の縦横比に合わせて建物全体が入るように
+  - PWA（vite-plugin-pwa 2.0.0）: オフライン起動、ホーム画面追加用 manifest・アイコン、新版通知。`base: './'` で Pages のサブパス対応
+- 主な変更ファイル: `src/model/{roomOps,section,building,building3d}.ts`、`src/state/store.ts`、`src/ui/{View3D,PlanView,Panels,UpdatePrompt}.tsx`、`vite.config.ts`、`e2e/phase2.spec.ts`、`e2e-pwa/offline.spec.ts`、`playwright.pwa.config.ts`
+- テスト: 単体 102件 合格 / E2E 27件 合格・3件対象外 / PWA E2E 1件 合格（本番ビルドでオフライン再読み込み→現場作成・保存）。証拠: `test-evidence/`（`*-p2-*.png`、`e2e-results.json`、`e2e-pwa-results.json`）
+- 独立レビュー（Sonnet）: Critical 0 / Important 3（分割で無関係な部屋が切られる、3Dドラッグの多指・リスナー解除・Undo中ドラッグ）→ **修正・回帰テスト追加済み**。Minor のうち 結合モード解除・凹部屋の切断壁・部屋のねじれ・角ハンドルのずれ・配管への断面/階フィルタ・断面値の再丸め・manifest も対応
+- 既知の制約（後続Phaseで対応）
+  - 壁の端の延長は単純な箱の重なり（半透明時に角が濃く見える）
+  - 3Dでの開口部（ドア・窓）のドラッグ移動は未対応（数値・2Dで編集）
+  - 配管は絶対高さで階に追従しない（Phase 3）
+  - バンドル約1.5MB（Phase 5 で分割）
+  - 実機（iPhone Safari / Android Chrome）確認はユーザー待ち
+
+## 次の作業: Phase 3（配管・配線）
+- 描画・分岐・接続・移動・切断・削除・高さ/種類/色/管径変更・Undo/Redo の完成度向上（Phase 0 の試作を本実装へ）、配管の階への関連付け、3Dでの配管の太さ・選択強調
