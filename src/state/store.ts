@@ -569,7 +569,7 @@ export const useStore = create<State>((set, get) => {
     },
     setSlopeFromOutlet: (nodeId, slope) => {
       const r = applySlope(get().doc.network, nodeId, slope);
-      if (!r) { set({ notice: 'この点からたどれる排水の横管がないか、勾配をつけると配管が重なるため変更できません' }); return; }
+      if (!r) { set({ notice: '流末には排水の横管の端（立て管・器具とのつなぎ目を含む）を選んでください。横管の途中の点や、配管が重なる場合は変更できません' }); return; }
       commit(withNet(r.net), { notice: `${r.segments}区間に勾配をつけ、${r.nodes}点の高さを変えました` });
     },
     setSegmentSupport: (segId, patch) => {

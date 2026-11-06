@@ -11,7 +11,7 @@ import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
 import { defaultEstimate, measureSegment } from '../model/estimate';
-import { actualSlope, defaultSlope, isDrain, slopeLabel } from '../model/slope';
+import { actualSlope, defaultSlope, isDrain, slopeEnough, slopeLabel } from '../model/slope';
 import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
 
@@ -361,9 +361,9 @@ function SupportFields({ segId }: { segId: string }) {
   return (
     <>
       {slope !== null && (
-        <div className={`small ${slope + 1e-9 < need ? 'warn' : ''}`} data-testid="seg-slope">
+        <div className={`small ${!slopeEnough(doc.network, seg, need) ? 'warn' : ''}`} data-testid="seg-slope">
           勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}）` : ''}
-          {slope + 1e-9 < need && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
+          {!slopeEnough(doc.network, seg, need) && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
         </div>
       )}
       <label className="field inline">支持金具

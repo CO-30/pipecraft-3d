@@ -8,7 +8,7 @@
 import type { Doc } from './doc';
 import type { Network, Segment } from './network';
 import { isWire } from './fittings';
-import { isDrain, planLength } from './slope';
+import { isDrain, isRiserLike } from './slope';
 import type { SegmentMeasure } from './estimate';
 
 export type SupportKind = 'saddle' | 'levelBand';
@@ -43,7 +43,7 @@ export function supportKindOf(doc: Doc, s: Segment): SupportKind | null {
   if (s.support) return s.support;
   if (isWire(s.system)) return null;
   const net = doc.network;
-  if (isDrain(s.system) && planLength(net, s) >= 1) {
+  if (isDrain(s.system) && !isRiserLike(net, s)) {
     const a = net.nodes[s.a], b = net.nodes[s.b];
     const floor = doc.building.floors.find((f) => f.id === (a.floorId ?? b.floorId));
     const base = floor?.elevation ?? 0;

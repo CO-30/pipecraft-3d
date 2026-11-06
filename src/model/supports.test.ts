@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addPolyline, branchFromSegment, emptyNetwork, validateNetwork, type Network, type SegmentAttrs } from './network';
 import { addFloor, emptyBuilding } from './building';
 import { computeEstimate, defaultEstimate, type EstimateSettings } from './estimate';
-import { applySlope, actualSlope, defaultSlope, slopeLabel } from './slope';
+import { applySlope, actualSlope, defaultSlope, slopeEnough, slopeLabel } from './slope';
 import { defaultSupportSettings } from './supports';
 
 const v = (x: number, y: number, z = 100) => ({ x, y, z });
@@ -88,6 +88,30 @@ describe('排水の勾配', () => {
     const tip = Object.values(res.net.nodes).find((n) => n.pos.x === 2000 && n.pos.y === 1000)!;
     expect(tip.pos.z).toBeCloseTo(100 + 30, 6); // 2000 + 1000mm × 1/100
     expect(res.net.nodes[r.nodeIds[1]].pos.z).toBeCloseTo(140, 6);
+  });
+
+  it('横管の途中の点は流末にできない（V字になるため）。丸め誤差で「勾配不足」と判定しない', () => {
+    const r = addPolyline(emptyNetwork(), [v(0, 0), v(2000, 0), v(4000, 0)], D50);
+    expect(applySlope(r.net, r.nodeIds[1], 'auto')).toBeNull();
+    const p = addPolyline(emptyNetwork(), [v(0, 0), v(1234, 0)], { system: 'drain', diameter: 100 });
+    const res = applySlope(p.net, p.nodeIds[0], 1 / 100)!;
+    const seg = res.net.segments[p.segmentIds[0]];
+    expect(res.net.nodes[p.nodeIds[1]].pos.z).toBe(112.3); // 12.34 → 0.1mm に丸め
+    expect(slopeEnough(res.net, seg, 1 / 100)).toBe(true);
+  });
+
+  it('ループでは高さを決めた区間だけに設計勾配を記録し、急な斜め管は立て管として扱う', () => {
+    // O(0,0)→A(10000,0) と O→B(0,3000)→A の回り道（6m 未満ではないので O-A 直行が最短）
+    let net = addPolyline(emptyNetwork(), [v(0, 0), v(3000, 0)], D50).net;
+    const O = Object.values(net.nodes).find((n) => n.pos.x === 0)!.id;
+    const res = applySlope(net, O, 1 / 50)!;
+    expect(res.segments).toBe(1);
+    // 急な斜め管（平面1000・高さ2000）は高さを変えない
+    net = addPolyline(emptyNetwork(), [v(0, 0, 100), v(2000, 0, 100), v(3000, 0, 2100)], D50).net;
+    const s0 = Object.values(net.nodes).find((n) => n.pos.x === 0)!.id;
+    const r2 = applySlope(net, s0, 1 / 50)!;
+    const top = Object.values(r2.net.nodes).find((n) => n.pos.x === 3000)!;
+    expect(top.pos.z).toBe(2100);
   });
 
   it('給水など排水以外の配管・立て管は動かさない', () => {
