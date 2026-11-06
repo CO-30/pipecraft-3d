@@ -16,7 +16,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
   },
-  webServer: { command: 'npm run build && npx vite preview --port 4173 --strictPort', port: 4173, reuseExistingServer: true, timeout: 120_000 },
+  webServer: { command: 'npx tsc -b && npx vite build --mode e2e --outDir dist-e2e && npx vite preview --outDir dist-e2e --port 4173 --strictPort', port: 4173, reuseExistingServer: false, timeout: 120_000 },
   projects: [
     { name: 'pc-chrome', use: { viewport: { width: 1400, height: 860 } } },
     { name: 'mobile-iphone-emu', use: { ...devices['iPhone 13'], defaultBrowserType: 'chromium', channel: 'chrome' } },

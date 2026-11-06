@@ -1,6 +1,6 @@
 /**
  * 建物 → 3D表示用の箱リスト（純粋関数）。表示データであり保存しない。
- * 壁は開口部を避けて分割した箱。床スラブ・天井は部屋ポリゴンの外接矩形（Phase 1 は矩形部屋）。
+ * 壁は開口部を避けて分割した箱。床スラブ・天井は階ごとに壁外形の外接矩形（Phase 1）。
  */
 import type { Building, Opening, Wall } from './building';
 import { wallLength } from './building';
@@ -61,13 +61,17 @@ export function buildingBoxes(b: Building): Box[] {
   for (const f of b.floors) {
     const clear = f.height - f.slabThickness;
     for (const w of Object.values(b.walls)) if (w.floorId === f.id) out.push(...wallPieces(b, w, f.elevation, clear));
-    for (const r of Object.values(b.rooms)) {
-      if (r.floorId !== f.id) continue;
-      const xs = r.polygon.map((p) => p.x), ys = r.polygon.map((p) => p.y);
-      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-      const base = { elementId: r.id, rotationZ: 0 };
-      out.push({ ...base, key: `${r.id}:floor`, category: 'floor', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation - f.slabThickness / 2 }, size: { x: x1 - x0, y: y1 - y0, z: f.slabThickness } });
-      out.push({ ...base, key: `${r.id}:ceiling`, category: 'ceiling', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation + clear - CEILING_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: CEILING_THICKNESS } });
+    // 床スラブ・天井: 階ごとに1枚。壁の外形（壁厚の半分を外側へ）、壁がなければ部屋の外形
+    const walls = Object.values(b.walls).filter((w) => w.floorId === f.id);
+    const pts = walls.length
+      ? walls.flatMap((w) => [w.a, w.b].map((c) => ({ x: b.corners[c].x, y: b.corners[c].y, pad: w.thickness / 2 })))
+      : Object.values(b.rooms).filter((r) => r.floorId === f.id).flatMap((r) => r.polygon.map((p) => ({ ...p, pad: 0 })));
+    if (pts.length) {
+      const x0 = Math.min(...pts.map((p) => p.x - p.pad)), x1 = Math.max(...pts.map((p) => p.x + p.pad));
+      const y0 = Math.min(...pts.map((p) => p.y - p.pad)), y1 = Math.max(...pts.map((p) => p.y + p.pad));
+      const base = { elementId: f.id, rotationZ: 0 };
+      out.push({ ...base, key: `${f.id}:floor`, category: 'floor', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation - f.slabThickness / 2 }, size: { x: x1 - x0, y: y1 - y0, z: f.slabThickness } });
+      out.push({ ...base, key: `${f.id}:ceiling`, category: 'ceiling', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation + clear - CEILING_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: CEILING_THICKNESS } });
     }
   }
   return out;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildingBoxes } from './building3d';
-import { addOpening, addWall, createBuildingFromDims, wallLength, type Building } from './building';
+import { addFloor, addOpening, addRoomRect, addWall, createBuildingFromDims, wallLength, type Building } from './building';
 
 function withWall(): { b: Building; w: string } {
   const b0 = createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
@@ -44,6 +44,16 @@ describe('3D形状生成', () => {
     expect(ext2[0].center.z).toBeCloseTo(2900 + 1350, 6);
     expect(buildingBoxes(b).filter((x) => x.category === 'floor')).toHaveLength(2);
     expect(buildingBoxes(b).filter((x) => x.category === 'ceiling')).toHaveLength(2);
+  });
+
+  it('床・天井は階ごとに1枚（壁の外形）。部屋が重なっても重複しない、部屋のない階にも出る', () => {
+    const b0 = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    const a = addFloor(b0, { copyExteriorFrom: b0.floors[0].id });
+    const r = addRoomRect(a.b, b0.floors[0].id, { x: 0, y: 0 }, { x: 3000, y: 3000 });
+    const floors = buildingBoxes(r.b).filter((x) => x.category === 'floor');
+    expect(floors).toHaveLength(2);
+    expect(floors[0].size.x).toBeCloseTo(8000 + 150, 6);
+    expect(floors[1].center.z).toBeCloseTo(2900 - 100, 6);
   });
 
   it('壁の向き: 南北方向の壁は rotationZ = ±π/2', () => {
