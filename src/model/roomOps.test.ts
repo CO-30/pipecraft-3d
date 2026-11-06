@@ -57,7 +57,8 @@ describe('splitRoom', () => {
     expect(s.roomIds.map((id) => roomArea(s.b.rooms[id]))).toEqual([expect.closeTo(6, 6), expect.closeTo(6, 6)]);
     expect(s.roomIds.map((id) => s.b.rooms[id].name).sort()).toEqual(['LDK-1', 'LDK-2']);
     expect(s.b.rooms[r.roomId]).toBeUndefined();
-    const cut = s.cut!.map((p: Vec2) => ({ x: Math.round(p.x), y: Math.round(p.y) })).sort((a, c) => a.x - c.x);
+    expect(s.cuts).toHaveLength(1);
+    const cut = s.cuts[0].map((p: Vec2) => ({ x: p.x, y: p.y })).sort((a, c) => a.x - c.x);
     expect(cut).toEqual([{ x: 0, y: 1500 }, { x: 4000, y: 1500 }]);
   });
 
@@ -68,7 +69,7 @@ describe('splitRoom', () => {
       const s = splitRoom(b, r.roomId, p, q);
       expect(s.roomIds).toEqual([]);
       expect(s.b).toBe(b);
-      expect(s.cut).toBeNull();
+      expect(s.cuts).toEqual([]);
     }
     expect(splitRoom(b, r.roomId, { x: 10, y: 10 }, { x: 10, y: 10 }).b).toBe(b);
   });
@@ -85,5 +86,7 @@ describe('splitRoom', () => {
     expect(s.roomIds).toHaveLength(3);
     const total = s.roomIds.reduce((a, id) => a + roomArea(s.b.rooms[id]), 0);
     expect(total).toBeCloseTo(20, 6);
+    // 切断線は部屋の内側だけ（U字の両腕の2区間。外側の隙間には壁を作らない）
+    expect(s.cuts.map((c) => [c[0].x, c[1].x].sort((a, b) => a - b))).toEqual([[0, 2000], [4000, 6000]]);
   });
 });

@@ -3,7 +3,7 @@
  */
 import { useEffect, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
-import { sectionRange, type SectionMode } from '../model/section';
+import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { segmentLength, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { SYSTEMS, systemLabel } from './colors';
@@ -257,10 +257,11 @@ const FLOOR_FILTERS: { id: FloorFilter; label: string }[] = [
 
 /** 3D の断面・階ごとの表示 */
 function SectionControls() {
-  const section = useStore((s) => s.section);
+  const rawSection = useStore((s) => s.section);
   const ff = useStore((s) => s.floorFilter);
   const building = useStore((s) => s.doc.building);
   const st = useStore.getState();
+  const section = clampSection(building, rawSection); // 建物の変更（階の削除・Undo）で範囲外になっても表示は範囲内
   const [lo, hi] = section.mode === 'off' ? [0, 0] : sectionRange(building, section.mode);
   return (
     <>

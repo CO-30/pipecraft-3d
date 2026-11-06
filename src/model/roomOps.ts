@@ -44,8 +44,8 @@ export function mergeRooms(b: Building, aId: string, bId: string): { b: Building
   return { b: { ...b, rooms }, roomId: id };
 }
 
-/** 直線と多角形の交差区間（直線上の最小〜最大の交点） */
-function cutSegment(poly: Vec2[], p: Vec2, d: Vec2): [Vec2, Vec2] | null {
+/** 直線が多角形の内側を通る区間（凹んだ部屋では複数）。端点は1mmに丸める */
+function cutSegments(poly: Vec2[], p: Vec2, d: Vec2): [Vec2, Vec2][] {
   const ts: number[] = [];
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], c = poly[(i + 1) % poly.length];
@@ -56,16 +56,26 @@ function cutSegment(poly: Vec2[], p: Vec2, d: Vec2): [Vec2, Vec2] | null {
     const u = ((a.x - p.x) * d.y - (a.y - p.y) * d.x) / den;
     if (u >= -1e-9 && u <= 1 + 1e-9) ts.push(t);
   }
-  if (ts.length < 2) return null;
-  const t0 = Math.min(...ts), t1 = Math.max(...ts);
-  return [{ x: p.x + d.x * t0, y: p.y + d.y * t0 }, { x: p.x + d.x * t1, y: p.y + d.y * t1 }];
+  ts.sort((x, y) => x - y);
+  const at = (t: number) => ({ x: p.x + d.x * t, y: p.y + d.y * t });
+  const out: [Vec2, Vec2][] = [];
+  for (let i = 0; i + 1 < ts.length; i++) {
+    if (ts[i + 1] - ts[i] < 1) continue;
+    if (!pointInPolygon(at((ts[i] + ts[i + 1]) / 2), poly)) continue;
+    const r = (v: Vec2) => ({ x: Math.round(v.x), y: Math.round(v.y) });
+    const prev = out.at(-1);
+    // 頂点を通過して区間が連続する場合はつなげる
+    if (prev && Math.hypot(prev[1].x - at(ts[i]).x, prev[1].y - at(ts[i]).y) < 1) prev[1] = r(at(ts[i + 1]));
+    else out.push([r(at(ts[i])), r(at(ts[i + 1]))]);
+  }
+  return out;
 }
 
 /** p→q を通る直線で部屋を分割。2片以上に分かれた時だけ置き換える */
-export function splitRoom(b: Building, roomId: string, p: Vec2, q: Vec2): { b: Building; roomIds: string[]; cut: [Vec2, Vec2] | null } {
+export function splitRoom(b: Building, roomId: string, p: Vec2, q: Vec2): { b: Building; roomIds: string[]; cuts: [Vec2, Vec2][] } {
   const room = b.rooms[roomId];
   const len = Math.hypot(q.x - p.x, q.y - p.y);
-  if (!room || len < 1e-6) return { b, roomIds: [], cut: null };
+  if (!room || len < 1e-6) return { b, roomIds: [], cuts: [] };
   const d = { x: (q.x - p.x) / len, y: (q.y - p.y) / len };
   const n = { x: -d.y, y: d.x };
   const half = (s: number): Geom => {
@@ -75,12 +85,12 @@ export function splitRoom(b: Building, roomId: string, p: Vec2, q: Vec2): { b: B
   const pieces: Vec2[][] = [];
   for (const s of [1, -1]) {
     for (const poly of intersection(toGeom(room.polygon), half(s))) {
-      if (poly.length !== 1) return { b, roomIds: [], cut: null }; // 穴あきは想定外
+      if (poly.length !== 1) return { b, roomIds: [], cuts: [] }; // 穴あきは想定外
       pieces.push(clean(poly[0]));
     }
   }
   const valid = pieces.filter((pts) => pts.length >= 3 && roomArea({ polygon: pts } as Room) >= MIN_PIECE_M2);
-  if (valid.length < 2 || valid.length !== pieces.length) return { b, roomIds: [], cut: null };
+  if (valid.length < 2 || valid.length !== pieces.length) return { b, roomIds: [], cuts: [] };
   const rooms = { ...b.rooms };
   delete rooms[roomId];
   const roomIds = valid.map((polygon, i) => {
@@ -88,7 +98,7 @@ export function splitRoom(b: Building, roomId: string, p: Vec2, q: Vec2): { b: B
     rooms[id] = { id, floorId: room.floorId, name: `${room.name}-${i + 1}`, polygon };
     return id;
   });
-  return { b: { ...b, rooms }, roomIds, cut: cutSegment(room.polygon, p, d) };
+  return { b: { ...b, rooms }, roomIds, cuts: cutSegments(room.polygon, p, d) };
 }
 
 /** 点が多角形の内側か（境界上は内側扱いしない場合あり） */

@@ -3,7 +3,7 @@
  * ノードをドラッグすると同じ高さの水平面上で移動し、共通ストアを更新する（→ 2D平面図にも即時反映）。
  * 座標変換: 共通座標(mm, z=高さ) → three(m, y=上): (x, z, -y)/1000
  */
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
@@ -11,7 +11,7 @@ import { useStore, type SelKind, type VisMode } from '../state/store';
 import type { Vec3 } from '../model/network';
 import { buildingBoxes, type Box } from '../model/building3d';
 import { floorById } from '../model/building';
-import { sectionPlane } from '../model/section';
+import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor } from './colors';
 
 const GRID_SNAP = 50;
@@ -23,7 +23,7 @@ const CAT_COLOR: Record<Box['category'], string> = {
   exteriorWall: '#e7e5e4', interiorWall: '#f5f5f4', floor: '#d6d3d1', ceiling: '#fafaf9', door: '#a16207', window: '#7dd3fc',
 };
 
-function Pipe({ a, b, radius, color, selected, mode, onSelect }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; mode: VisMode; onSelect: () => void }) {
+function Pipe({ a, b, radius, color, selected, mode, onSelect, clip }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
   const { pos, quat, len } = useMemo(() => {
     const va = toThree(a), vb = toThree(b);
     const dir = vb.clone().sub(va);
@@ -34,7 +34,7 @@ function Pipe({ a, b, radius, color, selected, mode, onSelect }: { a: Vec3; b: V
     <mesh position={pos} quaternion={quat} onClick={(e) => { e.stopPropagation(); onSelect(); }} renderOrder={2}>
       <cylinderGeometry args={[radius, radius, len, 12]} />
       <meshStandardMaterial color={selected ? SELECT_COLOR : color} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.5 : 0}
-        transparent={mode === 'ghost'} opacity={mode === 'ghost' ? 0.3 : 1} />
+        transparent={mode === 'ghost'} opacity={mode === 'ghost' ? 0.3 : 1} clippingPlanes={clip} />
     </mesh>
   );
 }
@@ -97,15 +97,25 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     return allBoxes.filter((b) => (floorFilter === 'activeOnly' ? idx.get(b.floorId) === act : (idx.get(b.floorId) ?? 0) <= act));
   }, [allBoxes, building.floors, floorFilter, activeFloorId]);
   const clip = useMemo(() => {
-    const p = sectionPlane(section);
+    const p = sectionPlane(clampSection(building, section));
     if (!p) return [];
     // 共通座標 → three: (x, z, -y)/1000
     return [new THREE.Plane(new THREE.Vector3(p.normal.x, p.normal.z, -p.normal.y), p.constant / 1000)];
-  }, [section]);
+  }, [section, building]);
+  /** 階フィルタで見せる高さの範囲（配管にも適用。床下配管も含めるため下は1000mm余裕） */
+  const zRange = useMemo((): [number, number] => {
+    if (floorFilter === 'all') return [-Infinity, Infinity];
+    const i = Math.max(0, building.floors.findIndex((f) => f.id === activeFloorId));
+    const f = building.floors[i];
+    if (!f) return [-Infinity, Infinity];
+    return [floorFilter === 'activeOnly' ? f.elevation - 1000 : -Infinity, f.elevation + f.height];
+  }, [floorFilter, building.floors, activeFloorId]);
+  const zIn = (z: number) => z >= zRange[0] && z < zRange[1];
+  const shownFloorIds = useMemo(() => new Set(boxes.map((b) => b.floorId)), [boxes]);
   type Drag =
     | { kind: 'node'; nodeId: string; plane: THREE.Plane }
     | { kind: 'wall'; wallId: string; plane: THREE.Plane; start: { x: number; y: number } }
-    | { kind: 'corner'; cornerId: string; plane: THREE.Plane };
+    | { kind: 'corner'; cornerId: string; plane: THREE.Plane; offset: { x: number; y: number } };
   const drag = useRef<Drag | null>(null);
   const { camera, gl } = useThree();
   const controls = useThree((st) => st.controls) as unknown as { enabled: boolean } | null;
@@ -115,20 +125,28 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     setOrbit(!locked);
   };
 
-  /** ドラッグ中はウィンドウでポインタを受ける（3D内の受け面の描画を待たないので取りこぼさない） */
-  const listen = () => {
+  const stopListening = useRef<(() => void) | null>(null);
+  // 表示が切り替わってドラッグ途中で消えた場合も、ウィンドウのリスナーを確実に外してドラッグを確定する
+  useEffect(() => () => stopListening.current?.(), []);
+
+  /** ドラッグ中はウィンドウでポインタを受ける（3D内の受け面の描画を待たないので取りこぼさない）。つかんだ指以外は無視 */
+  const listen = (pointerId: number) => {
     const ray = new THREE.Raycaster();
     const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       const r = gl.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), camera);
       moveDrag(ray.ray);
     };
-    const onUp = () => {
+    const stop = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      stopListening.current = null;
       endDrag();
     };
+    const onUp = (ev: PointerEvent) => { if (ev.pointerId === pointerId) stop(); };
+    stopListening.current = stop;
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
@@ -150,19 +168,25 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     st.beginDrag();
     drag.current = { kind: 'node', nodeId, plane: new THREE.Plane(UP, -st.doc.network.nodes[nodeId].pos.z / 1000) };
     lockOrbit(true);
-    listen();
+    listen(e.pointerId);
   };
   /** 選択済みの壁・角だけをつかめる（未選択の上のドラッグは回転のまま） */
   const startBuildingDrag = (e: ThreeEvent<PointerEvent>, d: { kind: 'wall'; wallId: string } | { kind: 'corner'; cornerId: string }) => {
     if (tool !== 'select') return;
     e.stopPropagation();
     const plane = new THREE.Plane(UP, -e.point.y);
-    useStore.getState().beginDrag();
-    drag.current = d.kind === 'wall'
-      ? { ...d, plane, start: { x: e.point.x * 1000, y: -e.point.z * 1000 } }
-      : { ...d, plane };
+    const st = useStore.getState();
+    const hit = { x: e.point.x * 1000, y: -e.point.z * 1000 };
+    if (d.kind === 'corner' && !st.doc.building.corners[d.cornerId]) return;
+    st.beginDrag();
+    if (d.kind === 'wall') drag.current = { ...d, plane, start: hit };
+    else {
+      // つかんだ位置と角の中心のずれを保つ（つかんだ瞬間に角が跳ねないように）
+      const c = st.doc.building.corners[d.cornerId];
+      drag.current = { ...d, plane, offset: { x: c.x - hit.x, y: c.y - hit.y } };
+    }
     lockOrbit(true);
-    listen();
+    listen(e.pointerId);
   };
   const moveDrag = (ray: THREE.Ray) => {
     const d = drag.current;
@@ -177,7 +201,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     } else if (d.kind === 'wall') {
       st.dragWall(d.wallId, snap(p.x - d.start.x), snap(p.y - d.start.y));
     } else {
-      st.dragCorner(d.cornerId, { x: snap(p.x), y: snap(p.y) });
+      st.dragCorner(d.cornerId, { x: snap(p.x + d.offset.x), y: snap(p.y + d.offset.y) });
     }
   };
   const endDrag = () => {
@@ -203,7 +227,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
             onGrab={selected && k === 'wall' && tool === 'select' ? (e) => startBuildingDrag(e, { kind: 'wall', wallId: b.elementId }) : undefined} />
         );
       })}
-      {tool === 'select' && sel?.kind === 'wall' && building.walls[sel.id] && (() => {
+      {tool === 'select' && sel?.kind === 'wall' && building.walls[sel.id] && shownFloorIds.has(building.walls[sel.id].floorId) && (() => {
         const w = building.walls[sel.id];
         const f = floorById(building, w.floorId);
         if (!f) return null;
@@ -219,15 +243,15 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
           );
         });
       })()}
-      {Object.values(net.segments).map((s) => (
-        <Pipe key={s.id} a={net.nodes[s.a].pos} b={net.nodes[s.b].pos} radius={Math.max(0.02, s.diameter / 1500)}
+      {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => (
+        <Pipe clip={clip} key={s.id} a={net.nodes[s.a].pos} b={net.nodes[s.b].pos} radius={Math.max(0.02, s.diameter / 1500)}
           color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} mode={pipeMode}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: s.id })} />
       ))}
-      {pipeMode !== 'hide' && Object.values(net.nodes).map((n) => (
+      {pipeMode !== 'hide' && Object.values(net.nodes).filter((n) => zIn(n.pos.z)).map((n) => (
         <mesh key={n.id} position={toThree(n.pos)} onPointerDown={(e) => startDrag(e, n.id)} renderOrder={3}>
           <sphereGeometry args={[n.kind === 'tee' || n.kind === 'cross' ? 0.07 : 0.05, 16, 16]} />
-          <meshStandardMaterial color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' ? '#111827' : '#f9fafb'} />
+          <meshStandardMaterial clippingPlanes={clip} color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' ? '#111827' : '#f9fafb'} />
         </mesh>
       ))}
     </>

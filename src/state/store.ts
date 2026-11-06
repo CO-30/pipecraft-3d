@@ -186,7 +186,7 @@ export const useStore = create<State>((set, get) => {
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
     select: (selection) => set({ selection }),
-    setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null }),
+    setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null }),
 
     drawPolyline: (points, opts) => {
       if (points.length < 2) return;
@@ -220,11 +220,12 @@ export const useStore = create<State>((set, get) => {
     },
 
     beginDrag: () => set({ dragBase: get().doc }),
-    dragNode: (nodeId, pos) => set({ doc: withNet(moveNode(get().doc.network, nodeId, pos)) }),
-    dragCorner: (cornerId, p) => set({ doc: withBld(B.moveCorner(get().doc.building, cornerId, p)) }),
+    // ドラッグ中（beginDrag 後）だけ有効。途中で Undo 等により終了したドラッグの続きは無視する
+    dragNode: (nodeId, pos) => { if (get().dragBase) set({ doc: withNet(moveNode(get().doc.network, nodeId, pos)) }); },
+    dragCorner: (cornerId, p) => { if (get().dragBase) set({ doc: withBld(B.moveCorner(get().doc.building, cornerId, p)) }); },
     dragWall: (wallId, dx, dy) => {
-      const base = get().dragBase ?? get().doc;
-      set({ doc: { ...get().doc, building: B.moveWall(base.building, wallId, dx, dy) } });
+      const base = get().dragBase;
+      if (base) set({ doc: { ...get().doc, building: B.moveWall(base.building, wallId, dx, dy) } });
     },
     endDrag: () => {
       const { dragBase, doc, past } = get();
@@ -254,7 +255,7 @@ export const useStore = create<State>((set, get) => {
       const r = splitRoom(get().doc.building, roomId, p, q);
       if (!r.roomIds.length) return;
       let b = r.b;
-      if (withWall && r.cut) b = B.addWall(b, b.rooms[r.roomIds[0]].floorId, r.cut[0], r.cut[1]).b;
+      if (withWall) for (const [p0, p1] of r.cuts) b = B.addWall(b, b.rooms[r.roomIds[0]].floorId, p0, p1).b;
       commit(withBld(b), { selection: { kind: 'room', id: r.roomIds[0] } });
     },
     startMerge: () => {
@@ -305,14 +306,14 @@ export const useStore = create<State>((set, get) => {
       const { past, doc, future } = get();
       const prev = past.at(-1);
       if (!prev) return;
-      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId) });
+      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId) });
     },
     redo: () => {
       get().endDrag();
       const { past, doc, future } = get();
       const next = future[0];
       if (!next) return;
-      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, activeFloorId: fixActiveFloor(next, get().activeFloorId) });
+      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId) });
     },
   };
 

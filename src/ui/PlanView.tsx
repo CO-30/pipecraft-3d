@@ -238,13 +238,14 @@ export function PlanView() {
     setSplitPreview(null);
   };
 
-  /** 線の始点・中点・終点を含む部屋を優先して分割。どれにも無ければ線が通る最初の部屋 */
+  /** 線の始点・中点・終点を含む部屋を優先して分割 */
   const finishSplit = (a: Vec2, q: Vec2) => {
     const st = useStore.getState();
     if (Math.hypot(a.x - q.x, a.y - q.y) * vw.scale < 12) return;
     const rooms = Object.values(st.doc.building.rooms).filter((r) => r.floorId === st.activeFloorId);
     const mid = { x: (a.x + q.x) / 2, y: (a.y + q.y) / 2 };
-    const ordered = [...rooms].sort((r1, r2) => score(r2) - score(r1));
+    // 線の始点・中点・終点のどれかが内側にある部屋だけを対象にする（線の延長上の別の部屋は切らない）
+    const ordered = rooms.filter((r) => score(r) > 0).sort((r1, r2) => score(r2) - score(r1));
     function score(r: (typeof rooms)[number]) { return [a, mid, q].filter((p) => pointInPolygon(p, r.polygon)).length; }
     for (const r of ordered) {
       const rev = useStore.getState().revision;

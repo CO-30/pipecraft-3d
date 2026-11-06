@@ -236,3 +236,15 @@ describe('建物: 部屋が壁に追従する（Phase 2）', () => {
     expect(n).toBe(b);
   });
 });
+
+describe('建物: 部屋の追従でねじれる移動は拒否（Phase 2 レビュー対応）', () => {
+  it('角を反対側の角の向こうまで動かすと部屋がねじれるので拒否', () => {
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    // 内側に小さい部屋（外壁の角と頂点を共有）
+    const f = b.floors[0].id;
+    const r = addRoomRect(b, f, { x: 0, y: 0 }, { x: 2000, y: 2000 });
+    const c = Object.values(r.b.corners).find((x) => x.x === 0 && x.y === 0)!;
+    const n = moveCorner(r.b, c.id, { x: 1000, y: 3000 }); // 小部屋が自己交差する
+    expect(n).toBe(r.b);
+  });
+});
