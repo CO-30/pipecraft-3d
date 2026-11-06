@@ -346,3 +346,48 @@ describe('Phase 3 レビュー対応', () => {
     expect(s().dragBase).toBeNull();
   });
 });
+
+describe('共通ストア: 積算', () => {
+  it('実測長の入力・削除、余長の上書きは履歴1件ずつで Undo できる', () => {
+    s().drawPolyline([v(0, 0), v(3000, 0)]);
+    const id = Object.keys(net().segments)[0];
+    const h = s().past.length;
+    s().setSegmentMeasured(id, 3150);
+    expect(net().segments[id].measuredLength).toBe(3150);
+    s().setSegmentMeasured(id, 3150); // 変化なしは履歴を増やさない
+    expect(s().past.length).toBe(h + 1);
+    s().setSegmentExtraRate(id, 0.1);
+    expect(net().segments[id].extraRate).toBe(0.1);
+    s().setSegmentMeasured(id, undefined);
+    expect(net().segments[id].measuredLength).toBeUndefined();
+    s().undo();
+    expect(net().segments[id].measuredLength).toBe(3150);
+    s().setSegmentMeasured(id, -5); // 不正値は無視
+    expect(net().segments[id].measuredLength).toBe(3150);
+  });
+
+  it('部品の確定は接続数と一緒に保存し、undefined で自動に戻る', () => {
+    s().drawPolyline([v(0, 0), v(2000, 0), v(2000, 2000)]);
+    const mid = Object.values(net().nodes).find((n) => n.kind === 'elbow')!.id;
+    s().setNodeFitting(mid, 'none');
+    expect(net().nodes[mid].fitting).toEqual({ type: 'none', degree: 2 });
+    s().setNodeFitting(mid, undefined);
+    expect(net().nodes[mid].fitting).toBeUndefined();
+  });
+
+  it('単価・積算設定・その他項目は Doc に入り Undo/Redo・保存の対象', () => {
+    s().setPrice('pipe|water||20', { material: 1000, labor: 500 });
+    s().updateEstimate({ taxRate: 0.08, client: '○○様' });
+    s().addExtraItem();
+    const x = s().doc.estimate!.extras[0];
+    s().updateExtraItem(x.id, { name: '水圧試験', unitPrice: 5000 });
+    expect(s().doc.estimate).toMatchObject({ taxRate: 0.08, client: '○○様', prices: { 'pipe|water||20': { material: 1000 } } });
+    expect(s().toProjectData()!.estimate.extras[0]).toMatchObject({ name: '水圧試験', unitPrice: 5000 });
+    s().undo();
+    expect(s().doc.estimate!.extras[0].name).toBe('その他');
+    s().removeExtraItem(x.id);
+    expect(s().doc.estimate!.extras).toEqual([]);
+    s().setPrice('pipe|water||20', undefined);
+    expect(s().doc.estimate!.prices).toEqual({});
+  });
+});

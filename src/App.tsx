@@ -1,3 +1,4 @@
+import { defaultEstimate } from './model/estimate';
 import { useState } from 'react';
 import { HomeScreen } from './ui/HomeScreen';
 import { Editor } from './ui/Editor';
@@ -29,7 +30,7 @@ export default function App() {
 
   const create = async (v: NewProjectInput) => {
     const doc = v.mode === 'dims'
-      ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {} }
+      ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate() }
       : emptyDoc();
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();

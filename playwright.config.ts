@@ -4,6 +4,9 @@ import { defineConfig, devices } from '@playwright/test';
  * E2E 検証。iPhone Safari(WebKit) はこの環境に無いため、Chromium のモバイルエミュレーション
  * （タッチ有効）で代替し、実機テストは別途行う。
  */
+// ロケール未設定（POSIX）だと Chrome が日本語のダウンロードファイル名を "download" にするため UTF-8 を指定
+if (!process.env.LANG) process.env.LANG = 'C.UTF-8';
+
 export default defineConfig({
   testDir: './e2e',
   outputDir: './test-results',

@@ -30,6 +30,8 @@ export type PipeNode = {
   portId?: string;
   /** 所属階（階高の変更に追従するため） */
   floorId?: string;
+  /** 積算でユーザーが確定した部品（degree: 確定時の接続数。変わったら無効） */
+  fitting?: { type: string; degree: number };
 };
 
 export type SystemType =

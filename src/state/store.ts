@@ -7,7 +7,7 @@ import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
   deleteFitting, deleteSegment, deleteSegments, detachNode, duplicateSegments, emptyNetwork, insertValve, mergeNodes, moveNode,
   setSegmentLength as setSegLen, translateNodes, validateNetwork,
-  type Network, type SegmentAttrs, type Vec3,
+  type Network, type Segment, type SegmentAttrs, type Vec3,
 } from '../model/network';
 import type { Doc } from '../model/doc';
 import { deleteFixture, moveFixture, placeFixture, syncAllFixturePorts, type FixtureType, type Rotation } from '../model/fixtures';
@@ -18,6 +18,9 @@ import { mergeRooms, splitRoom } from '../model/roomOps';
 import { clampSection, defaultSectionValue, type Section, type SectionMode } from '../model/section';
 import { SCHEMA_VERSION, type ProjectData } from '../model/schema';
 import type { BoxCategory } from '../model/building3d';
+import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
+import { newId } from '../model/id';
+import type { FittingChoice } from '../model/fittings';
 
 export type { Doc };
 export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture';
@@ -41,7 +44,7 @@ const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', pipes: 'show', fixtures: 'show',
 });
 
-export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {} });
+export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate() });
 
 type State = {
   doc: Doc;
@@ -111,6 +114,19 @@ type State = {
   updateSegment(segId: string, patch: Partial<SegmentAttrs>): void;
   deleteSelectedBranch(): void;
 
+  // 積算
+  /** 実測長(mm)。undefined で削除（モデル長に戻す） */
+  setSegmentMeasured(segId: string, mm: number | undefined): void;
+  /** 区間ごとの余長率。undefined で現場の既定値に戻す */
+  setSegmentExtraRate(segId: string, rate: number | undefined): void;
+  /** 部品の確定。undefined で自動判定に戻す */
+  setNodeFitting(nodeId: string, type: FittingChoice | undefined): void;
+  updateEstimate(patch: Partial<Omit<EstimateSettings, 'prices' | 'extras'>>): void;
+  setPrice(key: string, item: PriceItem | undefined): void;
+  addExtraItem(): void;
+  updateExtraItem(id: string, patch: Partial<Omit<ExtraItem, 'id'>>): void;
+  removeExtraItem(id: string): void;
+
   // ドラッグ（確定時に履歴1件）
   beginDrag(): void;
   dragNode(nodeId: string, pos: Vec3): void;
@@ -154,7 +170,7 @@ export const useStore = create<State>((set, get) => {
   /** 新しい Doc を履歴付きで確定。変化がなければ何もしない */
   const commit = (next: Doc, extra: Partial<State> = {}) => {
     const { doc, past } = get();
-    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures) return false;
+    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
     return true;
   };
@@ -217,7 +233,7 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc = { building: p.building, network: p.network, fixtures: p.fixtures };
+      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate };
       set({ doc, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(doc) });
     },
     newDoc: (doc, meta) => set({ doc, meta, ...resetView(doc) }),
@@ -225,7 +241,7 @@ export const useStore = create<State>((set, get) => {
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
-      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures };
+      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate() };
     },
     renameProject: (name, address) => {
       const m = get().meta;
@@ -361,6 +377,59 @@ export const useStore = create<State>((set, get) => {
       const s = net.segments[segId];
       if (!s || (patch.diameter !== undefined && !(patch.diameter > 0))) return;
       commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch } } }));
+    },
+    setSegmentMeasured: (segId, mm) => {
+      const net = get().doc.network;
+      const s = net.segments[segId];
+      if (!s || (mm !== undefined && !(Number.isFinite(mm) && mm >= 0))) return;
+      const { measuredLength: _m, measuredApprox: _a, ...rest } = s;
+      if (mm === s.measuredLength && !s.measuredApprox) return;
+      const seg: Segment = mm === undefined ? rest : { ...rest, measuredLength: mm };
+      commit({ ...get().doc, network: { ...net, segments: { ...net.segments, [segId]: seg } } });
+    },
+    setSegmentExtraRate: (segId, rate) => {
+      const net = get().doc.network;
+      const s = net.segments[segId];
+      if (!s || (rate !== undefined && !(Number.isFinite(rate) && rate >= 0 && rate <= 10)) || s.extraRate === rate) return;
+      const { extraRate: _e, ...rest } = s;
+      commit({ ...get().doc, network: { ...net, segments: { ...net.segments, [segId]: rate === undefined ? rest : { ...rest, extraRate: rate } } } });
+    },
+    setNodeFitting: (nodeId, type) => {
+      const net = get().doc.network;
+      const n = net.nodes[nodeId];
+      if (!n) return;
+      const degree = Object.values(net.segments).filter((s) => s.a === nodeId || s.b === nodeId).length;
+      const { fitting: _f, ...rest } = n;
+      const node = type === undefined ? rest : { ...rest, fitting: { type, degree } };
+      if (type === undefined && !n.fitting) return;
+      commit({ ...get().doc, network: { ...net, nodes: { ...net.nodes, [nodeId]: node } } });
+    },
+    updateEstimate: (patch) => {
+      const doc = get().doc;
+      commit({ ...doc, estimate: { ...(doc.estimate ?? defaultEstimate()), ...patch } });
+    },
+    setPrice: (key, item) => {
+      const doc = get().doc;
+      const e = doc.estimate ?? defaultEstimate();
+      const prices = { ...e.prices };
+      if (item) prices[key] = item;
+      else delete prices[key];
+      commit({ ...doc, estimate: { ...e, prices } });
+    },
+    addExtraItem: () => {
+      const doc = get().doc;
+      const e = doc.estimate ?? defaultEstimate();
+      commit({ ...doc, estimate: { ...e, extras: [...e.extras, { id: newId('x'), name: 'その他', quantity: 1, unit: '式', unitPrice: 0 }] } });
+    },
+    updateExtraItem: (id, patch) => {
+      const doc = get().doc;
+      const e = doc.estimate ?? defaultEstimate();
+      commit({ ...doc, estimate: { ...e, extras: e.extras.map((x) => (x.id === id ? { ...x, ...patch } : x)) } });
+    },
+    removeExtraItem: (id) => {
+      const doc = get().doc;
+      const e = doc.estimate ?? defaultEstimate();
+      commit({ ...doc, estimate: { ...e, extras: e.extras.filter((x) => x.id !== id) } });
     },
     deleteSelectedBranch: () => {
       const sel = get().selection;
