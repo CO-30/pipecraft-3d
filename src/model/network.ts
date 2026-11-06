@@ -28,6 +28,8 @@ export type PipeNode = {
   /** 設備機器の接続口ノード: 器具ID と接続口ID */
   fixtureId?: string;
   portId?: string;
+  /** 所属階（階高の変更に追従するため） */
+  floorId?: string;
 };
 
 export type SystemType =

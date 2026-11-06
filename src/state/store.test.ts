@@ -74,7 +74,7 @@ describe('枝管ごと削除の対象', () => {
 });
 
 describe('共通ストア: 建物', () => {
-  beforeEach(() => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'テスト', createdAt: 1 }));
+  beforeEach(() => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'テスト', createdAt: 1 }));
 
   it('壁追加・ドア追加・Undo/Redo が配管と同じ履歴で動く', () => {
     s().addWall({ x: 3000, y: 0 }, { x: 3000, y: 6000 });
@@ -130,7 +130,7 @@ describe('共通ストア: 建物', () => {
 });
 
 describe('共通ストア: 部屋の結合・分割（Phase 2）', () => {
-  const load = () => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'x', createdAt: 1 });
+  const load = () => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'x', createdAt: 1 });
 
   it('壁つきで分割 → 部屋2つ＋内壁1本、Undo 1回で元に戻る', () => {
     load();
@@ -177,7 +177,7 @@ describe('共通ストア: 部屋の結合・分割（Phase 2）', () => {
 
 describe('共通ストア: レビュー対応（Phase 2）', () => {
   it('Undo でドラッグが打ち切られた後の移動は無視され、壁が飛ばない', () => {
-    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'x', createdAt: 1 });
+    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'x', createdAt: 1 });
     const w = Object.values(bld().walls)[0];
     s().beginDrag();
     s().dragWall(w.id, 500, 0);
@@ -188,7 +188,7 @@ describe('共通ストア: レビュー対応（Phase 2）', () => {
   });
 
   it('Undo・階の切り替えで結合モードが解除される', () => {
-    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork() }, { id: 'p', name: 'x', createdAt: 1 });
+    s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'x', createdAt: 1 });
     const room = Object.values(bld().rooms)[0];
     s().select({ kind: 'room', id: room.id });
     s().startMerge();
@@ -200,5 +200,124 @@ describe('共通ストア: レビュー対応（Phase 2）', () => {
     s().startMerge();
     s().undo();
     expect(s().pendingMerge).toBeNull();
+  });
+});
+
+describe('Phase 3: 配管の編集操作（ストア）', () => {
+  const twoFloors = () => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 3000, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'x', createdAt: 1 });
+  const segIds = () => Object.keys(net().segments);
+
+  it('cut then undo restores identical network', () => {
+    s().drawPolyline([v(0, 0, 100), v(3000, 0, 100)]);
+    const before = structuredClone(net());
+    const sid = segIds()[0];
+    s().select({ kind: 'segment', id: sid, at: v(1000, 0, 100) });
+    s().cutSelected();
+    expect(segIds()).toHaveLength(2);
+    expect(validateNetwork(net())).toEqual([]);
+    s().undo();
+    expect(net()).toEqual(before);
+  });
+
+  it('端点をドラッグして別の配管の端に落とすと結合、履歴は1件', () => {
+    s().drawPolyline([v(0, 0, 100), v(1000, 0, 100)]);
+    s().drawPolyline([v(1000, 500, 100), v(1000, 2000, 100)]);
+    const ends = Object.values(net().nodes);
+    const target = ends.find((n) => n.pos.x === 1000 && n.pos.y === 0)!;
+    const src = ends.find((n) => n.pos.x === 1000 && n.pos.y === 500)!;
+    const h = s().past.length;
+    s().beginDrag();
+    s().dragNode(src.id, v(1000, 20, 100));
+    s().dropNode(src.id, { type: 'node', id: target.id });
+    s().endDrag();
+    expect(s().past.length).toBe(h + 1);
+    expect(Object.keys(net().nodes)).toHaveLength(3);
+    expect(net().nodes[target.id].kind).toBe('elbow');
+  });
+
+  it('終点を既存区間の途中に描くとチーズでつながる', () => {
+    s().drawPolyline([v(0, 0, 100), v(4000, 0, 100)]);
+    const main = segIds()[0];
+    s().drawPolyline([v(2000, 2000, 100), v(2000, 0, 100)], { endSegId: main });
+    expect(Object.values(net().nodes).filter((n) => n.kind === 'tee')).toHaveLength(1);
+    expect(validateNetwork(net())).toEqual([]);
+  });
+
+  it('立て管「上の階へ」= 上の階の床高 + 描画高さ、上の階へ切り替わる。最上階では何もしない', () => {
+    twoFloors();
+    const [f1, f2] = bld().floors;
+    s().drawPolyline([v(0, 0, 100), v(2000, 0, 100)]);
+    const end = Object.values(net().nodes).find((n) => n.pos.x === 2000)!;
+    expect(end.floorId).toBe(f1.id);
+    s().addRiserFromNode(end.id, 'up');
+    const top = net().nodes[(s().selection as { id: string }).id];
+    expect(top.pos).toEqual({ x: 2000, y: 0, z: f2.elevation + s().drawHeight });
+    expect(top.floorId).toBe(f2.id);
+    expect(s().activeFloorId).toBe(f2.id);
+    const n = segIds().length;
+    s().addRiserFromNode(top.id, 'up');
+    expect(segIds()).toHaveLength(n);
+  });
+
+  it('1F の階高を変えると立て管の上端と 2F の配管が追従', () => {
+    twoFloors();
+    const [f1] = bld().floors;
+    s().drawPolyline([v(0, 0, 100), v(2000, 0, 100)]);
+    const end = Object.values(net().nodes).find((n) => n.pos.x === 2000)!;
+    s().addRiserFromNode(end.id, 'up');
+    const topId = (s().selection as { id: string }).id;
+    const z0 = net().nodes[topId].pos.z;
+    s().updateFloor(f1.id, { height: 3500 });
+    expect(net().nodes[topId].pos.z).toBe(z0 + 500);
+    expect(net().nodes[end.id].pos.z).toBe(100);
+    expect(validateNetwork(net())).toEqual([]);
+  });
+
+  it('配管全体の複製・高さ変更・削除', () => {
+    s().drawPolyline([v(0, 0, 100), v(2000, 0, 100), v(2000, 2000, 100)]);
+    const sid = segIds()[0];
+    s().duplicateRun(sid);
+    expect(segIds()).toHaveLength(4);
+    s().setRunHeightDelta(sid, 200);
+    expect(Object.values(net().nodes).filter((n) => n.pos.z === 300)).toHaveLength(3);
+    s().deleteRun(sid);
+    expect(segIds()).toHaveLength(2);
+    expect(validateNetwork(net())).toEqual([]);
+  });
+
+  it('器具を置いて接続口から配管、回転すると配管の端が追従、削除しても配管は残る', () => {
+    s().placeFixtureAt({ x: 1000, y: 1000 });
+    const fid = (s().selection as { id: string }).id;
+    const water = Object.values(net().nodes).find((n) => n.fixtureId === fid && n.portId === 'water')!;
+    s().drawPolyline([water.pos, v(3000, water.pos.y, water.pos.z)], { startNodeId: water.id });
+    s().rotateFixture(fid);
+    expect(s().doc.fixtures[fid].rotation).toBe(90);
+    expect(net().nodes[water.id].pos).toEqual({ x: 700, y: 1150, z: 150 });
+    s().select({ kind: 'fixture', id: fid });
+    s().deleteSelected();
+    expect(s().doc.fixtures[fid]).toBeUndefined();
+    expect(segIds()).toHaveLength(1);
+    expect(validateNetwork(net())).toEqual([]);
+  });
+
+  it('接続口ノードは単独でドラッグできない', () => {
+    s().placeFixtureAt({ x: 1000, y: 1000 });
+    const fid = (s().selection as { id: string }).id;
+    const p = Object.values(net().nodes).find((n) => n.fixtureId === fid)!;
+    s().beginDrag();
+    s().dragNode(p.id, v(5000, 5000, 0));
+    s().endDrag();
+    expect(net().nodes[p.id].pos).toEqual(p.pos);
+  });
+
+  it('部品削除: エルボを消すと直線、長さ変更', () => {
+    s().drawPolyline([v(0, 0, 100), v(3000, 0, 100), v(3000, 4000, 100)]);
+    const elbow = Object.values(net().nodes).find((n) => n.kind === 'elbow')!;
+    s().select({ kind: 'node', id: elbow.id });
+    s().deleteSelectedFitting();
+    expect(totalLength(net())).toBe(5000);
+    const sid = segIds()[0];
+    s().setSegmentLength(sid, 2500);
+    expect(totalLength(net())).toBeCloseTo(2500, 6);
   });
 });

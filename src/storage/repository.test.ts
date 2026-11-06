@@ -9,7 +9,7 @@ function sample(): ProjectData {
   const a = addPolyline(emptyNetwork(), [{ x: 0, y: 0, z: 0 }, { x: 4000, y: 0, z: 0 }], { system: 'water', diameter: 20 });
   const b = branchFromSegment(a.net, a.segmentIds[0], { x: 2000, y: 0, z: 0 }, [{ x: 2000, y: 1500, z: 0 }]);
   const building = createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
-  return { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2, building, network: b.net };
+  return { schemaVersion: SCHEMA_VERSION, id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2, building, network: b.net, fixtures: {} };
 }
 
 let n = 0;

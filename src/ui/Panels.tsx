@@ -196,6 +196,7 @@ const TOOL_HELP: Record<Tool, string> = {
   select: '図面や3Dをタップして選択できます',
   pipe: '', wall: '指でなぞって壁を描きます（既存の角・壁に自動でつながります）',
   room: '対角にドラッグして部屋を作ります', split: '部屋を横切るように線を引くと2つに分かれます', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
+  fixture: '種類を選んで図面をタップすると器具を置きます',
 };
 
 export function FloorBar() {
