@@ -37,11 +37,11 @@ test.describe('Phase 4 自動積算', () => {
     await page.getByTestId('tab-price').click();
     await fillCommit(page, 'price-material', '1000');
     await fillCommit(page, 'price-labor', '500');
-    // 材料 2本×1000=2000、施工 5.1m×500=2550 → 小計 4550、税 455、合計 5005
+    // 材料 2本×1000=2000 ＋ 90°エルボ（HIVP 参考単価166円）、施工 5.1m×500=2550 → 小計 4716、税 471、合計 5187
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-subtotal')).toHaveText('¥4,550');
-    await expect(page.getByTestId('t-tax')).toHaveText('¥455');
-    await expect(page.getByTestId('t-total')).toHaveText('¥5,005');
+    await expect(page.getByTestId('t-subtotal')).toHaveText('¥4,716');
+    await expect(page.getByTestId('t-tax')).toHaveText('¥471');
+    await expect(page.getByTestId('t-total')).toHaveText('¥5,187');
     await fillCommit(page, 'q-client', '沖縄 太郎');
     await page.screenshot({ path: evidence('p4-01-quote') });
 
@@ -59,7 +59,7 @@ test.describe('Phase 4 自動積算', () => {
     await page.getByTestId('undo').click();
     await page.getByTestId('open-estimate').click();
     await page.getByTestId('tab-quote').click();
-    await expect(page.getByTestId('t-total')).toHaveText('¥2,200'); // 施工単価が消え 材料2000＋税200
+    await expect(page.getByTestId('t-total')).toHaveText('¥2,382'); // 施工単価が消え 材料2166＋税216
     await expect(page.getByTestId('q-client')).toHaveValue('');
   });
 

@@ -231,3 +231,28 @@ describe('金額', () => {
     expect(est(net).issues.filter((i) => i.kind === 'noPrice')).toHaveLength(1);
   });
 });
+
+describe('メーカー参考単価（初期値）', () => {
+  const W: SegmentAttrs = { system: 'water', diameter: 20 };
+  it('材質未指定の給水φ20 は HIVP の参考単価（2,010円/本・エルボ166円）、施工単価は未登録として警告', () => {
+    const { net } = line(emptyNetwork(), [v(0, 0), v(3000, 0), v(3000, 2000)], W);
+    const e = est(net);
+    expect(e.pipes[0]).toMatchObject({ material: 'HIVP', priceSource: 'catalog', orderQty: 2, materialAmount: 4020 });
+    expect(e.fittings[0]).toMatchObject({ type: 'elbow90', priceSource: 'catalog', materialAmount: 166 });
+    expect(e.materialTotal).toBe(4186);
+    expect(e.issues.filter((i) => i.kind === 'noPrice').every((i) => /施工単価/.test(i.message))).toBe(true);
+  });
+  it('現場で入力した単価が優先。販売単位を変えると参考単価は使わない', () => {
+    const { net } = line(emptyNetwork(), [v(0, 0), v(3000, 0)], W);
+    const k = pipeKey(W);
+    expect(est(net, { prices: { [k]: { material: 1500, labor: 300 } } }).pipes[0]).toMatchObject({ priceSource: 'user', materialAmount: 1500 });
+    expect(est(net, { prices: { [k]: { material: 0, labor: 0, saleUnit: { kind: 'perLength', step: 1000 } } } }).pipes[0].priceSource).toBe('user');
+  });
+  it('参考単価のない口径・配線・径違い継手は単価なし', () => {
+    const { net } = line(emptyNetwork(), [v(0, 0), v(3000, 0)], { system: 'hotWater', diameter: 50 });
+    expect(est(net).pipes[0].priceSource).toBe('none');
+    const r = line(emptyNetwork(), [v(0, 0), v(4000, 0)], W);
+    const b = branchFromSegment(r.net, r.segmentIds[0], v(2000, 0), [v(2000, 1500)], { system: 'water', diameter: 13 });
+    expect(est(b.net).fittings.find((f) => f.type === 'tee')!.priceSource).toBe('none');
+  });
+});

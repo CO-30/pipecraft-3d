@@ -9,6 +9,7 @@ import {
   type Estimate, type FittingLine, type Issue, type PipeLine, type SaleUnit,
 } from '../model/estimate';
 import { ISSUE_LABEL, yen } from '../export/report';
+import { CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice } from '../model/priceCatalog';
 import { NumField, OptNumField } from './Panels';
 import { usePrefs } from './prefs';
 
@@ -163,10 +164,16 @@ function PriceRow({ line, pipe }: { line: PipeLine | FittingLine; pipe: boolean 
   const saleUnit = pipe ? (line as PipeLine).saleUnit : undefined;
   const set = (patch: { material?: number; labor?: number }) =>
     st.setPrice(line.key, { material: line.price?.material ?? 0, labor: line.price?.labor ?? 0, ...(line.price?.saleUnit ? { saleUnit: line.price.saleUnit } : {}), ...patch });
+  const hasCatalog = pipe
+    ? catalogPipePrice((line as PipeLine)) !== undefined
+    : catalogFittingPrice((line as FittingLine).type, line as FittingLine, (line as FittingLine).size) !== undefined;
   const matUnit = !saleUnit ? '円/個' : saleUnit.kind === 'perLength' ? '円/m' : saleUnit.kind === 'straight' ? '円/本' : '円/巻';
   return (
     <div className="price-row" data-testid="price-row" data-key={line.key}>
-      <div className="pname-s">{priceLineName(line)}{!line.price && <span className="warn small"> 未登録</span>}</div>
+      <div className="pname-s">{priceLineName(line)}
+        {line.priceSource === 'none' && <span className="warn small"> 未登録</span>}
+        {line.priceSource === 'catalog' && <span className="tag-cat small" data-testid="price-catalog"> メーカー参考単価</span>}
+        {line.priceSource === 'user' && hasCatalog && <button className="small" data-testid="price-reset" onClick={() => st.setPrice(line.key, undefined)}>参考単価に戻す</button>}</div>
       <div className="row">
         <NumField label="材料単価" unit={matUnit} decimals={2} value={line.price?.material ?? 0} min={0} testId="price-material" onCommit={(v) => set({ material: v })} />
         <NumField label="施工単価" unit={pipe ? '円/m' : '円/個'} decimals={2} value={line.price?.labor ?? 0} min={0} testId="price-labor" onCommit={(v) => set({ labor: v })} />
@@ -213,6 +220,7 @@ function PriceTab({ est }: { est: Estimate }) {
         {est.fittings.map((f) => <PriceRow key={f.key} line={f} pipe={false} />)}
       </section>
       <p className="muted small">単価はこの現場に保存されます。材料費 = 発注数量 × 材料単価、施工費 = 施工数量 × 施工単価（行ごとに円未満四捨五入）。</p>
+      <p className="muted small" data-testid="catalog-note">「メーカー参考単価」は {CATALOG_SOURCE} の材料価格です（配管は定尺4mのとき）。実際の仕入れ値に合わせて上書きしてください。施工単価は含まれません。材質を空欄にした配管は、給水=HIVP・給湯=HTVP・排水/汚水/通気/ドレン=VP として扱います。</p>
       <section>
         <h3>販売単位の目安</h3>
         <p className="muted small">配管は {saleUnitLabel(defaultSaleUnit('water'))}、電気・通信・冷媒は {saleUnitLabel(defaultSaleUnit('electric'))} が初期値です。</p>

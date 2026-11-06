@@ -7,6 +7,10 @@
 import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
+import { catalogFittingPrice, catalogPipePrice, effectiveMaterial } from './priceCatalog';
+
+/** 単価の出どころ: user=現場で入力 / catalog=メーカー参考単価 / none=なし */
+export type PriceSource = 'user' | 'catalog' | 'none';
 
 export type SaleUnit =
   | { kind: 'perLength'; step: number } // step mm 刻み。単価は 円/m
@@ -94,6 +98,7 @@ export type PipeLine = {
   /** 施工数量 m（小数1桁） */
   laborQty: number;
   price: PriceItem | undefined;
+  priceSource: PriceSource;
   materialAmount: number;
   laborAmount: number;
 };
@@ -110,6 +115,7 @@ export type FittingLine = {
   /** 定尺の継ぎ足しで加えた個数 */
   stockJoints: number;
   price: PriceItem | undefined;
+  priceSource: PriceSource;
   materialAmount: number;
   laborAmount: number;
 };
@@ -220,8 +226,12 @@ export function computeEstimate(doc: Doc): Estimate {
   const pipes: PipeLine[] = [];
   for (const [key, segs] of groups) {
     const s0 = segs[0];
-    const price = st.prices[key];
-    const saleUnit = price?.saleUnit ?? defaultSaleUnit(s0.system);
+    const user = st.prices[key];
+    const saleUnit = user?.saleUnit ?? defaultSaleUnit(s0.system);
+    // 参考単価は定尺4mの1本価格なので、販売単位が定尺4mのときだけ使う
+    const cat = !user && saleUnit.kind === 'straight' && saleUnit.length === 4000 ? catalogPipePrice(s0) : undefined;
+    const price: PriceItem | undefined = user ?? (cat !== undefined ? { material: cat, labor: 0 } : undefined);
+    const priceSource: PriceSource = user ? 'user' : cat !== undefined ? 'catalog' : 'none';
     let used = 0, model = 0, need = 0, fieldCount = 0;
     for (const s of segs) {
       const m = measures[s.id];
@@ -243,10 +253,10 @@ export function computeEstimate(doc: Doc): Estimate {
       if (joints > 0) stockJointsByKey.set(key, { count: joints, seg: s0 });
     }
     pipes.push({
-      key, system: s0.system, material: s0.material ?? '', diameter: s0.diameter,
+      key, system: s0.system, material: effectiveMaterial(s0), diameter: s0.diameter,
       name: `${SYSTEM_LABEL[s0.system]}${isWire(s0.system) ? '配線' : '管'}`,
       segmentIds: segs.map((s) => s.id), usedLength: used, modelLength: model, fieldCount, modelCount: segs.length - fieldCount,
-      needLength: need, saleUnit, orderQty, orderUnit: orderUnitName(saleUnit), laborQty, price,
+      needLength: need, saleUnit, orderQty, orderUnit: orderUnitName(saleUnit), laborQty, price, priceSource,
       materialAmount: roundYen(orderQty * (price?.material ?? 0)), laborAmount: roundYen(laborQty * (price?.labor ?? 0)),
     });
   }
@@ -258,7 +268,13 @@ export function computeEstimate(doc: Doc): Estimate {
     const key = fittingKey(type, seg, size);
     let line = fitMap.get(key);
     if (!line) {
-      line = { key, type, name: fittingName(type, size), system: seg.system, material: seg.material ?? '', size, count: 0, nodeIds: [], stockJoints: 0, price: st.prices[key], materialAmount: 0, laborAmount: 0 };
+      const user = st.prices[key];
+      const cat = user ? undefined : catalogFittingPrice(type, seg, size);
+      line = {
+        key, type, name: fittingName(type, size), system: seg.system, material: effectiveMaterial(seg), size, count: 0, nodeIds: [], stockJoints: 0,
+        price: user ?? (cat !== undefined ? { material: cat, labor: 0 } : undefined),
+        priceSource: user ? 'user' : cat !== undefined ? 'catalog' : 'none', materialAmount: 0, laborAmount: 0,
+      };
       fitMap.set(key, line);
     }
     line.count += n;
@@ -277,6 +293,8 @@ export function computeEstimate(doc: Doc): Estimate {
   for (const l of [...pipes, ...fittings]) {
     if (!l.price || (l.price.material === 0 && l.price.labor === 0)) {
       issues.push({ kind: 'noPrice', target: { kind: 'price', id: l.key }, message: `${lineName(l)} の単価が未登録です` });
+    } else if (l.priceSource === 'catalog' && l.price.labor === 0) {
+      issues.push({ kind: 'noPrice', target: { kind: 'price', id: l.key }, message: `${lineName(l)} は材料に参考単価を使用中です。施工単価が未登録です` });
     }
   }
 
