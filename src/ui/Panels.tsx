@@ -189,7 +189,7 @@ export function PropertyPanel() {
     const w = b.walls[sel.id];
     return (
       <div className="props">
-        <div className="ptitle">{w.kind === 'exterior' ? '外壁' : '内壁'} 長さ <b data-testid="wall-length">{Math.round(wallLength(b, w.id))}</b>mm</div>
+        <div className="ptitle">{w.kind === 'exterior' ? '外壁' : '内壁'} 長さ <b data-testid="wall-length">{Math.round(wallLength(b, w.id))}</b>mm{w.lengthSet === false && <span className="tag-warn">寸法未確定</span>}</div>
         <NumField label="厚さ" value={w.thickness} min={10} onCommit={(v) => st.updateWall(w.id, { thickness: v })} />
         <div className="seg-btns small">
           <button className={w.kind === 'exterior' ? 'on' : ''} onClick={() => st.updateWall(w.id, { kind: 'exterior' })}>外壁</button>
@@ -199,6 +199,7 @@ export function PropertyPanel() {
         <div className="row">
           <button onClick={() => st.setTool('door')}>ドアを付ける</button>
           <button onClick={() => st.setTool('window')}>窓を付ける</button>
+          {w.kind === 'exterior' && <button data-testid="wall-dims" onClick={() => st.openDimWizard(w.floorId, w.id)}>📏 外形の寸法を順番に入れる</button>}
           <button data-testid="wall-photo" onClick={() => setPhotoWall(w.id)}>📷 写真から窓・ドア</button>
           <button data-testid="wall-elevation" onClick={() => {
             const ex = Object.values(st.doc.elevations ?? {}).find((e) => e.wallId === w.id);
@@ -263,7 +264,7 @@ export function PropertyPanel() {
       {tool === 'split' && (
         <label className="field inline"><input type="checkbox" data-testid="split-with-wall" checked={splitWithWall} onChange={(e) => st.setSplitWithWall(e.target.checked)} /> 分割線に壁も作る</label>
       )}
-      {(tool === 'pipe' || tool === 'wall' || tool === 'split') && (
+      {(tool === 'pipe' || tool === 'wall' || tool === 'split' || tool === 'outline') && (
         <label className="field inline"><input type="checkbox" checked={ortho} onChange={(e) => st.setOrthoSnap(e.target.checked)} /> 直角に補正</label>
       )}
     </div>
@@ -508,6 +509,7 @@ function RoomName({ id, name }: { id: string; name: string }) {
 const KIND: Record<string, string> = { end: '端点', joint: '接続', elbow: '曲がり', tee: '分岐', cross: '十字', valve: 'バルブ', fixture: '設備' };
 const TOOL_HELP: Record<Tool, string> = {
   select: '図面や3Dをタップして選択できます',
+  outline: '建物の外周を指で1周なぞると、直線・直角に整えて外壁にします。壁のない上の階にも同じ外壁が入ります。寸法はあとで実測を入れます',
   pipe: '', wall: '指でなぞって壁を描きます（既存の角・壁に自動でつながります）',
   room: '対角にドラッグして部屋を作ります', split: '部屋を横切るように線を引くと2つに分かれます', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
   fixture: '種類を選んで図面をタップすると器具を置きます',
@@ -628,7 +630,7 @@ function SectionControls() {
 }
 
 const TOOLS: { id: Tool; icon: string; label: string }[] = [
-  { id: 'select', icon: '👆', label: '選択' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'wall', icon: '▭', label: '壁' },
+  { id: 'select', icon: '👆', label: '選択' }, { id: 'outline', icon: '✏️', label: '外形' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'wall', icon: '▭', label: '壁' },
   { id: 'room', icon: '⬚', label: '部屋' }, { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' },
   { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'underlay', icon: '🗺️', label: '下敷き' },
 ];

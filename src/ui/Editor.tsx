@@ -9,6 +9,7 @@ import { FloorBar, PropertyPanel, Toolbar, VisibilityPanel } from './Panels';
 import type { SaveState } from './autosave';
 import { EstimateBar, EstimateScreen } from './EstimateScreen';
 import { usePrefs } from './prefs';
+import { DimWizard } from './DimWizard';
 
 type Layout = '2d' | '3d' | 'split';
 
@@ -22,6 +23,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
   const [showEst, setShowEst] = useState(false);
   const unit = usePrefs((s) => s.lengthUnit);
   const elevId = useStore((s) => s.activeElevationId);
+  const dimOpen = useStore((s) => s.dimWizard !== null);
   const eff: Layout = !isWide && layout === 'split' ? '2d' : layout;
   // 立面図を開いたら、3Dだけの表示から図面の見える表示へ
   useEffect(() => { if (elevId && layout === '3d') setLayout(isWide ? 'split' : '2d'); }, [elevId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -59,15 +61,15 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
         {isWide && (
           <aside className="right">
             <h3>設定</h3>
-            <PropertyPanel />
+            {dimOpen ? <DimWizard /> : <PropertyPanel />}
           </aside>
         )}
       </div>
 
       {!isWide && (
         <section className="panel">
-          {!sel && !elevId && <FloorBar />}
-          <PropertyPanel />
+          {!sel && !elevId && !dimOpen && <FloorBar />}
+          {dimOpen ? <DimWizard /> : <PropertyPanel />}
         </section>
       )}
       {isWide && <EstimateBar onOpen={() => setShowEst(true)} />}

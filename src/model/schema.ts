@@ -47,6 +47,7 @@ export const buildingSchema = z.object({
   walls: z.record(z.string(), z.object({
     id: z.string().min(1), floorId: z.string().min(1), a: z.string().min(1), b: z.string().min(1),
     thickness: z.number().positive(), kind: z.enum(['exterior', 'interior']),
+    lengthSet: z.boolean().optional(),
   })),
   openings: z.record(z.string(), z.object({
     id: z.string().min(1), wallId: z.string().min(1), type: z.enum(['door', 'window']),

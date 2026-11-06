@@ -17,7 +17,8 @@ export type Floor = {
 };
 export type Corner = { id: string; floorId: string; x: number; y: number };
 export type WallKind = 'exterior' | 'interior';
-export type Wall = { id: string; floorId: string; a: string; b: string; thickness: number; kind: WallKind };
+/** lengthSet: false = 手描きで寸法未確定（「?」表示）。省略は確定扱い */
+export type Wall = { id: string; floorId: string; a: string; b: string; thickness: number; kind: WallKind; lengthSet?: boolean };
 export type OpeningType = 'door' | 'window';
 export type Opening = {
   id: string;
@@ -296,12 +297,21 @@ function followRooms(b: Building, moves: { floorId: string; from: Vec2; to: Vec2
   return changed ? { ...b, rooms } : b;
 }
 
+/** 手描きで寸法を管理している壁（lengthSet あり）の長さが変わったら未確定に戻す */
+function unsetLengths(b: Building, wallIds: string[]): Building {
+  const ids = wallIds.filter((id) => b.walls[id]?.lengthSet === true);
+  if (!ids.length) return b;
+  const walls = { ...b.walls };
+  for (const id of ids) walls[id] = { ...walls[id], lengthSet: false };
+  return { ...b, walls };
+}
+
 export function moveCorner(b: Building, cornerId: string, p: Vec2): Building {
   const c = b.corners[cornerId];
   if (!c || (c.x === p.x && c.y === p.y)) return b;
   const next = { ...b, corners: { ...b.corners, [cornerId]: { ...c, x: p.x, y: p.y } } };
   const affected = Object.values(b.walls).filter((w) => w.a === cornerId || w.b === cornerId).map((w) => w.id);
-  return wallsOk(next, affected) ? followRooms(next, [{ floorId: c.floorId, from: c, to: p }]) ?? b : b;
+  return wallsOk(next, affected) ? followRooms(unsetLengths(next, affected), [{ floorId: c.floorId, from: c, to: p }]) ?? b : b;
 }
 
 export function moveWall(b: Building, wallId: string, dx: number, dy: number): Building {
@@ -312,7 +322,7 @@ export function moveWall(b: Building, wallId: string, dx: number, dy: number): B
   const next = { ...b, corners };
   const affected = Object.values(b.walls).filter((x) => [w.a, w.b].includes(x.a) || [w.a, w.b].includes(x.b)).map((x) => x.id);
   if (!wallsOk(next, affected)) return b;
-  return followRooms(next, [w.a, w.b].map((cid) => ({ floorId: w.floorId, from: b.corners[cid], to: corners[cid] }))) ?? b;
+  return followRooms(unsetLengths(next, affected.filter((id) => id !== wallId)), [w.a, w.b].map((cid) => ({ floorId: w.floorId, from: b.corners[cid], to: corners[cid] }))) ?? b;
 }
 
 export function updateWall(b: Building, wallId: string, patch: Partial<Pick<Wall, 'thickness' | 'kind'>>): Building {

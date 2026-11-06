@@ -155,3 +155,14 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .app.narrow .floorbar .chips { flex-wrap: nowrap; overflow-x: auto; }
 .app.narrow .floorbar .chips button { flex: none; }
 .elev-sep { align-self: center; margin-left: 6px; white-space: nowrap; }
+
+/* 外形の寸法入力 */
+.dim-wizard .dim-edge { font-size: 13px; color: #475569; }
+.dim-wizard .dim-auto { color: #0f766e; font-weight: bold; }
+.dim-wizard .dim-input { display: flex; gap: 8px; align-items: center; }
+.dim-wizard .dim-input .unit-input.big input { font-size: 22px; width: 9em; padding: 8px; }
+.dim-wizard .dim-conflict { background: #fef3c7; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.dim-wizard .dim-fixed { font-size: 13px; color: #475569; align-self: center; }
+.tag-warn { margin-left: 6px; font-size: 11px; background: #fef3c7; color: #92400e; border-radius: 4px; padding: 1px 6px; }
+.est-provisional { margin: 0; padding: 6px 12px; background: #fef3c7; color: #92400e; font-size: 13px; }
+.dim-wizard .dim-rest { margin-left: 12px; }
