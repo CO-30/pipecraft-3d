@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
   deleteFitting, deleteSegment, deleteSegments, detachNode, duplicateSegments, emptyNetwork, insertValve, mergeNodes, moveNode,
-  setSegmentLength as setSegLen, translateNodes, validateNetwork,
+  setSegmentLength as setSegLen, translateNodes, validateNetwork, projectOnSegment, splitSegment,
   detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc } from '../model/doc';
@@ -25,6 +25,9 @@ import { applySlope } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
 import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
+import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
+import { isWire } from '../model/fittings';
+import { elevationSchema } from '../model/schema';
 
 export type { Doc };
 export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
@@ -48,7 +51,7 @@ const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', pipes: 'show', fixtures: 'show',
 });
 
-export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} });
+export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {} });
 
 type State = {
   doc: Doc;
@@ -99,6 +102,19 @@ type State = {
   // 配管
   /** endSegId: 終点を既存区間の途中に接続する */
   drawPolyline(points: Vec3[], opts?: { startNodeId?: string; endNodeId?: string; endSegId?: string }): void;
+
+  // 立面（外壁）
+  /** 表示中の立面（null = 平面図） */
+  activeElevationId: string | null;
+  openElevation(id: string | null): void;
+  /** 立面を追加して開く。だめなら理由 */
+  /** createWall: 壁がない現場で、この寸法の外壁を1枚作ってその外側の立面にする（履歴1件） */
+  addElevation(el: Elevation, opts?: { createWall?: boolean }): string | null;
+  /** 取付を変えたら、その面に描いた配管の位置・支持金具も変える */
+  updateElevation(id: string, patch: Partial<Pick<Elevation, 'label' | 'width' | 'height' | 'mount' | 'opacity' | 'photo'>>): string | null;
+  deleteElevation(id: string): void;
+  /** 立面上の折れ線（u,v）を壁の外側に配管として描く */
+  drawOnFace(elId: string, pts: UV[], opts?: { startNodeId?: string; startSegId?: string; endNodeId?: string; endSegId?: string }): void;
   branch(segId: string, at: Vec3, path: Vec3[], opts?: { endNodeId?: string; endSegId?: string }): void;
   cutSelected(): void;
   insertValveAtSelection(): void;
@@ -160,7 +176,7 @@ type State = {
   /** 排水: この点を流末にして勾配をつける（'auto' = 管径別の最小勾配）。履歴1件 */
   setSlopeFromOutlet(nodeId: string, slope: number | 'auto'): void;
   /** 区間の支持金具・取付下地（undefined = 自動・現場の既定） */
-  setSegmentSupport(segId: string, patch: { support?: 'saddle' | 'levelBand' | 'none' | null; substrate?: 'concrete' | 'wood' | null }): void;
+  setSegmentSupport(segId: string, patch: { support?: 'saddle' | 'levelBand' | 'tBracket' | 'none' | null; substrate?: 'concrete' | 'wood' | null }): void;
   updateEstimate(patch: Partial<Omit<EstimateSettings, 'prices' | 'extras'>>): void;
   setPrice(key: string, item: PriceItem | undefined): void;
   addExtraItem(): void;
@@ -210,8 +226,9 @@ export const useStore = create<State>((set, get) => {
   /** 新しい Doc を履歴付きで確定。変化がなければ何もしない */
   const commit = (next: Doc, extra: Partial<State> = {}) => {
     const { doc, past } = get();
-    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays) return false;
+    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
+    if (get().activeElevationId && !next.elevations?.[get().activeElevationId!]) set({ activeElevationId: null });
     return true;
   };
   /** 新しいノードには所属階を付ける（つながった同じ高さのノード → 現在の階 → 高さから判定） */
@@ -222,9 +239,10 @@ export const useStore = create<State>((set, get) => {
   /** 配管ノードのうち、設備の接続口でないもの（接続口は器具と一緒にしか動かさない） */
   const movable = (net: Network, ids: string[]) => ids.filter((id) => net.nodes[id] && !net.nodes[id].fixtureId);
   /** 下敷きを追加できるか（大きさ・合計）。だめなら理由 */
-  const underlayRoom = (src: string): string | null => {
+  const underlayRoom = (src: string, excludeElevationId?: string): string | null => {
     if (src.length > MAX_UNDERLAY_SRC) return '画像が大きすぎて保存できません';
-    const total = Object.values(get().doc.underlays ?? {}).reduce((a, x) => a + x.src.length, 0);
+    const total = Object.values(get().doc.underlays ?? {}).reduce((a, x) => a + x.src.length, 0)
+      + Object.values(get().doc.elevations ?? {}).reduce((a, x) => a + (x.id === excludeElevationId ? 0 : x.photo?.src.length ?? 0), 0);
     return total + src.length > MAX_UNDERLAYS_TOTAL ? 'この現場の下敷きが多すぎます。不要な下敷きを削除してください' : null;
   };
   /** 描画の終点を既存の配管につなぐ前に種類を確認。つなげないなら接続しない */
@@ -247,17 +265,43 @@ export const useStore = create<State>((set, get) => {
     if (removedFloorId) {
       for (const f of Object.values(doc.fixtures)) if (f.floorId === removedFloorId) doc = deleteFixture(doc, f.id);
       if (doc.underlays) doc = { ...doc, underlays: Object.fromEntries(Object.entries(doc.underlays).filter(([, u]) => u.floorId !== removedFloorId)) };
+      if (doc.elevations) doc = { ...doc, elevations: Object.fromEntries(Object.entries(doc.elevations).filter(([, e]) => e.floorId !== removedFloorId)) };
     }
     const network = followFloors(doc.network, doc.building.floors, nextBld.floors);
     const next = syncAllFixturePorts({ ...doc, building: nextBld, network });
     return validateNetwork(next.network).length ? null : next;
   };
+  /** 折れ線を配管として描く（既存の配管から始めるときは種類の確認・引き継ぎ、終点の接続確認つき）。extra: 区間に付ける追加の属性 */
+  const drawCore = (points: Vec3[], base: SegmentAttrs, opts?: { startNodeId?: string; endNodeId?: string; endSegId?: string }, extra: Partial<Segment> = {}, startNet?: Network) => {
+    if (points.length < 2) return;
+    const doc0 = get().doc;
+    const doc = startNet ? { ...doc0, network: startNet } : doc0;
+    let attrs = base;
+    let notice: string | null = null;
+    // 既存の配管・接続口から描き始めたら、つながらない種類のときはその配管の種類で描く
+    if (opts?.startNodeId) {
+      const na = nodeAttrs(doc.network, doc.fixtures, opts.startNodeId);
+      const bad = na.systems.find((x) => !canJoin(x, attrs.system));
+      if (bad && na.attrs) {
+        notice = `${SYSTEM_NAME[attrs.system]}は${SYSTEM_NAME[bad]}につなげないため、${SYSTEM_NAME[na.attrs.system]}として描きました`;
+        attrs = na.attrs;
+      }
+    }
+    const end = checkEnd(attrs.system, opts?.endNodeId, opts?.endSegId);
+    const r = addPolyline(doc.network, points, { ...attrs, ...extra } as SegmentAttrs, { startNodeId: opts?.startNodeId, endNodeId: end.endNodeId });
+    const last = r.segmentIds.at(-1);
+    if (!last) return;
+    const net = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
+    commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: [notice, end.notice].filter(Boolean).join('。') || null });
+  };
   const withBld = (building: Building): Doc => ({ ...get().doc, building });
+  /** 表示中の立面が（Undo・階の削除などで）無くなったら平面図へ */
+  const fixElev = (doc: Doc) => { const id = get().activeElevationId; return id && doc.elevations?.[id] ? id : null; };
   const fixActiveFloor = (doc: Doc, preferred: string) =>
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
     past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
-    section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null,
+    section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null, activeElevationId: null,
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1,
   });
 
@@ -294,15 +338,15 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays };
+      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {} };
       set({ doc, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(doc) });
     },
-    newDoc: (doc, meta) => set({ doc: { underlays: {}, ...doc }, meta, ...resetView(doc) }),
-    closeProject: () => set({ meta: null, selection: null, dragBase: null }),
+    newDoc: (doc, meta) => set({ doc: { underlays: {}, elevations: {}, ...doc }, meta, ...resetView(doc) }),
+    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null }),
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
-      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {} };
+      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {}, elevations: doc.elevations ?? {} };
     },
     renameProject: (name, address) => {
       const m = get().meta;
@@ -316,26 +360,76 @@ export const useStore = create<State>((set, get) => {
     select: (selection) => set({ selection }),
     setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null }),
 
-    drawPolyline: (points, opts) => {
-      if (points.length < 2) return;
-      const { doc } = get();
-      let attrs = get().drawAttrs;
-      let notice: string | null = null;
-      // 既存の配管・接続口から描き始めたら、つながらない種類のときはその配管の種類で描く
-      if (opts?.startNodeId) {
-        const na = nodeAttrs(doc.network, doc.fixtures, opts.startNodeId);
-        const bad = na.systems.find((x) => !canJoin(x, attrs.system));
-        if (bad && na.attrs) {
-          notice = `${SYSTEM_NAME[attrs.system]}は${SYSTEM_NAME[bad]}につなげないため、${SYSTEM_NAME[na.attrs.system]}として描きました`;
-          attrs = na.attrs;
+    drawPolyline: (points, opts) => drawCore(points, get().drawAttrs, opts),
+    activeElevationId: null,
+    openElevation: (id) => { const ok = !!(id && get().doc.elevations?.[id]); set({ activeElevationId: ok ? id : null, selection: null, pendingMerge: null, ...(ok ? { tool: 'pipe' as Tool } : {}) }); },
+    addElevation: (el0, opts) => {
+      let el = el0;
+      if (!elevationSchema.safeParse(el).success) return '立面の寸法が正しくありません';
+      if (!get().doc.building.floors.some((f) => f.id === el.floorId)) return '階が見つかりません';
+      if (el.photo) { const r = underlayRoom(el.photo.src); if (r) return r; }
+      const doc = get().doc;
+      let building = doc.building;
+      if (opts?.createWall) {
+        const r = B.addWall(building, el.floorId, { x: 0, y: 0 }, { x: el.width, y: 0 }, { kind: 'exterior' });
+        if (!r.wallIds[0]) return '外壁を作れませんでした（既存の壁と重なっています）';
+        building = r.b;
+        const g = elevationFromWall(building, r.wallIds[0], { width: el.width, height: el.height });
+        el = { ...el, wallId: g.wallId, origin: g.origin, dir: g.dir, normal: g.normal, faceOffset: g.faceOffset, baseZ: g.baseZ, label: g.label };
+      }
+      commit({ ...doc, building, elevations: { ...(doc.elevations ?? {}), [el.id]: el } }, { activeElevationId: el.id, selection: null, tool: 'pipe' });
+      return null;
+    },
+    updateElevation: (id, patch) => {
+      const doc = get().doc;
+      const cur = doc.elevations?.[id];
+      if (!cur) return '立面が見つかりません';
+      const next = { ...cur, ...patch };
+      if (!elevationSchema.safeParse(next).success) return '値が正しくありません';
+      if (patch.photo && patch.photo.src !== cur.photo?.src) { const r = underlayRoom(patch.photo.src, id); if (r) return r; }
+      const elevations = { ...doc.elevations, [id]: next };
+      const mountChanged = patch.mount && (patch.mount.type !== cur.mount.type || patch.mount.standoff !== cur.mount.standoff);
+      const network = mountChanged ? applyMount(doc.network, next) : doc.network;
+      if (!network) return 'この取付にすると配管どうしが重なるため変更できません';
+      commit({ ...withNet(network), elevations });
+      return null;
+    },
+    deleteElevation: (id) => {
+      const doc = get().doc;
+      if (!doc.elevations?.[id]) return;
+      const elevations = { ...doc.elevations };
+      delete elevations[id];
+      // その面で描いた配管は残し、面とのひも付けだけ外す
+      let segments = doc.network.segments;
+      for (const s of Object.values(segments)) if (s.face === id) {
+        if (segments === doc.network.segments) segments = { ...segments };
+        const t = { ...s }; delete t.face; segments[s.id] = t;
+      }
+      const network = segments === doc.network.segments ? doc.network : { ...doc.network, segments };
+      commit({ ...doc, network, elevations }, { activeElevationId: get().activeElevationId === id ? null : get().activeElevationId, selection: null });
+    },
+    drawOnFace: (elId, pts, opts) => {
+      const el = get().doc.elevations?.[elId];
+      if (!el || pts.length < 2) return;
+      const attrs = get().drawAttrs;
+      const net = get().doc.network;
+      // 既存の配管につなぐときは、その配管と同じ壁からの距離で描く（口径が違っても斜めにしない）
+      const startPos = opts?.startNodeId ? net.nodes[opts.startNodeId]?.pos : opts?.startSegId && net.segments[opts.startSegId] ? net.nodes[net.segments[opts.startSegId].a].pos : undefined;
+      const depth = startPos ? worldToElev(el, startPos).depth : pipeDepth(el, attrs.diameter);
+      const points = pts.map((p) => elevToWorld(el, p.u, p.v, attrs.diameter, depth));
+      // 配線は支持金具の対象外（取付の自動判定に任せる）
+      const extra = isWire(attrs.system) ? { face: el.id } : { face: el.id, support: el.mount.type };
+      // 既存の配管の途中から描き始めたら、そこで分けて分岐にする（履歴は1件）
+      if (opts?.startSegId && net.segments[opts.startSegId]) {
+        const at = projectOnSegment(net, opts.startSegId, points[0]);
+        if (at.t > 0.001 && at.t < 0.999) {
+          const sp = splitSegment(net, opts.startSegId, at.pos);
+          points[0] = sp.net.nodes[sp.nodeId].pos;
+          drawCore(points, attrs, { ...opts, startNodeId: sp.nodeId }, extra, sp.net);
+          return;
         }
       }
-      const end = checkEnd(attrs.system, opts?.endNodeId, opts?.endSegId);
-      const r = addPolyline(doc.network, points, attrs, { startNodeId: opts?.startNodeId, endNodeId: end.endNodeId });
-      const last = r.segmentIds.at(-1);
-      if (!last) return;
-      const net = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
-      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: [notice, end.notice].filter(Boolean).join('。') || null });
+      drawCore(points, attrs, opts, extra);
     },
     branch: (segId, at, path, opts) => {
       const base = get().doc.network.segments[segId];
@@ -677,7 +771,7 @@ export const useStore = create<State>((set, get) => {
     endDrag: () => {
       const { dragBase, doc, past } = get();
       if (!dragBase) return;
-      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays;
+      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}) });
     },
 
@@ -762,14 +856,14 @@ export const useStore = create<State>((set, get) => {
       const { past, doc, future } = get();
       const prev = past.at(-1);
       if (!prev) return;
-      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId) });
+      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev) });
     },
     redo: () => {
       get().endDrag();
       const { past, doc, future } = get();
       const next = future[0];
       if (!next) return;
-      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId) });
+      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next) });
     },
   };
 

@@ -9,6 +9,7 @@ import { floorById, roomArea, wallLength } from '../model/building';
 import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
+import { ElevationDialog } from './ElevationDialog';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
 import { defaultEstimate, measureSegment } from '../model/estimate';
 import { findConnectCandidate } from '../model/connect';
@@ -61,6 +62,7 @@ function ElementVisibility({ id }: { id: string }) {
 
 export function PropertyPanel() {
   const [photoWall, setPhotoWall] = useState<string | null>(null);
+  const [elevWall, setElevWall] = useState<string | null>(null);
   const sel = useStore((s) => s.selection);
   const doc = useStore((s) => s.doc);
   const tool = useStore((s) => s.tool);
@@ -198,9 +200,14 @@ export function PropertyPanel() {
           <button onClick={() => st.setTool('door')}>ドアを付ける</button>
           <button onClick={() => st.setTool('window')}>窓を付ける</button>
           <button data-testid="wall-photo" onClick={() => setPhotoWall(w.id)}>📷 写真から窓・ドア</button>
+          <button data-testid="wall-elevation" onClick={() => {
+            const ex = Object.values(st.doc.elevations ?? {}).find((e) => e.wallId === w.id);
+            if (ex) st.openElevation(ex.id); else setElevWall(w.id);
+          }}>🧱 立面図で配管を描く</button>
           <button className="danger" onClick={() => st.deleteSelected()}>壁を削除</button>
         </div>
         {photoWall === w.id && <WallPhotoDialog wallId={w.id} onClose={() => setPhotoWall(null)} />}
+        {elevWall === w.id && <ElevationDialog wallId={w.id} onClose={() => setElevWall(null)} />}
       </div>
     );
   }
@@ -418,10 +425,11 @@ function SupportFields({ segId }: { segId: string }) {
         </div>
       )}
       <label className="field inline">支持金具
-        <select data-testid="seg-support" value={seg.support ?? 'auto'} onChange={(e) => st.setSegmentSupport(segId, { support: e.target.value === 'auto' ? null : (e.target.value as 'saddle' | 'levelBand' | 'none') })}>
+        <select data-testid="seg-support" value={seg.support ?? 'auto'} onChange={(e) => st.setSegmentSupport(segId, { support: e.target.value === 'auto' ? null : (e.target.value as 'saddle' | 'levelBand' | 'tBracket' | 'none') })}>
           <option value="auto">自動（{auto ? SUPPORT_LABEL[auto] : 'なし'}）</option>
           <option value="saddle">サドルバンド</option>
           <option value="levelBand">レベルバンド</option>
+          <option value="tBracket">T字金具</option>
           <option value="none">支持しない</option>
         </select></label>
       <label className="field inline">取付下地
@@ -518,6 +526,7 @@ export function FloorBar() {
           <button key={x.id} data-testid="floor-chip" className={x.id === active ? 'on' : ''} onClick={() => st.setActiveFloor(x.id)}>{x.name}</button>
         ))}
         <button data-testid="add-floor" onClick={() => st.addFloor(true)} title="現在の階の外壁をコピーして上に階を追加">＋階</button>
+        <ElevationChips />
       </div>
       {f && (
         <div className="row">
@@ -529,6 +538,29 @@ export function FloorBar() {
         </div>
       )}
     </div>
+  );
+}
+
+/** 立面図（外壁）の一覧と追加 */
+function ElevationChips() {
+  const els = useStore((s) => s.doc.elevations);
+  const active = useStore((s) => s.activeElevationId);
+  const hasWalls = useStore((s) => Object.keys(s.doc.building.walls).length > 0);
+  const [open, setOpen] = useState(false);
+  const st = useStore.getState();
+  const list = Object.values(els ?? {});
+  return (
+    <>
+      <span className="small muted elev-sep">立面</span>
+      {list.map((e) => (
+        <button key={e.id} data-testid="elev-chip" className={e.id === active ? 'on' : ''} onClick={() => st.openElevation(e.id === active ? null : e.id)}>{e.label}</button>
+      ))}
+      <button data-testid="elev-new" onClick={() => {
+        if (hasWalls) { st.openElevation(null); useStore.setState({ notice: '図面で外壁をタップし「立面図で配管を描く」を押してください', tool: 'select' }); }
+        else setOpen(true);
+      }}>＋立面</button>
+      {open && <ElevationDialog wallId={null} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

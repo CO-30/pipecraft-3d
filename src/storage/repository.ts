@@ -58,6 +58,8 @@ export function parseProject(json: string): ProjectData {
   if (ferrs.length) throw new InvalidProjectError('設備機器（器具）のデータが壊れています: ' + ferrs[0]);
   const lost = Object.values(r.data.underlays).find((u) => !r.data.building.floors.some((f) => f.id === u.floorId));
   if (lost) throw new InvalidProjectError('下敷きの階が見つかりません: ' + lost.id);
+  const lostEl = Object.values(r.data.elevations ?? {}).find((e) => !r.data.building.floors.some((f) => f.id === e.floorId));
+  if (lostEl) throw new InvalidProjectError('立面の階が見つかりません: ' + lostEl.id);
   return r.data;
 }
 
