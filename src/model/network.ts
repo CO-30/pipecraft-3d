@@ -32,6 +32,8 @@ export type PipeNode = {
   floorId?: string;
   /** 積算でユーザーが確定した部品（degree: 確定時の接続数。変わったら無効） */
   fitting?: { type: string; degree: number };
+  /** 梁・軒などを避けるために作った曲がり（数量表の内訳用） */
+  avoid?: 'beam' | 'eave' | 'balcony';
 };
 
 export type SystemType =
@@ -66,6 +68,8 @@ export type Segment = SegmentAttrs & {
   face?: string;
   /** 取付下地（未指定 = 現場の既定） */
   substrate?: 'concrete' | 'wood';
+  /** 貫通（スリーブ）を選んだ部材の ID。構造の確認が必要なため積算で「要確認」 */
+  penetrations?: string[];
 };
 
 export type Network = {

@@ -92,6 +92,6 @@ export function buildReport(doc: Doc, meta: ReportMeta): Report {
   return { meta, settings, est, quote, totals, tables: [quantities, fittings, supportsT], segments, issues };
 }
 
-export const ISSUE_LABEL = { confirmFitting: '部品の確定', lengthDiff: '長さの差', approx: '概算の実測長', noPrice: '単価未登録' } as const;
+export const ISSUE_LABEL = { confirmFitting: '部品の確定', lengthDiff: '長さの差', approx: '概算の実測長', noPrice: '単価未登録', obstacle: '部材とのぶつかり', sleeve: '貫通（スリーブ）' } as const;
 export const DISCLAIMER = '本書は積算支援ツールによる集計です。施工図・法令適合・耐圧・流量・電気容量などは施工前に専門的な確認を行ってください。';
 

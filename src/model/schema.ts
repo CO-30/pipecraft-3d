@@ -15,6 +15,7 @@ export const nodeSchema = z.object({
   portId: z.string().min(1).optional(),
   floorId: z.string().min(1).optional(),
   fitting: z.object({ type: z.string().min(1), degree: z.number().int().nonnegative() }).optional(),
+  avoid: z.enum(['beam', 'eave', 'balcony']).optional(),
 });
 
 export const segmentSchema = z.object({
@@ -32,6 +33,7 @@ export const segmentSchema = z.object({
   support: z.enum(['saddle', 'levelBand', 'tBracket', 'none']).optional(),
   face: z.string().min(1).optional(),
   substrate: z.enum(['concrete', 'wood']).optional(),
+  penetrations: z.array(z.string().min(1)).optional(),
 });
 
 export const networkSchema = z.object({

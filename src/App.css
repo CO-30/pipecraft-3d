@@ -166,3 +166,5 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .tag-warn { margin-left: 6px; font-size: 11px; background: #fef3c7; color: #92400e; border-radius: 4px; padding: 1px 6px; }
 .est-provisional { margin: 0; padding: 6px 12px; background: #fef3c7; color: #92400e; font-size: 13px; }
 .dim-wizard .dim-rest { margin-left: 12px; }
+.avoid { background: #fef3c7; border-radius: 8px; padding: 6px 8px; font-size: 13px; color: #92400e; display: flex; flex-direction: column; gap: 4px; }
+.avoid .row button { font-size: 12px; }
