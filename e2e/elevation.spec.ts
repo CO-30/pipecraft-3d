@@ -85,6 +85,12 @@ test('外壁の写真を立面図に敷き、なぞって縦管を描く（T字�
 
   // 平面図に戻ると、壁の外に縦管が出ている（チップから立面を開き直せる）
   await expect(page.getByTestId('elev-settings')).toContainText('T字 100mm');
+  // 立面の大きさを変えられる（写真は外れる）
+  page.once('dialog', (dl) => dl.accept());
+  await page.getByTestId('elev-height').fill('7000');
+  await page.getByTestId('elev-height').press('Enter');
+  await expect(page.getByTestId('elev-size')).toContainText('7000');
+  await expect(page.getByTestId('elev-photo-img')).toHaveCount(0);
   await page.getByTestId('elev-close').click();
   await expect(page.getByTestId('elev-view')).toBeHidden();
   await page.getByTestId('elev-chip').first().click();

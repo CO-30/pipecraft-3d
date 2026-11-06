@@ -11,6 +11,7 @@ import { elevToWorld, faceNodes, MOUNT_LABEL, worldToElev, type Elevation, type 
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { MountFields } from './ElevationDialog';
 import { PhotoRectify } from './PhotoRectify';
+import { NumField } from './Panels';
 import { membersOf, MEMBER_LABEL, type FaceRect } from '../model/members';
 
 /** 立面に描いた形: 四角 or 斜め線 */
@@ -100,6 +101,13 @@ export function ElevationView() {
   const [view, setView] = useState<ViewT | null>(null);
   const [stroke, setStroke] = useState<UV[] | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
+  /** 立面の横幅・高さを変える（写真は縦横比が変わるので外す） */
+  const resize = (patch: { width?: number; height?: number }) => {
+    if (!el) return;
+    if (el.photo && !window.confirm('大きさを変えると写真の補正が合わなくなるため、写真を外します。よろしいですか？')) return;
+    const r = useStore.getState().updateElevation(el.id, { ...patch, ...(el.photo ? { photo: undefined } : {}) });
+    setMsg(r ?? `大きさを ${Math.round(patch.width ?? el.width)}×${Math.round(patch.height ?? el.height)}mm にしました`);
+  };
   const [msg, setMsg] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [previewOpacity, setPreviewOpacity] = useState<number | null>(null);
@@ -337,6 +345,8 @@ export function ElevationView() {
               <OpacitySlider value={el.opacity} onPreview={setPreviewOpacity} onCommit={(v) => st.updateElevation(el.id, { opacity: v })} />
             </label>
           )}
+          <NumField label="横幅" testId="elev-width" value={Math.round(el.width)} min={500} max={200000} onCommit={(v) => resize({ width: v })} />
+          <NumField label="高さ" testId="elev-height" value={Math.round(el.height)} min={500} max={200000} onCommit={(v) => resize({ height: v })} />
           <button className="danger" data-testid="elev-delete" onClick={() => { if (window.confirm(`立面「${el.label}」を削除します（描いた配管は残ります）`)) st.deleteElevation(el.id); }}>立面を削除</button>
         </div>
       )}

@@ -49,6 +49,16 @@ describe('部材図', () => {
     expect(dr.parts.some((r) => r.name === 'シールテープ')).toBe(true);
     expect(dr.parts.every((r) => !('amount' in r))).toBe(true);
   });
+  it('床下・地中（最下階より下）の配管の記号も最下階の図に載る', () => {
+    const b = addFloor(emptyBuilding(), { height: 3000 }).b;
+    const net = addPolyline(emptyNetwork(), [{ x: 0, y: 0, z: -300 }, { x: 3000, y: 0, z: -300 }, { x: 3000, y: 2000, z: -300 }], { system: 'drain', diameter: 75, material: 'VP' }).net;
+    const doc: Doc = { building: b, network: net, fixtures: {}, estimate: defaultEstimate() };
+    const est = computeEstimate(doc);
+    const dr = buildDrawing(doc, est);
+    expect(dr.pages).toHaveLength(1);
+    expect(dr.pages[0].marks.filter((m) => m.kind === 'support').length).toBe(est.supportMarks.length);
+    expect(dr.pages[0].marks.some((m) => m.code === 'L')).toBe(true);
+  });
   it('縮尺は収まる切りのよい値', () => {
     expect(pickScale(10000, 8000, 600, 500)).toBe(50);
     expect(pickScale(30000, 8000, 600, 500)).toBe(150);

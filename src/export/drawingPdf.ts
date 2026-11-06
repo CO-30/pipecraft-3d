@@ -135,7 +135,7 @@ function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, d: { name: strin
   txt(c, fit(font, d.name, 11, LEGEND_W - 4), lx, y, 11); y -= 16;
   txt(c, `部材図　${p.title}`, lx, y, 9); y -= 13;
   txt(c, dateJa(d.date), lx, y, 7.5, GRAY); y -= 18;
-  txt(c, '凡例（この図の個数）', lx, y, 8.5); y -= 6;
+  txt(c, p.kind === 'elevation' ? '凡例（この図の個数・平面図と重複）' : '凡例（この図の個数）', lx, y, 8.5); y -= 6;
   page.drawLine({ start: { x: lx, y }, end: { x: lx + LEGEND_W - 4, y }, thickness: 0.5, color: GRAY }); y -= 13;
   const rows = p.legend;
   const bottom = M + 70;

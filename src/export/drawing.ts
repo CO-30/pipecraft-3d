@@ -42,9 +42,10 @@ export const FITTING_CODE: Record<FittingType, string> = {
 };
 export const SUPPORT_CODE: Record<SupportKind, string> = { saddle: 'SB', levelBand: 'LB', tBracket: 'TB' };
 
+/** z がこの階か（最下階より下＝床下・地中は最下階、最上階より上＝屋上・軒は最上階に含める） */
 const onFloor = (b: Doc['building'], f: Floor, z: number) => {
-  const last = b.floors.at(-1)?.id === f.id;
-  return z >= f.elevation - 1 && (z < f.elevation + f.height - 1 || (last && z <= f.elevation + f.height + 1));
+  const first = b.floors[0]?.id === f.id, last = b.floors.at(-1)?.id === f.id;
+  return (first || z >= f.elevation - 1) && (last || z < f.elevation + f.height - 1);
 };
 
 function bounds(ps: P2[], pad: number) {
