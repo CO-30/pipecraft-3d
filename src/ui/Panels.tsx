@@ -2,7 +2,8 @@
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
 import { useEffect, useState } from 'react';
-import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type Tool, type VisMode } from '../state/store';
+import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
+import { sectionRange, type SectionMode } from '../model/section';
 import { segmentLength, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { SYSTEMS, systemLabel } from './colors';
@@ -242,7 +243,46 @@ export function VisibilityPanel() {
         </div>
       ))}
       {nHidden > 0 && <button onClick={() => st.resetElementVisibility()}>個別に隠した{nHidden}件を元に戻す</button>}
+      <SectionControls />
     </div>
+  );
+}
+
+const SECTION_MODES: { id: SectionMode; label: string }[] = [
+  { id: 'off', label: 'なし' }, { id: 'z', label: '水平' }, { id: 'x', label: '縦(東西)' }, { id: 'y', label: '縦(南北)' },
+];
+const FLOOR_FILTERS: { id: FloorFilter; label: string }[] = [
+  { id: 'all', label: '全部' }, { id: 'upToActive', label: 'この階まで' }, { id: 'activeOnly', label: 'この階だけ' },
+];
+
+/** 3D の断面・階ごとの表示 */
+function SectionControls() {
+  const section = useStore((s) => s.section);
+  const ff = useStore((s) => s.floorFilter);
+  const building = useStore((s) => s.doc.building);
+  const st = useStore.getState();
+  const [lo, hi] = section.mode === 'off' ? [0, 0] : sectionRange(building, section.mode);
+  return (
+    <>
+      <div className="visrow stack">
+        <span>3Dで表示する階</span>
+        <div className="seg-btns small">
+          {FLOOR_FILTERS.map((f) => <button key={f.id} data-testid={`floor-filter-${f.id}`} className={ff === f.id ? 'on' : ''} onClick={() => st.setFloorFilter(f.id)}>{f.label}</button>)}
+        </div>
+      </div>
+      <div className="visrow stack">
+        <span>断面（建物を切って中を見る）</span>
+        <div className="seg-btns small">
+          {SECTION_MODES.map((m) => <button key={m.id} data-testid={`section-${m.id}`} className={section.mode === m.id ? 'on' : ''} onClick={() => st.setSectionMode(m.id)}>{m.label}</button>)}
+        </div>
+      </div>
+      {section.mode !== 'off' && (
+        <label className="section-slider"><span>{section.mode === 'z' ? '切る高さ' : '切る位置'}</span>
+          <input type="range" data-testid="section-value" min={lo} max={hi} step={50} value={section.value} onChange={(e) => st.setSectionValue(Number(e.target.value))} />
+          <span className="muted small">{Math.round(section.value)}mm</span>
+        </label>
+      )}
+    </>
   );
 }
 

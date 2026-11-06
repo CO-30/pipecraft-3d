@@ -10,6 +10,7 @@ import {
 import * as B from '../model/building';
 import type { Building, OpeningType, Vec2 } from '../model/building';
 import { mergeRooms, splitRoom } from '../model/roomOps';
+import { clampSection, defaultSectionValue, type Section, type SectionMode } from '../model/section';
 import { SCHEMA_VERSION, type ProjectData } from '../model/schema';
 import type { BoxCategory } from '../model/building3d';
 
@@ -19,6 +20,7 @@ export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room
 export type Selection = { kind: SelKind; id: string } | null;
 export type VisCategory = BoxCategory | 'pipes';
 export type VisMode = 'show' | 'ghost' | 'hide';
+export type FloorFilter = 'all' | 'upToActive' | 'activeOnly';
 export type ProjectMeta = { id: string; name: string; address?: string; createdAt: number };
 
 const HISTORY_LIMIT = 200;
@@ -52,6 +54,12 @@ type State = {
   revision: number;
   /** 結合待ちの部屋（次にタップした部屋と結合する） */
   pendingMerge: string | null;
+  /** 3D の断面・階ごとの表示（表示専用。履歴・保存の対象外） */
+  section: Section;
+  floorFilter: FloorFilter;
+  setSectionMode(mode: SectionMode): void;
+  setSectionValue(value: number): void;
+  setFloorFilter(f: FloorFilter): void;
   /** 部屋を分割するとき切断線に壁も作る */
   splitWithWall: boolean;
   setSplitWithWall(v: boolean): void;
@@ -123,6 +131,7 @@ export const useStore = create<State>((set, get) => {
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
     past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
+    section: { mode: 'off', value: 0 }, floorFilter: 'all',
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1,
   });
 
@@ -145,6 +154,15 @@ export const useStore = create<State>((set, get) => {
     revision: 0,
     pendingMerge: null,
     splitWithWall: true,
+    section: { mode: 'off', value: 0 },
+    floorFilter: 'all',
+    setSectionMode: (mode) => {
+      const { doc, activeFloorId, section } = get();
+      if (mode === section.mode) return;
+      set({ section: mode === 'off' ? { mode, value: section.value } : { mode, value: defaultSectionValue(doc.building, mode, activeFloorId) } });
+    },
+    setSectionValue: (value) => set({ section: clampSection(get().doc.building, { ...get().section, value }) }),
+    setFloorFilter: (floorFilter) => set({ floorFilter }),
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {

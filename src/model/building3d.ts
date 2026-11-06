@@ -11,6 +11,8 @@ export type BoxCategory = 'exteriorWall' | 'interiorWall' | 'floor' | 'ceiling' 
 export type Box = {
   key: string;
   elementId: string;
+  /** 属する階（階ごとの表示に使う） */
+  floorId: string;
   category: BoxCategory;
   /** 中心(mm, 共通座標) */
   center: Vec3;
@@ -53,6 +55,7 @@ function wallPieces(b: Building, w: Wall, elevation: number, clearHeight: number
     out.push({
       key: `${id}:${tag}`,
       elementId: id,
+      floorId: w.floorId,
       category,
       center: { x: A.x + ux * sm, y: A.y + uy * sm, z: elevation + (z0 + z1) / 2 },
       size: { x: s1 - s0, y: thickness, z: z1 - z0 },
@@ -87,7 +90,7 @@ export function buildingBoxes(b: Building): Box[] {
     if (pts.length) {
       const x0 = Math.min(...pts.map((p) => p.x - p.pad)), x1 = Math.max(...pts.map((p) => p.x + p.pad));
       const y0 = Math.min(...pts.map((p) => p.y - p.pad)), y1 = Math.max(...pts.map((p) => p.y + p.pad));
-      const base = { elementId: f.id, rotationZ: 0 };
+      const base = { elementId: f.id, floorId: f.id, rotationZ: 0 };
       out.push({ ...base, key: `${f.id}:floor`, category: 'floor', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation - f.slabThickness / 2 }, size: { x: x1 - x0, y: y1 - y0, z: f.slabThickness } });
       out.push({ ...base, key: `${f.id}:ceiling`, category: 'ceiling', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation + clear - CEILING_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: CEILING_THICKNESS } });
     }

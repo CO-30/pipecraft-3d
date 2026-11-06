@@ -11,6 +11,7 @@ import { useStore, type SelKind, type VisMode } from '../state/store';
 import type { Vec3 } from '../model/network';
 import { buildingBoxes, type Box } from '../model/building3d';
 import { floorById } from '../model/building';
+import { sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor } from './colors';
 
 const GRID_SNAP = 50;
@@ -38,16 +39,22 @@ function Pipe({ a, b, radius, color, selected, mode, onSelect }: { a: Vec3; b: V
   );
 }
 
-const BoxMesh = memo(function BoxMesh({ box, mode, selected, onSelect, onGrab }: { box: Box; mode: VisMode; selected: boolean; onSelect?: () => void; onGrab?: (e: ThreeEvent<PointerEvent>) => void }) {
+const BoxMesh = memo(function BoxMesh({ box, mode, selected, onSelect, onGrab, clip }: { box: Box; mode: VisMode; selected: boolean; onSelect?: () => void; onGrab?: (e: ThreeEvent<PointerEvent>) => void; clip: THREE.Plane[] }) {
   if (mode === 'hide') return null;
   const ghost = mode === 'ghost';
   return (
     <mesh position={toThree(box.center)} rotation={[0, box.rotationZ, 0]}
       onClick={onSelect ? (e) => { e.stopPropagation(); onSelect(); } : undefined}
       onPointerDown={onGrab}
-      raycast={ghost ? () => null : undefined}>
+      raycast={ghost ? () => null : clip.length ? function (this: THREE.Mesh, rc: THREE.Raycaster, hits: THREE.Intersection[]) {
+        // 断面で切り取られて見えない部分はタップに反応させない
+        const tmp: THREE.Intersection[] = [];
+        THREE.Mesh.prototype.raycast.call(this, rc, tmp);
+        hits.push(...tmp.filter((h) => clip.every((pl) => pl.distanceToPoint(h.point) >= 0)));
+      } : undefined}>
       <boxGeometry args={[box.size.x / 1000, box.size.z / 1000, box.size.y / 1000]} />
-      <meshStandardMaterial color={selected ? SELECT_COLOR : CAT_COLOR[box.category]} transparent={ghost} opacity={ghost ? 0.18 : 1} depthWrite={!ghost} />
+      <meshStandardMaterial color={selected ? SELECT_COLOR : CAT_COLOR[box.category]} transparent={ghost} opacity={ghost ? 0.18 : 1} depthWrite={!ghost}
+        clippingPlanes={clip} clipShadows side={clip.length ? THREE.DoubleSide : THREE.FrontSide} />
     </mesh>
   );
 });
@@ -79,7 +86,22 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const vis = useStore((s) => s.visibility);
   const hiddenIds = useStore((s) => s.hiddenIds);
   const ghostIds = useStore((s) => s.ghostIds);
-  const boxes = useMemo(() => buildingBoxes(building), [building]);
+  const section = useStore((s) => s.section);
+  const floorFilter = useStore((s) => s.floorFilter);
+  const activeFloorId = useStore((s) => s.activeFloorId);
+  const allBoxes = useMemo(() => buildingBoxes(building), [building]);
+  const boxes = useMemo(() => {
+    if (floorFilter === 'all') return allBoxes;
+    const idx = new Map(building.floors.map((f, i) => [f.id, i]));
+    const act = idx.get(activeFloorId) ?? 0;
+    return allBoxes.filter((b) => (floorFilter === 'activeOnly' ? idx.get(b.floorId) === act : (idx.get(b.floorId) ?? 0) <= act));
+  }, [allBoxes, building.floors, floorFilter, activeFloorId]);
+  const clip = useMemo(() => {
+    const p = sectionPlane(section);
+    if (!p) return [];
+    // 共通座標 → three: (x, z, -y)/1000
+    return [new THREE.Plane(new THREE.Vector3(p.normal.x, p.normal.z, -p.normal.y), p.constant / 1000)];
+  }, [section]);
   type Drag =
     | { kind: 'node'; nodeId: string; plane: THREE.Plane }
     | { kind: 'wall'; wallId: string; plane: THREE.Plane; start: { x: number; y: number } }
@@ -176,7 +198,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
         const k = selKindFor(b);
         const selected = !!k && sel?.kind === k && sel.id === b.elementId;
         return (
-          <BoxMesh key={b.key} box={b} mode={modeFor(b.category, b.elementId)} selected={selected}
+          <BoxMesh key={b.key} box={b} mode={modeFor(b.category, b.elementId)} selected={selected} clip={clip}
             onSelect={k ? () => useStore.getState().select({ kind: k, id: b.elementId }) : undefined}
             onGrab={selected && k === 'wall' && tool === 'select' ? (e) => startBuildingDrag(e, { kind: 'wall', wallId: b.elementId }) : undefined} />
         );
@@ -250,7 +272,8 @@ export function View3D() {
   const [target, setTarget] = useState<[number, number, number]>([0, 1, 0]);
   return (
     <div className="view3d" data-testid="view3d">
-      <Canvas camera={{ position: [10, 10, 10], fov: FOV, near: 0.05, far: 500 }} gl={{ preserveDrawingBuffer: true }}
+      <Canvas camera={{ position: [10, 10, 10], fov: FOV, near: 0.05, far: 500 }} gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
+        onCreated={({ gl }) => { gl.localClippingEnabled = true; }}
         onPointerMissed={() => useStore.getState().select(null)}>
         <Scene setOrbit={setOrbit} />
         <AutoFit onTarget={setTarget} />

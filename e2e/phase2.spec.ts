@@ -117,3 +117,40 @@ test.describe('Phase 2 2D・3D編集連動', () => {
     expect(after.past).toBe(before.past);
   });
 });
+
+test.describe('Phase 2 断面・階ごとの表示', () => {
+  test.beforeEach(async ({ page }) => freshApp(page));
+
+  test('水平断面・縦断面・この階だけ を切り替え、断面で消えた壁は選択できない', async ({ page }) => {
+    const touch = await touchSession(page);
+    await createProject(page, '断面', { floors: 2 });
+    await show(page, '3D');
+    await page.waitForFunction(() => !!(window as any).__pc3d);
+    if (isMobile()) await page.getByTestId('toggle-vis').click();
+    await page.getByTestId('section-z').click();
+    let sec = await page.evaluate(() => (window as any).__pc.getState().section);
+    expect(sec).toEqual({ mode: 'z', value: 1200 });
+    await page.getByTestId('section-value').fill('600');
+    sec = await page.evaluate(() => (window as any).__pc.getState().section);
+    expect(sec.value).toBe(600);
+    await page.getByTestId('floor-filter-activeOnly').click();
+    await page.screenshot({ path: evidence('p2-03-section') });
+    if (isMobile()) await page.getByTestId('toggle-vis').click();
+
+    // 高さ 600mm で切ったので、高さ 2000mm の位置の壁はタップしても選択されない
+    const canvas = page.locator('[data-testid=view3d] canvas');
+    const box = (await canvas.boundingBox())!;
+    const hi = await page.evaluate(() => (window as any).__pc3d.projectPoint(8000, 3000, 2000));
+    await tap(page, { x: box.x + hi.x, y: box.y + hi.y }, touch);
+    expect(await page.evaluate(() => (window as any).__pc.getState().selection)).toBeNull();
+    const lo = await page.evaluate(() => (window as any).__pc3d.projectPoint(8000, 3000, 300));
+    await tap(page, { x: box.x + lo.x, y: box.y + lo.y }, touch);
+    expect((await page.evaluate(() => (window as any).__pc.getState().selection))?.kind).toBe('wall');
+
+    if (isMobile()) await page.getByTestId('toggle-vis').click();
+    await page.getByTestId('section-x').click();
+    sec = await page.evaluate(() => (window as any).__pc.getState().section);
+    expect(sec).toEqual({ mode: 'x', value: 4000 });
+    await page.getByTestId('section-off').click();
+  });
+});
