@@ -131,3 +131,4 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .quote-tab .grid2 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .quote-tab .field input, .quote-tab .field textarea { width: 100%; box-sizing: border-box; }
 .tag-cat { background: #e0f2fe; color: #075985; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+.toast.notice { background: #92400e; top: 56px; max-width: calc(100vw - 24px); }

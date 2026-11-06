@@ -7,7 +7,7 @@ import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
   deleteFitting, deleteSegment, deleteSegments, detachNode, duplicateSegments, emptyNetwork, insertValve, mergeNodes, moveNode,
   setSegmentLength as setSegLen, translateNodes, validateNetwork,
-  type Network, type Segment, type SegmentAttrs, type Vec3,
+  type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc } from '../model/doc';
 import { deleteFixture, moveFixture, placeFixture, syncAllFixturePorts, type FixtureType, type Rotation } from '../model/fixtures';
@@ -21,6 +21,7 @@ import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
+import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
 
 export type { Doc };
 export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture';
@@ -114,6 +115,10 @@ type State = {
   updateSegment(segId: string, patch: Partial<SegmentAttrs>): void;
   deleteSelectedBranch(): void;
 
+  /** 画面に短く出すお知らせ（つなげない配管など）。表示専用 */
+  notice: string | null;
+  clearNotice(): void;
+
   // 積算
   /** 実測長(mm)。undefined で削除（モデル長に戻す） */
   setSegmentMeasured(segId: string, mm: number | undefined): void;
@@ -181,6 +186,18 @@ export const useStore = create<State>((set, get) => {
   };
   /** 配管ノードのうち、設備の接続口でないもの（接続口は器具と一緒にしか動かさない） */
   const movable = (net: Network, ids: string[]) => ids.filter((id) => net.nodes[id] && !net.nodes[id].fixtureId);
+  /** 描画の終点を既存の配管につなぐ前に種類を確認。つなげないなら接続しない */
+  const checkEnd = (system: SystemType, endNodeId?: string, endSegId?: string): { endNodeId?: string; endSegId?: string; notice?: string } => {
+    const { network: net, fixtures } = get().doc;
+    if (endNodeId) {
+      const c = conflictAt(net, fixtures, endNodeId, system);
+      if (c) return { notice: `${conflictMessage(system, c)}（終点は接続していません）` };
+    }
+    if (endSegId && net.segments[endSegId] && !canJoin(net.segments[endSegId].system, system)) {
+      return { endNodeId, notice: `${conflictMessage(system, net.segments[endSegId].system)}（終点は接続していません）` };
+    }
+    return { endNodeId, endSegId };
+  };
   const connectEnd = (net: Network, endNodeId: string | undefined, endSegId?: string) =>
     endNodeId && endSegId && net.segments[endSegId] ? connectNodeToSegment(net, endNodeId, endSegId) : net;
   /** 建物の階が変わったときに配管・器具を追従させる。配管が壊れる場合は null */
@@ -257,24 +274,40 @@ export const useStore = create<State>((set, get) => {
 
     drawPolyline: (points, opts) => {
       if (points.length < 2) return;
-      const { endSegId, ...o } = opts ?? {};
-      const r = addPolyline(get().doc.network, points, get().drawAttrs, o);
+      const { doc } = get();
+      let attrs = get().drawAttrs;
+      let notice: string | null = null;
+      // 既存の配管・接続口から描き始めたら、つながらない種類のときはその配管の種類で描く
+      if (opts?.startNodeId) {
+        const na = nodeAttrs(doc.network, doc.fixtures, opts.startNodeId);
+        const bad = na.systems.find((x) => !canJoin(x, attrs.system));
+        if (bad && na.attrs) {
+          notice = `${SYSTEM_NAME[attrs.system]}は${SYSTEM_NAME[bad]}につなげないため、${SYSTEM_NAME[na.attrs.system]}として描きました`;
+          attrs = na.attrs;
+        }
+      }
+      const end = checkEnd(attrs.system, opts?.endNodeId, opts?.endSegId);
+      const r = addPolyline(doc.network, points, attrs, { startNodeId: opts?.startNodeId, endNodeId: end.endNodeId });
       const last = r.segmentIds.at(-1);
       if (!last) return;
-      const net = connectEnd(r.net, r.nodeIds.at(-1), endSegId);
-      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null });
+      const net = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
+      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: end.notice ?? notice });
     },
     branch: (segId, at, path, opts) => {
-      if (!get().doc.network.segments[segId] || path.length < 1) return;
+      const base = get().doc.network.segments[segId];
+      if (!base || path.length < 1) return;
+      const end = checkEnd(base.system, opts?.endNodeId, opts?.endSegId);
       const r = branchFromSegment(get().doc.network, segId, at, path);
       const last = r.branchSegmentIds.at(-1);
       if (!last) return;
       let net = r.net;
       const endId = net.segments[last].b; // addPolyline は前のノード→新しいノードの順で区間を作る
-      if (opts?.endNodeId && net.nodes[opts.endNodeId] && endId !== opts.endNodeId) net = mergeNodes(net, opts.endNodeId, endId);
-      else net = connectEnd(net, endId, opts?.endSegId);
-      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null });
+      if (end.endNodeId && net.nodes[end.endNodeId] && endId !== end.endNodeId) net = mergeNodes(net, end.endNodeId, endId);
+      else net = connectEnd(net, endId, end.endSegId);
+      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: end.notice });
     },
+    notice: null,
+    clearNotice: () => set({ notice: null }),
     cutSelected: () => {
       const sel = get().selection;
       const net = get().doc.network;
@@ -353,7 +386,8 @@ export const useStore = create<State>((set, get) => {
         z = f.elevation + drawHeight;
         floorId = f.id;
       } else z = target;
-      const r = addRiser(doc.network, nodeId, z, drawAttrs);
+      // 立て管は元の配管（接続口）と同じ種類・口径で作る
+      const r = addRiser(doc.network, nodeId, z, nodeAttrs(doc.network, doc.fixtures, nodeId).attrs ?? drawAttrs);
       if (!r) return;
       const net = floorId ? { ...r.net, nodes: { ...r.net.nodes, [r.nodeId]: { ...r.net.nodes[r.nodeId], floorId } } } : r.net;
       commit(withNet(net), { selection: { kind: 'node', id: r.nodeId }, ...(floorId ? { activeFloorId: floorId } : {}) });
@@ -459,8 +493,12 @@ export const useStore = create<State>((set, get) => {
     },
     dragFixture: (id, p) => { if (get().dragBase) set({ doc: moveFixture(get().doc, id, p) }); },
     dropNode: (nodeId, target) => {
-      const net = get().doc.network;
+      const { network: net, fixtures } = get().doc;
       if (!get().dragBase || !target || !net.nodes[nodeId]) return;
+      const bad = target.type === 'node'
+        ? conflictBetween(net, fixtures, target.id, nodeId)
+        : (() => { const t = net.segments[target.id]; const c = t && conflictAt(net, fixtures, nodeId, t.system); return c && t ? [c, t.system] as const : null; })();
+      if (bad) { set({ notice: conflictMessage(bad[0], bad[1]) }); return; }
       const next = target.type === 'node' ? mergeNodes(net, target.id, nodeId) : connectNodeToSegment(net, nodeId, target.id);
       if (next !== net) set({ doc: withNet(next), selection: null });
     },

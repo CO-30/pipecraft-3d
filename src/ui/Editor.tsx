@@ -66,6 +66,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
         </section>
       )}
       {isWide && <EstimateBar onOpen={() => setShowEst(true)} />}
+      <Notice />
       <Toolbar />
       {showEst && <EstimateScreen onClose={() => setShowEst(false)} />}
     </div>
@@ -82,4 +83,16 @@ function useWide() {
     return () => m.removeEventListener('change', on);
   }, []);
   return wide;
+}
+
+/** つなげない配管などの短いお知らせ（4秒で消える。タップでも消える） */
+function Notice() {
+  const notice = useStore((s) => s.notice);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => useStore.getState().clearNotice(), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
+  if (!notice) return null;
+  return <div className="toast notice" role="status" data-testid="notice" onClick={() => useStore.getState().clearNotice()}>{notice}</div>;
 }
