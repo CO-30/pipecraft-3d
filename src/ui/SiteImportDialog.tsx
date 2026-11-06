@@ -3,7 +3,7 @@
  */
 import { useState } from 'react';
 import { useStore } from '../state/store';
-import { GSI_ATTRIBUTION, OSM_ATTRIBUTION, polygonArea, pointInRing, type Footprint } from '../model/geo';
+import { GSI_ATTRIBUTION, OSM_ATTRIBUTION, polygonArea, pointInRing, rotatePoint, type Footprint } from '../model/geo';
 import { planSiteImport } from '../model/siteImport';
 import { fetchAerial, fetchFootprints, searchAddress, type Place } from '../import/site';
 
@@ -31,6 +31,7 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
   const search = () => run('検索', async () => {
     setPlace(null); setFps(null);
     const m = LATLON.exec(q);
+    if (m && !(Math.abs(Number(m[1])) <= 90 && Math.abs(Number(m[2])) <= 180)) throw new Error('緯度は −90〜90、経度は −180〜180 で「緯度,経度」の順に入力してください');
     const list = m ? [{ lat: Number(m[1]), lon: Number(m[2]), title: `緯度 ${m[1]}・経度 ${m[2]}` }] : await searchAddress(q.trim());
     setPlaces(list);
     if (list.length === 1) await choose(list[0]);
@@ -46,20 +47,25 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
     const fp = outline && fps?.length ? fps[fpIdx]?.polygon ?? null : null;
     const plan = planSiteImport(fp, { eaveMm: Number(eave) || 0, align });
     if ('error' in plan) throw new Error(plan.error);
+    const hasWalls = Object.values(st.doc.building.walls).some((w) => w.floorId === st.activeFloorId);
+    if (plan.polygon && hasWalls && !window.confirm('この階にはすでに壁があります。建物外形の外壁を追加しますか？')) return;
     let underlay;
+    let missing = 0;
     if (aerial) {
       const a = await fetchAerial(place);
+      missing = a.missing;
+      // 画素に丸めた切り出しのずれを、建物と同じ回転で補正
+      const off = rotatePoint(a.centerOffset, plan.rotation);
       underlay = {
         floorId: st.activeFloorId, kind: 'aerial' as const, label: `航空写真 ${place.title}`.slice(0, 60), src: a.src, widthPx: a.widthPx, heightPx: a.heightPx,
-        center: plan.aerialCenter, mmPerPx: a.mmPerPx, rotation: plan.rotation, opacity: 0.7, scaled: true,
+        center: { x: plan.aerialCenter.x + off.x, y: plan.aerialCenter.y + off.y }, mmPerPx: a.mmPerPx, rotation: plan.rotation, opacity: 0.7, scaled: true,
         attribution: fp ? `${GSI_ATTRIBUTION}／${OSM_ATTRIBUTION}` : GSI_ATTRIBUTION,
       };
     }
     if (!plan.polygon && !underlay) throw new Error('取り込むものがありません');
-    const hasWalls = Object.values(st.doc.building.walls).some((w) => w.floorId === st.activeFloorId);
-    if (plan.polygon && hasWalls && !window.confirm('この階にはすでに壁があります。建物外形の外壁を追加しますか？')) return;
-    const r = st.importSite({ polygon: plan.polygon, underlay });
-    if (!r) throw new Error('取り込めませんでした');
+    const r = useStore.getState().importSite({ polygon: plan.polygon, underlay });
+    if (!r) throw new Error(useStore.getState().notice ?? '取り込めませんでした');
+    if (missing) useStore.setState({ notice: `航空写真の一部（${missing}/9 区画）を取得できず灰色になっています` });
     if (plan.polygon) st.setTool('select');
     onClose();
   });
@@ -100,6 +106,7 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
         {busy && <p className="muted">{busy}中…</p>}
         {err && <p className="err" role="alert">{err}</p>}
         <p className="muted small">{GSI_ATTRIBUTION}。{OSM_ATTRIBUTION}（ODbL）。Google マップ・ストリートビューは利用規約上、取り込みに使えません。</p>
+        <p className="muted small" data-testid="site-privacy">検索のため、入力した住所を国土地理院（住所検索）に、選んだ地点の緯度・経度を OpenStreetMap（Overpass API）と国土地理院（地図タイル）に送信します。現場名などそれ以外の情報は送りません。</p>
         <div className="modal-btns">
           <button onClick={onClose}>閉じる</button>
           <button className="primary" data-testid="site-import" disabled={!place || !!busy || (!aerial && !(outline && fps?.length))} onClick={() => void doImport()}>取り込む</button>

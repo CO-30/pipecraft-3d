@@ -474,3 +474,28 @@ describe('共通ストア: 種類の違う配管はつながない', () => {
     expect(Object.values(net().segments).filter((x) => x.system === 'water')).toHaveLength(3);
   });
 });
+
+describe('共通ストア: 下敷き・写真の開口部', () => {
+  const U = (src: string) => ({ floorId: s().activeFloorId, kind: 'image' as const, label: 'x', src, widthPx: 10, heightPx: 10, center: v(0, 0), mmPerPx: 10, rotation: 0, opacity: 0.5, scaled: false });
+  it('大きすぎる画像・合計の上限を超える下敷きは追加せず、お知らせを出す（保存失敗を防ぐ）', () => {
+    expect(s().addUnderlay(U('data:image/jpeg;base64,' + 'A'.repeat(4_100_000)))).toBe('');
+    expect(s().notice).toMatch(/大きすぎ/);
+    const big = 'data:image/jpeg;base64,' + 'A'.repeat(2_900_000);
+    for (let i = 0; i < 4; i++) expect(s().addUnderlay(U(big))).not.toBe('');
+    expect(s().addUnderlay(U(big))).toBe('');
+    expect(s().notice).toMatch(/多すぎ/);
+    expect(Object.keys(s().doc.underlays!)).toHaveLength(4);
+  });
+  it('写真から作る開口部: 作れなかったものの番号を返し、作れたものだけ履歴1件で追加', () => {
+    s().addWall(v(0, 0), v(5000, 0));
+    const wid = Object.keys(s().doc.building.walls)[0];
+    const h = s().past.length;
+    const r = s().addOpeningsBatch(wid, [
+      { type: 'window', offset: 1000, width: 800, height: 900, sill: 900 },
+      { type: 'window', offset: 1200, width: 800, height: 900, sill: 900 }, // 重なる
+      { type: 'door', offset: 3500, width: 800, height: 2000, sill: 0 },
+    ]);
+    expect(r).toEqual({ added: 2, failed: 1, failedIdx: [1] });
+    expect(s().past.length).toBe(h + 1);
+  });
+});

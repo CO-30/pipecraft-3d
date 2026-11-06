@@ -89,10 +89,16 @@ export function UnderlayPanel() {
             {active.scaled ? `縮尺: 1px = ${Math.round(active.mmPerPx * 10) / 10}mm` : <span className="warn">⚠ 縮尺未確定（寸法は参考。「2点で縮尺」で合わせてください）</span>}
             {active.attribution && <span className="muted">　{active.attribution}</span>}
           </div>
-          <label className="field inline">透明度
-            <input type="range" min={0.1} max={1} step={0.05} defaultValue={active.opacity} key={`${active.id}-${active.opacity}`} data-testid="ul-opacity"
-              onPointerUp={(e) => st.updateUnderlay(active.id, { opacity: Number((e.target as HTMLInputElement).value) })}
-              onKeyUp={(e) => st.updateUnderlay(active.id, { opacity: Number((e.target as HTMLInputElement).value) })} />
+          <label className="field inline">濃さ
+            {/* 動かしている間は見た目だけ変え、指を離す・フォーカスが外れると履歴1件で確定 */}
+            <input type="range" min={0.1} max={1} step={0.05} value={active.opacity} data-testid="ul-opacity"
+              onPointerDown={() => st.beginDrag()}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (useStore.getState().dragBase) st.dragUnderlayOpacity(active.id, v);
+                else st.updateUnderlay(active.id, { opacity: v }); // キーボード操作
+              }}
+              onPointerUp={() => st.endDrag()} onPointerCancel={() => st.endDrag()} onBlur={() => st.endDrag()} />
           </label>
           <div className="row">
             <span className="small">回転</span>

@@ -91,7 +91,8 @@ describe('IndexedDB 保存', () => {
     const r = new DexieProjectRepository(nextName());
     const a = sample(), b = { ...sample(), id: 'p2', name: '二件目' };
     await r.save(a); await r.save(b);
-    const json = await r.exportAll();
+    const { json, skipped } = await r.exportAll();
+    expect(skipped).toEqual([]);
     const r2 = new DexieProjectRepository(nextName());
     const res = await r2.importAny(json);
     expect(res.imported.map((p) => p.name).sort()).toEqual(['テスト現場', '二件目']);

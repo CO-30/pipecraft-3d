@@ -2,7 +2,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { MAX_UNDERLAY_PX } from '../model/underlay';
-import type { Raster } from './image';
+import { toRaster, type Raster } from './image';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -24,7 +24,7 @@ export async function openPdf(data: ArrayBuffer): Promise<PdfDoc> {
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-      return { src: canvas.toDataURL('image/jpeg', 0.85), widthPx: canvas.width, heightPx: canvas.height };
+      return toRaster(canvas);
     },
     destroy: () => void task.destroy(),
   };

@@ -1,5 +1,5 @@
 /** 画像ファイル → 縮小した JPEG の data URL（下敷き・写真補正用） */
-import { MAX_UNDERLAY_PX } from '../model/underlay';
+import { MAX_UNDERLAY_PX, TARGET_UNDERLAY_SRC } from '../model/underlay';
 
 export type Raster = { src: string; widthPx: number; heightPx: number };
 
@@ -38,7 +38,17 @@ export function canvasFrom(img: CanvasImageSource, maxPx = MAX_UNDERLAY_PX, crop
   return c;
 }
 
-export const toRaster = (c: HTMLCanvasElement, quality = 0.85): Raster => ({ src: c.toDataURL('image/jpeg', quality), widthPx: c.width, heightPx: c.height });
+/** JPEG にする。保存できる大きさに収まるまで画質→画素数の順に下げる */
+export function toRaster(c: HTMLCanvasElement, quality = 0.85): Raster {
+  let cur = c, q = quality;
+  for (let i = 0; i < 12; i++) {
+    const src = cur.toDataURL('image/jpeg', q);
+    if (src.length <= TARGET_UNDERLAY_SRC) return { src, widthPx: cur.width, heightPx: cur.height };
+    if (q > 0.6) q -= 0.1;
+    else cur = canvasFrom(cur, Math.round(Math.max(cur.width, cur.height) * 0.8));
+  }
+  throw new Error('画像が大きすぎます');
+}
 
 export async function fileToRaster(file: Blob, maxPx = MAX_UNDERLAY_PX): Promise<Raster> {
   return toRaster(canvasFrom(await loadBitmap(file), maxPx));

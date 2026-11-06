@@ -27,6 +27,10 @@ export type Underlay = {
 
 /** 下敷き画像の data URL の上限（文字数） */
 export const MAX_UNDERLAY_SRC = 4_000_000;
+/** 取り込み時に目指す上限（保存形式の上限より余裕をもたせる） */
+export const TARGET_UNDERLAY_SRC = 3_000_000;
+/** 1現場の下敷きの合計（文字数）。自動保存が重くならないように */
+export const MAX_UNDERLAYS_TOTAL = 12_000_000;
 /** 取り込み時の長辺の上限(px) */
 export const MAX_UNDERLAY_PX = 2400;
 

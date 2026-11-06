@@ -32,12 +32,13 @@ export function HomeScreen({ onOpen, onCreate }: { onOpen: (id: string) => void;
   };
 
   const downloadAll = async () => {
-    const json = await repo.exportAll();
+    const { json, skipped } = await repo.exportAll();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     a.download = `PipeCraft3D_全現場_${new Date().toISOString().slice(0, 10)}.pipecraft-backup.json`;
     a.dispatchEvent(new MouseEvent('click'));
     setTimeout(() => URL.revokeObjectURL(a.href), 40_000);
+    setMsg(skipped.length ? `バックアップしました。ただし ${skipped.join('、')} はデータが壊れていて含められませんでした（個別に開いて確認してください）` : 'すべての現場をバックアップしました');
   };
 
   const importFile = async (f: File) => {

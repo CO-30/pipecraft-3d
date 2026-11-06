@@ -22,7 +22,7 @@ import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem 
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
-import { rescaleByTwoPoints, type Underlay } from '../model/underlay';
+import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
 
 export type { Doc };
 export type Tool = 'select' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
@@ -132,6 +132,8 @@ type State = {
   updateUnderlay(id: string, patch: Partial<Pick<Underlay, 'label' | 'opacity' | 'rotation' | 'center' | 'mmPerPx'>>): void;
   deleteUnderlay(id: string): void;
   dragUnderlay(id: string, dx: number, dy: number): void;
+  /** スライダー操作中の見た目だけの変更（beginDrag〜endDrag で履歴1件） */
+  dragUnderlayOpacity(id: string, opacity: number): void;
   startScalePick(id: string): void;
   addScalePoint(p: Vec2): void;
   cancelScalePick(): void;
@@ -140,7 +142,7 @@ type State = {
   /** 建物外形（外壁）と下敷きを1操作で取り込む。外壁が作れなかった辺の数を返す */
   importSite(opts: { polygon?: Vec2[]; underlay?: Omit<Underlay, 'id'> }): { walls: number; failed: number } | null;
   /** 写真から作った開口部を1操作で追加。作れなかった数を返す */
-  addOpeningsBatch(wallId: string, list: { type: OpeningType; offset: number; width: number; height: number; sill: number }[]): { added: number; failed: number };
+  addOpeningsBatch(wallId: string, list: { type: OpeningType; offset: number; width: number; height: number; sill: number }[]): { added: number; failed: number; failedIdx: number[] };
 
   // 積算
   /** 実測長(mm)。undefined で削除（モデル長に戻す） */
@@ -209,6 +211,12 @@ export const useStore = create<State>((set, get) => {
   };
   /** 配管ノードのうち、設備の接続口でないもの（接続口は器具と一緒にしか動かさない） */
   const movable = (net: Network, ids: string[]) => ids.filter((id) => net.nodes[id] && !net.nodes[id].fixtureId);
+  /** 下敷きを追加できるか（大きさ・合計）。だめなら理由 */
+  const underlayRoom = (src: string): string | null => {
+    if (src.length > MAX_UNDERLAY_SRC) return '画像が大きすぎて保存できません';
+    const total = Object.values(get().doc.underlays ?? {}).reduce((a, x) => a + x.src.length, 0);
+    return total + src.length > MAX_UNDERLAYS_TOTAL ? 'この現場の下敷きが多すぎます。不要な下敷きを削除してください' : null;
+  };
   /** 描画の終点を既存の配管につなぐ前に種類を確認。つなげないなら接続しない */
   const checkEnd = (system: SystemType, endNodeId?: string, endSegId?: string): { endNodeId?: string; endSegId?: string; notice?: string } => {
     const { network: net, fixtures } = get().doc;
@@ -317,7 +325,7 @@ export const useStore = create<State>((set, get) => {
       const last = r.segmentIds.at(-1);
       if (!last) return;
       const net = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
-      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: end.notice ?? notice });
+      commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: [notice, end.notice].filter(Boolean).join('。') || null });
     },
     branch: (segId, at, path, opts) => {
       const base = get().doc.network.segments[segId];
@@ -446,6 +454,8 @@ export const useStore = create<State>((set, get) => {
     addUnderlay: (u) => {
       const id = newId('u');
       const doc = get().doc;
+      const room = underlayRoom(u.src);
+      if (room) { set({ notice: room }); return ''; }
       commit({ ...doc, underlays: { ...(doc.underlays ?? {}), [id]: { ...u, id } } }, { activeUnderlayId: id });
       return id;
     },
@@ -470,6 +480,12 @@ export const useStore = create<State>((set, get) => {
       const u = base?.underlays?.[id];
       if (!base || !u) return;
       set({ doc: { ...get().doc, underlays: { ...get().doc.underlays, [id]: { ...u, center: { x: u.center.x + dx, y: u.center.y + dy } } } } });
+    },
+    dragUnderlayOpacity: (id, opacity) => {
+      const base = get().dragBase;
+      const u = get().doc.underlays?.[id];
+      if (!base || !u || !(opacity >= 0 && opacity <= 1)) return;
+      set({ doc: { ...get().doc, underlays: { ...get().doc.underlays, [id]: { ...u, opacity } } } });
     },
     startScalePick: (id) => { if (get().doc.underlays?.[id]) set({ scalePick: { id, pts: [] }, activeUnderlayId: id, tool: 'underlay' }); },
     addScalePoint: (p) => {
@@ -500,6 +516,8 @@ export const useStore = create<State>((set, get) => {
       let underlays = doc.underlays ?? {};
       let activeUnderlayId = get().activeUnderlayId;
       if (underlay) {
+        const room = underlayRoom(underlay.src);
+        if (room) { set({ notice: room }); return null; }
         const id = newId('u');
         underlays = { ...underlays, [id]: { ...underlay, id } };
         activeUnderlayId = id;
@@ -510,12 +528,13 @@ export const useStore = create<State>((set, get) => {
     },
     addOpeningsBatch: (wallId, list) => {
       let b = get().doc.building, added = 0;
-      for (const o of list) {
+      const failedIdx: number[] = [];
+      list.forEach((o, i) => {
         const r = B.addOpening(b, wallId, o.type, o.offset, { width: o.width, height: o.height, sill: o.sill });
-        if (r.openingId) { b = r.b; added++; }
-      }
+        if (r.openingId) { b = r.b; added++; } else failedIdx.push(i);
+      });
       if (added) commit(withBld(b), { selection: { kind: 'wall', id: wallId } });
-      return { added, failed: list.length - added };
+      return { added, failed: failedIdx.length, failedIdx };
     },
     setSegmentMeasured: (segId, mm) => {
       const net = get().doc.network;

@@ -55,6 +55,8 @@ export function WallPhotoDialog({ wallId, onClose }: { wallId: string; onClose: 
 
   const doRectify = () => {
     if (!photo) return;
+    if (!convex(quad)) { setMsg('四隅の順番が入れ替わっています。左上・右上・右下・左下の印をそれぞれの角に合わせてください'); return; }
+    setMsg('');
     const k = 1000 / Math.max(L, H);
     const w = Math.max(50, Math.round(L * k)), h = Math.max(50, Math.round(H * k));
     const out = rectify(photo.data, quad, w, h);
@@ -65,12 +67,23 @@ export function WallPhotoDialog({ wallId, onClose }: { wallId: string; onClose: 
     setFace({ url: c.toDataURL('image/jpeg', 0.85), w, h });
   };
 
+  const toOpenings = () => (face ? boxes.map((bx) => ({ type: bx.type, ...rectToOpening(bx, face.w, face.h, L, H, flip) })) : []);
+  const tooSmall = toOpenings().filter((o) => o.width < 100 || o.height < 100).length;
   const create = () => {
     if (!face) return;
-    const list = boxes.map((bx) => ({ type: bx.type, ...rectToOpening(bx, face.w, face.h, L, H, flip) })).filter((o) => o.width >= 100 && o.height >= 100);
-    const r = useStore.getState().addOpeningsBatch(wallId, list);
-    if (r.failed) setMsg(`${r.added}か所を作成しました。${r.failed}か所は壁に収まらない・重なるため作れませんでした`);
-    else onClose();
+    const all = toOpenings();
+    const okIdx = all.map((o, i) => (o.width >= 100 && o.height >= 100 ? i : -1)).filter((i) => i >= 0);
+    const r = useStore.getState().addOpeningsBatch(wallId, okIdx.map((i) => all[i]));
+    if (!r.failed) { onClose(); return; }
+    // 作れたものは消し、作れなかった四角だけ残す（もう一度押しても二重に作らない）
+    const keep = new Set(r.failedIdx.map((k) => okIdx[k]));
+    setBoxes((bs) => bs.filter((_, i) => keep.has(i)));
+    setMsg(`${r.added}か所を作成しました。残りの${r.failed}か所は壁に収まらない・既存の開口と重なるため作れませんでした。位置を直してください`);
+  };
+  /** 四隅が凸の四角形になっているか（交差・へこみがない） */
+  const convex = (q: Vec2[]) => {
+    const s = q.map((p, i) => { const a = q[(i + 1) % 4], b = q[(i + 2) % 4]; return Math.sign((a.x - p.x) * (b.y - a.y) - (a.y - p.y) * (b.x - a.x)); });
+    return s.every((v) => v > 0) || s.every((v) => v < 0);
   };
 
   const existing = Object.values(b.openings).filter((o) => o.wallId === wallId);
@@ -92,7 +105,7 @@ export function WallPhotoDialog({ wallId, onClose }: { wallId: string; onClose: 
         )}
         {photo && !face && (
           <>
-            <p className="small">● を壁の四隅（床の左端・右端、天井の右端・左端）に合わせてください。</p>
+            <p className="small">印（左上・右上・右下・左下）を、写真の壁の四隅（天井側の左端・右端、床側の右端・左端）に合わせてください。</p>
             <svg ref={svgRef} className="wp-svg" viewBox={`0 0 ${photo.w} ${photo.h}`} data-testid="wp-photo"
               onPointerMove={(e) => { if (drag.current === null) return; const p = svgPoint(svgRef.current!, e); setQuad((q) => q.map((v, i) => (i === drag.current ? { x: Math.max(0, Math.min(photo.w, p.x)), y: Math.max(0, Math.min(photo.h, p.y)) } : v))); }}
               onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
@@ -148,10 +161,11 @@ export function WallPhotoDialog({ wallId, onClose }: { wallId: string; onClose: 
             </div>
           </>
         )}
+        {tooSmall > 0 && <p className="warn small">幅または高さが 100mm 未満の四角 {tooSmall}個は作成しません</p>}
         {msg && <p className="err" role="alert">{msg}</p>}
         <div className="modal-btns">
           <button onClick={onClose}>閉じる</button>
-          <button className="primary" data-testid="wp-create" disabled={!face || boxes.length === 0} onClick={create}>開口部を作成（{boxes.length}）</button>
+          <button className="primary" data-testid="wp-create" disabled={!face || boxes.length - tooSmall === 0} onClick={create}>開口部を作成（{boxes.length - tooSmall}）</button>
         </div>
       </div>
     </div>

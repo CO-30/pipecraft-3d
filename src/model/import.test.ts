@@ -47,6 +47,9 @@ describe('地理計算', () => {
     expect(p.crop.size).toBe(Math.round(120 / 0.5359)); // 224px
     expect(p.crop.x).toBeGreaterThanOrEqual(0);
     expect(p.crop.x + p.crop.size).toBeLessThanOrEqual(768);
+    // 画素に丸めたずれは半画素以内
+    expect(Math.abs(p.centerOffset.x)).toBeLessThanOrEqual(p.mmPerPx / 2 + 1e-6);
+    expect(Math.abs(p.centerOffset.y)).toBeLessThanOrEqual(p.mmPerPx / 2 + 1e-6);
   });
   it('Overpass の建物を多角形（反時計回り・閉じ点なし）にし、地点を含む建物を先頭に', () => {
     const o = { lat: 26.2, lon: 127.68 };

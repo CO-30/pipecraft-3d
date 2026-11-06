@@ -21,7 +21,7 @@ export interface ProjectRepository {
   /** 本体が壊れていて直前の版から復旧した場合は recovered=true */
   loadWithStatus(id: string): Promise<{ project: ProjectData; recovered: boolean } | undefined>;
   /** 全現場を1つのファイルに */
-  exportAll(): Promise<string>;
+  exportAll(): Promise<{ json: string; skipped: string[] }>;
   /** 1現場のファイル・全現場のバックアップのどちらも読み込める（常に新規追加） */
   importAny(json: string): Promise<{ imported: ProjectData[]; failed: number }>;
 }
@@ -93,14 +93,17 @@ export class DexieProjectRepository implements ProjectRepository {
     }
   }
 
-  async exportAll(): Promise<string> {
+  /** 読めない現場は skipped に名前を返す（黙って欠けないように） */
+  async exportAll(): Promise<{ json: string; skipped: string[] }> {
     const rows = await this.db.projects.orderBy('updatedAt').reverse().toArray();
     const projects: ProjectData[] = [];
+    const skipped: string[] = [];
     for (const r of rows) {
       const p = await this.load(r.id).catch(() => undefined);
       if (p) projects.push(p);
+      else skipped.push(r.name);
     }
-    return JSON.stringify({ format: BACKUP_FORMAT, version: 1, exportedAt: Date.now(), projects });
+    return { json: JSON.stringify({ format: BACKUP_FORMAT, version: 1, exportedAt: Date.now(), projects }), skipped };
   }
 
   async importAny(json: string): Promise<{ imported: ProjectData[]; failed: number }> {

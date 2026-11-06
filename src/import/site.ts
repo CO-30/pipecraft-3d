@@ -30,7 +30,7 @@ function loadTile(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-export async function fetchAerial(p: LatLon, sizeM = 120): Promise<Raster & { mmPerPx: number }> {
+export async function fetchAerial(p: LatLon, sizeM = 120): Promise<Raster & { mmPerPx: number; centerOffset: { x: number; y: number }; missing: number }> {
   const plan = aerialPlan(p, sizeM);
   const imgs = await Promise.all(plan.tiles.map((t) => loadTile(t.url)));
   if (imgs.every((i) => !i)) throw new Error('航空写真を取得できませんでした（通信を確認してください）');
@@ -41,7 +41,8 @@ export async function fetchAerial(p: LatLon, sizeM = 120): Promise<Raster & { mm
   ctx.fillRect(0, 0, 768, 768);
   plan.tiles.forEach((t, i) => { const img = imgs[i]; if (img) ctx.drawImage(img, t.col * 256, t.row * 256); });
   const { x, y, size } = plan.crop;
-  return { ...toRaster(canvasFrom(all, 1024, { x, y, w: size, h: size }), 0.9), mmPerPx: (plan.mmPerPx * size) / Math.min(size, 1024) };
+  const r = toRaster(canvasFrom(all, 1024, { x, y, w: size, h: size }), 0.9);
+  return { ...r, mmPerPx: (plan.mmPerPx * size) / r.widthPx, centerOffset: plan.centerOffset, missing: imgs.filter((i) => !i).length };
 }
 
 export async function fetchFootprints(p: LatLon): Promise<Footprint[]> {

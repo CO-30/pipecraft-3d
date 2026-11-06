@@ -31,6 +31,8 @@ export type AerialPlan = {
   /** 3×3 に並べた画像の中での切り出し範囲(px) */
   crop: { x: number; y: number; size: number };
   mmPerPx: number;
+  /** 切り出した画像の中心が検索地点からずれている量（図面座標 mm、x 東・y 北）。画素に丸めた分 */
+  centerOffset: { x: number; y: number };
 };
 
 /** 検索地点を中心に sizeM 四方の航空写真を作るためのタイルと切り出し範囲 */
@@ -45,7 +47,9 @@ export function aerialPlan(center: LatLon, sizeM = 120, z = AERIAL_ZOOM): Aerial
   const mpp = metersPerPixel(center.lat, z);
   const size = Math.min(512, Math.round(sizeM / mpp));
   const cx = wp.x - (tx - 1) * 256, cy = wp.y - (ty - 1) * 256;
-  return { tiles, crop: { x: Math.round(cx - size / 2), y: Math.round(cy - size / 2), size }, mmPerPx: mpp * 1000 };
+  const crop = { x: Math.round(cx - size / 2), y: Math.round(cy - size / 2), size };
+  const mmPerPx = mpp * 1000;
+  return { tiles, crop, mmPerPx, centerOffset: { x: (crop.x + size / 2 - cx) * mmPerPx, y: -(crop.y + size / 2 - cy) * mmPerPx } };
 }
 
 // ---------- 建物外形（OpenStreetMap / Overpass API） ----------
