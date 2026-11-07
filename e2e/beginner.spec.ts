@@ -205,3 +205,46 @@ test.describe('初心者シナリオ', () => {
     await expect(page.getByTestId('project-item')).toHaveCount(1);
   });
 });
+
+test.describe('レビュー対応', () => {
+  test.beforeEach(async ({ page }) => freshApp(page));
+
+  test('3Dだけの表示でもガイドのボタンで図面の見える表示に戻る・建物の道具の行は Esc / 外のタップ / 道具の変更で閉じる', async ({ page }) => {
+    await page.getByTestId('new-project').click();
+    await page.getByTestId('np-name').fill('表示テスト');
+    await page.getByTestId('np-create').click();
+    await page.getByRole('button', { name: '3D', exact: true }).click();
+    await expect(page.getByTestId('plan')).toHaveCount(0);
+    await page.getByTestId('guide-do').click();
+    await expect(page.getByTestId('plan')).toBeVisible();
+
+    await page.getByTestId('tool-building').click();
+    await expect(page.getByTestId('building-tools')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('building-tools')).toBeHidden();
+    await page.getByTestId('tool-building').click();
+    await page.getByTestId('guide-bar').click({ position: { x: 5, y: 5 } }); // 外をタップ
+    await expect(page.getByTestId('building-tools')).toBeHidden();
+    await page.getByTestId('tool-building').click();
+    await page.evaluate(() => (window as any).__pc.getState().setTool('pipe')); // 別の所で道具が変わった
+    await expect(page.getByTestId('building-tools')).toBeHidden();
+  });
+
+  for (const vp of [{ width: 320, height: 568, name: '小さいスマホ' }, { width: 740, height: 360, name: 'スマホ横向き' }]) {
+    test(`${vp.name}（${vp.width}×${vp.height}）でも 戻す・やり直し に届き、図面が残る`, async ({ page }) => {
+      test.skip(!isMobile(), 'スマホのみ');
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.getByTestId('open-sample').click();
+      await expect(page.getByTestId('editor')).toBeVisible();
+      for (const id of ['undo', 'redo']) {
+        await page.getByTestId(id).scrollIntoViewIfNeeded();
+        const bb = (await page.getByTestId(id).boundingBox())!;
+        expect(bb.x + bb.width).toBeLessThanOrEqual(vp.width + 1);
+        expect(bb.y + bb.height).toBeLessThanOrEqual(vp.height + 1);
+      }
+      const plan = (await page.getByTestId('plan').boundingBox())!;
+      expect(plan.height).toBeGreaterThanOrEqual(vp.height * 0.3);
+      await page.screenshot({ path: evidence(`ux-after-07-${vp.width}x${vp.height}`) });
+    });
+  }
+});

@@ -1,7 +1,7 @@
 /**
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
@@ -738,9 +738,21 @@ export function Toolbar() {
   const tool = useStore((s) => s.tool);
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
-  const [buildOpen, setBuildOpen] = useState(false);
+  // 建物の道具の行は、開いた時の道具のままの間だけ開く（道具が変わったら閉じる）。Esc・外のタップでも閉じる
+  const [openFor, setOpenFor] = useState<Tool | null>(null);
+  const buildOpen = openFor === tool;
+  const setBuildOpen = (v: boolean) => setOpenFor(v ? tool : null);
+  const navRef = useRef<HTMLElement>(null);
   const st = useStore.getState();
-  const pick = (id: Tool) => { st.setTool(id); st.select(null); setBuildOpen(false); };
+  useEffect(() => {
+    if (!buildOpen) return;
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenFor(null); };
+    const down = (e: PointerEvent) => { if (!navRef.current?.contains(e.target as Node)) setOpenFor(null); };
+    window.addEventListener('keydown', key);
+    window.addEventListener('pointerdown', down, true);
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('pointerdown', down, true); };
+  }, [buildOpen]);
+  const pick = (id: Tool) => { st.setTool(id); st.select(null); setOpenFor(null); };
   const inBuild = BUILD_IDS.has(tool);
   const cur = BUILD_TOOLS.find((t) => t.id === tool);
   const btn = (t: { id: Tool; icon: string; label: string }) => (
@@ -749,20 +761,22 @@ export function Toolbar() {
     </button>
   );
   return (
-    <nav className="toolbar" aria-label="道具">
+    <nav className="toolbar" aria-label="道具" ref={navRef}>
       {buildOpen && (
-        <div className="subtools" data-testid="building-tools" role="menu" aria-label="建物の道具">
+        <div className="subtools" data-testid="building-tools" role="group" aria-label="建物の道具">
           <span className="subtools-label">建物を描く</span>
           {BUILD_TOOLS.map(btn)}
         </div>
       )}
-      {btn(MAIN_TOOLS[0])}
-      <button data-testid="tool-building" aria-expanded={buildOpen} className={`${inBuild ? 'on' : ''} ${buildOpen ? 'open' : ''}`} onClick={() => setBuildOpen(!buildOpen)}>
-        {cur?.icon ?? '🏠'}<span>{inBuild && cur ? `建物:${cur.label}` : '建物'} ▴</span>
-      </button>
-      {MAIN_TOOLS.slice(1).map(btn)}
-      <button data-testid="undo" className="hist" disabled={!canUndo} onClick={() => st.undo()}>↶<span>戻す</span></button>
-      <button data-testid="redo" className="hist" disabled={!canRedo} onClick={() => st.redo()}>↷<span>やり直し</span></button>
+      <div className="tb-row">
+        {btn(MAIN_TOOLS[0])}
+        <button data-testid="tool-building" aria-expanded={buildOpen} aria-label={inBuild && cur ? `建物: ${cur.label}` : '建物'} className={`${inBuild ? 'on' : ''} ${buildOpen ? 'open' : ''}`} onClick={() => setBuildOpen(!buildOpen)}>
+          {cur?.icon ?? '🏠'}<span>建物 ▴</span>
+        </button>
+        {MAIN_TOOLS.slice(1).map(btn)}
+        <button data-testid="undo" className="hist" disabled={!canUndo} onClick={() => st.undo()}>↶<span>戻す</span></button>
+        <button data-testid="redo" className="hist" disabled={!canRedo} onClick={() => st.redo()}>↷<span>やり直し</span></button>
+      </div>
     </nav>
   );
 }
@@ -810,7 +824,7 @@ function PortConnect({ nodeId, title }: { nodeId: string; title?: string }) {
     <div className="port-connect" data-testid="port-connect">
       <div className="subhead">🔗 {title ? `${title} ` : ''}器具につなぐ（自動でルートを作ります）</div>
       <div className="row">
-        {cands.map((c) => <button key={c.nodeId} data-testid="port-cand" data-target={c.nodeId} onClick={() => useStore.getState().connectToPort(nodeId, c.nodeId)}>→ {c.label}</button>)}
+        {cands.map((c) => <button key={c.nodeId} data-testid="port-cand" data-target={c.nodeId} onClick={() => useStore.getState().connectToPort(nodeId, c.nodeId)}>→ {c.label}{c.diameterNote && <small className="warn"> 口径 {c.diameterNote}</small>}</button>)}
       </div>
     </div>
   );

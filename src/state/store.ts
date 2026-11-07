@@ -1039,7 +1039,9 @@ export const useStore = create<State>((set, get) => {
       drawCore(routeToPort(doc.network.nodes[fromId].pos, doc.network.nodes[toId].pos), attrs, { startNodeId: fromId, endNodeId: toId });
       if (get().doc.network === doc.network) return;
       // 器具のパネルからつないだときは器具を選んだままにする（続けて別の接続口もつなげるように）
-      set({ notice: '仮のルートでつなぎました。点をドラッグすると経路を直せます', ...(prev?.kind === 'fixture' ? { selection: prev } : {}) });
+      const toPort = portCandidates(doc, fromId, Infinity).find((c) => c.nodeId === toId);
+      const dia = toPort?.diameterNote ? `。口径が違います（${toPort.diameterNote}）。径違いの継手を確認してください` : '';
+      set({ notice: `仮のルートでつなぎました。点をドラッグすると経路を直せます${dia}`, ...(prev?.kind === 'fixture' ? { selection: prev } : {}) });
     },
     setElementVisibility: (id, mode) => {
       const hiddenIds = get().hiddenIds.filter((x) => x !== id);

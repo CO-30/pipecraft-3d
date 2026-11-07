@@ -308,3 +308,19 @@ header .lbl { margin-left: 2px; }
 .narrow .panel { height: 30dvh; max-height: none; flex: none; }
 .save.saved::before { content: '✓'; } .save.error::before { content: '⚠'; }
 .narrow .panel > .sel-bar { position: sticky; top: -6px; z-index: 3; }
+/* レビュー対応: 道具の並びは内側で横スクロール（とても狭い端末でも戻す・やり直しに届く）、建物の行は外側に出す */
+.toolbar { display: block; }
+.tb-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(46px, 1fr); gap: 4px; overflow-x: auto; }
+.wide .tb-row { grid-auto-columns: 96px; justify-content: center; }
+/* 低い画面（スマホ横向き・キーボード表示中）: パネルを低く、ガイドの説明を省く */
+.narrow .panel { height: clamp(96px, 30dvh, 260px); }
+@media (max-height: 520px) {
+  .narrow .panel { height: clamp(72px, 24dvh, 140px); }
+  .narrow .guide-hint, .narrow .guide-dots { display: none; }
+  .narrow .guide-row { padding: 2px 6px; }
+  .narrow .guide-main, .narrow .guide-do { min-height: 36px; }
+  .toolbar button { min-height: 44px; }
+}
+/* お知らせは図面の操作を邪魔しない（タッチは下へ通す）。✕ だけ押せる */
+.toast.notice { pointer-events: none; padding-right: 40px; }
+.toast.notice .notice-x { pointer-events: auto; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 32px; width: 32px; padding: 0; border: 0; background: transparent; color: #fff; font-size: 14px; }

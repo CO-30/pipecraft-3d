@@ -15,9 +15,10 @@ const DO_LABEL: Record<GuideStepId, string> = {
 };
 
 /** 工程の作業を始める（道具を切り替える・積算を開く） */
-function runStep(id: GuideStepId, onEstimate: (tab: EstimateTab) => void, onInfo: () => void) {
+function runStep(id: GuideStepId, onEstimate: (tab: EstimateTab) => void, onInfo: () => void, onPlan: () => void) {
   const st = useStore.getState();
   const go = (tool: Parameters<typeof st.setTool>[0], notice?: string) => {
+    onPlan(); // 3Dだけの表示なら図面の見える表示へ
     if (st.activeElevationId) st.openElevation(null);
     st.setTool(tool);
     st.select(null);
@@ -49,7 +50,7 @@ function runStep(id: GuideStepId, onEstimate: (tab: EstimateTab) => void, onInfo
   }
 }
 
-export function GuideBar({ onEstimate }: { onEstimate: (tab: EstimateTab) => void }) {
+export function GuideBar({ onEstimate, onPlan }: { onEstimate: (tab: EstimateTab) => void; onPlan: () => void }) {
   const doc = useStore((s) => s.doc);
   const steps = useMemo(() => guideSteps(doc), [doc]);
   const cur = currentStep(steps);
@@ -58,7 +59,7 @@ export function GuideBar({ onEstimate }: { onEstimate: (tab: EstimateTab) => voi
   const hidden = usePrefs((s) => s.guideHidden);
   const setHidden = usePrefs((s) => s.setGuideHidden);
   if (hidden) return null;
-  const run = (id: GuideStepId) => { setOpen(false); runStep(id, onEstimate, () => setInfo(true)); };
+  const run = (id: GuideStepId) => { setOpen(false); runStep(id, onEstimate, () => setInfo(true), onPlan); };
   return (
     <div className="guide" data-testid="guide-bar">
       <div className="guide-row">

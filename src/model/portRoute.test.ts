@@ -53,3 +53,29 @@ describe('器具の接続口へつなぐ（候補とルート）', () => {
     expect(routeToPort({ x: 0, y: 0, z: 100 }, { x: 1000, y: 0, z: 100 })).toEqual([{ x: 0, y: 0, z: 100 }, { x: 1000, y: 0, z: 100 }]);
   });
 });
+
+describe('レビュー対応: 同じ器具・向き', () => {
+  it('メーター出口から描いた配管の端からは、メーター自身の入口を候補にしない', () => {
+    const { doc, meter } = house();
+    const mo = port(doc, meter, 'out');
+    const net = addPolyline(doc.network, [mo.pos, { ...mo.pos, x: mo.pos.x + 800 }], { system: 'water', diameter: 20 }, { startNodeId: mo.id }).net;
+    const d2 = { ...doc, network: net };
+    const end = Object.values(net.nodes).find((n) => !n.fixtureId && Object.values(net.segments).some((s) => s.a === n.id || s.b === n.id))!;
+    expect(portCandidates(d2, end.id).map((c) => c.nodeId)).not.toContain(port(d2, meter, 'in').id);
+  });
+  it('出口（供給側）からは別の出口を候補にしない。入口からは器具の給水口を候補にしない', () => {
+    const { doc, meter, tank, toilet } = house();
+    const fromTankOut = portCandidates(doc, port(doc, tank, 'out').id).map((c) => c.nodeId);
+    expect(fromTankOut).not.toContain(port(doc, meter, 'out').id);
+    expect(fromTankOut).toContain(port(doc, toilet, 'water').id);
+    const fromTankIn = portCandidates(doc, port(doc, tank, 'in').id).map((c) => c.nodeId);
+    expect(fromTankIn).toContain(port(doc, meter, 'out').id);
+    expect(fromTankIn).not.toContain(port(doc, toilet, 'water').id);
+    expect(fromTankIn).not.toContain(port(doc, meter, 'in').id);
+  });
+  it('口径が違う接続口は候補に印をつける', () => {
+    const { doc, tank, toilet } = house();
+    const c = portCandidates(doc, port(doc, tank, 'out').id).find((x) => x.nodeId === port(doc, toilet, 'water').id)!;
+    expect(c.diameterNote).toBe('φ25→φ13');
+  });
+});

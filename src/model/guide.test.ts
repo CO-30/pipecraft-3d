@@ -52,3 +52,11 @@ describe('作業手順ガイド', () => {
     expect(guideSteps({ ...d, underlays: { u1: u } })[1].done).toBe(true);
   });
 });
+
+describe('レビュー対応', () => {
+  it('壁がなくても配管があれば 間取り・設備 の工程で止めない（白紙で描いた工事）', () => {
+    const d = empty();
+    const net = addPolyline(d.network, [{ x: 0, y: 0, z: 100 }, { x: 1000, y: 0, z: 100 }], { system: 'water', diameter: 20 }).net;
+    expect(currentStep(guideSteps({ ...d, network: net })).id).toBe('quantities');
+  });
+});

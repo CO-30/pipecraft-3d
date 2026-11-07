@@ -49,13 +49,13 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
             <button key={l} className={eff === l ? 'on' : ''} onClick={() => setLayout(l)}>{l === '2d' ? '2D' : l === '3d' ? '3D' : '2D+3D'}</button>
           ))}
         </div>
-        <button data-testid="open-estimate" className="est-open" onClick={() => openEst('qty')}>📋<span className="lbl">積算</span></button>
-        {!isWide && <button data-testid="toggle-vis" className={showVis ? 'on' : ''} onClick={() => setShowVis(!showVis)}>👁<span className="lbl">表示</span></button>}
+        <button data-testid="open-estimate" className="est-open" aria-label="積算・見積" onClick={() => openEst('qty')}>📋<span className="lbl">積算</span></button>
+        {!isWide && <button data-testid="toggle-vis" aria-label="表示の切り替え" className={showVis ? 'on' : ''} onClick={() => setShowVis(!showVis)}>👁<span className="lbl">表示</span></button>}
         {guideHidden && <button data-testid="guide-show" onClick={() => setGuideHidden(false)}>手順</button>}
         <button data-testid="open-help-editor" aria-label="使い方" onClick={() => setHelp(true)}>？</button>
         <span className="sum">総延長 <b data-testid="total-length">{unit === 'm' ? (totalLength(net) / 1000).toFixed(2) : Math.round(totalLength(net))}</b>{unit}／<b data-testid="seg-count">{Object.keys(net.segments).length}</b>区間</span>
       </header>
-      <GuideBar onEstimate={openEst} />
+      <GuideBar onEstimate={openEst} onPlan={() => { if (eff === '3d') setLayout(isWide ? 'split' : '2d'); }} />
 
       <div className="body">
         {isWide && (
@@ -109,16 +109,24 @@ function useWide() {
   return wide;
 }
 
-/** つなげない配管などの短いお知らせ（4秒で消える。タップでも消える） */
+/**
+ * つなげない配管などの短いお知らせ。下の図面の操作を邪魔しない（タッチは通り抜ける）。
+ * 長い文ほど長く表示（4秒〜10秒）。✕ で閉じられる
+ */
 function Notice() {
   const notice = useStore((s) => s.notice);
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => useStore.getState().clearNotice(), 4000);
+    const t = setTimeout(() => useStore.getState().clearNotice(), Math.min(10_000, Math.max(4000, notice.length * 90)));
     return () => clearTimeout(t);
   }, [notice]);
   if (!notice) return null;
-  return <div className="toast notice" role="status" data-testid="notice" onClick={() => useStore.getState().clearNotice()}>{notice}</div>;
+  return (
+    <div className="toast notice" role="status" data-testid="notice">
+      {notice}
+      <button className="notice-x" aria-label="お知らせを閉じる" onClick={() => useStore.getState().clearNotice()}>✕</button>
+    </div>
+  );
 }
 
 /** 図面の左上に「いまの操作」を出す。何もない工事では最初にやることを中央に大きく出す */

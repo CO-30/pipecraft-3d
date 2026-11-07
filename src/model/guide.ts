@@ -25,8 +25,9 @@ export function guideSteps(doc: Doc): GuideStep[] {
   const done: Record<GuideStepId, boolean> = {
     info: true,
     drawing: Object.keys(doc.underlays ?? {}).length > 0,
-    layout: Object.keys(doc.building.walls).length > 0,
-    fixtures: Object.keys(doc.fixtures).length > 0,
+    // 配管まで描いてある工事（白紙で描いた等）は、壁・器具がなくても先の工程へ進める
+    layout: Object.keys(doc.building.walls).length > 0 || hasPipes,
+    fixtures: Object.keys(doc.fixtures).length > 0 || hasPipes,
     pipes: hasPipes,
     lengths: hasPipes && measured === segs.length,
     quantities: hasPipes,
