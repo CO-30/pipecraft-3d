@@ -15,7 +15,7 @@ const DO_LABEL: Record<GuideStepId, string> = {
 };
 
 /** 工程の作業を始める（道具を切り替える・積算を開く） */
-export function runStep(id: GuideStepId, onEstimate: (tab: EstimateTab) => void, onInfo: () => void) {
+function runStep(id: GuideStepId, onEstimate: (tab: EstimateTab) => void, onInfo: () => void) {
   const st = useStore.getState();
   const go = (tool: Parameters<typeof st.setTool>[0], notice?: string) => {
     if (st.activeElevationId) st.openElevation(null);

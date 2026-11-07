@@ -8,7 +8,8 @@ test.describe('なぞって描く（外形スケッチ→立体化→寸法入�
     const touch = await touchSession(page);
     await createProject(page, '外形スケッチ', { sketch: true, floors: 2 });
     await show(page, '2D');
-    await expect(page.getByTestId('tool-outline')).toHaveClass(/on/);
+    await expect(page.getByTestId('tool-building')).toHaveClass(/on/);
+    expect(await page.evaluate(() => (window as any).__pc.getState().tool)).toBe('outline');
 
     // ゆがんだ四角を1周（終点は始点の少し手前）
     await strokeMm(page, [[200, 300], [300, 5900], [8100, 6100], [7900, 100], [600, 200]], touch);

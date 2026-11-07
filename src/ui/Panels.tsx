@@ -350,7 +350,8 @@ function FixturePicker() {
   const st = useStore.getState();
   return (
     <>
-      <div className="howto"><b>① 種類を選ぶ → ② 図面の置きたい所をタップ</b><br />置いた器具の丸（接続口）から配管を描けます。屋上タンクは一番上の階に置くと屋上に載ります</div>
+      <div className="howto fixture-howto"><b>① 種類を選ぶ → ② 図面の置きたい所をタップ</b><br />置いた器具の丸（接続口）から配管を描けます。屋上タンクは一番上の階に置くと屋上に載ります</div>
+      <div className="fixture-picker" data-testid="fixture-picker">
       {FIXTURE_GROUPS.map((g) => (
         <div key={g.label} className="fixture-group">
           <div className="fgroup-label">{g.label}</div>
@@ -359,6 +360,7 @@ function FixturePicker() {
           </div>
         </div>
       ))}
+      </div>
     </>
   );
 }

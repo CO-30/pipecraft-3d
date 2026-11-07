@@ -297,3 +297,13 @@ header .lbl { margin-left: 2px; }
 .narrow .pipe-howto { display: none; }
 .narrow .sys-chips { flex-wrap: nowrap; overflow-x: auto; }
 .narrow .sys-chips button { min-height: 40px; flex: none; padding: 0 10px; }
+/* スマホ: 器具の一覧は横に1行（図面を広く残す） */
+.narrow .fixture-howto { display: none; }
+.narrow .fixture-picker { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 10px; width: 100%; padding-bottom: 2px; }
+.narrow .fixture-group { display: flex; align-items: center; gap: 4px; flex: none; margin: 0; }
+.narrow .fgroup-label { writing-mode: vertical-rl; font-size: 10px; margin: 0; max-height: 44px; overflow: hidden; }
+.narrow .fixture-picker .fixture-grid { display: flex; gap: 4px; }
+.narrow .fixture-picker .fixture-grid button { flex: none; min-height: 44px; padding: 0 8px; font-size: 13px; }
+/* スマホ: 下のパネルは高さを固定（選択が変わっても図面が指の下で動かない＝押し間違い防止） */
+.narrow .panel { height: 30dvh; max-height: none; flex: none; }
+.save.saved::before { content: '✓'; } .save.error::before { content: '⚠'; }

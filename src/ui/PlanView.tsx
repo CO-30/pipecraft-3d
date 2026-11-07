@@ -430,6 +430,8 @@ export function PlanView() {
       for (let i = 1; i < pts.length; i++) st.addWall(pts[i - 1], pts[i]);
       return;
     }
+    // 配管の点は 1mm 単位に丸める（画面の拡大率で 2999.9998mm のような半端な値にしない）
+    pts = pts.map((q) => ({ x: Math.round(q.x), y: Math.round(q.y) }));
     const net = st.doc.network;
     const drawZ = g.branchSegId
       ? (net.nodes[net.segments[g.branchSegId].a].pos.z + net.nodes[net.segments[g.branchSegId].b].pos.z) / 2
@@ -666,16 +668,3 @@ export function PlanView() {
   );
 }
 
-/** いまの道具での操作のしかた（図面の左上の案内に表示） */
-export const PLAN_HINTS: Record<string, string> = {
-  select: '配管・器具・壁をタップすると選べます。ドラッグで移動',
-  outline: '建物の外周を指で1周なぞると外壁になります（寸法はあとで入れます）',
-  pipe: '器具の丸（接続口）や配管から指でなぞる → 離した所まで配管。配管の途中から始めると分岐',
-  wall: '指でなぞって壁を描く（角に自動でつながります）',
-  room: '部屋の角から反対の角へ斜めにドラッグ',
-  split: '部屋を横切る線を引いて分割',
-  door: 'ドアを付ける壁をタップ',
-  window: '窓を付ける壁をタップ',
-  fixture: '下で器具を選んで、置きたい所をタップ',
-  underlay: '下で「画像・PDFを追加」→ 2点の実際の長さを入れて縮尺を合わせる',
-};

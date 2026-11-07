@@ -71,7 +71,7 @@ export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string
           <span className="eicon">？</span><span className="etitle">使い方を見る</span><span className="edesc">作業の流れと操作のしかた</span>
         </button>
         <button className="entry" onClick={() => fileRef.current?.click()}>
-          <span className="eicon">⤓</span><span className="etitle">バックアップから読み込み</span><span className="edesc">書き出したファイルを開く</span>
+          <span className="eicon">⤓</span><span className="etitle">バックアップから読み込み</span><span className="edesc">保存しておいたファイルから戻す</span>
         </button>
         <input ref={fileRef} type="file" accept=".json,application/json" hidden data-testid="import-file"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void importFile(f); e.target.value = ''; }} />

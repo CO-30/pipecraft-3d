@@ -535,7 +535,10 @@ describe('器具の接続口へつなぐ', () => {
       return Object.values(net().nodes).find((n) => n.fixtureId === f.id && n.portId === p)!;
     };
     const from = port('waterMeter', 'out').id, to = port('roofTank', 'in').id;
-    s().connectToPort(from, to);
+    const tank = Object.values(s().doc.fixtures).find((x) => x.type === 'roofTank')!.id;
+    s().select({ kind: 'fixture', id: tank });
+    s().connectToPort(to, from);
+    expect(s().selection).toEqual({ kind: 'fixture', id: tank });
     const n = net();
     expect(Object.values(n.segments).some((g) => g.a === from || g.b === from)).toBe(true);
     expect(Object.values(n.segments).some((g) => g.a === to || g.b === to)).toBe(true);

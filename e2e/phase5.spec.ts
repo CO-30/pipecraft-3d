@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PDFDocument, rgb } from 'pdf-lib';
-import { createProject, evidence, freshApp, isMobile, planToScreen, show, state, tap, touchSession } from './helpers';
+import { createProject, evidence, freshApp, isMobile, planToScreen, show, state, tap, touchSession, useTool } from './helpers';
 
 const tapMm = async (page: Page, x: number, y: number, touch: Awaited<ReturnType<typeof touchSession>>) => tap(page, await planToScreen(page, x, y), touch);
 const full = (page: Page) => page.evaluate(() => (window as any).__pc.getState().doc);
@@ -27,7 +27,7 @@ test.describe('Phase 5 図面読み込み・実用化', () => {
     await createProject(page, '下敷きテスト', { blank: true });
     await show(page, '2D');
     const touch = await touchSession(page);
-    await page.getByTestId('tool-underlay').click();
+    await useTool(page, 'underlay');
     await page.getByTestId('ul-image-file').setInputFiles({ name: '図面.png', mimeType: 'image/png', buffer: await makeImage(page, 400, 300) });
     await expect(page.locator('[data-underlay]')).toHaveCount(1);
     await expect(page.getByTestId('ul-status')).toContainText('縮尺未確定');
@@ -74,7 +74,7 @@ test.describe('Phase 5 図面読み込み・実用化', () => {
     for (let i = 0; i < 2; i++) { const p = pdf.addPage([842, 595]); p.drawRectangle({ x: 50, y: 50, width: 700, height: 450, borderColor: rgb(0, 0, 0), borderWidth: 3 }); }
     await createProject(page, 'PDFテスト', { blank: true });
     await show(page, '2D');
-    await page.getByTestId('tool-underlay').click();
+    await useTool(page, 'underlay');
     await page.getByTestId('ul-pdf-file').setInputFiles({ name: '平面図.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()) });
     await expect(page.getByTestId('pdf-pages')).toContainText('2ページ');
     await page.getByTestId('pdf-pages').getByRole('button', { name: 'このページを取り込む' }).click();
@@ -95,7 +95,7 @@ test.describe('Phase 5 図面読み込み・実用化', () => {
 
     await createProject(page, '航空写真テスト', { blank: true });
     await show(page, '2D');
-    await page.getByTestId('tool-underlay').click();
+    await useTool(page, 'underlay');
     await page.getByTestId('ul-site').click();
     await page.getByTestId('site-q').fill('那覇市テスト1-1');
     await page.getByTestId('site-search').click();

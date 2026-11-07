@@ -10,7 +10,7 @@ import type { SaveState } from './autosave';
 import { EstimateBar, EstimateScreen, type EstTab } from './EstimateScreen';
 import { GuideBar, type EstimateTab } from './GuideBar';
 import { HelpDialog } from './HelpDialog';
-import { PLAN_HINTS } from './PlanView';
+import { PLAN_HINTS } from './hints';
 import { usePrefs } from './prefs';
 import { DimWizard } from './DimWizard';
 
@@ -40,7 +40,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
       <header>
         <button className="back" data-testid="back-home" onClick={onBack} aria-label="工事の一覧へ戻る">‹<span className="wide-only"> 一覧</span></button>
         <strong className="pname" data-testid="project-name">{meta?.name}</strong>
-        <span data-testid="save-state" className={`save ${save}`} title={save === 'saved' ? '自動で保存されています' : undefined}>{save === 'saved' ? '✓保存済み' : save === 'saving' ? '保存中…' : '⚠保存失敗'}</span>
+        <span data-testid="save-state" className={`save ${save}`} title={save === 'saved' ? '自動で保存されています' : undefined}>{save === 'saved' ? '保存済み' : save === 'saving' ? '保存中…' : '保存失敗'}</span>
         <div className="seg-btns">
           {(['2d', 'split', '3d'] as Layout[]).filter((l) => isWide || l !== 'split').map((l) => (
             <button key={l} className={eff === l ? 'on' : ''} onClick={() => setLayout(l)}>{l === '2d' ? '2D' : l === '3d' ? '3D' : '2D+3D'}</button>
