@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { PlanView } from './PlanView';
 import { ElevationView } from './ElevationView';
 // 3D（three.js）は大きいので必要になった時に読み込む
@@ -32,6 +32,9 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
   const elevId = useStore((s) => s.activeElevationId);
   const dimOpen = useStore((s) => s.dimWizard !== null);
   const eff: Layout = !isWide && layout === 'split' ? '2d' : layout;
+  // スマホ: 選ぶものが変わったら下のパネルを先頭へ（前の選択のスクロール位置のまま中途半端に見えないように）
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => { panelRef.current?.scrollTo?.({ top: 0 }); }, [sel?.kind, sel?.id]);
   // 立面図を開いたら、3Dだけの表示から図面の見える表示へ
   useEffect(() => { if (elevId && layout === '3d') setLayout(isWide ? 'split' : '2d'); }, [elevId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -79,7 +82,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
       </div>
 
       {!isWide && (
-        <section className="panel">
+        <section className="panel" ref={panelRef}>
           {!sel && !elevId && !dimOpen && <FloorBar compact />}
           {!dimOpen && <SelectionBar />}
           {dimOpen ? <DimWizard /> : <PropertyPanel />}

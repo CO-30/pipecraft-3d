@@ -307,3 +307,4 @@ header .lbl { margin-left: 2px; }
 /* スマホ: 下のパネルは高さを固定（選択が変わっても図面が指の下で動かない＝押し間違い防止） */
 .narrow .panel { height: 30dvh; max-height: none; flex: none; }
 .save.saved::before { content: '✓'; } .save.error::before { content: '⚠'; }
+.narrow .panel > .sel-bar { position: sticky; top: -6px; z-index: 3; }
