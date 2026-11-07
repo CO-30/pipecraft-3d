@@ -4,8 +4,7 @@
       "/opt/node22/bin/node",
       "/home/claude/pipecraft-3d/node_modules/.bin/playwright",
       "test",
-      "e2e/phase4.spec.ts:91",
-      "e2e/phase3.spec.ts:23"
+      "e2e/beginner.spec.ts"
     ],
     "configFile": "/home/claude/pipecraft-3d/playwright.config.ts",
     "rootDir": "/home/claude/pipecraft-3d/e2e",
@@ -229,20 +228,20 @@
   },
   "suites": [
     {
-      "title": "phase3.spec.ts",
-      "file": "phase3.spec.ts",
+      "title": "beginner.spec.ts",
+      "file": "beginner.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Phase 3 配管・配線",
-          "file": "phase3.spec.ts",
-          "line": 20,
+          "title": "初心者シナリオ",
+          "file": "beginner.spec.ts",
+          "line": 29,
           "column": 6,
           "specs": [
             {
-              "title": "端点を別の配管の上へドラッグして接続 → 切断 → Undo で順に元に戻る",
+              "title": "新規作成 → 間取り → メーター・屋上タンク・器具 → 配管 → 分岐・変更・削除・戻す → 実測 → 集計 → 3D → 保存・再読込",
               "ok": true,
               "tags": [],
               "tests": [
@@ -257,12 +256,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1970,
+                      "duration": 25244,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-07T22:23:24.578Z",
+                      "startTime": "2026-11-07T22:56:28.741Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -280,12 +279,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2227,
+                      "duration": 10925,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-07T22:23:29.978Z",
+                      "startTime": "2026-11-07T22:56:57.614Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -303,12 +302,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2149,
+                      "duration": 11632,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-07T22:23:35.254Z",
+                      "startTime": "2026-11-07T22:57:11.078Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -316,30 +315,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "a64b8b583ae028ac2231-e24ad3c2424f5ee39f83",
-              "file": "phase3.spec.ts",
-              "line": 23,
+              "id": "efec367fdff22baa4e8d-e3c55500a372333dc781",
+              "file": "beginner.spec.ts",
+              "line": 32,
               "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "phase4.spec.ts",
-      "file": "phase4.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Phase 4 自動積算",
-          "file": "phase4.spec.ts",
-          "line": 12,
-          "column": 6,
-          "specs": [
+            },
             {
-              "title": "積算設定は保存され、再読み込み後も合計が同じ",
+              "title": "図面・写真から始める（テスト2）と、建物の道具の切り替え",
               "ok": true,
               "tags": [],
               "tests": [
@@ -354,12 +336,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2688,
+                      "duration": 1429,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-07T22:23:26.784Z",
+                      "startTime": "2026-11-07T22:56:54.205Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -377,12 +359,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2379,
+                      "duration": 875,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-07T22:23:32.423Z",
+                      "startTime": "2026-11-07T22:57:08.754Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -400,12 +382,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2317,
+                      "duration": 927,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-07T22:23:37.625Z",
+                      "startTime": "2026-11-07T22:57:22.932Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -413,9 +395,89 @@
                   "status": "expected"
                 }
               ],
-              "id": "598377eb1f598f6a1945-29da845e7d7d12cac6da",
-              "file": "phase4.spec.ts",
-              "line": 91,
+              "id": "efec367fdff22baa4e8d-98ce46202b0480a61aa0",
+              "file": "beginner.spec.ts",
+              "line": 163,
+              "column": 3
+            },
+            {
+              "title": "サンプル工事と使い方",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1425,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-07T22:56:55.650Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 947,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-07T22:57:09.640Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 902,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-07T22:57:23.874Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "efec367fdff22baa4e8d-65b86c6173cda98eaf11",
+              "file": "beginner.spec.ts",
+              "line": 189,
               "column": 3
             }
           ]
@@ -425,9 +487,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-07T22:23:20.222Z",
-    "duration": 19831.625,
-    "expected": 6,
+    "startTime": "2026-11-07T22:56:24.447Z",
+    "duration": 60435.616,
+    "expected": 9,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
