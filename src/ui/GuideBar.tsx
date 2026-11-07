@@ -2,7 +2,7 @@
  * 作業手順ガイド（図面の上の1行）。いまの工程・次にやること・その作業を始めるボタン。
  * タップで8工程の一覧を開き、どの工程へも移れる（経験者は自由に操作できる）。
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import { currentStep, guideSteps, type GuideStepId } from '../model/guide';
 import { usePrefs } from './prefs';
@@ -95,6 +95,11 @@ export function GuideBar({ onEstimate, onPlan }: { onEstimate: (tab: EstimateTab
 }
 
 function InfoDialog({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   const meta = useStore((s) => s.meta);
   const [name, setName] = useState(meta?.name ?? '');
   const [address, setAddress] = useState(meta?.address ?? '');
@@ -102,7 +107,7 @@ function InfoDialog({ onClose }: { onClose: () => void }) {
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="工事名・現場情報">
       <form className="modal" onSubmit={(e) => { e.preventDefault(); if (name.trim()) { useStore.getState().renameProject(name.trim(), address.trim() || undefined); onClose(); } }}>
         <h2>工事名・現場情報</h2>
-        <label className="field">工事名<input data-testid="info-name" required value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="field">工事名<input data-testid="info-name" autoFocus required value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="field">住所（任意）<input value={address} onChange={(e) => setAddress(e.target.value)} /></label>
         <div className="modal-btns">
           <button type="button" className="big" onClick={onClose}>やめる</button>

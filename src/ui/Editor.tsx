@@ -156,7 +156,7 @@ function PlanCoach() {
   if (!text || closed === text) return null;
   return (
     <div className={`plan-coach ${pendingMerge ? 'warn' : ''}`} data-testid="plan-coach" onClick={() => setClosed(text)} role="status">
-      {text}<span className="pc-x" aria-label="閉じる">✕</span>
+      {text}<button className="pc-x" data-testid="coach-close" aria-label="案内を閉じる" onClick={(e) => { e.stopPropagation(); setClosed(text); }}>✕</button>
     </div>
   );
 }

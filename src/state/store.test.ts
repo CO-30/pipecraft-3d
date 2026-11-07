@@ -548,3 +548,25 @@ describe('器具の接続口へつなぐ', () => {
     expect(Object.keys(net().segments)).toHaveLength(0);
   });
 });
+
+describe('器具の接続口へつなぐ（お知らせ）', () => {
+  it('排水をつないだら勾配の設定を案内する', () => {
+    s().setFixtureType('washbasin'); s().placeFixtureAt({ x: 1000, y: 1000 });
+    s().setFixtureType('washer'); s().placeFixtureAt({ x: 4000, y: 1000 });
+    const port = (t: string, p: string) => {
+      const f = Object.values(s().doc.fixtures).find((x) => x.type === t)!;
+      return Object.values(net().nodes).find((n) => n.fixtureId === f.id && n.portId === p)!.id;
+    };
+    s().connectToPort(port('washbasin', 'drain'), port('washer', 'drain'));
+    expect(Object.keys(net().segments).length).toBeGreaterThan(0);
+    expect(s().notice).toContain('勾配');
+  });
+  it('つなげない相手なら何もせず理由を知らせる', () => {
+    s().setFixtureType('washbasin'); s().placeFixtureAt({ x: 1000, y: 1000 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const ids = Object.values(net().nodes).filter((n) => n.fixtureId === f.id).map((n) => n.id);
+    s().connectToPort(ids[0], ids[1]);
+    expect(Object.keys(net().segments)).toHaveLength(0);
+    expect(s().notice).toBeTruthy();
+  });
+});

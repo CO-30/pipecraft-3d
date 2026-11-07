@@ -2,7 +2,7 @@
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
+import { activeFloorElevation, branchDeletionPreview, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
@@ -319,9 +319,18 @@ export function PropertyPanel() {
       {tool === 'pipe' ? (
         <>
           <div className="howto pipe-howto">① 下で種類を選ぶ　② 器具の<b>丸（接続口）</b>から指でなぞる　③ 終わりで指を離す<br /><span className="small">配管の途中からなぞると分岐。曲がり角は自動で直角になります</span></div>
-          <div className="sys-chips" role="radiogroup" aria-label="配管の種類">
+          <div className="sys-chips" role="radiogroup" aria-label="配管の種類" onKeyDown={(e) => {
+            const ids = SYSTEMS.slice(0, 5).map((x) => x.id);
+            const i = ids.indexOf(drawAttrs.system);
+            const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+            if (!d) return;
+            e.preventDefault();
+            const next = ids[(Math.max(0, i) + d + ids.length) % ids.length];
+            st.setDrawAttrs({ system: next });
+            (e.currentTarget.querySelector(`[data-testid="sys-${next}"]`) as HTMLElement | null)?.focus();
+          }}>
             {SYSTEMS.slice(0, 5).map((x) => (
-              <button key={x.id} role="radio" aria-checked={drawAttrs.system === x.id} data-testid={`sys-${x.id}`} className={drawAttrs.system === x.id ? 'on' : ''}
+              <button key={x.id} role="radio" aria-checked={drawAttrs.system === x.id} tabIndex={drawAttrs.system === x.id || (x.id === 'water' && !SYSTEMS.slice(0, 5).some((y) => y.id === drawAttrs.system)) ? 0 : -1} data-testid={`sys-${x.id}`} className={drawAttrs.system === x.id ? 'on' : ''}
                 style={{ '--sys': systemColor(x.id) } as React.CSSProperties} onClick={() => st.setDrawAttrs({ system: x.id })}>
                 <i className="sys-dot" />{x.label}
               </button>
@@ -661,7 +670,10 @@ export function VisibilityPanel({ compact = false }: { compact?: boolean }) {
   return (
     <div className="vispanel" data-testid="vis-panel">
       <div className="vis-presets" role="group" aria-label="表示の切り替え">
-        {VIS_PRESETS.map((p) => <button key={p.id} data-testid={`vis-preset-${p.id}`} onClick={() => st.setVisibilityPreset(p.id)}>{p.label}</button>)}
+        {VIS_PRESETS.map((p) => {
+          const on = VIS_CATEGORIES.every((c) => presetVisibility(p.id)[c.id] === vis[c.id]);
+          return <button key={p.id} data-testid={`vis-preset-${p.id}`} aria-pressed={on} className={on ? 'on' : ''} onClick={() => st.setVisibilityPreset(p.id)}>{p.label}</button>;
+        })}
       </div>
       <details className="vis-details" open={!compact}>
       <summary>部分ごとに切り替える</summary>
@@ -818,7 +830,9 @@ export function SelectionBar() {
 /** 器具の接続口へつなぐ候補（別の階・屋上も）。押すと仮のルートで配管を作る */
 function PortConnect({ nodeId, title }: { nodeId: string; title?: string }) {
   const doc = useStore((s) => s.doc);
-  const cands = useMemo(() => portCandidates(doc, nodeId, 4), [doc, nodeId]);
+  const dragging = useStore((s) => s.dragBase !== null);
+  // ドラッグ中は計算しない（動かすたびに全接続口を調べると重くなる）
+  const cands = useMemo(() => (dragging ? [] : portCandidates(doc, nodeId, 4)), [doc, nodeId, dragging]);
   if (!cands.length) return null;
   return (
     <div className="port-connect" data-testid="port-connect">

@@ -248,3 +248,25 @@ test.describe('レビュー対応', () => {
     });
   }
 });
+
+test('キーボード: 作り方・配管の種類は矢印で選べる。表示プリセットは選択中が分かる。案内は✕で閉じる', async ({ page }) => {
+  test.skip(isMobile(), 'PC のみ');
+  await freshApp(page);
+  await page.getByTestId('new-project').click();
+  await page.getByTestId('np-name').fill('キーボード');
+  await page.getByTestId('np-mode-sketch').focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('np-mode-dims')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('np-mode-dims')).toBeFocused();
+  await page.getByTestId('np-create').click();
+  await page.getByTestId('tool-pipe').click();
+  await page.getByTestId('sys-water').focus();
+  await page.keyboard.press('ArrowRight');
+  expect(await page.evaluate(() => (window as any).__pc.getState().drawAttrs.system)).toBe('hotWater');
+  await expect(page.getByTestId('vis-preset-all')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('vis-preset-pipes').click();
+  await expect(page.getByTestId('vis-preset-pipes')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('vis-preset-all')).toHaveAttribute('aria-pressed', 'false');
+  await page.getByTestId('coach-close').click();
+  await expect(page.getByTestId('plan-coach')).toHaveCount(0);
+});

@@ -324,3 +324,7 @@ header .lbl { margin-left: 2px; }
 /* お知らせは図面の操作を邪魔しない（タッチは下へ通す）。✕ だけ押せる */
 .toast.notice { pointer-events: none; padding-right: 40px; }
 .toast.notice .notice-x { pointer-events: auto; position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-height: 32px; width: 32px; padding: 0; border: 0; background: transparent; color: #fff; font-size: 14px; }
+.plan-coach .pc-x { border: 0; background: transparent; min-height: 28px; width: 28px; padding: 0; top: 2px; right: 2px; }
+.vis-presets button.on { background: #1e3a8a; border-color: #1e3a8a; }
+/* スマホの器具の見出しは横書きで小さく（縦書きだと切れていた） */
+.narrow .fgroup-label { writing-mode: horizontal-tb; max-height: none; max-width: 3.6em; line-height: 1.2; white-space: normal; font-size: 10px; }

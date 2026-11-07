@@ -40,9 +40,18 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
         <label className="field">工事名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
         <label className="field">住所（任意）<input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
         <div className="field-label">建物の作り方を選んでください</div>
-        <div className="mode-cards" role="radiogroup" aria-label="建物の作り方">
+        <div className="mode-cards" role="radiogroup" aria-label="建物の作り方" onKeyDown={(e) => {
+          const ids = MODES.map((m) => m.id);
+          const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+          if (!d) return;
+          e.preventDefault();
+          const i = ids.indexOf(v.mode as typeof ids[number]);
+          const next = ids[(Math.max(0, i) + d + ids.length) % ids.length];
+          setV({ ...v, mode: next });
+          (e.currentTarget.querySelector(`[data-testid="np-mode-${next}"]`) as HTMLElement | null)?.focus();
+        }}>
           {MODES.map((m) => (
-            <button key={m.id} type="button" role="radio" aria-checked={v.mode === m.id} data-testid={`np-mode-${m.id}`} className={`mode-card ${v.mode === m.id ? 'on' : ''}`} onClick={() => setV({ ...v, mode: m.id })}>
+            <button key={m.id} type="button" role="radio" aria-checked={v.mode === m.id} tabIndex={v.mode === m.id || (v.mode === 'blank' && m.id === 'sketch') ? 0 : -1} data-testid={`np-mode-${m.id}`} className={`mode-card ${v.mode === m.id ? 'on' : ''}`} onClick={() => setV({ ...v, mode: m.id })}>
               <span className="mtitle">{m.icon} {m.title}{m.recommended && <span className="badge">おすすめ</span>}</span>
               <span className="mdesc">{m.desc}</span>
             </button>

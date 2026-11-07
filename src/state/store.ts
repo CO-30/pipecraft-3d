@@ -21,7 +21,7 @@ import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
-import { applySlope } from '../model/slope';
+import { applySlope, isDrain } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
@@ -1032,16 +1032,23 @@ export const useStore = create<State>((set, get) => {
     setVisibilityPreset: (p) => set({ visibility: presetVisibility(p) }),
     connectToPort: (fromId, toId) => {
       const { doc } = get();
-      if (!portCandidates(doc, fromId, Infinity).some((c) => c.nodeId === toId)) return;
+      if (!portCandidates(doc, fromId, Infinity).some((c) => c.nodeId === toId)) {
+        set({ notice: 'この接続口にはつなげません（同じ器具・種類や向きが合わない・すでにつながっている）' });
+        return;
+      }
       const attrs = nodeAttrs(doc.network, doc.fixtures, fromId).attrs;
       if (!attrs) return;
       const prev = get().selection;
       drawCore(routeToPort(doc.network.nodes[fromId].pos, doc.network.nodes[toId].pos), attrs, { startNodeId: fromId, endNodeId: toId });
-      if (get().doc.network === doc.network) return;
+      if (get().doc.network === doc.network) {
+        if (!get().notice) set({ notice: 'ルートを作れませんでした。配管ツールでなぞってつないでください' });
+        return;
+      }
       // 器具のパネルからつないだときは器具を選んだままにする（続けて別の接続口もつなげるように）
       const toPort = portCandidates(doc, fromId, Infinity).find((c) => c.nodeId === toId);
       const dia = toPort?.diameterNote ? `。口径が違います（${toPort.diameterNote}）。径違いの継手を確認してください` : '';
-      set({ notice: `仮のルートでつなぎました。点をドラッグすると経路を直せます${dia}`, ...(prev?.kind === 'fixture' ? { selection: prev } : {}) });
+      const slope = isDrain(attrs.system) ? '。排水は区間を選んで「勾配」を設定してください' : '';
+      set({ notice: `仮のルートでつなぎました。点をドラッグすると経路を直せます${dia}${slope}`, ...(prev?.kind === 'fixture' ? { selection: prev } : {}) });
     },
     setElementVisibility: (id, mode) => {
       const hiddenIds = get().hiddenIds.filter((x) => x !== id);

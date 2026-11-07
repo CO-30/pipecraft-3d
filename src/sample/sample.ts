@@ -13,6 +13,19 @@ export const SAMPLE_NAME = 'サンプル工事（練習用）';
 const v = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 
 export function buildSample(meta: ProjectMeta): void {
+  // 利用者が選んでいた器具の種類・配管の種類と口径は、作り終えたら元に戻す
+  const keep = { fixtureType: useStore.getState().fixtureType, drawAttrs: useStore.getState().drawAttrs };
+  try {
+    build(meta);
+  } catch (e) {
+    useStore.getState().closeProject(); // 作りかけの工事を保存させない
+    throw e;
+  } finally {
+    useStore.setState(keep);
+  }
+}
+
+function build(meta: ProjectMeta): void {
   const st = () => useStore.getState();
   const building = createBuildingFromDims({ width: 9100, depth: 7280, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
   st().newDoc({ building, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {} }, meta);
@@ -65,7 +78,6 @@ export function buildSample(meta: ProjectMeta): void {
   st().setDrawAttrs({ system: 'sewage', diameter: 75 });
   st().drawPolyline([ts.pos, v(ts.pos.x, ts.pos.y, -400), v(ts.pos.x, -800, -400)], { startNodeId: ts.id });
 
-  // 描画の初期値を戻し、練習用なので履歴は空にする（「戻す」でサンプルが消えないように）
-  st().setDrawAttrs({ system: 'water', diameter: 20 });
+  // 練習用なので履歴は空にする（「戻す」でサンプルが消えないように）
   useStore.setState({ past: [], future: [], selection: null, tool: 'select', notice: null });
 }

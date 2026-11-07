@@ -47,3 +47,23 @@ describe('サンプル工事', () => {
     expect(s().meta?.id).toBe('p2');
   });
 });
+
+describe('サンプル工事（レビュー対応）', () => {
+  it('作った後も、器具の種類・配管の種類と口径の選択は作る前のまま', () => {
+    s().setFixtureType('washer');
+    s().setDrawAttrs({ system: 'hotWater', diameter: 13 });
+    buildSample({ id: 'p3', name: SAMPLE_NAME, createdAt: 3 });
+    expect(s().fixtureType).toBe('washer');
+    expect(s().drawAttrs).toMatchObject({ system: 'hotWater', diameter: 13 });
+  });
+  it('途中で失敗したら作りかけの工事を残さない', () => {
+    const orig = s().placeFixtureAt;
+    useStore.setState({ placeFixtureAt: () => { throw new Error('test'); } });
+    try {
+      expect(() => buildSample({ id: 'p4', name: SAMPLE_NAME, createdAt: 4 })).toThrow();
+      expect(s().meta).toBeNull();
+    } finally {
+      useStore.setState({ placeFixtureAt: orig });
+    }
+  });
+});
