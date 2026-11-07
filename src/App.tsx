@@ -11,6 +11,7 @@ import { emptyNetwork } from './model/network';
 import { newId } from './model/id';
 import './App.css';
 import { UpdatePrompt } from './ui/UpdatePrompt';
+import { buildSample, SAMPLE_NAME } from './sample/sample';
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
@@ -20,28 +21,40 @@ export default function App() {
   const open = async (id: string) => {
     try {
       const r = await repo.loadWithStatus(id);
-      if (!r) throw new Error('現場が見つかりません');
+      if (!r) throw new Error('工事が見つかりません');
       useStore.getState().openProject(r.project);
       setScreen('editor');
       if (r.recovered) setError('保存データの一部が壊れていたため、直前に保存した版から復旧しました。内容を確認してください');
     } catch (e) {
-      setError('現場を開けませんでした: ' + (e as Error).message);
+      setError('工事を開けませんでした: ' + (e as Error).message);
     }
   };
 
   const create = async (v: NewProjectInput) => {
     const doc = v.mode === 'dims'
       ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} }
-      : v.mode === 'sketch' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
+      : v.mode === 'sketch' || v.mode === 'photo' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();
     st.newDoc(doc, meta);
     if (v.mode === 'sketch') st.setTool('outline');
+    if (v.mode === 'photo') st.setTool('underlay');
     try {
       await repo.save(st.toProjectData()!);
       setScreen('editor');
     } catch (e) {
       setError('保存できませんでした: ' + (e as Error).message);
+    }
+  };
+
+  /** サンプル工事を新しく作って開く（毎回別の工事として保存するので壊しても良い） */
+  const sample = async () => {
+    try {
+      buildSample({ id: newId('p'), name: SAMPLE_NAME, createdAt: Date.now() });
+      await repo.save(useStore.getState().toProjectData()!);
+      setScreen('editor');
+    } catch (e) {
+      setError('サンプルを開けませんでした: ' + (e as Error).message);
     }
   };
 
@@ -55,7 +68,7 @@ export default function App() {
   return (
     <>
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}（タップで閉じる）</div>}
-      {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} /> : <Editor save={save} onBack={back} />}
+      {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} onSample={sample} /> : <Editor save={save} onBack={back} />}
       <UpdatePrompt />
     </>
   );

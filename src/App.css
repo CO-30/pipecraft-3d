@@ -177,3 +177,40 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .fixture-group { margin-top: 6px; }
 .fgroup-label { font-size: 12px; color: #64748b; margin: 4px 0; font-weight: 600; }
 .howto { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.6; margin-bottom: 6px; }
+
+/* ---- ホーム: 入口 ---- */
+.home-lead { margin: -6px 0 14px; color: #374151; line-height: 1.6; }
+.home-entry { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.entry { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto; align-items: center; text-align: left; padding: 12px; min-height: 76px; border-radius: 14px; column-gap: 10px; }
+.entry .eicon { grid-row: 1 / 3; width: 44px; height: 44px; border-radius: 12px; background: #f1f5f9; display: grid; place-items: center; font-size: 22px; }
+.entry .etitle { font-size: 16px; font-weight: 700; }
+.entry .edesc { font-size: 12px; color: #6b7280; }
+.entry.primary .eicon { background: rgba(255,255,255,0.2); }
+.entry.primary .edesc { color: #dbeafe; }
+.home-sec { font-size: 15px; margin: 4px 0 8px; color: #374151; }
+@media (max-width: 520px) { .home-entry { grid-template-columns: 1fr; } .entry { min-height: 64px; } }
+
+/* ---- 新規作成: 作り方カード ---- */
+.field-label { font-size: 14px; font-weight: 600; }
+.mode-cards { display: grid; gap: 8px; }
+.mode-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; min-height: 60px; }
+.mode-card.on { background: #eff6ff; color: #111827; border: 2px solid #2563eb; }
+.mode-card .mtitle { font-weight: 700; font-size: 15px; }
+.mode-card .mdesc { font-size: 12px; color: #4b5563; }
+.badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #16a34a; color: #fff; font-size: 11px; font-weight: 600; vertical-align: 2px; }
+.linkish { border: none; background: none; color: #2563eb; text-decoration: underline; min-height: 32px; align-self: flex-start; padding: 0; font-size: 13px; }
+.linkish.on { background: none; color: #1d4ed8; font-weight: 700; border: none; }
+
+/* ---- 使い方 ---- */
+.modal.help { width: min(680px, 100%); }
+.help-head { display: flex; justify-content: space-between; align-items: center; }
+.modal.help h3 { margin: 8px 0 0; font-size: 15px; }
+.help-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+.help-steps li b { display: block; }
+.help-steps li span { color: #4b5563; font-size: 13px; line-height: 1.6; }
+.help-dl { margin: 0; display: grid; gap: 4px; }
+.help-dl div { display: grid; grid-template-columns: 7em 1fr; gap: 8px; font-size: 13px; line-height: 1.6; }
+.help-dl dt { font-weight: 700; }
+.help-dl dd { margin: 0; color: #4b5563; }
+.home-head { flex-wrap: wrap; }
+@media (max-width: 520px) { .home-head .sub { flex-basis: 100%; font-size: 13px; } }
