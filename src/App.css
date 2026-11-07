@@ -294,3 +294,6 @@ header .lbl { margin-left: 2px; }
 .vis-presets button { padding: 0 4px; font-size: 13px; }
 .vis-details summary { cursor: pointer; font-size: 13px; color: #475569; padding: 6px 0; }
 .vis-details[open] { display: flex; flex-direction: column; gap: 4px; }
+.narrow .pipe-howto { display: none; }
+.narrow .sys-chips { flex-wrap: nowrap; overflow-x: auto; }
+.narrow .sys-chips button { min-height: 40px; flex: none; padding: 0 10px; }
