@@ -2,7 +2,7 @@
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
 import { useEffect, useMemo, useState } from 'react';
-import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
+import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
@@ -121,6 +121,11 @@ export function PropertyPanel() {
       <div className="props">
         <div className="ptitle">{vertical ? '立て管' : '配管区間'} <b data-testid="sel-length">{Math.round(segmentLength(net, seg.id))}</b>mm
           {seg.measuredLength !== undefined && <span className="muted small">（実測 {Math.round(seg.measuredLength)}mm{seg.measuredApprox ? '・概算' : ''}）</span>}</div>
+        {seg.measuredLength === undefined && <button className="primary" data-testid="jump-measure" onClick={() => {
+          const el = document.querySelector<HTMLInputElement>('[data-testid="seg-measured"]');
+          el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          el?.focus();
+        }}>📏 実測長を入れる</button>}
         <label className="field inline">種類<select data-testid="seg-system" value={seg.system} onChange={(e) => st.updateSegment(seg.id, { system: e.target.value as SystemType })}>
           {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         <label className="field inline">口径<select data-testid="seg-diameter" value={seg.diameter} onChange={(e) => st.updateSegment(seg.id, { diameter: Number(e.target.value) })}>
@@ -310,7 +315,16 @@ export function PropertyPanel() {
       {tool === 'fixture' && <FixturePicker />}
       {tool === 'pipe' ? (
         <>
-          <label className="field inline">種類<select data-testid="draw-system" value={drawAttrs.system} onChange={(e) => st.setDrawAttrs({ system: e.target.value as SystemType })}>
+          <div className="howto pipe-howto">① 下で種類を選ぶ　② 器具の<b>丸（接続口）</b>から指でなぞる　③ 終わりで指を離す<br /><span className="small">配管の途中からなぞると分岐。曲がり角は自動で直角になります</span></div>
+          <div className="sys-chips" role="radiogroup" aria-label="配管の種類">
+            {SYSTEMS.slice(0, 5).map((x) => (
+              <button key={x.id} role="radio" aria-checked={drawAttrs.system === x.id} data-testid={`sys-${x.id}`} className={drawAttrs.system === x.id ? 'on' : ''}
+                style={{ '--sys': systemColor(x.id) } as React.CSSProperties} onClick={() => st.setDrawAttrs({ system: x.id })}>
+                <i className="sys-dot" />{x.label}
+              </button>
+            ))}
+          </div>
+          <label className="field inline">{SYSTEMS.slice(0, 5).some((x) => x.id === drawAttrs.system) ? 'その他' : '種類'}<select data-testid="draw-system" value={drawAttrs.system} onChange={(e) => st.setDrawAttrs({ system: e.target.value as SystemType })}>
             {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
           <label className="field inline">口径<select value={drawAttrs.diameter} onChange={(e) => st.setDrawAttrs({ diameter: Number(e.target.value) })}>
             {DIAMETERS.map((d) => <option key={d} value={d}>φ{d}</option>)}</select></label>
@@ -631,12 +645,21 @@ function ElevationChips() {
   );
 }
 
-export function VisibilityPanel() {
+const VIS_PRESETS: { id: VisPreset; label: string }[] = [
+  { id: 'all', label: 'すべて' }, { id: 'pipes', label: '配管だけ' }, { id: 'fixtures', label: '設備だけ' }, { id: 'building', label: '建物だけ' },
+];
+
+export function VisibilityPanel({ compact = false }: { compact?: boolean }) {
   const vis = useStore((s) => s.visibility);
   const nHidden = useStore((s) => s.hiddenIds.length + s.ghostIds.length);
   const st = useStore.getState();
   return (
     <div className="vispanel" data-testid="vis-panel">
+      <div className="vis-presets" role="group" aria-label="表示の切り替え">
+        {VIS_PRESETS.map((p) => <button key={p.id} data-testid={`vis-preset-${p.id}`} onClick={() => st.setVisibilityPreset(p.id)}>{p.label}</button>)}
+      </div>
+      <details className="vis-details" open={!compact}>
+      <summary>部分ごとに切り替える</summary>
       {VIS_CATEGORIES.map((c) => (
         <div key={c.id} className="visrow">
           <span>{c.label}</span>
@@ -649,6 +672,7 @@ export function VisibilityPanel() {
           </div>
         </div>
       ))}
+      </details>
       {nHidden > 0 && <button onClick={() => st.resetElementVisibility()}>個別に隠した{nHidden}件を元に戻す</button>}
       <SectionControls />
     </div>
@@ -739,3 +763,35 @@ export function Toolbar() {
 }
 
 export { systemLabel };
+
+/** 何を選んでいるかを設定パネルの上に出す。✕ で選択をやめる */
+export function SelectionBar() {
+  const sel = useStore((s) => s.selection);
+  const doc = useStore((s) => s.doc);
+  if (!sel) return null;
+  const { building: b, network: net } = doc;
+  let label = '';
+  let color: string | undefined;
+  if (sel.kind === 'segment' && net.segments[sel.id]) {
+    const g = net.segments[sel.id];
+    label = `${systemLabel(g.system)}の配管 φ${g.diameter}`;
+    color = systemColor(g.system);
+  } else if (sel.kind === 'node' && net.nodes[sel.id]) {
+    const n = net.nodes[sel.id];
+    const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
+    label = fx ? `${FIXTURE_CATALOG[fx.type].label}の接続口` : '配管の点（曲がり・分岐・端）';
+  } else if (sel.kind === 'fixture' && doc.fixtures[sel.id]) label = FIXTURE_CATALOG[doc.fixtures[sel.id].type].label;
+  else if (sel.kind === 'wall' && b.walls[sel.id]) label = b.walls[sel.id].kind === 'exterior' ? '外壁' : '内壁';
+  else if (sel.kind === 'corner') label = '壁の角';
+  else if (sel.kind === 'opening' && b.openings[sel.id]) label = b.openings[sel.id].type === 'door' ? 'ドア' : '窓';
+  else if (sel.kind === 'room' && b.rooms[sel.id]) label = `部屋「${b.rooms[sel.id].name}」`;
+  else if (sel.kind === 'member') label = '梁・軒・バルコニー・階段';
+  else return null;
+  return (
+    <div className="sel-bar" data-testid="sel-bar">
+      {color && <i className="sys-dot" style={{ background: color }} />}
+      <span>選択中: <b>{label}</b></span>
+      <button data-testid="sel-clear" onClick={() => useStore.getState().select(null)}>✕ 選択をやめる</button>
+    </div>
+  );
+}

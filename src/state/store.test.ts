@@ -499,3 +499,27 @@ describe('共通ストア: 下敷き・写真の開口部', () => {
     expect(s().past.length).toBe(h + 1);
   });
 });
+
+describe('表示のプリセット', () => {
+  it('配管だけ: 配管は表示、建物と器具は半透明、天井は非表示', () => {
+    s().setVisibilityPreset('pipes');
+    const v = s().visibility;
+    expect(v.pipes).toBe('show');
+    expect(v.fixtures).toBe('ghost');
+    expect(v.exteriorWall).toBe('ghost');
+    expect(v.floor).toBe('ghost');
+    expect(v.ceiling).toBe('hide');
+  });
+  it('設備だけ・建物だけ・すべて', () => {
+    s().setVisibilityPreset('fixtures');
+    expect(s().visibility.fixtures).toBe('show');
+    expect(s().visibility.pipes).toBe('ghost');
+    s().setVisibilityPreset('building');
+    expect(s().visibility.exteriorWall).toBe('show');
+    expect(s().visibility.pipes).toBe('hide');
+    expect(s().visibility.fixtures).toBe('hide');
+    s().setVisibilityPreset('all');
+    expect(Object.entries(s().visibility).filter(([k, m]) => k !== 'ceiling' && m !== 'show')).toEqual([]);
+    expect(s().visibility.ceiling).toBe('hide');
+  });
+});

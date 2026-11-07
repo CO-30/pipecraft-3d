@@ -50,6 +50,18 @@ export const VIS_CATEGORIES: { id: VisCategory; label: string }[] = [
   { id: 'ceiling', label: '天井' }, { id: 'door', label: 'ドア' }, { id: 'window', label: '窓' }, { id: 'member', label: '梁・軒・バルコニー・階段' }, { id: 'pipes', label: '配管・配線' },
   { id: 'fixtures', label: '設備機器' },
 ];
+export type VisPreset = 'all' | 'building' | 'pipes' | 'fixtures';
+/** 表示のプリセット（「配管だけ」など）。見たいものを表示、その他は半透明（建物だけは配管・器具を隠す）。天井はいつも非表示 */
+export function presetVisibility(p: VisPreset): Record<VisCategory, VisMode> {
+  const v = defaultVisibility();
+  if (p === 'all') return v;
+  const building: VisCategory[] = ['exteriorWall', 'interiorWall', 'floor', 'door', 'window', 'member'];
+  const out = { ...v };
+  for (const c of building) out[c] = p === 'building' ? 'show' : 'ghost';
+  out.pipes = p === 'pipes' ? 'show' : p === 'building' ? 'hide' : 'ghost';
+  out.fixtures = p === 'fixtures' ? 'show' : p === 'building' ? 'hide' : 'ghost';
+  return out;
+}
 const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', member: 'show', pipes: 'show', fixtures: 'show',
 });
@@ -241,6 +253,7 @@ type State = {
 
   // 表示
   setVisibility(cat: VisCategory, mode: VisMode): void;
+  setVisibilityPreset(p: VisPreset): void;
   setElementVisibility(id: string, mode: VisMode): void;
   resetElementVisibility(): void;
 
@@ -1013,6 +1026,7 @@ export const useStore = create<State>((set, get) => {
     },
 
     setVisibility: (cat, mode) => set({ visibility: { ...get().visibility, [cat]: mode } }),
+    setVisibilityPreset: (p) => set({ visibility: presetVisibility(p) }),
     setElementVisibility: (id, mode) => {
       const hiddenIds = get().hiddenIds.filter((x) => x !== id);
       const ghostIds = get().ghostIds.filter((x) => x !== id);

@@ -5,7 +5,7 @@ import { ElevationView } from './ElevationView';
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 import { useStore } from '../state/store';
 import { totalLength } from '../model/network';
-import { FloorBar, PropertyPanel, Toolbar, VisibilityPanel } from './Panels';
+import { FloorBar, PropertyPanel, SelectionBar, Toolbar, VisibilityPanel } from './Panels';
 import type { SaveState } from './autosave';
 import { EstimateBar, EstimateScreen, type EstTab } from './EstimateScreen';
 import { GuideBar, type EstimateTab } from './GuideBar';
@@ -60,7 +60,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
             <h3>階</h3>
             <FloorBar />
             <h3>表示</h3>
-            <VisibilityPanel />
+            <VisibilityPanel compact />
           </aside>
         )}
         <main className={`views ${eff}`}>
@@ -72,6 +72,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
         {isWide && (
           <aside className="right">
             <h3>設定</h3>
+            {!dimOpen && <SelectionBar />}
             {dimOpen ? <DimWizard /> : <PropertyPanel />}
           </aside>
         )}
@@ -80,6 +81,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
       {!isWide && (
         <section className="panel">
           {!sel && !elevId && !dimOpen && <FloorBar compact />}
+          {!dimOpen && <SelectionBar />}
           {dimOpen ? <DimWizard /> : <PropertyPanel />}
         </section>
       )}
