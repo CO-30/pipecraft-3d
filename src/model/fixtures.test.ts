@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork, segmentsAt, validateNetwork } from './network';
-import { deleteFixture, fixtureConnected, moveFixture, placeFixture, portNodes, validateFixtures, FIXTURE_CATALOG, FIXTURE_TYPES } from './fixtures';
+import { deleteFixture, fixtureConnected, moveFixture, placeFixture, portNodes, validateFixtures, FIXTURE_CATALOG, FIXTURE_GROUPS, FIXTURE_TYPES } from './fixtures';
 import { parseProject } from '../storage/repository';
 import { SCHEMA_VERSION } from './schema';
 
@@ -19,7 +19,7 @@ const port = (d: Doc, fid: string, pid: string) => portNodes(d.network, fid).fin
 
 describe('設備機器', () => {
   it('カタログは設計書の13種＋水栓3種、接続口は重ならない', () => {
-    expect(FIXTURE_TYPES).toHaveLength(16);
+    expect(FIXTURE_TYPES).toHaveLength(17);
     expect(new Set(FIXTURE_TYPES)).toEqual(new Set(Object.keys(FIXTURE_CATALOG)));
     for (const t of FIXTURE_TYPES) {
       const ps = FIXTURE_CATALOG[t].ports;
@@ -97,4 +97,23 @@ it('接続口の位置が器具とずれている・カタログにない接続�
   expect(validateFixtures(moved).join()).toMatch(/ずれ/);
   const unknown = { ...r.doc, network: { ...r.doc.network, nodes: { ...r.doc.network.nodes, [n.id]: { ...n, portId: 'zzz' } } } };
   expect(validateFixtures(unknown).join()).toMatch(/ない接続口/);
+});
+
+describe('屋上タンク・器具の見出し', () => {
+  it('屋上タンクは最上階の屋上面に載り、入口(上)・出口(下)とも給水', () => {
+    let b = addFloor(emptyBuilding(), { height: 3000 }).b;
+    b = addFloor(b, { height: 2800 }).b;
+    const top = b.floors[1];
+    const d: Doc = { building: b, network: emptyNetwork(), fixtures: {} };
+    const r = placeFixture(d, top.id, 'roofTank', { x: 2000, y: 2000 });
+    const roof = top.elevation + top.height;
+    expect(port(r.doc, r.fixtureId!, 'in').pos.z).toBe(roof + 1100);
+    expect(port(r.doc, r.fixtureId!, 'out').pos.z).toBe(roof + 100);
+    expect(FIXTURE_CATALOG.roofTank.ports.every((p) => p.system === 'water')).toBe(true);
+  });
+  it('見出しは全種類を過不足なく含む', () => {
+    const all = FIXTURE_GROUPS.flatMap((g) => g.types);
+    expect(all).toHaveLength(FIXTURE_TYPES.length);
+    expect(new Set(all)).toEqual(new Set(FIXTURE_TYPES));
+  });
 });

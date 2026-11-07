@@ -172,3 +172,8 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 /* 壁を正面から見る（立面）の入口 */
 .face-open { border: 1px solid #c7d7ee; background: #f3f8ff; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .face-open .row button { min-height: 44px; }
+
+/* ---- 初心者向け: 器具の見出し・操作の説明 ---- */
+.fixture-group { margin-top: 6px; }
+.fgroup-label { font-size: 12px; color: #64748b; margin: 4px 0; font-weight: 600; }
+.howto { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.6; margin-bottom: 6px; }

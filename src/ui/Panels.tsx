@@ -8,7 +8,7 @@ import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '
 import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
-import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
+import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, portNodes } from '../model/fixtures';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { ElevationDialog } from './ElevationDialog';
@@ -333,10 +333,15 @@ function FixturePicker() {
   const st = useStore.getState();
   return (
     <>
-      <div className="ptitle muted">種類を選んで図面をタップ</div>
-      <div className="fixture-grid">
-        {FIXTURE_TYPES.map((x) => <button key={x} data-testid={`fixture-${x}`} className={t === x ? 'on' : ''} onClick={() => st.setFixtureType(x)}>{FIXTURE_CATALOG[x].label}</button>)}
-      </div>
+      <div className="howto"><b>① 種類を選ぶ → ② 図面の置きたい所をタップ</b><br />置いた器具の丸（接続口）から配管を描けます。屋上タンクは一番上の階に置くと屋上に載ります</div>
+      {FIXTURE_GROUPS.map((g) => (
+        <div key={g.label} className="fixture-group">
+          <div className="fgroup-label">{g.label}</div>
+          <div className="fixture-grid">
+            {g.types.map((x) => <button key={x} data-testid={`fixture-${x}`} className={t === x ? 'on' : ''} onClick={() => st.setFixtureType(x)}>{FIXTURE_CATALOG[x].label}</button>)}
+          </div>
+        </div>
+      ))}
     </>
   );
 }
