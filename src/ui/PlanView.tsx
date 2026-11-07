@@ -82,7 +82,6 @@ export function PlanView() {
   const [stroke, setStroke] = useState<Vec2[] | null>(null);
   const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const [splitPreview, setSplitPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
-  const pendingMerge = useStore((s) => s.pendingMerge);
   const underlays = useStore((s) => s.doc.underlays);
   const showUnderlays = useStore((s) => s.showUnderlays);
   const activeUnderlayId = useStore((s) => s.activeUnderlayId);
@@ -650,9 +649,7 @@ export function PlanView() {
         const a = toScreen(roomPreview.a), b = toScreen(roomPreview.b);
         return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(a.x - b.x)} height={Math.abs(a.y - b.y)} fill="rgba(37,99,235,0.1)" stroke="#2563eb" strokeDasharray="6 4" />;
       })()}
-      <text x={8} y={18} fontSize={12} fill={pendingMerge ? '#b45309' : '#6b7280'} fontWeight={pendingMerge ? 'bold' : undefined}>
-        {floor?.name ?? ''} 平面図（1目盛=1m） {pendingMerge ? '結合する隣の部屋をタップ（他をタップで取消）' : HINTS[tool]}
-      </text>
+      <text x={8} y={H - 10} fontSize={11} fill="#94a3b8" pointerEvents="none">{floor?.name ?? ''} 平面図（1目盛=1m）</text>
       {connectPreview && (() => {
         const a = toScreen(connectPreview.from), b = toScreen(connectPreview.to);
         return (
@@ -669,14 +666,16 @@ export function PlanView() {
   );
 }
 
-const HINTS: Record<string, string> = {
-  select: 'タップで選択・ドラッグで移動',
-  outline: '建物の外周を指で1周なぞる（寸法はあとで入れます）',
-  pipe: '指でなぞって配管／既存配管からなぞると分岐',
-  wall: '指でなぞって壁を描く',
-  room: '対角にドラッグして部屋を作る',
+/** いまの道具での操作のしかた（図面の左上の案内に表示） */
+export const PLAN_HINTS: Record<string, string> = {
+  select: '配管・器具・壁をタップすると選べます。ドラッグで移動',
+  outline: '建物の外周を指で1周なぞると外壁になります（寸法はあとで入れます）',
+  pipe: '器具の丸（接続口）や配管から指でなぞる → 離した所まで配管。配管の途中から始めると分岐',
+  wall: '指でなぞって壁を描く（角に自動でつながります）',
+  room: '部屋の角から反対の角へ斜めにドラッグ',
   split: '部屋を横切る線を引いて分割',
-  door: '壁をタップしてドアを付ける',
-  window: '壁をタップして窓を付ける',
-  fixture: '図面をタップして器具を置く',
+  door: 'ドアを付ける壁をタップ',
+  window: '窓を付ける壁をタップ',
+  fixture: '下で器具を選んで、置きたい所をタップ',
+  underlay: '下で「画像・PDFを追加」→ 2点の実際の長さを入れて縮尺を合わせる',
 };

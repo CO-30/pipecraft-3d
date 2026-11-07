@@ -317,7 +317,7 @@ export function PropertyPanel() {
           <label className="field inline">高さ<select value={drawHeight} onChange={(e) => st.setDrawHeight(Number(e.target.value))}>
             {HEIGHT_PRESETS.map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
-      ) : <div className="ptitle muted">{TOOL_HELP[tool]}</div>}
+      ) : <div className="ptitle muted tool-help">{TOOL_HELP[tool]}</div>}
       {tool === 'split' && (
         <label className="field inline"><input type="checkbox" data-testid="split-with-wall" checked={splitWithWall} onChange={(e) => st.setSplitWithWall(e.target.checked)} /> 分割線に壁も作る</label>
       )}
@@ -579,7 +579,8 @@ const TOOL_HELP: Record<Tool, string> = {
   underlay: '下敷き（図面・写真・航空写真）を読み込み、ドラッグで位置を合わせます',
 };
 
-export function FloorBar() {
+export function FloorBar({ compact = false }: { compact?: boolean }) {
+  const [settings, setSettings] = useState(false);
   const floors = useStore((s) => s.doc.building.floors);
   const active = useStore((s) => s.activeFloorId);
   const st = useStore.getState();
@@ -592,8 +593,9 @@ export function FloorBar() {
         ))}
         <button data-testid="add-floor" onClick={() => st.addFloor(true)} title="現在の階の外壁をコピーして上に階を追加">＋階</button>
         <ElevationChips />
+        {compact && <button data-testid="floor-settings" className={settings ? 'on' : ''} onClick={() => setSettings(!settings)} aria-expanded={settings}>⚙ 階の設定</button>}
       </div>
-      {f && (
+      {f && (!compact || settings) && (
         <div className="row">
           <NumField label="階高" value={f.height} min={1000} testId="floor-height" onCommit={(v) => st.updateFloor(f.id, { height: v })} />
           <span className="muted small">床高 {activeFloorElevation()}mm</span>
@@ -692,26 +694,46 @@ function SectionControls() {
   );
 }
 
-const TOOLS: { id: Tool; icon: string; label: string }[] = [
-  { id: 'select', icon: '👆', label: '選択' }, { id: 'outline', icon: '✏️', label: '外形' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'wall', icon: '▭', label: '壁' },
-  { id: 'room', icon: '⬚', label: '部屋' }, { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' },
-  { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'underlay', icon: '🗺️', label: '下敷き' },
+/** いつも見える道具（スマホでも横にはみ出さない数） */
+const MAIN_TOOLS: { id: Tool; icon: string; label: string }[] = [
+  { id: 'select', icon: '👆', label: '選択' }, { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'pipe', icon: '〰️', label: '配管' },
 ];
+/** 「建物」を押すと出る道具 */
+const BUILD_TOOLS: { id: Tool; icon: string; label: string }[] = [
+  { id: 'outline', icon: '✏️', label: '外形' }, { id: 'wall', icon: '▭', label: '壁' }, { id: 'room', icon: '⬚', label: '部屋' },
+  { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' }, { id: 'underlay', icon: '🗺️', label: '下敷き' },
+];
+const BUILD_IDS = new Set<Tool>([...BUILD_TOOLS.map((t) => t.id), 'split']);
 
 export function Toolbar() {
   const tool = useStore((s) => s.tool);
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
+  const [buildOpen, setBuildOpen] = useState(false);
   const st = useStore.getState();
+  const pick = (id: Tool) => { st.setTool(id); st.select(null); setBuildOpen(false); };
+  const inBuild = BUILD_IDS.has(tool);
+  const cur = BUILD_TOOLS.find((t) => t.id === tool);
+  const btn = (t: { id: Tool; icon: string; label: string }) => (
+    <button key={t.id} data-testid={`tool-${t.id}`} className={tool === t.id ? 'on' : ''} onClick={() => pick(t.id)}>
+      {t.icon}<span>{t.label}</span>
+    </button>
+  );
   return (
-    <nav className="toolbar">
-      {TOOLS.map((t) => (
-        <button key={t.id} data-testid={`tool-${t.id}`} className={tool === t.id ? 'on' : ''} onClick={() => { st.setTool(t.id); st.select(null); }}>
-          {t.icon}<span>{t.label}</span>
-        </button>
-      ))}
-      <button data-testid="undo" disabled={!canUndo} onClick={() => st.undo()}>↶<span>戻す</span></button>
-      <button data-testid="redo" disabled={!canRedo} onClick={() => st.redo()}>↷<span>やり直し</span></button>
+    <nav className="toolbar" aria-label="道具">
+      {buildOpen && (
+        <div className="subtools" data-testid="building-tools" role="menu" aria-label="建物の道具">
+          <span className="subtools-label">建物を描く</span>
+          {BUILD_TOOLS.map(btn)}
+        </div>
+      )}
+      {btn(MAIN_TOOLS[0])}
+      <button data-testid="tool-building" aria-expanded={buildOpen} className={`${inBuild ? 'on' : ''} ${buildOpen ? 'open' : ''}`} onClick={() => setBuildOpen(!buildOpen)}>
+        {cur?.icon ?? '🏠'}<span>{inBuild && cur ? `建物:${cur.label}` : '建物'} ▴</span>
+      </button>
+      {MAIN_TOOLS.slice(1).map(btn)}
+      <button data-testid="undo" className="hist" disabled={!canUndo} onClick={() => st.undo()}>↶<span>戻す</span></button>
+      <button data-testid="redo" className="hist" disabled={!canRedo} onClick={() => st.redo()}>↷<span>やり直し</span></button>
     </nav>
   );
 }

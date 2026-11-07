@@ -25,23 +25,38 @@ export function useEstimate(): Estimate {
 }
 
 type Tab = 'qty' | 'parts' | 'price' | 'quote' | 'issues';
+export type EstTab = Tab;
+/** タブごとの1行説明（初めての人向け） */
+const TAB_HELP: Record<Tab, string> = {
+  qty: '配管の種類・太さごとの長さと発注数量。長さの元は「実測」＝現場で測った長さ、「モデル」＝図面・3Dの経路から計算した長さです',
+  parts: '継手（エルボ・チーズなど）・支持金具・器具の数。配管のつながり方から自動で数えています',
+  price: '材料と工事の単価。参考単価が入っている所も、お店の値段に合わせて直せます',
+  quote: '数量×単価の金額と合計。PDF・Excel で見積書を出力できます',
+  issues: '自動で決められなかった所や、単価が未設定の所。タップするとその場所へ移動します',
+};
 
-export function EstimateBar({ onOpen }: { onOpen: () => void }) {
+/** 要確認のうち、配管・部品の形の問題（単価の未設定は別に数える） */
+const realIssues = (issues: { kind: string }[]) => issues.filter((i) => i.kind !== 'noPrice');
+
+export function EstimateBar({ onOpen, onIssues }: { onOpen: () => void; onIssues?: () => void }) {
   const est = useEstimate();
+  const real = realIssues(est.issues).length;
+  const noPrice = est.issues.length - real;
   return (
     <div className="est-bar" data-testid="estimate-bar">
       <span>材料費 <b>{yen(est.materialTotal)}</b></span>
       <span>施工費 <b>{yen(est.laborTotal)}</b></span>
       <span>合計（税込） <b data-testid="bar-total">{yen(est.total)}</b></span>
-      {est.issues.length > 0 && <span className="warn">⚠ 要確認 {est.issues.length}件</span>}
+      {real > 0 && <button className="warn linkish" data-testid="bar-issues" onClick={onIssues ?? onOpen}>⚠ 要確認 {real}件</button>}
+      {noPrice > 0 && <span className="muted small" data-testid="bar-noprice">単価未設定 {noPrice}件</span>}
       <button onClick={onOpen}>積算・見積を開く</button>
     </div>
   );
 }
 
-export function EstimateScreen({ onClose }: { onClose: () => void }) {
+export function EstimateScreen({ onClose, initialTab = 'qty' }: { onClose: () => void; initialTab?: Tab }) {
   const est = useEstimate();
-  const [tab, setTab] = useState<Tab>('qty');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const unit = usePrefs((s) => s.lengthUnit);
   const unsetWalls = useStore((s) => unconfirmedWallCount(s.doc.building));
   const setUnit = usePrefs((s) => s.setLengthUnit);
@@ -70,6 +85,7 @@ export function EstimateScreen({ onClose }: { onClose: () => void }) {
       <nav className="seg-btns full est-tabs">
         {tabs.map(([t, l]) => <button key={t} data-testid={`tab-${t}`} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{l}</button>)}
       </nav>
+      <p className="tab-help" data-testid="tab-help">{TAB_HELP[tab]}</p>
       <div className="est-body">
         {tab === 'qty' && <QuantityTab est={est} />}
         {tab === 'parts' && <PartsTab est={est} onIssue={() => setTab('issues')} />}
