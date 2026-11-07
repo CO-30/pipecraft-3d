@@ -9,6 +9,7 @@ import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
 import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, portNodes } from '../model/fixtures';
+import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { ElevationDialog } from './ElevationDialog';
@@ -174,6 +175,7 @@ export function PropertyPanel() {
         <div className="ptitle">{fx ? `${FIXTURE_CATALOG[fx.type].label}の接続口（${portLabel}）` : `配管の点（${KIND[n.kind] ?? n.kind}）`}
           <span className="muted small"> 床から {Math.round(rel)}mm</span></div>
         <ConnectBox nodeId={n.id} />
+        <PortConnect nodeId={n.id} />
         {!fx && (
           <>
             <NumField label="床からの高さ" value={rel} testId="node-height" onCommit={(v) => st.setNodeHeight(n.id, floorElev + v)} />
@@ -216,6 +218,7 @@ export function PropertyPanel() {
           const used = n ? segmentsAt(net, n.id).length > 0 : false;
           return <button key={p.id} data-testid={`port-${p.id}`} disabled={!n} onClick={() => n && st.select({ kind: 'node', id: n.id })}>{p.label} φ{p.diameter}{used ? ' ✓' : ''}</button>;
         })}</div>
+        {ports.filter((n) => segmentsAt(net, n.id).length === 0).map((n) => <PortConnect key={n.id} nodeId={n.id} title={`${def.ports.find((p) => p.id === n.portId)?.label}から`} />)}
         <div className="row">
           <button data-testid="rotate-fixture" onClick={() => st.rotateFixture(f.id)}>⟳ 90°回転</button>
           <button onClick={() => st.setTool('pipe')}>接続口から配管</button>
@@ -792,6 +795,21 @@ export function SelectionBar() {
       {color && <i className="sys-dot" style={{ background: color }} />}
       <span>選択中: <b>{label}</b></span>
       <button data-testid="sel-clear" onClick={() => useStore.getState().select(null)}>✕ 選択をやめる</button>
+    </div>
+  );
+}
+
+/** 器具の接続口へつなぐ候補（別の階・屋上も）。押すと仮のルートで配管を作る */
+function PortConnect({ nodeId, title }: { nodeId: string; title?: string }) {
+  const doc = useStore((s) => s.doc);
+  const cands = useMemo(() => portCandidates(doc, nodeId, 4), [doc, nodeId]);
+  if (!cands.length) return null;
+  return (
+    <div className="port-connect" data-testid="port-connect">
+      <div className="subhead">🔗 {title ? `${title} ` : ''}器具につなぐ（自動でルートを作ります）</div>
+      <div className="row">
+        {cands.map((c) => <button key={c.nodeId} data-testid="port-cand" data-target={c.nodeId} onClick={() => useStore.getState().connectToPort(nodeId, c.nodeId)}>→ {c.label}</button>)}
+      </div>
     </div>
   );
 }

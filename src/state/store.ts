@@ -23,6 +23,7 @@ import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
 import { applySlope } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
+import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
 import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
@@ -253,6 +254,8 @@ type State = {
 
   // 表示
   setVisibility(cat: VisCategory, mode: VisMode): void;
+  /** 配管の端（または接続口）から、つながっていない器具の接続口へ仮のルートでつなぐ（別の階も可） */
+  connectToPort(fromId: string, toId: string): void;
   setVisibilityPreset(p: VisPreset): void;
   setElementVisibility(id: string, mode: VisMode): void;
   resetElementVisibility(): void;
@@ -1027,6 +1030,14 @@ export const useStore = create<State>((set, get) => {
 
     setVisibility: (cat, mode) => set({ visibility: { ...get().visibility, [cat]: mode } }),
     setVisibilityPreset: (p) => set({ visibility: presetVisibility(p) }),
+    connectToPort: (fromId, toId) => {
+      const { doc } = get();
+      if (!portCandidates(doc, fromId, Infinity).some((c) => c.nodeId === toId)) return;
+      const attrs = nodeAttrs(doc.network, doc.fixtures, fromId).attrs;
+      if (!attrs) return;
+      drawCore(routeToPort(doc.network.nodes[fromId].pos, doc.network.nodes[toId].pos), attrs, { startNodeId: fromId, endNodeId: toId });
+      if (get().doc.network !== doc.network) set({ notice: '仮のルートでつなぎました。点をドラッグすると経路を直せます' });
+    },
     setElementVisibility: (id, mode) => {
       const hiddenIds = get().hiddenIds.filter((x) => x !== id);
       const ghostIds = get().ghostIds.filter((x) => x !== id);

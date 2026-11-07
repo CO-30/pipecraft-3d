@@ -523,3 +523,25 @@ describe('表示のプリセット', () => {
     expect(s().visibility.ceiling).toBe('hide');
   });
 });
+
+describe('器具の接続口へつなぐ', () => {
+  it('1階のメーター出口から屋上タンク入口へ1回でつながり、Undo で戻る', () => {
+    s().addFloor(false);
+    const [f1, f2] = bld().floors;
+    s().setActiveFloor(f1.id); s().setFixtureType('waterMeter'); s().placeFixtureAt({ x: -1000, y: 3000 });
+    s().setActiveFloor(f2.id); s().setFixtureType('roofTank'); s().placeFixtureAt({ x: 4000, y: 3500 });
+    const port = (t: string, p: string) => {
+      const f = Object.values(s().doc.fixtures).find((x) => x.type === t)!;
+      return Object.values(net().nodes).find((n) => n.fixtureId === f.id && n.portId === p)!;
+    };
+    const from = port('waterMeter', 'out').id, to = port('roofTank', 'in').id;
+    s().connectToPort(from, to);
+    const n = net();
+    expect(Object.values(n.segments).some((g) => g.a === from || g.b === from)).toBe(true);
+    expect(Object.values(n.segments).some((g) => g.a === to || g.b === to)).toBe(true);
+    expect(Object.values(n.segments).every((g) => g.system === 'water' && g.diameter === 20)).toBe(true);
+    expect(validateNetwork(n)).toEqual([]);
+    s().undo();
+    expect(Object.keys(net().segments)).toHaveLength(0);
+  });
+});
