@@ -216,7 +216,7 @@
 
 ## 追加: 初心者向け UI/UX 改善（2026-11-08 ユーザー依頼）
 - 設計: `docs/superpowers/specs/2026-11-08-beginner-ux-design.md`、計画: `docs/superpowers/plans/2026-11-08-beginner-ux.md`
-- ブランチ: `feat/beginner-ux`（main `af65125` から派生）。GitHub に push 済み・PR 作成（main へのマージ・Pages 更新はユーザー確認後）
+- ブランチ: `feat/beginner-ux`（main `af65125` から派生）→ **PR #15 を main にマージ（`b9ff360`）、GitHub Pages を更新（`gh-pages` = `cf1e6a2`）**（2026-11-08 ユーザー指示）
 - 参考: plusCAD水道V（部材→見積の連動・PDF取り込み）、PlumbingCAD（PDFをなぞる→材料表、2Dで描くと3D）、Graphisoft MEP Designer（接続口から描き始めると系統・口径を引き継ぐ、途中から分岐継手）
 - 改善前の主な問題（P0）: ホームに説明・サンプル・使い方がない／作り方3択の違いが不明／次に何をするか出ない／**スマホで道具バーがはみ出し「戻す・やり直し」が画面外**／屋上タンクがない
 - 実装
