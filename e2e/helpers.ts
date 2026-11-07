@@ -72,3 +72,16 @@ export async function createProject(page: Page, name: string, opts: { blank?: bo
 export async function show(page: Page, layout: '2D' | '3D' | '2D+3D') {
   await page.getByRole('button', { name: layout, exact: true }).click();
 }
+
+const BUILD_TOOLS = new Set(['outline', 'wall', 'room', 'door', 'window', 'underlay']);
+/** 道具を選ぶ。建物系（外形・壁・部屋・ドア・窓・下敷き）は「建物」を開いてから選ぶ */
+export async function useTool(page: Page, id: string) {
+  if (BUILD_TOOLS.has(id) && !(await page.getByTestId('building-tools').isVisible())) await page.getByTestId('tool-building').click();
+  await page.getByTestId(`tool-${id}`).click();
+}
+
+/** 表示パネルの「部分ごとに切り替える」を開く（PC の左列は畳んである） */
+export async function openVisDetails(page: Page) {
+  const d = page.locator('details.vis-details').first();
+  if (!(await d.evaluate((e) => (e as HTMLDetailsElement).open))) await d.locator('summary').click();
+}

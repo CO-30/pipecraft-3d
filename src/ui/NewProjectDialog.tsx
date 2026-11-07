@@ -3,7 +3,7 @@ import { useState } from 'react';
 export type NewProjectInput = {
   name: string;
   address: string;
-  mode: 'sketch' | 'dims' | 'blank';
+  mode: 'sketch' | 'dims' | 'photo' | 'blank';
   width: number; depth: number; floors: number; floorHeight: number; wallThickness: number; slabThickness: number;
 };
 
@@ -16,11 +16,17 @@ const FIELDS: { key: keyof NewProjectInput; label: string; unit: string; min: nu
   { key: 'slabThickness', label: '床の厚さ', unit: 'mm', min: 0, max: 500 },
 ];
 
+const MODES: { id: 'sketch' | 'dims' | 'photo'; icon: string; title: string; desc: string; recommended?: boolean }[] = [
+  { id: 'sketch', icon: '✏️', title: '指でなぞって描く', desc: '建物の外周を1周なぞると外壁になります。寸法はあとで実測を入れます', recommended: true },
+  { id: 'dims', icon: '📐', title: '寸法を入れて作る', desc: '幅と奥行を入れると四角い建物ができます', },
+  { id: 'photo', icon: '🗺️', title: '図面・写真を取り込む', desc: '間取り図の写真やPDFを下に敷いて、なぞって描きます' },
+];
+
 export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (v: NewProjectInput) => void }) {
   const [v, setV] = useState<NewProjectInput>({
     name: '', address: '', mode: 'sketch', width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200,
   });
-  const fields = v.mode === 'sketch' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
+  const fields = v.mode === 'sketch' || v.mode === 'photo' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
   const invalid = fields.filter((f) => {
     const n = v[f.key] as number;
     return !(Number.isFinite(n) && n >= f.min && n <= f.max && (f.key !== 'floors' || Number.isInteger(n)));
@@ -28,17 +34,31 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
   const ok = v.name.trim() !== '' && (v.mode === 'blank' || invalid.length === 0);
 
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="新しい現場">
+    <div className="modal-back" role="dialog" aria-modal="true" aria-label="新しい工事">
       <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim() }); }}>
-        <h2>新しい現場</h2>
-        <label className="field">現場名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
+        <h2>新しい工事</h2>
+        <label className="field">工事名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
         <label className="field">住所（任意）<input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
-        <div className="seg-btns full">
-          <button type="button" data-testid="np-mode-sketch" className={v.mode === 'sketch' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'sketch' })}>なぞって描く</button>
-          <button type="button" data-testid="np-mode-dims" className={v.mode === 'dims' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'dims' })}>寸法から作る</button>
-          <button type="button" className={v.mode === 'blank' ? 'on' : ''} onClick={() => setV({ ...v, mode: 'blank' })}>白紙から描く</button>
+        <div className="field-label">建物の作り方を選んでください</div>
+        <div className="mode-cards" role="radiogroup" aria-label="建物の作り方" onKeyDown={(e) => {
+          const ids = MODES.map((m) => m.id);
+          const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+          if (!d) return;
+          e.preventDefault();
+          const i = ids.indexOf(v.mode as typeof ids[number]);
+          const next = ids[(Math.max(0, i) + d + ids.length) % ids.length];
+          setV({ ...v, mode: next });
+          (e.currentTarget.querySelector(`[data-testid="np-mode-${next}"]`) as HTMLElement | null)?.focus();
+        }}>
+          {MODES.map((m) => (
+            <button key={m.id} type="button" role="radio" aria-checked={v.mode === m.id} tabIndex={v.mode === m.id || (v.mode === 'blank' && m.id === 'sketch') ? 0 : -1} data-testid={`np-mode-${m.id}`} className={`mode-card ${v.mode === m.id ? 'on' : ''}`} onClick={() => setV({ ...v, mode: m.id })}>
+              <span className="mtitle">{m.icon} {m.title}{m.recommended && <span className="badge">おすすめ</span>}</span>
+              <span className="mdesc">{m.desc}</span>
+            </button>
+          ))}
         </div>
-        {v.mode === 'sketch' && <p className="hint">図面に建物の外周を指で1周なぞると、外壁を作って階数分積み上げます。寸法はあとで実測を入れます。</p>}
+        <button type="button" className={`linkish ${v.mode === 'blank' ? 'on' : ''}`} onClick={() => setV({ ...v, mode: 'blank' })}>白紙から描く</button>
+        {v.mode === 'blank' && <p className="hint">壁も階も自由に描きます（慣れた人向け）。</p>}
         {v.mode !== 'blank' && (
           <div className="grid2">
             {fields.map((f) => (

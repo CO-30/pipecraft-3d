@@ -82,7 +82,6 @@ export function PlanView() {
   const [stroke, setStroke] = useState<Vec2[] | null>(null);
   const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const [splitPreview, setSplitPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
-  const pendingMerge = useStore((s) => s.pendingMerge);
   const underlays = useStore((s) => s.doc.underlays);
   const showUnderlays = useStore((s) => s.showUnderlays);
   const activeUnderlayId = useStore((s) => s.activeUnderlayId);
@@ -431,6 +430,8 @@ export function PlanView() {
       for (let i = 1; i < pts.length; i++) st.addWall(pts[i - 1], pts[i]);
       return;
     }
+    // 配管の点は 1mm 単位に丸める（画面の拡大率で 2999.9998mm のような半端な値にしない）
+    pts = pts.map((q) => ({ x: Math.round(q.x), y: Math.round(q.y) }));
     const net = st.doc.network;
     const drawZ = g.branchSegId
       ? (net.nodes[net.segments[g.branchSegId].a].pos.z + net.nodes[net.segments[g.branchSegId].b].pos.z) / 2
@@ -650,9 +651,7 @@ export function PlanView() {
         const a = toScreen(roomPreview.a), b = toScreen(roomPreview.b);
         return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(a.x - b.x)} height={Math.abs(a.y - b.y)} fill="rgba(37,99,235,0.1)" stroke="#2563eb" strokeDasharray="6 4" />;
       })()}
-      <text x={8} y={18} fontSize={12} fill={pendingMerge ? '#b45309' : '#6b7280'} fontWeight={pendingMerge ? 'bold' : undefined}>
-        {floor?.name ?? ''} 平面図（1目盛=1m） {pendingMerge ? '結合する隣の部屋をタップ（他をタップで取消）' : HINTS[tool]}
-      </text>
+      <text x={8} y={H - 10} fontSize={11} fill="#94a3b8" pointerEvents="none">{floor?.name ?? ''} 平面図（1目盛=1m）</text>
       {connectPreview && (() => {
         const a = toScreen(connectPreview.from), b = toScreen(connectPreview.to);
         return (
@@ -669,14 +668,3 @@ export function PlanView() {
   );
 }
 
-const HINTS: Record<string, string> = {
-  select: 'タップで選択・ドラッグで移動',
-  outline: '建物の外周を指で1周なぞる（寸法はあとで入れます）',
-  pipe: '指でなぞって配管／既存配管からなぞると分岐',
-  wall: '指でなぞって壁を描く',
-  room: '対角にドラッグして部屋を作る',
-  split: '部屋を横切る線を引いて分割',
-  door: '壁をタップしてドアを付ける',
-  window: '壁をタップして窓を付ける',
-  fixture: '図面をタップして器具を置く',
-};

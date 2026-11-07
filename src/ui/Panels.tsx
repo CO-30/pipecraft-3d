@@ -1,14 +1,15 @@
 /**
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
-import { useEffect, useMemo, useState } from 'react';
-import { activeFloorElevation, branchDeletionPreview, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode } from '../state/store';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { activeFloorElevation, branchDeletionPreview, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
-import { FIXTURE_CATALOG, FIXTURE_TYPES, fixtureConnected, portNodes } from '../model/fixtures';
+import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, portNodes } from '../model/fixtures';
+import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { ElevationDialog } from './ElevationDialog';
@@ -121,6 +122,11 @@ export function PropertyPanel() {
       <div className="props">
         <div className="ptitle">{vertical ? '立て管' : '配管区間'} <b data-testid="sel-length">{Math.round(segmentLength(net, seg.id))}</b>mm
           {seg.measuredLength !== undefined && <span className="muted small">（実測 {Math.round(seg.measuredLength)}mm{seg.measuredApprox ? '・概算' : ''}）</span>}</div>
+        {seg.measuredLength === undefined && <button className="primary" data-testid="jump-measure" onClick={() => {
+          const el = document.querySelector<HTMLInputElement>('[data-testid="seg-measured"]');
+          el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          el?.focus();
+        }}>📏 実測長を入れる</button>}
         <label className="field inline">種類<select data-testid="seg-system" value={seg.system} onChange={(e) => st.updateSegment(seg.id, { system: e.target.value as SystemType })}>
           {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         <label className="field inline">口径<select data-testid="seg-diameter" value={seg.diameter} onChange={(e) => st.updateSegment(seg.id, { diameter: Number(e.target.value) })}>
@@ -169,6 +175,7 @@ export function PropertyPanel() {
         <div className="ptitle">{fx ? `${FIXTURE_CATALOG[fx.type].label}の接続口（${portLabel}）` : `配管の点（${KIND[n.kind] ?? n.kind}）`}
           <span className="muted small"> 床から {Math.round(rel)}mm</span></div>
         <ConnectBox nodeId={n.id} />
+        <PortConnect nodeId={n.id} />
         {!fx && (
           <>
             <NumField label="床からの高さ" value={rel} testId="node-height" onCommit={(v) => st.setNodeHeight(n.id, floorElev + v)} />
@@ -211,6 +218,7 @@ export function PropertyPanel() {
           const used = n ? segmentsAt(net, n.id).length > 0 : false;
           return <button key={p.id} data-testid={`port-${p.id}`} disabled={!n} onClick={() => n && st.select({ kind: 'node', id: n.id })}>{p.label} φ{p.diameter}{used ? ' ✓' : ''}</button>;
         })}</div>
+        {ports.filter((n) => segmentsAt(net, n.id).length === 0).map((n) => <PortConnect key={n.id} nodeId={n.id} title={`${def.ports.find((p) => p.id === n.portId)?.label}から`} />)}
         <div className="row">
           <button data-testid="rotate-fixture" onClick={() => st.rotateFixture(f.id)}>⟳ 90°回転</button>
           <button onClick={() => st.setTool('pipe')}>接続口から配管</button>
@@ -310,14 +318,32 @@ export function PropertyPanel() {
       {tool === 'fixture' && <FixturePicker />}
       {tool === 'pipe' ? (
         <>
-          <label className="field inline">種類<select data-testid="draw-system" value={drawAttrs.system} onChange={(e) => st.setDrawAttrs({ system: e.target.value as SystemType })}>
+          <div className="howto pipe-howto">① 下で種類を選ぶ　② 器具の<b>丸（接続口）</b>から指でなぞる　③ 終わりで指を離す<br /><span className="small">配管の途中からなぞると分岐。曲がり角は自動で直角になります</span></div>
+          <div className="sys-chips" role="radiogroup" aria-label="配管の種類" onKeyDown={(e) => {
+            const ids = SYSTEMS.slice(0, 5).map((x) => x.id);
+            const i = ids.indexOf(drawAttrs.system);
+            const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+            if (!d) return;
+            e.preventDefault();
+            const next = ids[(Math.max(0, i) + d + ids.length) % ids.length];
+            st.setDrawAttrs({ system: next });
+            (e.currentTarget.querySelector(`[data-testid="sys-${next}"]`) as HTMLElement | null)?.focus();
+          }}>
+            {SYSTEMS.slice(0, 5).map((x) => (
+              <button key={x.id} role="radio" aria-checked={drawAttrs.system === x.id} tabIndex={drawAttrs.system === x.id || (x.id === 'water' && !SYSTEMS.slice(0, 5).some((y) => y.id === drawAttrs.system)) ? 0 : -1} data-testid={`sys-${x.id}`} className={drawAttrs.system === x.id ? 'on' : ''}
+                style={{ '--sys': systemColor(x.id) } as React.CSSProperties} onClick={() => st.setDrawAttrs({ system: x.id })}>
+                <i className="sys-dot" />{x.label}
+              </button>
+            ))}
+          </div>
+          <label className="field inline">{SYSTEMS.slice(0, 5).some((x) => x.id === drawAttrs.system) ? 'その他' : '種類'}<select data-testid="draw-system" value={drawAttrs.system} onChange={(e) => st.setDrawAttrs({ system: e.target.value as SystemType })}>
             {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
           <label className="field inline">口径<select value={drawAttrs.diameter} onChange={(e) => st.setDrawAttrs({ diameter: Number(e.target.value) })}>
             {DIAMETERS.map((d) => <option key={d} value={d}>φ{d}</option>)}</select></label>
           <label className="field inline">高さ<select value={drawHeight} onChange={(e) => st.setDrawHeight(Number(e.target.value))}>
             {HEIGHT_PRESETS.map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
-      ) : <div className="ptitle muted">{TOOL_HELP[tool]}</div>}
+      ) : <div className="ptitle muted tool-help">{TOOL_HELP[tool]}</div>}
       {tool === 'split' && (
         <label className="field inline"><input type="checkbox" data-testid="split-with-wall" checked={splitWithWall} onChange={(e) => st.setSplitWithWall(e.target.checked)} /> 分割線に壁も作る</label>
       )}
@@ -333,9 +359,16 @@ function FixturePicker() {
   const st = useStore.getState();
   return (
     <>
-      <div className="ptitle muted">種類を選んで図面をタップ</div>
-      <div className="fixture-grid">
-        {FIXTURE_TYPES.map((x) => <button key={x} data-testid={`fixture-${x}`} className={t === x ? 'on' : ''} onClick={() => st.setFixtureType(x)}>{FIXTURE_CATALOG[x].label}</button>)}
+      <div className="howto fixture-howto"><b>① 種類を選ぶ → ② 図面の置きたい所をタップ</b><br />置いた器具の丸（接続口）から配管を描けます。屋上タンクは一番上の階に置くと屋上に載ります</div>
+      <div className="fixture-picker" data-testid="fixture-picker">
+      {FIXTURE_GROUPS.map((g) => (
+        <div key={g.label} className="fixture-group">
+          <div className="fgroup-label">{g.label}</div>
+          <div className="fixture-grid">
+            {g.types.map((x) => <button key={x} data-testid={`fixture-${x}`} className={t === x ? 'on' : ''} onClick={() => st.setFixtureType(x)}>{FIXTURE_CATALOG[x].label}</button>)}
+          </div>
+        </div>
+      ))}
       </div>
     </>
   );
@@ -574,7 +607,8 @@ const TOOL_HELP: Record<Tool, string> = {
   underlay: '下敷き（図面・写真・航空写真）を読み込み、ドラッグで位置を合わせます',
 };
 
-export function FloorBar() {
+export function FloorBar({ compact = false }: { compact?: boolean }) {
+  const [settings, setSettings] = useState(false);
   const floors = useStore((s) => s.doc.building.floors);
   const active = useStore((s) => s.activeFloorId);
   const st = useStore.getState();
@@ -587,8 +621,9 @@ export function FloorBar() {
         ))}
         <button data-testid="add-floor" onClick={() => st.addFloor(true)} title="現在の階の外壁をコピーして上に階を追加">＋階</button>
         <ElevationChips />
+        {compact && <button data-testid="floor-settings" className={settings ? 'on' : ''} onClick={() => setSettings(!settings)} aria-expanded={settings}>⚙ 階の設定</button>}
       </div>
-      {f && (
+      {f && (!compact || settings) && (
         <div className="row">
           <NumField label="階高" value={f.height} min={1000} testId="floor-height" onCommit={(v) => st.updateFloor(f.id, { height: v })} />
           <span className="muted small">床高 {activeFloorElevation()}mm</span>
@@ -624,12 +659,24 @@ function ElevationChips() {
   );
 }
 
-export function VisibilityPanel() {
+const VIS_PRESETS: { id: VisPreset; label: string }[] = [
+  { id: 'all', label: 'すべて' }, { id: 'pipes', label: '配管だけ' }, { id: 'fixtures', label: '設備だけ' }, { id: 'building', label: '建物だけ' },
+];
+
+export function VisibilityPanel({ compact = false }: { compact?: boolean }) {
   const vis = useStore((s) => s.visibility);
   const nHidden = useStore((s) => s.hiddenIds.length + s.ghostIds.length);
   const st = useStore.getState();
   return (
     <div className="vispanel" data-testid="vis-panel">
+      <div className="vis-presets" role="group" aria-label="表示の切り替え">
+        {VIS_PRESETS.map((p) => {
+          const on = VIS_CATEGORIES.every((c) => presetVisibility(p.id)[c.id] === vis[c.id]);
+          return <button key={p.id} data-testid={`vis-preset-${p.id}`} aria-pressed={on} className={on ? 'on' : ''} onClick={() => st.setVisibilityPreset(p.id)}>{p.label}</button>;
+        })}
+      </div>
+      <details className="vis-details" open={!compact}>
+      <summary>部分ごとに切り替える</summary>
       {VIS_CATEGORIES.map((c) => (
         <div key={c.id} className="visrow">
           <span>{c.label}</span>
@@ -642,6 +689,7 @@ export function VisibilityPanel() {
           </div>
         </div>
       ))}
+      </details>
       {nHidden > 0 && <button onClick={() => st.resetElementVisibility()}>個別に隠した{nHidden}件を元に戻す</button>}
       <SectionControls />
     </div>
@@ -687,28 +735,111 @@ function SectionControls() {
   );
 }
 
-const TOOLS: { id: Tool; icon: string; label: string }[] = [
-  { id: 'select', icon: '👆', label: '選択' }, { id: 'outline', icon: '✏️', label: '外形' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'wall', icon: '▭', label: '壁' },
-  { id: 'room', icon: '⬚', label: '部屋' }, { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' },
-  { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'underlay', icon: '🗺️', label: '下敷き' },
+/** いつも見える道具（スマホでも横にはみ出さない数） */
+const MAIN_TOOLS: { id: Tool; icon: string; label: string }[] = [
+  { id: 'select', icon: '👆', label: '選択' }, { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'pipe', icon: '〰️', label: '配管' },
 ];
+/** 「建物」を押すと出る道具 */
+const BUILD_TOOLS: { id: Tool; icon: string; label: string }[] = [
+  { id: 'outline', icon: '✏️', label: '外形' }, { id: 'wall', icon: '▭', label: '壁' }, { id: 'room', icon: '⬚', label: '部屋' },
+  { id: 'door', icon: '🚪', label: 'ドア' }, { id: 'window', icon: '🪟', label: '窓' }, { id: 'underlay', icon: '🗺️', label: '下敷き' },
+];
+const BUILD_IDS = new Set<Tool>([...BUILD_TOOLS.map((t) => t.id), 'split']);
 
 export function Toolbar() {
   const tool = useStore((s) => s.tool);
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
+  // 建物の道具の行は、開いた時の道具のままの間だけ開く（道具が変わったら閉じる）。Esc・外のタップでも閉じる
+  const [openFor, setOpenFor] = useState<Tool | null>(null);
+  const buildOpen = openFor === tool;
+  const setBuildOpen = (v: boolean) => setOpenFor(v ? tool : null);
+  const navRef = useRef<HTMLElement>(null);
   const st = useStore.getState();
+  useEffect(() => {
+    if (!buildOpen) return;
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenFor(null); };
+    const down = (e: PointerEvent) => { if (!navRef.current?.contains(e.target as Node)) setOpenFor(null); };
+    window.addEventListener('keydown', key);
+    window.addEventListener('pointerdown', down, true);
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('pointerdown', down, true); };
+  }, [buildOpen]);
+  const pick = (id: Tool) => { st.setTool(id); st.select(null); setOpenFor(null); };
+  const inBuild = BUILD_IDS.has(tool);
+  const cur = BUILD_TOOLS.find((t) => t.id === tool);
+  const btn = (t: { id: Tool; icon: string; label: string }) => (
+    <button key={t.id} data-testid={`tool-${t.id}`} className={tool === t.id ? 'on' : ''} onClick={() => pick(t.id)}>
+      {t.icon}<span>{t.label}</span>
+    </button>
+  );
   return (
-    <nav className="toolbar">
-      {TOOLS.map((t) => (
-        <button key={t.id} data-testid={`tool-${t.id}`} className={tool === t.id ? 'on' : ''} onClick={() => { st.setTool(t.id); st.select(null); }}>
-          {t.icon}<span>{t.label}</span>
+    <nav className="toolbar" aria-label="道具" ref={navRef}>
+      {buildOpen && (
+        <div className="subtools" data-testid="building-tools" role="group" aria-label="建物の道具">
+          <span className="subtools-label">建物を描く</span>
+          {BUILD_TOOLS.map(btn)}
+        </div>
+      )}
+      <div className="tb-row">
+        {btn(MAIN_TOOLS[0])}
+        <button data-testid="tool-building" aria-expanded={buildOpen} aria-label={inBuild && cur ? `建物: ${cur.label}` : '建物'} className={`${inBuild ? 'on' : ''} ${buildOpen ? 'open' : ''}`} onClick={() => setBuildOpen(!buildOpen)}>
+          {cur?.icon ?? '🏠'}<span>建物 ▴</span>
         </button>
-      ))}
-      <button data-testid="undo" disabled={!canUndo} onClick={() => st.undo()}>↶<span>戻す</span></button>
-      <button data-testid="redo" disabled={!canRedo} onClick={() => st.redo()}>↷<span>やり直し</span></button>
+        {MAIN_TOOLS.slice(1).map(btn)}
+        <button data-testid="undo" className="hist" disabled={!canUndo} onClick={() => st.undo()}>↶<span>戻す</span></button>
+        <button data-testid="redo" className="hist" disabled={!canRedo} onClick={() => st.redo()}>↷<span>やり直し</span></button>
+      </div>
     </nav>
   );
 }
 
 export { systemLabel };
+
+/** 何を選んでいるかを設定パネルの上に出す。✕ で選択をやめる */
+export function SelectionBar() {
+  const sel = useStore((s) => s.selection);
+  const doc = useStore((s) => s.doc);
+  if (!sel) return null;
+  const { building: b, network: net } = doc;
+  let label = '';
+  let color: string | undefined;
+  if (sel.kind === 'segment' && net.segments[sel.id]) {
+    const g = net.segments[sel.id];
+    label = `${systemLabel(g.system)}の配管 φ${g.diameter}`;
+    color = systemColor(g.system);
+  } else if (sel.kind === 'node' && net.nodes[sel.id]) {
+    const n = net.nodes[sel.id];
+    const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
+    label = fx ? `${FIXTURE_CATALOG[fx.type].label}の接続口` : '配管の点（曲がり・分岐・端）';
+  } else if (sel.kind === 'fixture' && doc.fixtures[sel.id]) label = FIXTURE_CATALOG[doc.fixtures[sel.id].type].label;
+  else if (sel.kind === 'wall' && b.walls[sel.id]) label = b.walls[sel.id].kind === 'exterior' ? '外壁' : '内壁';
+  else if (sel.kind === 'corner') label = '壁の角';
+  else if (sel.kind === 'opening' && b.openings[sel.id]) label = b.openings[sel.id].type === 'door' ? 'ドア' : '窓';
+  else if (sel.kind === 'room' && b.rooms[sel.id]) label = `部屋「${b.rooms[sel.id].name}」`;
+  else if (sel.kind === 'member') label = '梁・軒・バルコニー・階段';
+  else return null;
+  return (
+    <div className="sel-bar" data-testid="sel-bar">
+      {color && <i className="sys-dot" style={{ background: color }} />}
+      <span>選択中: <b>{label}</b></span>
+      <button data-testid="sel-clear" onClick={() => useStore.getState().select(null)}>✕ 選択をやめる</button>
+    </div>
+  );
+}
+
+/** 器具の接続口へつなぐ候補（別の階・屋上も）。押すと仮のルートで配管を作る */
+function PortConnect({ nodeId, title }: { nodeId: string; title?: string }) {
+  const doc = useStore((s) => s.doc);
+  const dragging = useStore((s) => s.dragBase !== null);
+  // ドラッグ中は計算しない（動かすたびに全接続口を調べると重くなる）
+  const cands = useMemo(() => (dragging ? [] : portCandidates(doc, nodeId, 4)), [doc, nodeId, dragging]);
+  if (!cands.length) return null;
+  return (
+    <div className="port-connect" data-testid="port-connect">
+      <div className="subhead">🔗 {title ? `${title} ` : ''}器具につなぐ（自動でルートを作ります）</div>
+      <div className="row">
+        {cands.map((c) => <button key={c.nodeId} data-testid="port-cand" data-target={c.nodeId} onClick={() => useStore.getState().connectToPort(nodeId, c.nodeId)}>→ {c.label}{c.diameterNote && <small className="warn"> 口径 {c.diameterNote}</small>}</button>)}
+      </div>
+    </div>
+  );
+}

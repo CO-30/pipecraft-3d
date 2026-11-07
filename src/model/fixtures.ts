@@ -12,7 +12,7 @@ import { dist, moveNode, normalize, segmentsAt, type Network, type SystemType, t
 export type FixtureType =
   | 'toilet' | 'washbasin' | 'kitchen' | 'bathtub' | 'shower' | 'washer' | 'waterHeater'
   | 'waterMeter' | 'pump' | 'panel' | 'outlet' | 'light' | 'aircon'
-  | 'faucet' | 'mixFaucet' | 'outdoorFaucet';
+  | 'faucet' | 'mixFaucet' | 'outdoorFaucet' | 'roofTank';
 export type Rotation = 0 | 90 | 180 | 270;
 export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation };
 
@@ -22,8 +22,8 @@ export type Fixture = { id: string; floorId: string; type: FixtureType; x: numbe
  */
 export type ThreadFitting = 'faucetElbow' | 'faucetSocket' | 'threadSocket';
 export type PortDef = { id: string; system: SystemType; diameter: number; dx: number; dy: number; dz: number; label: string; thread?: ThreadFitting };
-/** size: 幅(w)・奥行(d)・高さ(h)。base: 床からの設置高さ（'ceiling' は天井面から吊り下げ） */
-export type FixtureDef = { label: string; size: { w: number; d: number; h: number }; base: number | 'ceiling'; ports: PortDef[] };
+/** size: 幅(w)・奥行(d)・高さ(h)。base: 床からの設置高さ（'ceiling' は天井面から吊り下げ、'roof' はその階の上の面＝屋上に載せる） */
+export type FixtureDef = { label: string; size: { w: number; d: number; h: number }; base: number | 'ceiling' | 'roof'; ports: PortDef[] };
 
 /** 給水・給湯の接続口は既定で給水栓用エルボ（ネジ）。thread=null でネジなし（接着の器具接続継手） */
 const P = (id: string, system: SystemType, diameter: number, dx: number, dy: number, dz: number, label: string, thread?: ThreadFitting | null): PortDef => {
@@ -49,17 +49,28 @@ export const FIXTURE_CATALOG: Record<FixtureType, FixtureDef> = {
   // 水栓。壁付は壁の中の給水栓用エルボ（ネジ）に、立水栓は地中から立ち上げた給水栓用ソケットにねじ込む
   faucet: { label: '水栓（壁付）', size: { w: 60, d: 160, h: 80 }, base: 1000, ports: [P('water', 'water', 13, 0, 80, 40, '給水')] },
   mixFaucet: { label: '混合水栓（壁付）', size: { w: 300, d: 180, h: 120 }, base: 1000, ports: [P('hot', 'hotWater', 13, -100, 90, 60, '給湯'), P('water', 'water', 13, 100, 90, 60, '給水')] },
+  roofTank: { label: '屋上タンク（高置水槽）', size: { w: 1500, d: 1000, h: 1200 }, base: 'roof', ports: [P('in', 'water', 20, -600, 0, 1100, '入口', 'threadSocket'), P('out', 'water', 25, 600, 0, 100, '出口', 'threadSocket')] },
   outdoorFaucet: { label: '立水栓（屋外）', size: { w: 100, d: 100, h: 900 }, base: 0, ports: [P('water', 'water', 13, 0, 0, 0, '給水', 'faucetSocket')] },
 };
 /** 選ぶ画面の並び（水まわり → 水栓 → 設備 → 電気） */
 export const FIXTURE_TYPES: FixtureType[] = [
   'toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet', 'outdoorFaucet',
-  'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon',
+  'waterHeater', 'waterMeter', 'roofTank', 'pump', 'panel', 'outlet', 'light', 'aircon',
+];
+
+/** 器具を選ぶ画面の見出し（初心者が探しやすい並び） */
+export const FIXTURE_GROUPS: { label: string; types: FixtureType[] }[] = [
+  { label: 'メーター・タンク', types: ['waterMeter', 'roofTank', 'pump'] },
+  { label: '水まわり', types: ['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer'] },
+  { label: '水栓', types: ['faucet', 'mixFaucet', 'outdoorFaucet'] },
+  { label: '給湯・空調', types: ['waterHeater', 'aircon'] },
+  { label: '電気', types: ['panel', 'outlet', 'light'] },
 ];
 
 /** 器具の設置面の高さ（絶対 mm） */
 export function fixtureBaseZ(f: Fixture, floor: Floor): number {
   const def = FIXTURE_CATALOG[f.type];
+  if (def.base === 'roof') return floor.elevation + floor.height;
   return floor.elevation + (def.base === 'ceiling' ? floor.height - floor.slabThickness - def.size.h : def.base);
 }
 

@@ -499,3 +499,74 @@ describe('共通ストア: 下敷き・写真の開口部', () => {
     expect(s().past.length).toBe(h + 1);
   });
 });
+
+describe('表示のプリセット', () => {
+  it('配管だけ: 配管は表示、建物と器具は半透明、天井は非表示', () => {
+    s().setVisibilityPreset('pipes');
+    const v = s().visibility;
+    expect(v.pipes).toBe('show');
+    expect(v.fixtures).toBe('ghost');
+    expect(v.exteriorWall).toBe('ghost');
+    expect(v.floor).toBe('ghost');
+    expect(v.ceiling).toBe('hide');
+  });
+  it('設備だけ・建物だけ・すべて', () => {
+    s().setVisibilityPreset('fixtures');
+    expect(s().visibility.fixtures).toBe('show');
+    expect(s().visibility.pipes).toBe('ghost');
+    s().setVisibilityPreset('building');
+    expect(s().visibility.exteriorWall).toBe('show');
+    expect(s().visibility.pipes).toBe('hide');
+    expect(s().visibility.fixtures).toBe('hide');
+    s().setVisibilityPreset('all');
+    expect(Object.entries(s().visibility).filter(([k, m]) => k !== 'ceiling' && m !== 'show')).toEqual([]);
+    expect(s().visibility.ceiling).toBe('hide');
+  });
+});
+
+describe('器具の接続口へつなぐ', () => {
+  it('1階のメーター出口から屋上タンク入口へ1回でつながり、Undo で戻る', () => {
+    s().addFloor(false);
+    const [f1, f2] = bld().floors;
+    s().setActiveFloor(f1.id); s().setFixtureType('waterMeter'); s().placeFixtureAt({ x: -1000, y: 3000 });
+    s().setActiveFloor(f2.id); s().setFixtureType('roofTank'); s().placeFixtureAt({ x: 4000, y: 3500 });
+    const port = (t: string, p: string) => {
+      const f = Object.values(s().doc.fixtures).find((x) => x.type === t)!;
+      return Object.values(net().nodes).find((n) => n.fixtureId === f.id && n.portId === p)!;
+    };
+    const from = port('waterMeter', 'out').id, to = port('roofTank', 'in').id;
+    const tank = Object.values(s().doc.fixtures).find((x) => x.type === 'roofTank')!.id;
+    s().select({ kind: 'fixture', id: tank });
+    s().connectToPort(to, from);
+    expect(s().selection).toEqual({ kind: 'fixture', id: tank });
+    const n = net();
+    expect(Object.values(n.segments).some((g) => g.a === from || g.b === from)).toBe(true);
+    expect(Object.values(n.segments).some((g) => g.a === to || g.b === to)).toBe(true);
+    expect(Object.values(n.segments).every((g) => g.system === 'water' && g.diameter === 20)).toBe(true);
+    expect(validateNetwork(n)).toEqual([]);
+    s().undo();
+    expect(Object.keys(net().segments)).toHaveLength(0);
+  });
+});
+
+describe('器具の接続口へつなぐ（お知らせ）', () => {
+  it('排水をつないだら勾配の設定を案内する', () => {
+    s().setFixtureType('washbasin'); s().placeFixtureAt({ x: 1000, y: 1000 });
+    s().setFixtureType('washer'); s().placeFixtureAt({ x: 4000, y: 1000 });
+    const port = (t: string, p: string) => {
+      const f = Object.values(s().doc.fixtures).find((x) => x.type === t)!;
+      return Object.values(net().nodes).find((n) => n.fixtureId === f.id && n.portId === p)!.id;
+    };
+    s().connectToPort(port('washbasin', 'drain'), port('washer', 'drain'));
+    expect(Object.keys(net().segments).length).toBeGreaterThan(0);
+    expect(s().notice).toContain('勾配');
+  });
+  it('つなげない相手なら何もせず理由を知らせる', () => {
+    s().setFixtureType('washbasin'); s().placeFixtureAt({ x: 1000, y: 1000 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const ids = Object.values(net().nodes).filter((n) => n.fixtureId === f.id).map((n) => n.id);
+    s().connectToPort(ids[0], ids[1]);
+    expect(Object.keys(net().segments)).toHaveLength(0);
+    expect(s().notice).toBeTruthy();
+  });
+});

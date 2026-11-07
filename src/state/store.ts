@@ -21,8 +21,9 @@ import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
-import { applySlope } from '../model/slope';
+import { applySlope, isDrain } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
+import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
 import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
@@ -50,6 +51,18 @@ export const VIS_CATEGORIES: { id: VisCategory; label: string }[] = [
   { id: 'ceiling', label: '天井' }, { id: 'door', label: 'ドア' }, { id: 'window', label: '窓' }, { id: 'member', label: '梁・軒・バルコニー・階段' }, { id: 'pipes', label: '配管・配線' },
   { id: 'fixtures', label: '設備機器' },
 ];
+export type VisPreset = 'all' | 'building' | 'pipes' | 'fixtures';
+/** 表示のプリセット（「配管だけ」など）。見たいものを表示、その他は半透明（建物だけは配管・器具を隠す）。天井はいつも非表示 */
+export function presetVisibility(p: VisPreset): Record<VisCategory, VisMode> {
+  const v = defaultVisibility();
+  if (p === 'all') return v;
+  const building: VisCategory[] = ['exteriorWall', 'interiorWall', 'floor', 'door', 'window', 'member'];
+  const out = { ...v };
+  for (const c of building) out[c] = p === 'building' ? 'show' : 'ghost';
+  out.pipes = p === 'pipes' ? 'show' : p === 'building' ? 'hide' : 'ghost';
+  out.fixtures = p === 'fixtures' ? 'show' : p === 'building' ? 'hide' : 'ghost';
+  return out;
+}
 const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', member: 'show', pipes: 'show', fixtures: 'show',
 });
@@ -241,6 +254,9 @@ type State = {
 
   // 表示
   setVisibility(cat: VisCategory, mode: VisMode): void;
+  /** 配管の端（または接続口）から、つながっていない器具の接続口へ仮のルートでつなぐ（別の階も可） */
+  connectToPort(fromId: string, toId: string): void;
+  setVisibilityPreset(p: VisPreset): void;
   setElementVisibility(id: string, mode: VisMode): void;
   resetElementVisibility(): void;
 
@@ -1013,6 +1029,27 @@ export const useStore = create<State>((set, get) => {
     },
 
     setVisibility: (cat, mode) => set({ visibility: { ...get().visibility, [cat]: mode } }),
+    setVisibilityPreset: (p) => set({ visibility: presetVisibility(p) }),
+    connectToPort: (fromId, toId) => {
+      const { doc } = get();
+      if (!portCandidates(doc, fromId, Infinity).some((c) => c.nodeId === toId)) {
+        set({ notice: 'この接続口にはつなげません（同じ器具・種類や向きが合わない・すでにつながっている）' });
+        return;
+      }
+      const attrs = nodeAttrs(doc.network, doc.fixtures, fromId).attrs;
+      if (!attrs) return;
+      const prev = get().selection;
+      drawCore(routeToPort(doc.network.nodes[fromId].pos, doc.network.nodes[toId].pos), attrs, { startNodeId: fromId, endNodeId: toId });
+      if (get().doc.network === doc.network) {
+        if (!get().notice) set({ notice: 'ルートを作れませんでした。配管ツールでなぞってつないでください' });
+        return;
+      }
+      // 器具のパネルからつないだときは器具を選んだままにする（続けて別の接続口もつなげるように）
+      const toPort = portCandidates(doc, fromId, Infinity).find((c) => c.nodeId === toId);
+      const dia = toPort?.diameterNote ? `。口径が違います（${toPort.diameterNote}）。径違いの継手を確認してください` : '';
+      const slope = isDrain(attrs.system) ? '。排水は区間を選んで「勾配」を設定してください' : '';
+      set({ notice: `仮のルートでつなぎました。点をドラッグすると経路を直せます${dia}${slope}`, ...(prev?.kind === 'fixture' ? { selection: prev } : {}) });
+    },
     setElementVisibility: (id, mode) => {
       const hiddenIds = get().hiddenIds.filter((x) => x !== id);
       const ghostIds = get().ghostIds.filter((x) => x !== id);

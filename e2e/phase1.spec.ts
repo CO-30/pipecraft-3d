@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createProject, evidence, freshApp, isMobile, planToScreen, show, state, strokeMm, tap, touchSession } from './helpers';
+import { createProject, evidence, freshApp, isMobile, openVisDetails, planToScreen, show, state, strokeMm, tap, touchSession, useTool } from './helpers';
 
 const wallsOn = (bld: Awaited<ReturnType<typeof state>>['bld'], floorId: string) => Object.values(bld.walls).filter((w) => w.floorId === floorId);
 
@@ -16,21 +16,21 @@ test.describe('Phase 1 建物作成 受入テスト', () => {
 
     await show(page, '2D');
     // 内壁: 南壁(3000,0)から北壁(3000,6000)へ → 南北の外壁が分割され +3
-    await page.getByTestId('tool-wall').click();
+    await useTool(page, 'wall');
     await strokeMm(page, [[3000, 0], [3000, 6000]], touch);
     s = await state(page);
     expect(wallsOn(s.bld, f1)).toHaveLength(7);
 
     // ドア: 内壁をタップ、窓: 南の外壁をタップ
-    await page.getByTestId('tool-door').click();
+    await useTool(page, 'door');
     await tap(page, await planToScreen(page, 3000, 3000), touch);
-    await page.getByTestId('tool-window').click();
+    await useTool(page, 'window');
     await tap(page, await planToScreen(page, 5500, 0), touch);
     s = await state(page);
     expect(Object.values(s.bld.openings).map((o) => o.type).sort()).toEqual(['door', 'window']);
 
     // 部屋
-    await page.getByTestId('tool-room').click();
+    await useTool(page, 'room');
     await strokeMm(page, [[3200, 200], [7800, 5800]], touch);
     s = await state(page);
     expect(Object.keys(s.bld.rooms)).toHaveLength(3);
@@ -47,6 +47,7 @@ test.describe('Phase 1 建物作成 受入テスト', () => {
     // 3D表示・外壁を半透明
     await show(page, '3D');
     if (isMobile()) await page.getByTestId('toggle-vis').click();
+    await openVisDetails(page);
     await page.getByTestId('vis-exteriorWall-ghost').click();
     await page.getByTestId('vis-ceiling-hide').click();
     s = await state(page);
@@ -72,7 +73,7 @@ test.describe('Phase 1 建物作成 受入テスト', () => {
     const touch = await touchSession(page);
     await createProject(page, '移動テスト');
     await show(page, '2D');
-    await page.getByTestId('tool-wall').click();
+    await useTool(page, 'wall');
     await strokeMm(page, [[3000, 0], [3000, 6000]], touch);
     const wid = (await state(page)).selection.id as string;
     await page.getByTestId('tool-select').click();
