@@ -34,7 +34,7 @@ export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, i
   aspectW: number; aspectH: number; maxPx?: number; quality?: number; intro: string; onDone: (f: Face) => void; hidden?: boolean; allowPartial?: boolean;
 }) {
   const [partial, setPartial] = useState(false);
-  const [ref, setRef] = useState<Record<keyof RefRect, string>>({ left: '0', bottom: '0', width: String(Math.round(aspectW)), height: String(Math.round(aspectH)) });
+  const [ref, setRef] = useState<Record<keyof RefRect, string>>({ left: '', bottom: '', width: '', height: '' });
   const fileRef = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<{ url: string; w: number; h: number; data: ImageData } | null>(null);
   const [quad, setQuad] = useState<Vec2[]>([]);
@@ -61,7 +61,8 @@ export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, i
     const w = Math.max(50, Math.round(aspectW * k)), h = Math.max(50, Math.round(aspectH * k));
     let dst;
     if (partial) {
-      const r: RefRect = { left: Number(ref.left), bottom: Number(ref.bottom), width: Number(ref.width), height: Number(ref.height) };
+      const num = (v: string, def?: number) => (v.trim() === '' && def !== undefined ? def : v.trim() === '' ? NaN : Number(v));
+      const r: RefRect = { left: num(ref.left, 0), bottom: num(ref.bottom, 0), width: num(ref.width), height: num(ref.height) };
       const err = checkRefRect(r, aspectW, aspectH);
       if (err) { setMsg(err); return; }
       dst = refRectPx(r, aspectW, aspectH, w, h);
@@ -100,7 +101,7 @@ export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, i
               <div className="row ref-fields">
                 {([['width', '四角の横幅'], ['height', '四角の高さ'], ['left', '壁の左端から'], ['bottom', '下端の高さ']] as [keyof RefRect, string][]).map(([k, label]) => (
                   <label key={k} className="field inline small">{label}
-                    <input type="number" inputMode="numeric" data-testid={`wp-ref-${k}`} value={ref[k]} onChange={(e) => setRef({ ...ref, [k]: e.target.value })} />mm
+                    <input type="number" inputMode="numeric" min={0} step={10} placeholder={k === 'left' || k === 'bottom' ? '0' : ''} data-testid={`wp-ref-${k}`} value={ref[k]} onChange={(e) => setRef({ ...ref, [k]: e.target.value })} />mm
                   </label>
                 ))}
               </div>

@@ -39,6 +39,26 @@ describe('基準の四角（壁の一部で写真を合わせる）', () => {
     expect(px(15, 5)).toEqual([0, 0, 255]); // 四角の右 = 写真の x=25 → 青
     expect(px(35, 5)).toEqual([226, 232, 240]); // 写真の x=45 → 写真の外 = 灰色
   });
+  it('壁全体（dst なし）: 写真の外は灰色（以前の黒から変更）', () => {
+    const data = new Uint8ClampedArray(10 * 10 * 4).fill(255);
+    // 四隅が写真からはみ出している → 出力の右下は写真の外
+    const out = rectify({ data, width: 10, height: 10 }, [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }], 4, 4)!;
+    expect(Array.from(out.slice(0, 3))).toEqual([255, 255, 255]);
+    expect(Array.from(out.slice((3 * 4 + 3) * 4, (3 * 4 + 3) * 4 + 3))).toEqual([226, 232, 240]);
+  });
+  it('延長しすぎて写真の地平線を越えた所は、裏返しの写真ではなく灰色', () => {
+    // 写真いっぱいが赤。上がすぼまる強い台形を出力の上端 10 行に合わせると、出力の地平線は 10.5 行目あたり
+    // → それより下（地平線の向こう）を写真から引くと裏返しの赤になってしまう。灰色でなければならない
+    const W = 100, Hh = 100;
+    const data = new Uint8ClampedArray(W * Hh * 4);
+    for (let i = 0; i < data.length; i += 4) { data[i] = 255; data[i + 3] = 255; }
+    const quad = [{ x: 48, y: 60 }, { x: 52, y: 60 }, { x: 90, y: 90 }, { x: 10, y: 90 }];
+    const dst = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 10 }, { x: 0, y: 10 }];
+    const out = rectify({ data, width: W, height: Hh }, quad, 100, 400, dst)!;
+    const at = (x: number, y: number) => Array.from(out.slice((y * 100 + x) * 4, (y * 100 + x) * 4 + 3));
+    expect(at(50, 5)).toEqual([255, 0, 0]);
+    for (let y = 20; y < 400; y += 40) expect(at(50, y)).toEqual([226, 232, 240]);
+  });
   it('dst 指定の行列は 基準の四角 → 写真の四隅 に写す', () => {
     const quad = [{ x: 12, y: 8 }, { x: 40, y: 11 }, { x: 38, y: 50 }, { x: 9, y: 47 }];
     const dst = [{ x: 100, y: 150 }, { x: 300, y: 150 }, { x: 300, y: 450 }, { x: 100, y: 450 }];

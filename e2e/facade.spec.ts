@@ -88,6 +88,14 @@ test('外壁の写真から測る: 壁の一部（基準の四角）で補正 �
   await page.getByTestId('wp-ref-left').fill('2000');
   await page.getByTestId('wp-rectify').click();
   await expect(page.getByTestId('el-face')).toBeVisible();
+  // 横幅を直しても選んだ写真・四隅・基準の四角は残り、補正だけやり直せばよい
+  await page.getByTestId('el-width').fill('10500');
+  await expect(page.getByTestId('el-face')).toHaveCount(0);
+  await expect(page.getByTestId('wp-photo')).toBeVisible();
+  await expect(page.getByTestId('wp-ref-width')).toHaveValue('4000');
+  await page.getByTestId('el-width').fill('10000');
+  await page.getByTestId('wp-rectify').click();
+  await expect(page.getByTestId('el-face')).toBeVisible();
   await page.screenshot({ path: evidence('fp-02-rectified') });
   await page.getByTestId('el-create').click();
   await expect(page.getByTestId('elev-view')).toBeVisible();
@@ -128,6 +136,10 @@ test('外壁の写真から測る: 壁の一部（基準の四角）で補正 �
   await expect.poll(() => page.evaluate(() => (window as any).__pc3d.facadePhotos()[0].imageWidth)).toBeGreaterThan(0);
   await page.waitForTimeout(300);
   await page.screenshot({ path: evidence('fp-05-3d') });
+  // 壁のない工事でも、階で絞った表示（この階だけ）で写真が消えない
+  await page.evaluate(() => (window as any).__pc.getState().setFloorFilter('activeOnly'));
+  await expect.poll(() => page.evaluate(() => (window as any).__pc3d.facadePhotos().length)).toBe(1);
+  await page.evaluate(() => (window as any).__pc.getState().setFloorFilter('all'));
   // 外壁を非表示にすると写真も消える
   await page.evaluate(() => (window as any).__pc.getState().setVisibility('exteriorWall', 'hide'));
   await expect.poll(() => page.evaluate(() => (window as any).__pc3d.facadePhotos().length)).toBe(0);

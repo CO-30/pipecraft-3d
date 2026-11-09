@@ -72,7 +72,7 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
         )}
         <main className={`views ${eff}`}>
           {eff !== '3d' && (elevId ? <ElevationView key={elevId} /> : <PlanView />)}
-          {eff !== '3d' && !elevId && <PlanCoach />}
+          {eff !== '3d' && !elevId && <PlanCoach onFacade={() => setFacadeOpen(true)} />}
           {eff !== '2d' && <Suspense fallback={<div className="view3d loading">3D を準備中…</div>}><View3D /></Suspense>}
           {!isWide && showVis && <div className="sheet"><VisibilityPanel /></div>}
         </main>
@@ -134,13 +134,12 @@ function Notice() {
 }
 
 /** 図面の左上に「いまの操作」を出す。何もない工事では最初にやることを中央に大きく出す */
-function PlanCoach() {
+function PlanCoach({ onFacade }: { onFacade: () => void }) {
   const tool = useStore((s) => s.tool);
   const pendingMerge = useStore((s) => s.pendingMerge);
   const empty = useStore((s) => Object.keys(s.doc.building.walls).length === 0 && Object.keys(s.doc.fixtures).length === 0
     && Object.keys(s.doc.network.segments).length === 0 && Object.keys(s.doc.underlays ?? {}).length === 0);
   const [closed, setClosed] = useState<string | null>(null);
-  const [facade, setFacade] = useState(false);
   const text = pendingMerge ? '結合する隣の部屋をタップ（他の所をタップで取り消し）' : PLAN_HINTS[tool];
   const st = useStore.getState();
   if (empty && (tool === 'select' || tool === 'outline')) {
@@ -153,10 +152,9 @@ function PlanCoach() {
             <b>まず建物の形を作りましょう</b>
             <button className="primary big" data-testid="empty-outline" onClick={() => { st.setTool('outline'); st.select(null); }}>✏️ 外周を指でなぞる</button>
             <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 間取り図を取り込む</button>
-            <button className="big" data-testid="empty-facade" onClick={() => setFacade(true)}>📷 外壁の写真から測る</button>
+            <button className="big" data-testid="empty-facade" onClick={onFacade}>📷 外壁の写真から測る</button>
           </div>
         )}
-        {facade && <ElevationDialog wallId={null} onClose={() => setFacade(false)} />}
       </div>
     );
   }

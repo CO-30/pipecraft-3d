@@ -15,19 +15,41 @@ import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { FIXTURE_CATALOG, fixtureBaseZ, type Fixture } from '../model/fixtures';
 import { photoPlane } from '../model/facadePhoto';
+import { OUTSIDE_RGB } from '../model/homography';
 import type { Elevation } from '../model/elevation';
 
-/** 立面の写真を 3D の外壁の表面に貼る（タップは後ろの壁へ通す） */
+/**
+ * 立面の写真を 3D の外壁の表面に貼る（タップは後ろの壁へ通す）。
+ * 写真の外（補正で延長した所の灰色）は透明にして、後ろの壁・窓が見えるようにする。読み込みが終わるまでは出さない。
+ */
 function FacadePhoto({ el, mode, clip }: { el: Elevation; mode: VisMode; clip: THREE.Plane[] }) {
   const src = el.photo?.src;
-  const tex = useMemo(() => {
-    if (!src) return null;
-    const t = new THREE.TextureLoader().load(src);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 4;
-    return t;
+  const [tex, setTex] = useState<THREE.Texture | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    let alive = true, made: THREE.Texture | null = null;
+    const img = new Image();
+    img.onload = () => {
+      if (!alive) return;
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const x = c.getContext('2d');
+      if (!x) return;
+      x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height);
+      const [r0, g0, b0] = OUTSIDE_RGB;
+      for (let i = 0; i < d.data.length; i += 4) {
+        if (Math.abs(d.data[i] - r0) + Math.abs(d.data[i + 1] - g0) + Math.abs(d.data[i + 2] - b0) <= 18) d.data[i + 3] = 0;
+      }
+      x.putImageData(d, 0, 0);
+      made = new THREE.CanvasTexture(c);
+      made.colorSpace = THREE.SRGBColorSpace;
+      made.anisotropy = 4;
+      setTex(made);
+    };
+    img.src = src;
+    return () => { alive = false; made?.dispose(); setTex(null); };
   }, [src]);
-  useEffect(() => () => tex?.dispose(), [tex]);
   const { pos, quat, w, h } = useMemo(() => {
     const p = photoPlane(el);
     const v = (q: Vec3) => new THREE.Vector3(q.x, q.z, -q.y);
@@ -39,7 +61,7 @@ function FacadePhoto({ el, mode, clip }: { el: Elevation; mode: VisMode; clip: T
   return (
     <mesh name={`facade-photo-${el.id}`} position={pos} quaternion={quat} raycast={() => null} renderOrder={1}>
       <planeGeometry args={[w, h]} />
-      <meshBasicMaterial map={tex} toneMapped={false} transparent={ghost} opacity={ghost ? 0.35 : 1} depthWrite={!ghost} clippingPlanes={clip}
+      <meshBasicMaterial map={tex} toneMapped={false} transparent={ghost} alphaTest={0.5} opacity={ghost ? 0.35 : 1} depthWrite={!ghost} clippingPlanes={clip}
         polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
     </mesh>
   );
@@ -173,6 +195,13 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     return [floorFilter === 'activeOnly' ? f.elevation - 1000 : -Infinity, f.elevation + f.height];
   }, [floorFilter, building.floors, activeFloorId]);
   const zIn = (z: number) => z >= zRange[0] && z < zRange[1];
+  /** 階で絞ったときに写真を切る面（three: y が上、m） */
+  const floorClip = useMemo(() => {
+    const out: THREE.Plane[] = [];
+    if (Number.isFinite(zRange[1])) out.push(new THREE.Plane(new THREE.Vector3(0, -1, 0), zRange[1] / 1000));
+    if (Number.isFinite(zRange[0])) out.push(new THREE.Plane(new THREE.Vector3(0, 1, 0), -zRange[0] / 1000));
+    return out;
+  }, [zRange]);
   const shownFloorIds = useMemo(() => new Set(boxes.map((b) => b.floorId)), [boxes]);
   type Drag =
     | { kind: 'node'; nodeId: string; plane: THREE.Plane }
@@ -289,9 +318,12 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
             onGrab={selected && k === 'wall' && tool === 'select' ? (e) => startBuildingDrag(e, { kind: 'wall', wallId: b.elementId }) : undefined} />
         );
       })}
-      {Object.values(elevations ?? {}).filter((el) => el.photo && (floorFilter === 'all' || shownFloorIds.has(el.floorId))).map((el) => (
-        <FacadePhoto key={el.id} el={el} clip={clip} mode={el.wallId ? modeFor('exteriorWall', el.wallId) : vis.exteriorWall} />
-      ))}
+      {Object.values(elevations ?? {})
+        // 元の壁が消えた立面の写真は出さない。階で絞ったときは見えている高さの範囲と重なる立面だけ（はみ出しは切る）
+        .filter((el) => el.photo && (!el.wallId || building.walls[el.wallId]) && el.baseZ < zRange[1] && el.baseZ + el.height > zRange[0])
+        .map((el) => (
+          <FacadePhoto key={el.id} el={el} clip={floorClip.length ? [...clip, ...floorClip] : clip} mode={el.wallId ? modeFor('exteriorWall', el.wallId) : vis.exteriorWall} />
+        ))}
       {tool === 'select' && sel?.kind === 'wall' && building.walls[sel.id] && shownFloorIds.has(building.walls[sel.id].floorId) && (() => {
         const w = building.walls[sel.id];
         const f = floorById(building, w.floorId);
@@ -350,14 +382,20 @@ const FOV = 50;
 function AutoFit({ onTarget }: { onTarget: (t: [number, number, number]) => void }) {
   const { camera, size } = useThree();
   const done = useRef(false);
+  /** 空の工事で合わせた後、最初の壁ができたらもう一度だけ合わせる（新しい工事で建物が画面の外になるのを防ぐ） */
+  const fittedEmpty = useRef(false);
+  const hasCorners = useStore((s) => Object.keys(s.doc.building.corners).length > 0);
   useLayoutEffect(() => {
-    if (done.current || size.width <= 0 || size.height <= 0) return;
+    if (size.width <= 0 || size.height <= 0) return;
+    if (done.current && !(fittedEmpty.current && hasCorners)) return;
+    fittedEmpty.current = !done.current && !hasCorners;
+    if (done.current) fittedEmpty.current = false;
     done.current = true;
     const c = fitCamera(size.width / size.height, FOV);
     camera.position.set(...c.pos);
     camera.lookAt(...c.target);
     onTarget(c.target);
-  }, [camera, size.width, size.height, onTarget]);
+  }, [camera, size.width, size.height, onTarget, hasCorners]);
   return null;
 }
 
