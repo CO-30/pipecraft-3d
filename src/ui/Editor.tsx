@@ -14,10 +14,13 @@ import { HelpDialog } from './HelpDialog';
 import { PLAN_HINTS } from './hints';
 import { usePrefs } from './prefs';
 import { DimWizard } from './DimWizard';
+import { ElevationDialog } from './ElevationDialog';
 
 type Layout = '2d' | '3d' | 'split';
 
-export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }) {
+export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: SaveState; onBack: () => void; startFacade?: boolean; onFacadeStarted?: () => void }) {
+  const [facadeOpen, setFacadeOpen] = useState(!!startFacade);
+  useEffect(() => { if (startFacade) onFacadeStarted?.(); }, [startFacade, onFacadeStarted]);
   const meta = useStore((s) => s.meta);
   const net = useStore((s) => s.doc.network);
   const sel = useStore((s) => s.selection);
@@ -42,6 +45,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
 
   return (
     <div className={`app ${isWide ? 'wide' : 'narrow'}`} data-testid="editor">
+      {facadeOpen && <ElevationDialog wallId={null} onClose={() => setFacadeOpen(false)} />}
       <header>
         <button className="back" data-testid="back-home" onClick={onBack} aria-label="工事の一覧へ戻る">‹<span className="wide-only"> 一覧</span></button>
         <strong className="pname" data-testid="project-name">{meta?.name}</strong>
@@ -71,7 +75,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
         )}
         <main className={`views ${eff}`}>
           {eff !== '3d' && (elevId ? <ElevationView key={elevId} /> : <PlanView />)}
-          {eff !== '3d' && !elevId && <PlanCoach />}
+          {eff !== '3d' && !elevId && <PlanCoach onFacade={() => setFacadeOpen(true)} />}
           {eff !== '2d' && <Suspense fallback={<div className="view3d loading">3D を準備中…</div>}><View3D /></Suspense>}
           {!isWide && showVis && <div className="sheet"><VisibilityPanel /></div>}
         </main>
@@ -134,7 +138,7 @@ function Notice() {
 }
 
 /** 図面の左上に「いまの操作」を出す。何もない工事では最初にやることを中央に大きく出す */
-function PlanCoach() {
+function PlanCoach({ onFacade }: { onFacade: () => void }) {
   const tool = useStore((s) => s.tool);
   const pendingMerge = useStore((s) => s.pendingMerge);
   const empty = useStore((s) => Object.keys(s.doc.building.walls).length === 0 && Object.keys(s.doc.fixtures).length === 0
@@ -151,7 +155,8 @@ function PlanCoach() {
           <div className="pe-card">
             <b>まず建物の形を作りましょう</b>
             <button className="primary big" data-testid="empty-outline" onClick={() => { st.setTool('outline'); st.select(null); }}>✏️ 外周を指でなぞる</button>
-            <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 図面・写真を取り込む</button>
+            <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 間取り図を取り込む</button>
+            <button className="big" data-testid="empty-facade" onClick={onFacade}>📷 外壁の写真から測る</button>
           </div>
         )}
       </div>

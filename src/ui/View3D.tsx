@@ -14,6 +14,58 @@ import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
+import { photoPlane } from '../model/facadePhoto';
+import { OUTSIDE_RGB } from '../model/homography';
+import type { Elevation } from '../model/elevation';
+
+/**
+ * 立面の写真を 3D の外壁の表面に貼る（タップは後ろの壁へ通す）。
+ * 写真の外（補正で延長した所の灰色）は透明にして、後ろの壁・窓が見えるようにする。読み込みが終わるまでは出さない。
+ */
+function FacadePhoto({ el, mode, clip }: { el: Elevation; mode: VisMode; clip: THREE.Plane[] }) {
+  const src = el.photo?.src;
+  const [tex, setTex] = useState<THREE.Texture | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    let alive = true, made: THREE.Texture | null = null;
+    const img = new Image();
+    img.onload = () => {
+      if (!alive) return;
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const x = c.getContext('2d');
+      if (!x) return;
+      x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height);
+      const [r0, g0, b0] = OUTSIDE_RGB;
+      for (let i = 0; i < d.data.length; i += 4) {
+        if (Math.abs(d.data[i] - r0) + Math.abs(d.data[i + 1] - g0) + Math.abs(d.data[i + 2] - b0) <= 18) d.data[i + 3] = 0;
+      }
+      x.putImageData(d, 0, 0);
+      made = new THREE.CanvasTexture(c);
+      made.colorSpace = THREE.SRGBColorSpace;
+      made.anisotropy = 4;
+      setTex(made);
+    };
+    img.src = src;
+    return () => { alive = false; made?.dispose(); setTex(null); };
+  }, [src]);
+  const { pos, quat, w, h } = useMemo(() => {
+    const p = photoPlane(el);
+    const v = (q: Vec3) => new THREE.Vector3(q.x, q.z, -q.y);
+    const m = new THREE.Matrix4().makeBasis(v(p.right), v(p.up), v(p.normal));
+    return { pos: toThree(p.center), quat: new THREE.Quaternion().setFromRotationMatrix(m), w: p.size.w / 1000, h: p.size.h / 1000 };
+  }, [el]);
+  if (!tex || mode === 'hide') return null;
+  const ghost = mode === 'ghost';
+  return (
+    <mesh name={`facade-photo-${el.id}`} position={pos} quaternion={quat} raycast={() => null} renderOrder={1}>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial map={tex} toneMapped={false} transparent={ghost} alphaTest={0.5} opacity={ghost ? 0.35 : 1} depthWrite={!ghost} clippingPlanes={clip}
+        polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+    </mesh>
+  );
+}
 
 /** 器具の簡易3D形状（箱）。表示モードと選択強調つき */
 function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; selected: boolean; clip: THREE.Plane[] }) {
@@ -84,9 +136,19 @@ const BoxMesh = memo(function BoxMesh({ box, mode, selected, onSelect, onGrab, c
 
 /** E2Eテスト用フック（e2e ビルドのみ） */
 function TestHook() {
-  const { camera, size } = useThree();
+  const { camera, size, scene } = useThree();
   if (import.meta.env.MODE === 'e2e') {
     (window as unknown as { __pc3d: unknown }).__pc3d = {
+      /** 外壁に貼った写真（読み込み済みの画像の幅つき） */
+      facadePhotos: () => {
+        const out: { name: string; imageWidth: number }[] = [];
+        scene.traverse((o) => {
+          if (!o.name.startsWith('facade-photo-')) return;
+          const map = ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).map;
+          out.push({ name: o.name, imageWidth: (map?.image as { width?: number } | undefined)?.width ?? 0 });
+        });
+        return out;
+      },
       project: (nodeId: string) => {
         const n = useStore.getState().doc.network.nodes[nodeId];
         const v = toThree(n.pos).project(camera);
@@ -113,6 +175,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const floorFilter = useStore((s) => s.floorFilter);
   const activeFloorId = useStore((s) => s.activeFloorId);
   const fixtures = useStore((s) => s.doc.fixtures);
+  const elevations = useStore((s) => s.doc.elevations);
   useColors((c) => c.overrides);
   const allBoxes = useMemo(() => buildingBoxes(building), [building]);
   const boxes = useMemo(() => {
@@ -136,6 +199,13 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
     return [floorFilter === 'activeOnly' ? f.elevation - 1000 : -Infinity, f.elevation + f.height];
   }, [floorFilter, building.floors, activeFloorId]);
   const zIn = (z: number) => z >= zRange[0] && z < zRange[1];
+  /** 階で絞ったときに写真を切る面（three: y が上、m） */
+  const floorClip = useMemo(() => {
+    const out: THREE.Plane[] = [];
+    if (Number.isFinite(zRange[1])) out.push(new THREE.Plane(new THREE.Vector3(0, -1, 0), zRange[1] / 1000));
+    if (Number.isFinite(zRange[0])) out.push(new THREE.Plane(new THREE.Vector3(0, 1, 0), -zRange[0] / 1000));
+    return out;
+  }, [zRange]);
   const shownFloorIds = useMemo(() => new Set(boxes.map((b) => b.floorId)), [boxes]);
   type Drag =
     | { kind: 'node'; nodeId: string; plane: THREE.Plane }
@@ -252,6 +322,12 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
             onGrab={selected && k === 'wall' && tool === 'select' ? (e) => startBuildingDrag(e, { kind: 'wall', wallId: b.elementId }) : undefined} />
         );
       })}
+      {Object.values(elevations ?? {})
+        // 元の壁が消えた立面の写真は出さない。階で絞ったときは見えている高さの範囲と重なる立面だけ（はみ出しは切る）
+        .filter((el) => el.photo && (!el.wallId || building.walls[el.wallId]) && el.baseZ < zRange[1] && el.baseZ + el.height > zRange[0])
+        .map((el) => (
+          <FacadePhoto key={el.id} el={el} clip={floorClip.length ? [...clip, ...floorClip] : clip} mode={el.wallId ? modeFor('exteriorWall', el.wallId) : vis.exteriorWall} />
+        ))}
       {tool === 'select' && sel?.kind === 'wall' && building.walls[sel.id] && shownFloorIds.has(building.walls[sel.id].floorId) && (() => {
         const w = building.walls[sel.id];
         const f = floorById(building, w.floorId);
@@ -310,14 +386,20 @@ const FOV = 50;
 function AutoFit({ onTarget }: { onTarget: (t: [number, number, number]) => void }) {
   const { camera, size } = useThree();
   const done = useRef(false);
+  /** 空の工事で合わせた後、最初の壁ができたらもう一度だけ合わせる（新しい工事で建物が画面の外になるのを防ぐ） */
+  const fittedEmpty = useRef(false);
+  const hasCorners = useStore((s) => Object.keys(s.doc.building.corners).length > 0);
   useLayoutEffect(() => {
-    if (done.current || size.width <= 0 || size.height <= 0) return;
+    if (size.width <= 0 || size.height <= 0) return;
+    if (done.current && !(fittedEmpty.current && hasCorners)) return;
+    fittedEmpty.current = !done.current && !hasCorners;
+    if (done.current) fittedEmpty.current = false;
     done.current = true;
     const c = fitCamera(size.width / size.height, FOV);
     camera.position.set(...c.pos);
     camera.lookAt(...c.target);
     onTarget(c.target);
-  }, [camera, size.width, size.height, onTarget]);
+  }, [camera, size.width, size.height, onTarget, hasCorners]);
   return null;
 }
 

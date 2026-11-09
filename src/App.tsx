@@ -16,6 +16,8 @@ import { buildSample, SAMPLE_NAME } from './sample/sample';
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
   const [error, setError] = useState('');
+  /** 「外壁の写真から測る」で作った直後は立面の作成画面を開く */
+  const [startFacade, setStartFacade] = useState(false);
   const save = useSaveState();
 
   const open = async (id: string) => {
@@ -33,7 +35,7 @@ export default function App() {
   const create = async (v: NewProjectInput) => {
     const doc = v.mode === 'dims'
       ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} }
-      : v.mode === 'sketch' || v.mode === 'photo' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
+      : v.mode === 'sketch' || v.mode === 'photo' || v.mode === 'facade' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();
     st.newDoc(doc, meta);
@@ -41,6 +43,7 @@ export default function App() {
     if (v.mode === 'photo') st.setTool('underlay');
     try {
       await repo.save(st.toProjectData()!);
+      setStartFacade(v.mode === 'facade');
       setScreen('editor');
     } catch (e) {
       setError('保存できませんでした: ' + (e as Error).message);
@@ -68,7 +71,7 @@ export default function App() {
   return (
     <>
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}（タップで閉じる）</div>}
-      {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} onSample={sample} /> : <Editor save={save} onBack={back} />}
+      {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} onSample={sample} /> : <Editor save={save} onBack={back} startFacade={startFacade} onFacadeStarted={() => setStartFacade(false)} />}
       <UpdatePrompt />
     </>
   );
