@@ -39,8 +39,15 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     used.add(s.a); used.add(s.b);
   }
   const points: IsoPoint[] = [];
+  // 接続口が複数の器具は、カタログの最初の接続口（メーターなら入口）を代表にする（接続順に依存しない）
+  const portIndex = (nodeId: string) => {
+    const n = net.nodes[nodeId];
+    const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
+    return fx ? FIXTURE_CATALOG[fx.type].ports.findIndex((p) => p.id === n.portId) : 0;
+  };
+  const ordered = [...used].sort((p, q) => portIndex(p) - portIndex(q));
   const doneFixture = new Set<string>();
-  for (const id of used) {
+  for (const id of ordered) {
     const n = net.nodes[id];
     const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
     if (!fx) {

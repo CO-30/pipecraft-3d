@@ -137,8 +137,10 @@ describe('排水縦断図の描画', () => {
     const rt = extractRoute(doc.network, b.port);
     const model = buildProfile(doc, 'route' in rt ? rt.route : [], p, '排水設備 縦断図');
     const svg = renderProfileSvg(model, meta);
-    expect(svg).toContain('NO.1汚水マス φ300 H600');
-    expect(svg).toContain('公共汚水マス φ300 H700');
+    expect(svg).toContain('NO.1汚水マス');
+    expect(svg).toContain('φ300 H600 (±0)');
+    expect(svg).toContain('公共汚水マス');
+    expect(svg).toContain('φ300 H700 (±0)');
     expect(svg).toContain('10.00'); // 長さ 2 桁
     expect(svg).toContain('1.0/100');
     expect(svg).toContain('100VU');

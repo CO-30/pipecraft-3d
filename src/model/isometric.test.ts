@@ -59,6 +59,19 @@ describe('アイソメ図（立面図・展開図）', () => {
     expect(pub?.label).toBe('公共汚水マス');
   });
 
+  test('接続口が複数の器具は、カタログの最初の接続口（メーターなら入口）に点を置く', () => {
+    const b1 = addFloor(emptyBuilding(), { height: 3000 });
+    let doc: Doc = { building: b1.b, network: emptyNetwork(), fixtures: {} };
+    const m = placeFixture(doc, b1.floorId, 'waterMeter', { x: 0, y: 0 }); doc = m.doc;
+    const ports = portNodes(doc.network, m.fixtureId!);
+    const inP = ports.find((n) => n.portId === 'in')!, outP = ports.find((n) => n.portId === 'out')!;
+    // 出口側を先につなぎ、入口側を後につなぐ（反復順に依存しないことを確認）
+    let r = addPolyline(doc.network, [outP.pos, v(3000, 0, outP.pos.z)], { system: 'water', diameter: 20 }, { startNodeId: outP.id });
+    r = addPolyline(r.net, [v(-3000, 0, inP.pos.z), inP.pos], { system: 'water', diameter: 20 }, { endNodeId: inP.id });
+    const iso = buildIsometric({ ...doc, network: r.net }, 'water', STANDARD_PROFILE);
+    const meter = iso.points.find((pt) => pt.label === '水道メーター')!;
+    expect(meter.nodeId).toBe(inP.id);
+  });
   test('沖縄市は立面図がアイソメで、縦断図の上に排水のアイソメを描く', () => {
     const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
     expect(p.riser.lineStyle).toBe('isometric');

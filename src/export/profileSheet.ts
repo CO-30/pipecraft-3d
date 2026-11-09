@@ -14,6 +14,8 @@ export type SheetMeta = { siteName: string; date: Date };
 const M = 15; // 枠内の余白
 const LABEL_W = 26; // 表の行ラベルの幅
 const ROW_H = 11;
+/** 桝の名前を図の上に縦書きする高さ(mm) */
+const ABOVE_H = 48;
 
 /** 数値表示（m 小数3位 / mm 整数）。decimals は m のときの小数桁 */
 export const fmtLen = (mm: number, unit: 'm' | 'mm', decimals: 2 | 3 = 3) => (unit === 'mm' ? String(Math.round(mm)) : (Math.round(mm) / 1000).toFixed(decimals));
@@ -39,15 +41,18 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   const tableH = ROW_H * rows.length;
   const titleH = 7 * profile.paper.titleBlockFields.length + 6;
   const tableTop = sheet.height - 10 - M - tableH - Math.max(titleH, 0) - 4;
-  // 桝の名前を図の上に縦書きするときは、その分の高さを空ける
-  const graphTop = 10 + M + 12 + (above ? 30 : 0);
-  const graphBottom = tableTop - 8;
-  // 上半分に排水のアイソメ図（沖縄市の「立面図（展開図）」）
+  // 桝の名前を図の上に縦書きするときは、その分の高さ（ABOVE_H）を空ける
   const withIso = !!iso && pt.drainageIsometric && iso.lines.length > 0;
+  const headTop = 10 + M + 12;
+  const graphBottom = tableTop - 8;
+  // 上半分に排水のアイソメ図（沖縄市の「立面図（展開図）」）: 縦断図の領域の 40% を使い、桝名の高さと重ねない
+  let graphTop = headTop + (above ? ABOVE_H : 0);
   if (withIso) {
-    const isoTop = 10 + M + 8, isoH = Math.max(40, (graphTop - 20) - isoTop - (above ? 0 : 20));
+    const isoTop = headTop - 4;
+    const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45));
     sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
     drawIsometric(sheet, iso!, profile, { x: 10 + M, y: isoTop, w: sheet.width - 20 - 2 * M, h: isoH });
+    graphTop = isoTop + isoH + 4 + (above ? ABOVE_H : 0);
   }
 
   // 見出し
@@ -123,11 +128,13 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         if (above) {
           // 「NO.1小口径桝 φ150 H410」を縦書きで図の上に、GL の差を (−600) のように
           const diff = n.glDiff !== undefined ? ` (${fmtDiff(n.glDiff)})` : '';
-          sheet.ops.push({ t: 'text', x: x + 0.9, y: Y(n.groundLevel) - 7, s: `${n.manhole.name} φ${n.manhole.diameter} H${Math.round(n.manhole.depth)}${diff}`, size: 2.6, anchor: 'start', rotate: -90 });
+          // 2 列に分けて縦書き（名前 / 径・深さ・GL差）。各列は ABOVE_H−8 に収める
+          sheet.ops.push({ t: 'text', x: x - 1.6, y: Y(n.groundLevel) - 7, s: fitText(n.manhole.name, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
+          sheet.ops.push({ t: 'text', x: x + 1.6, y: Y(n.groundLevel) - 7, s: fitText(`φ${n.manhole.diameter} H${Math.round(n.manhole.depth)}${diff}`, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
         } else {
           sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
         }
-        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - (above ? 38 : 10.5), s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
+        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - (above ? ABOVE_H - 1 : 10.5), s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
       } else {
         if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.invertLevel) - 3, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
         sheet.ops.push({ t: 'circle', cx: x, cy: Y(n.invertLevel), r: 0.8, fill: nodeColor(i), stroke: nodeColor(i) });

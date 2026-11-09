@@ -18,11 +18,11 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
   const { bounds } = iso;
   const w = Math.max(1, bounds.maxX - bounds.minX), h = Math.max(1, bounds.maxY - bounds.minY);
   const pad = 14; // ラベルの余白(mm)
-  const k = Math.min((box.w - pad * 2) / w, (box.h - pad * 2) / h);
+  const k = Math.max(0.001, Math.min((box.w - pad * 2) / w, (box.h - pad * 2) / h));
   const ox = box.x + pad + ((box.w - pad * 2) - w * k) / 2, oy = box.y + pad + ((box.h - pad * 2) - h * k) / 2;
   const X = (x: number) => ox + (x - bounds.minX) * k, Y = (y: number) => oy + (y - bounds.minY) * k;
   const colors = profile.colors;
-  const lineColor = (l: IsoModel['lines'][number]) => (iso.kind === 'water' ? (l.system === 'hotWater' ? HOT : colors.newWork) : l.existing ? colors.existing : colors.newWork);
+  const lineColor = (l: IsoModel['lines'][number]) => (l.existing ? colors.existing : iso.kind === 'water' && l.system === 'hotWater' ? HOT : colors.newWork);
   for (const l of iso.lines) {
     const c = lineColor(l);
     sheet.ops.push({ t: 'line', x1: X(l.x1), y1: Y(l.y1), x2: X(l.x2), y2: Y(l.y2), w: 0.5, color: c });
@@ -47,10 +47,14 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
 }
 
 function legend(sheet: Sheet, iso: IsoModel, profile: MunicipalityProfile, x: number, y: number) {
-  const items = iso.kind === 'water'
-    ? [['給水', profile.colors.newWork], ['給湯', HOT], ['市配水管', profile.colors.public]]
-    : [['新設', profile.colors.newWork], ['既設', profile.colors.existing], ['市下水管', profile.colors.public]];
-  sheet.ops.push({ t: 'rect', x, y, w: 34, h: 4 * items.length + 5, lw: 0.3 });
+  // 図に出ている色だけ
+  const hasExisting = iso.lines.some((l) => l.existing) || iso.points.some((p) => p.existing);
+  const hasHot = iso.lines.some((l) => l.system === 'hotWater');
+  const hasPublic = iso.points.some((p) => p.isPublic);
+  const items: [string, string][] = iso.kind === 'water'
+    ? [['給水', profile.colors.newWork] as [string, string], ...(hasHot ? [['給湯', HOT] as [string, string]] : []), ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : [])]
+    : [['新設', profile.colors.newWork], ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : []), ...(hasPublic ? [['市下水管（公共桝）', profile.colors.public] as [string, string]] : [])];
+  sheet.ops.push({ t: 'rect', x, y, w: 40, h: 4 * items.length + 5, lw: 0.3 });
   sheet.ops.push({ t: 'text', x: x + 1, y: y + 3, s: '凡例', size: 2.2, color: GRAY });
   items.forEach(([label, color], i) => {
     const yy = y + 6 + 4 * i;

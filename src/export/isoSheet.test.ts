@@ -7,7 +7,7 @@ import { BUILTIN_PROFILES, STANDARD_PROFILE } from '../model/municipality';
 import { buildIsometric } from '../model/isometric';
 import { buildProfile, extractRoute } from '../model/profileDrawing';
 import { drawIsometric, renderIsoSheet, renderIsoSvg } from './isoSheet';
-import { renderProfileSvg } from './profileSheet';
+import { renderProfileSheet, renderProfileSvg } from './profileSheet';
 import { sheetToSvg, type Sheet } from './sheet';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -66,6 +66,33 @@ describe('アイソメ図の描画', () => {
     // standard（drainageIsometric: false）では描かない
     const m2 = buildProfile(doc, 'route' in r ? r.route : [], STANDARD_PROFILE, '排水設備 縦断図');
     expect(renderProfileSvg(m2, meta, iso)).not.toContain('VU100×5.0');
+  });
+  test('A4 縦・沖縄市: アイソメ枠は、図の上の桝名（縦書き）や縦断図と重ならない', () => {
+    const { doc, outlet } = drainDoc();
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    const r = extractRoute(doc.network, outlet);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], p, '排水設備 縦断図');
+    const iso = buildIsometric(doc, 'drain', p);
+    const sheet = renderProfileSheet(m, meta, iso);
+    const lines = sheet.ops.filter((o) => o.t === 'line' || o.t === 'poly' || o.t === 'circle' || o.t === 'text') as Array<{ t: string; y?: number; y1?: number; y2?: number; cy?: number; pts?: [number, number][]; rotate?: number; s?: string; size?: number }>;
+    // アイソメの線（w=0.5）。表題欄そばの凡例（下端 60mm）は除く
+    const isoMaxY = Math.max(...sheet.ops.filter((o) => o.t === 'line' && 'x1' in o && (o as { w?: number }).w === 0.5 && (o as { y1: number }).y1 < sheet.height - 60).map((o) => Math.max((o as { y1: number }).y1, (o as { y2: number }).y2)));
+    // 縦書きの桝名は y から上へ（文字数 × size）伸びる
+    const names = lines.filter((o) => o.t === 'text' && o.rotate === -90 && o.s?.startsWith('NO.')) as Array<{ y: number; s: string; size: number }>;
+    expect(names.length).toBeGreaterThan(0);
+    const nameTop = Math.min(...names.map((n) => n.y - n.s.length * n.size));
+    expect(isoMaxY).toBeLessThan(nameTop);
+    // 桝名は確保した高さ（48mm）に収まる
+    for (const n of names) expect(n.s.length * n.size).toBeLessThanOrEqual(48);
+  });
+  test('給水の凡例に「市配水管」は出さない（図に無い）。既設の給水管は青', () => {
+    const d = waterDoc();
+    const seg = Object.values(d.network.segments)[0];
+    const d2 = { ...d, network: { ...d.network, segments: { ...d.network.segments, [seg.id]: { ...seg, existing: true } } } };
+    const svg = renderIsoSvg(buildIsometric(d2, 'water', STANDARD_PROFILE), STANDARD_PROFILE, { ...meta, title: 't' });
+    expect(svg).not.toContain('市配水管');
+    expect(svg).toContain('stroke="#1d4ed8"');
+    expect(svg).toContain('既設');
   });
   test('renderIsoSheet は用紙 1 枚', () => {
     const iso = buildIsometric(waterDoc(), 'water', STANDARD_PROFILE);
