@@ -125,6 +125,16 @@ test.describe('申請図面', () => {
     await expect(page.getByTestId('shinsei-preview')).toContainText('要確認');
     await expect(page.getByTestId('shinsei-preview')).toContainText('糸満市');
     await page.screenshot({ path: evidence('shinsei-08-itoman') });
+    // 沖縄市: 公共桝の管底 ±0、桝の名前を図の上に、排水のアイソメ図、給水はアイソメ図
+    await page.getByTestId('shinsei-profile').selectOption('okinawa-city');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('公共桝の管底を ±0');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('NO.1汚水マス');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('立面図（展開図）');
+    await page.screenshot({ path: evidence('shinsei-09-okinawa-profile'), fullPage: false });
+    await page.getByTestId('shinsei-kind-riser').click();
+    await expect(page.getByTestId('shinsei-preview')).toContainText('NO SCALE');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('HI');
+    await page.screenshot({ path: evidence('shinsei-10-okinawa-iso') });
   });
 
   test('後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける', async ({ page }) => {

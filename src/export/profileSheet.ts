@@ -3,6 +3,8 @@
  * 横は累加距離を hScale で、縦は高さを vScale で用紙 mm に換算する。図が用紙に収まらないときは横の縮尺を上げる。
  */
 import type { ProfileModel } from '../model/profileDrawing';
+import type { IsoModel } from '../model/isometric';
+import { drawIsoLegend, drawIsometric } from './isoSheet';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
 import { drawFrame, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
@@ -24,7 +26,8 @@ export function pickHScale(totalMm: number, areaW: number, base: number): number
   return SCALES[SCALES.length - 1];
 }
 
-export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet {
+/** iso: 排水のアイソメ図（プロファイルの drainageIsometric が true のとき、縦断図の上に描く） */
+export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: IsoModel): Sheet {
   const { profile } = model;
   const pt = profile.profileTable;
   const sheet: Sheet = { ...paperSize(profile.paper), ops: [] };
@@ -39,6 +42,13 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   // 桝の名前を図の上に縦書きするときは、その分の高さを空ける
   const graphTop = 10 + M + 12 + (above ? 30 : 0);
   const graphBottom = tableTop - 8;
+  // 上半分に排水のアイソメ図（沖縄市の「立面図（展開図）」）
+  const withIso = !!iso && pt.drainageIsometric && iso.lines.length > 0;
+  if (withIso) {
+    const isoTop = 10 + M + 8, isoH = Math.max(40, (graphTop - 20) - isoTop - (above ? 0 : 20));
+    sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
+    drawIsometric(sheet, iso!, profile, { x: 10 + M, y: isoTop, w: sheet.width - 20 - 2 * M, h: isoH });
+  }
 
   // 見出し
   sheet.ops.push({ t: 'text', x: 10 + M, y: 10 + M + 2, s: model.title, size: 6, bold: true });
@@ -194,6 +204,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   shown.forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));
   if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * MAX_NOTES, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: WARN });
 
+  if (withIso) drawIsoLegend(sheet, iso!, profile, sheet.width - 10 - titleWidth(sheet.width) - 40, sheet.height - 10 - titleH - 22);
   // 表題欄
   const values: Record<string, string> = {
     '工事名': meta.siteName, '図面名': model.title, '縮尺': `H 1/${hScale} V 1/${vS}`, '作成日': dateJa(meta.date),
@@ -202,4 +213,4 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   return sheet;
 }
 
-export const renderProfileSvg = (model: ProfileModel, meta: SheetMeta): string => sheetToSvg(renderProfileSheet(model, meta));
+export const renderProfileSvg = (model: ProfileModel, meta: SheetMeta, iso?: IsoModel): string => sheetToSvg(renderProfileSheet(model, meta, iso));

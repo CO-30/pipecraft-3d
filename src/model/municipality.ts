@@ -47,9 +47,12 @@ export const municipalityProfileSchema = z.object({
     lengthDecimals: z.union([z.literal(2), z.literal(3)]).default(3),
     /** 桝の名前・口径・深さを表に書く（table）か、図の上に書く（above。上流から NO.1, NO.2…） */
     manholeLabel: z.enum(['table', 'above']).default('table'),
+    /** 縦断図の上に排水のアイソメ図（立面図・展開図）を描く（沖縄市の様式） */
+    drainageIsometric: z.boolean().default(false),
   }),
   riser: z.object({
-    lineStyle: z.literal('single'),
+    /** single＝平らな系統図、isometric＝アイソメ図（3D を斜めから見た展開図） */
+    lineStyle: z.enum(['single', 'isometric']),
     diameterLabelPos: z.enum(['above', 'side']),
     showFloorLines: z.boolean(),
     heightLabel: z.enum(['FL+', 'GL+']),
@@ -102,6 +105,7 @@ export const STANDARD_PROFILE: MunicipalityProfile = {
     pipeSpecFormat: 'materialFirst',
     lengthDecimals: 3,
     manholeLabel: 'table',
+    drainageIsometric: false,
   },
   riser: { lineStyle: 'single', diameterLabelPos: 'above', showFloorLines: true, heightLabel: 'FL+' },
   paper: { size: 'A3', orientation: 'landscape', titleBlockFields: ['工事名', '申請者', '施工者', '図面名', '縮尺', '作成日'] },
@@ -137,8 +141,9 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
     paper: { ...A3_FOLDED, titleBlockFields: ['申請地', '申請者', '指定工事店'] },
     profileTable: {
       rows: [{ key: 'groundLevel', label: '地盤高' }, { key: 'cover', label: '土かぶり' }, { key: 'invertLevel', label: '管底高' }],
-      slopeFormat: 'per100', hScale: 200, vScale: 200, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above',
+      slopeFormat: 'per100', hScale: 200, vScale: 200, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above', drainageIsometric: true,
     },
+    riser: { lineStyle: 'isometric', diameterLabelPos: 'above', showFloorLines: false, heightLabel: 'FL+' },
   }),
   municipal({
     id: 'itoman', name: '糸満市',
