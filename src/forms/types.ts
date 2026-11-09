@@ -56,9 +56,8 @@ export type FormSet = {
 export function withDefaults(set: FormSet, doc: Doc, meta: { name: string; address?: string }): ApplicationValues {
   const d = set.defaults(doc, meta);
   const v = doc.site?.application ?? {};
-  const out: ApplicationValues = { ...d };
-  for (const [k, val] of Object.entries(v)) if (val !== '') out[k] = val;
-  return out;
+  // 入力済みの値はキーがあれば（空文字でも）優先する。空にした項目が既定値に戻らないように
+  return { ...d, ...v };
 }
 
 /** 丸数字（①〜⑳）。選択肢の番号を囲む代わりに使う */

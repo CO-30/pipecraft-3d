@@ -85,19 +85,40 @@ const hex = (h: string): RGB => {
 };
 
 /** 1 Sheet = 1 ページの PDF */
-export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | ArrayBuffer): Promise<Uint8Array> {
+/** 同梱フォント（JIS 範囲）に無い字の置き換え。無ければ 〓 */
+const SUBST: Record<string, string> = { '髙': '高', '﨑': '崎', '德': '徳', '栁': '柳', '瀨': '瀬', '濵': '濱', '𠮷': '吉', '塚': '塚', '曻': '昇', '隆': '隆' };
+const charSets = new WeakMap<PDFFont, Set<number>>();
+/** フォントに無い文字を置き換える（pdf-lib は未対応の字で例外を投げる）。missing に元の字を集める */
+export function fontSafe(font: PDFFont, s: string, missing?: Set<string>): string {
+  let cs = charSets.get(font);
+  if (!cs) { cs = new Set(font.getCharacterSet()); charSets.set(font, cs); }
+  let out = '';
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    if (cs.has(cp)) { out += ch; continue; }
+    const r = SUBST[ch];
+    const rr = r && cs.has(r.codePointAt(0)!) ? r : '〓';
+    missing?.add(ch);
+    out += rr;
+  }
+  return out;
+}
+
+export type PdfOpts = { /** フォントに無かった文字（呼び出し側で警告に使う） */ missing?: Set<string> };
+
+export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | ArrayBuffer, opts: PdfOpts = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(fontBytes, { subset: false });
   for (const sheet of sheets) {
     const page = pdf.addPage([sheet.width * PT_PER_MM, sheet.height * PT_PER_MM]);
-    drawSheetOnPage(page, font, sheet, { x: 0, top: 0, w: sheet.width * PT_PER_MM, h: sheet.height * PT_PER_MM });
+    drawSheetOnPage(page, font, sheet, { x: 0, top: 0, w: sheet.width * PT_PER_MM, h: sheet.height * PT_PER_MM }, opts);
   }
   return pdf.save();
 }
 
-/** 既存のページの枠 box（pt、top は上端からの距離）に Sheet を縮小して描く。様式 PDF の図面欄に載せるときに使う */
-export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box: { x: number; top: number; w: number; h: number }): void {
+/** 既存のページの枠 box（pt、top は上端からの距離）に Sheet を縮小して描く。様式 PDF の図面欄に載せるときに使う（用紙の向きは枠に合わせておくこと。A4 縦の枠に A3 横を入れると約 0.4 倍になる） */
+export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box: { x: number; top: number; w: number; h: number }, opts: PdfOpts = {}): void {
   const k = Math.min(box.w / (sheet.width * PT_PER_MM), box.h / (sheet.height * PT_PER_MM));
   const pageH = page.getHeight();
   const X = (x: number) => box.x + x * PT_PER_MM * k, Y = (y: number) => pageH - (box.top + y * PT_PER_MM * k), W = (w: number) => w * PT_PER_MM * k;
@@ -121,13 +142,14 @@ export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box:
           break;
         case 'text': {
           const size = W(o.size);
-          const tw = font.widthOfTextAtSize(o.s, size);
+          const str = fontSafe(font, o.s, opts.missing);
+          const tw = font.widthOfTextAtSize(str, size);
           const anchor = o.anchor ?? 'start';
           const dx = anchor === 'middle' ? -tw / 2 : anchor === 'end' ? -tw : 0;
           if (o.rotate === -90) {
-            page.drawText(o.s, { x: X(o.x), y: Y(o.y) + dx, size, font, color: hex(o.color ?? INK), rotate: degrees(90) });
+            page.drawText(str, { x: X(o.x), y: Y(o.y) + dx, size, font, color: hex(o.color ?? INK), rotate: degrees(90) });
           } else {
-            page.drawText(o.s, { x: X(o.x) + dx, y: Y(o.y), size, font, color: hex(o.color ?? INK) });
+            page.drawText(str, { x: X(o.x) + dx, y: Y(o.y), size, font, color: hex(o.color ?? INK) });
           }
           break;
         }

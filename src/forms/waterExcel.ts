@@ -27,8 +27,9 @@ export const CELLS = {
 } as const;
 
 const num = (s: string | undefined): number | undefined => {
-  const n = Number((s ?? '').replace(/[,，]/g, ''));
-  return s && Number.isFinite(n) ? n : undefined;
+  const t = (s ?? '').replace(/[,，]/g, '').trim();
+  const n = Number(t);
+  return t && Number.isFinite(n) ? n : undefined;
 };
 
 export function fillWaterApplication(ws: ExcelJS.Worksheet, v: ApplicationValues, c: Contractor): void {
@@ -68,7 +69,8 @@ export function fillWaterApplication(ws: ExcelJS.Worksheet, v: ApplicationValues
   if (v.sewerConnected === '有' || v.sewerConnected === '無') set(CELLS.sewerConnected, markWord(str(CELLS.sewerConnected), v.sewerConnected));
   const pi = PURPOSES.indexOf(v.purpose ?? '');
   if (pi >= 0) set(CELLS.purpose, markChoice(str(CELLS.purpose), pi + 1));
-  set(CELLS.structure, v.structure); set(CELLS.floors, num(v.floors));
+  // 構造・階数はテンプレートの記入例が残らないよう、空なら空で上書き
+  ws.getCell(CELLS.structure).value = v.structure || null; ws.getCell(CELLS.floors).value = num(v.floors) ?? null;
   set(CELLS.drawingNo, v.drawingNo); set(CELLS.billTo, v.billTo);
 
   const dia = num(v.diameter);
@@ -84,6 +86,8 @@ export async function buildWaterApplication(template: ArrayBuffer | Uint8Array, 
   await wb.xlsx.load(template as ArrayBuffer);
   const ws = wb.getWorksheet(SHEET_NAME);
   if (!ws) throw new Error(`様式のシート「${SHEET_NAME}」が見つかりません`);
+  // 文書のプロパティに個人名などを残さない
+  wb.creator = 'PipeCraft 3D'; wb.lastModifiedBy = 'PipeCraft 3D'; wb.company = ''; wb.modified = new Date();
   fillWaterApplication(ws, v, c);
   return new Uint8Array(await wb.xlsx.writeBuffer());
 }

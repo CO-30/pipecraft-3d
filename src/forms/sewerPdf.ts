@@ -8,7 +8,7 @@
  */
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { drawSheetOnPage, type Sheet } from '../export/sheet';
+import { drawSheetOnPage, fontSafe, type PdfOpts, type Sheet } from '../export/sheet';
 import { SEWER_BUILDING_USES, SEWER_CONNECTIONS, SEWER_WORK_KINDS, WATER_SOURCES } from './okinawaCity';
 import { reiwa, type ApplicationValues, type Contractor } from './types';
 
@@ -43,8 +43,10 @@ const POS = {
   drawingBox: { x: 36, top: 58, w: 494, h: 706 },
 } as const;
 
-const text = (page: PDFPage, font: PDFFont, s: string, p: Pos) => {
-  if (!s) return;
+let missingChars: Set<string> | undefined;
+const text = (page: PDFPage, font: PDFFont, raw: string, p: Pos) => {
+  if (!raw) return;
+  const s = fontSafe(font, raw, missingChars);
   const size = p.size ?? SIZE;
   const w = font.widthOfTextAtSize(s, size);
   const x = p.right !== undefined ? p.right - w : (p.x ?? 0);
@@ -60,8 +62,9 @@ export function fillSewerPage1(page: PDFPage, font: PDFFont, v: ApplicationValue
   text(page, font, v.applicantName ?? '', POS.applicantName);
   text(page, font, v.applicantTel ?? '', POS.applicantTel);
   text(page, font, (v.siteAddress ?? '').replace(/^沖縄市/, ''), POS.siteAddress);
+  // 義務者は項目ごとに申請者で補う（氏名だけ・住所だけの入力でも使う）
   const obligorName = v.obligorName || v.applicantName || '';
-  const obligorAddress = v.obligorName ? (v.obligorAddress ?? '') : (v.applicantAddress ?? '');
+  const obligorAddress = v.obligorAddress || v.applicantAddress || '';
   text(page, font, obligorAddress, POS.obligorAddress);
   text(page, font, obligorName, POS.obligorName);
 
@@ -101,14 +104,17 @@ export function fillSewerPage1(page: PDFPage, font: PDFFont, v: ApplicationValue
 /**
  * 様式 PDF に値と図面を載せる。profileSheet: 縦断図（2 面）、isoSheet: 立面図（3 面）。無ければ空欄のまま
  */
-export async function buildSewerApplication(template: ArrayBuffer | Uint8Array, fontBytes: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor, sheets: { profile?: Sheet; iso?: Sheet }): Promise<Uint8Array> {
+export async function buildSewerApplication(template: ArrayBuffer | Uint8Array, fontBytes: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor, sheets: { profile?: Sheet; iso?: Sheet }, opts: PdfOpts = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(template);
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(fontBytes, { subset: false });
   const pages = pdf.getPages();
   if (pages.length < 4) throw new Error('様式 PDF の面数が 4 ではありません');
-  fillSewerPage1(pages[0], font, v, c);
-  if (sheets.profile) drawSheetOnPage(pages[1], font, sheets.profile, POS.drawingBox);
-  if (sheets.iso) drawSheetOnPage(pages[2], font, sheets.iso, POS.drawingBox);
+  missingChars = opts.missing;
+  try {
+    fillSewerPage1(pages[0], font, v, c);
+    if (sheets.profile) drawSheetOnPage(pages[1], font, sheets.profile, POS.drawingBox, opts);
+    if (sheets.iso) drawSheetOnPage(pages[2], font, sheets.iso, POS.drawingBox, opts);
+  } finally { missingChars = undefined; }
   return pdf.save();
 }

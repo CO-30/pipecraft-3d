@@ -58,10 +58,14 @@ describe('様式の共通部品', () => {
     expect(vals.sewerConnection).toBe('公共ます');
     expect(vals.sewerConnected).toBe('有');
     expect(vals.siteAddress).toBe('沖縄市美里5-28-2');
-    const d2 = { ...d, site: { ...d.site, application: { diameter: '25', applicantName: '上里' } } };
+    const d2 = { ...d, site: { ...d.site, application: { diameter: '25', applicantName: '上里', feeDesign: '', lending: '' } } };
     const vals2 = withDefaults(OKINAWA_FORMS, d2, { name: '現場' });
     expect(vals2.diameter).toBe('25');
     expect(vals2.applicantName).toBe('上里');
+    // 空にした項目は既定値に戻らない（手書きしたい手数料など）
+    expect(vals2.feeDesign).toBe('');
+    expect(vals2.lending).toBe('');
+    expect(vals2.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     // 項目 id は重複しない
     const ids = OKINAWA_FIELDS.map((f) => f.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -76,7 +80,11 @@ describe('給水装置申込及び工事申請書（Excel）', () => {
     expect(ws).toBeTruthy();
     expect(wb.worksheets.map((w) => w.name)).toEqual([SHEET_NAME, '申請書（裏）']);
     expect(ws.getImages().length).toBe(0);
-    for (const addr of ['D14', 'O15', 'M16', 'O16', 'M20', 'M24', 'M25', 'M27', 'D39', 'B41', 'D46']) expect(ws.getCell(addr).value ?? null).toBeNull();
+    for (const addr of ['D14', 'O15', 'M16', 'O16', 'M20', 'M24', 'M25', 'M27', 'D39', 'B41', 'D46', 'N34', 'O35', 'V31', 'V35']) expect(ws.getCell(addr).value ?? null).toBeNull();
+    // 文書のプロパティにも名前を残さない
+    expect(wb.creator ?? '').toBe('');
+    expect(wb.lastModifiedBy ?? '').toBe('');
+    expect(wb.company ?? '').toBe('');
     expect(String(ws.getCell('A14').value)).toBe('設置場所');
     expect(String(ws.getCell('K15').value)).toBe('交付番号');
     expect(String(ws.getCell('D29').value)).toContain('一般家庭用');
@@ -109,6 +117,40 @@ describe('給水装置申込及び工事申請書（Excel）', () => {
     expect(ws.getCell(CELLS.meterDiameter).value).toBe(20);
     expect(ws.getCell(CELLS.feeAdmission).value).toBe(32450);
     expect(ws.getCell(CELLS.feeTotal).value).toBe(32450 + 160 + 980);
+    expect(wb.lastModifiedBy).toBe('PipeCraft 3D');
+    expect(wb.creator).toBe('PipeCraft 3D');
+    // 階数・構造を空にするとテンプレートの記入例が残らない。空白だけの数値は書かない
+    const bytes2 = await buildWaterApplication(waterTpl(), { ...vals, floors: '', structure: '', households: '  ' }, contractor);
+    const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(bytes2 as unknown as ArrayBuffer);
+    const ws2 = wb2.getWorksheet(SHEET_NAME)!;
+    expect(ws2.getCell(CELLS.floors).value ?? null).toBeNull();
+    expect(ws2.getCell(CELLS.structure).value ?? null).toBeNull();
+    expect(ws2.getCell(CELLS.households).value ?? null).toBeNull();
+  });
+  test('選択肢は全部に印が付く（様式が変わったら気づける）', async () => {
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(waterTpl() as unknown as ArrayBuffer);
+    const tpl = wb.getWorksheet(SHEET_NAME)!;
+    const { USE_TYPES: U, SUPPLY_TYPES: S, PURPOSES: P, WATER_WORK_KINDS: W } = await import('./okinawaCity');
+    const { fillWaterApplication } = await import('./waterExcel');
+    const str = (ws: ExcelJS.Worksheet, a: string) => String(ws.getCell(a).value ?? '');
+    const marked = (ws: ExcelJS.Worksheet, a: string) => str(ws, a) !== str(tpl, a) && /[①-⑳○]/.test(str(ws, a));
+    for (const [i, u] of U.entries()) {
+      const wbx = new ExcelJS.Workbook(); await wbx.xlsx.load(waterTpl() as unknown as ArrayBuffer); const ws = wbx.getWorksheet(SHEET_NAME)!;
+      fillWaterApplication(ws, { useType: u, useTypeOther: 'x' }, contractor);
+      expect(marked(ws, i <= 5 ? CELLS.useType1 : CELLS.useType2), u).toBe(true);
+    }
+    for (const [list, key, cell] of [[S, 'supplyType', CELLS.supplyType], [P, 'purpose', CELLS.purpose]] as const) {
+      for (const o of list) {
+        const wbx = new ExcelJS.Workbook(); await wbx.xlsx.load(waterTpl() as unknown as ArrayBuffer); const ws = wbx.getWorksheet(SHEET_NAME)!;
+        fillWaterApplication(ws, { [key]: o }, contractor);
+        expect(marked(ws, cell), o).toBe(true);
+      }
+    }
+    for (const w of W) {
+      const wbx = new ExcelJS.Workbook(); await wbx.xlsx.load(waterTpl() as unknown as ArrayBuffer); const ws = wbx.getWorksheet(SHEET_NAME)!;
+      fillWaterApplication(ws, { waterWorkKind: w }, contractor);
+      expect(str(ws, CELLS.workKind[w])).toBe(`○${w}`);
+    }
   });
 });
 
@@ -135,6 +177,17 @@ describe('下水道排水設備計画確認申請書（PDF）', () => {
     expect(added(1)).toBe(true);
     expect(added(2)).toBe(true);
     expect(added(3)).toBe(false);
+  });
+  test('フォントに無い字（髙・﨑）は置き換えて例外にせず、missing に集める', async () => {
+    const vals = { date: '2026-11-10', applicantName: '髙橋 﨑夫', applicantAddress: '沖縄市' };
+    const missing = new Set<string>();
+    const bytes = await buildSewerApplication(sewerTpl(), font(), vals, contractor, {}, { missing });
+    expect(bytes.length).toBeGreaterThan(1000);
+    expect([...missing].sort()).toEqual(['髙', '﨑']);
+    const sheet = { width: 210, height: 297, ops: [{ t: 'text' as const, x: 10, y: 10, s: '髙', size: 3 }] };
+    const m2 = new Set<string>();
+    await sheetsToPdf([sheet], font(), { missing: m2 });
+    expect([...m2]).toEqual(['髙']);
   });
   test('様式の面数が足りなければエラー', async () => {
     const one = await PDFDocument.create(); one.addPage([595, 842]);

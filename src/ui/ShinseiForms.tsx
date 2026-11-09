@@ -73,11 +73,18 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
       } else if (what === 'sewer') {
         const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
         const sheets = drainageSheetsFor(doc, profile, siteName, date);
-        downloadBytes(await buildSewerApplication(tpl, font, vals, contractor, sheets), `${base}_下水道排水設備計画確認申請書.pdf`, 'application/pdf');
-        if (!sheets.profile) setMsg('排水の配管が無いため、2・3 面の図面は空欄です');
+        const missing = new Set<string>();
+        downloadBytes(await buildSewerApplication(tpl, font, vals, contractor, sheets, { missing }), `${base}_下水道排水設備計画確認申請書.pdf`, 'application/pdf');
+        const notes: string[] = [];
+        if (!sheets.profile) notes.push('排水の配管が無いため、2・3 面の図面は空欄です');
+        else if (profile.paper.orientation === 'landscape') notes.push('プロファイルの用紙が横のため、2・3 面の図は小さくなります（A4 縦のプロファイルを使うと読みやすくなります）');
+        if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}（出力後に手で直してください）`);
+        setMsg(notes.join('。'));
       } else {
         const [{ productRows, renderProductListSheets }, { sheetsToPdf }, font] = await Promise.all([import('../forms/productList'), import('../export/sheet'), fontBytes()]);
-        downloadBytes(await sheetsToPdf(renderProductListSheets(productRows(doc), { siteName, date }, contractor), font), `${base}_給水装置使用製品一覧表.pdf`, 'application/pdf');
+        const missing = new Set<string>();
+        downloadBytes(await sheetsToPdf(renderProductListSheets(productRows(doc), { siteName, date }, contractor), font, { missing }), `${base}_給水装置使用製品一覧表.pdf`, 'application/pdf');
+        if (missing.size) setMsg(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}`);
       }
     } catch (e) {
       setErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`);
@@ -95,14 +102,15 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
   return (
     <div className="shinsei-forms" data-testid="shinsei-forms">
       <div className="shinsei-forms-actions">
-        <button className="primary" data-testid="forms-water" disabled={!!busy} onClick={() => run('water')}>{busy === 'water' ? '作成中…' : '給水申請書 (Excel)'}</button>
-        <button className="primary" data-testid="forms-sewer" disabled={!!busy} onClick={() => run('sewer')}>{busy === 'sewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>
-        <button data-testid="forms-products" disabled={!!busy} onClick={() => run('products')}>{busy === 'products' ? '作成中…' : '製品一覧表 (PDF)'}</button>
+        <button className="primary" data-testid="forms-water" disabled={!!busy || !contractorLoaded} onClick={() => run('water')}>{busy === 'water' ? '作成中…' : '給水申請書 (Excel)'}</button>
+        <button className="primary" data-testid="forms-sewer" disabled={!!busy || !contractorLoaded} onClick={() => run('sewer')}>{busy === 'sewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>
+        <button data-testid="forms-products" disabled={!!busy || !contractorLoaded} onClick={() => run('products')}>{busy === 'products' ? '作成中…' : '製品一覧表 (PDF)'}</button>
         <button data-testid="forms-contractor-toggle" onClick={() => setShowContractor((v) => !v)}>{showContractor ? '工事店の情報を閉じる' : `🏢 工事店の情報${contractorMissing ? '（未入力）' : ''}`}</button>
       </div>
       {err && <p className="est-provisional" role="alert">{err}</p>}
       {msg && <p className="small muted" data-testid="forms-msg">{msg}</p>}
       {contractorMissing && !showContractor && <p className="small warn" data-testid="forms-contractor-missing">⚠ 工事店の情報が未入力です。「工事店の情報」から入れると申請書に入ります（この端末だけに保存）</p>}
+      <p className="small muted">申請者の氏名・住所などの入力は現場に保存され、現場ファイルとバックアップにも入ります。工事店の情報はこの端末だけに保存されます</p>
       {showContractor && (
         <section className="shinsei-forms-group" data-testid="forms-contractor">
           <h3>工事店の情報（この端末に保存。現場ファイルやバックアップには入りません）</h3>

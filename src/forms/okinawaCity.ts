@@ -6,7 +6,7 @@
  * - 給水装置申込及び工事申請チェックシート
  */
 import type { Doc } from '../model/doc';
-import type { ApplicationValues, FormField, FormSet } from './types';
+import { todayIso, type ApplicationValues, type FormField, type FormSet } from './types';
 
 export const USE_TYPES = ['一般家庭用（一般住宅）', '一般家庭用（アパート）', '官公署', '学校', '病院', '事務所', '営業用（ホテル・スーパー）', '工場', 'その他'];
 export const SUPPLY_TYPES = ['直結', '受水槽', '直結増圧給水'];
@@ -81,6 +81,7 @@ function defaults(doc: Doc, meta: { name: string; address?: string }): Applicati
   const hasPublic = Object.values(doc.fixtures).some((f) => f.type.startsWith('public'));
   const floors = doc.building.floors.length;
   return {
+    date: todayIso(),
     siteAddress: meta.address ?? '',
     userSame: '同じ',
     waterWorkKind: '新設',
@@ -90,7 +91,7 @@ function defaults(doc: Doc, meta: { name: string; address?: string }): Applicati
     sewerConnected: hasPublic ? '有' : '無',
     purpose: '一般用',
     structure: '木',
-    floors: String(floors),
+    floors: floors > 0 ? String(floors) : '',
     diameter: dia ? String(dia) : '',
     billTo: '使用者',
     sewerConnection: hasPublic ? '公共ます' : 'ます設置（新規）',
