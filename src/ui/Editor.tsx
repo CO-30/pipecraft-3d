@@ -8,6 +8,7 @@ import { totalLength } from '../model/network';
 import { FloorBar, PropertyPanel, SelectionBar, Toolbar, VisibilityPanel } from './Panels';
 import type { SaveState } from './autosave';
 import { EstimateBar, EstimateScreen, type EstTab } from './EstimateScreen';
+import { ShinseiScreen } from './ShinseiScreen';
 import { GuideBar, type EstimateTab } from './GuideBar';
 import { HelpDialog } from './HelpDialog';
 import { PLAN_HINTS } from './hints';
@@ -25,6 +26,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
   const [showVis, setShowVis] = useState(false);
   const [showEst, setShowEst] = useState<EstTab | null>(null);
   const [help, setHelp] = useState(false);
+  const [showShinsei, setShowShinsei] = useState(false);
   const guideHidden = usePrefs((s) => s.guideHidden);
   const setGuideHidden = usePrefs((s) => s.setGuideHidden);
   const openEst = (tab: EstimateTab | EstTab = 'qty') => setShowEst(tab);
@@ -50,6 +52,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
           ))}
         </div>
         <button data-testid="open-estimate" className="est-open" aria-label="積算・見積" onClick={() => openEst('qty')}>📋<span className="lbl">積算</span></button>
+        <button data-testid="open-shinsei" className="est-open" aria-label="申請図面" onClick={() => setShowShinsei(true)}>📐<span className="lbl">申請図面</span></button>
         {!isWide && <button data-testid="toggle-vis" aria-label="表示の切り替え" className={showVis ? 'on' : ''} onClick={() => setShowVis(!showVis)}>👁<span className="lbl">表示</span></button>}
         {guideHidden && <button data-testid="guide-show" onClick={() => setGuideHidden(false)}>手順</button>}
         <button data-testid="open-help-editor" aria-label="使い方" onClick={() => setHelp(true)}>？</button>
@@ -92,6 +95,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
       <Notice />
       <Toolbar />
       {showEst && <EstimateScreen initialTab={showEst} onClose={() => setShowEst(null)} />}
+      {showShinsei && <ShinseiScreen onClose={() => setShowShinsei(false)} />}
       {help && <HelpDialog onClose={() => setHelp(false)} />}
     </div>
   );

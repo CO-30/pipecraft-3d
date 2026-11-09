@@ -38,5 +38,5 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
-  test: { include: ['src/**/*.test.ts'] },
+  test: { include: ['src/**/*.test.{ts,tsx}'] },
 }))

@@ -496,6 +496,30 @@ function DetachEnds({ segId }: { segId: string }) {
 const SLOPES = [1 / 50, 1 / 75, 1 / 100, 1 / 150, 1 / 200];
 
 /** 排水の勾配: この点を流末にして上流へ勾配をつける */
+/** 区間の設計勾配 1/n の入力と固定。固定中は上流端を動かすと下流端が追従する（下流端がマスならマスの管底に合わせる） */
+function SegmentSlopeInput({ segId }: { segId: string }) {
+  const st = useStore();
+  const seg = st.doc.network.segments[segId];
+  // 設計勾配が変わったら親の key で作り直す（効果で setState しない）
+  const [text, setText] = useState(seg.slope ? String(Math.round(1 / seg.slope)) : '');
+  const commit = () => {
+    const n = Number(text);
+    if (text.trim() === '' || !Number.isFinite(n) || n <= 0) return;
+    if (seg.slope && Math.round(1 / seg.slope) === n && seg.slopeLocked) return;
+    st.setSegmentSlope(segId, n);
+  };
+  return (
+    <div className="row" data-testid="seg-slope-row">
+      <label className="field inline">設計勾配 1/
+        <input data-testid="seg-slope-input" inputMode="numeric" size={5} value={text} placeholder={String(Math.round(1 / defaultSlope(seg.diameter)))}
+          onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); } }} />
+      </label>
+      <label className="small inline"><input type="checkbox" data-testid="seg-slope-lock" checked={!!seg.slopeLocked} onChange={(e) => st.setSegmentSlopeLocked(segId, e.target.checked)} /> 勾配を固定</label>
+      <span className="muted small">固定すると、上流の高さを変えても下流端がこの勾配で動きます</span>
+    </div>
+  );
+}
+
 function SlopeField({ nodeId }: { nodeId: string }) {
   const [v, setV] = useState<string>('auto');
   const st = useStore.getState();
@@ -526,10 +550,11 @@ function SupportFields({ segId }: { segId: string }) {
     <>
       {slope !== null && (
         <div className={`small ${!slopeEnough(doc.network, seg, need) ? 'warn' : ''}`} data-testid="seg-slope">
-          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}）` : ''}
+          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}${seg.slopeLocked ? ' 🔒' : ''}）` : ''}
           {!slopeEnough(doc.network, seg, need) && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
         </div>
       )}
+      {slope !== null && <SegmentSlopeInput key={`${segId}:${seg.slope ?? ''}`} segId={segId} />}
       <label className="field inline">支持金具
         <select data-testid="seg-support" value={seg.support ?? 'auto'} onChange={(e) => st.setSegmentSupport(segId, { support: e.target.value === 'auto' ? null : (e.target.value as 'saddle' | 'levelBand' | 'tBracket' | 'none') })}>
           <option value="auto">自動（{auto ? SUPPORT_LABEL[auto] : 'なし'}）</option>

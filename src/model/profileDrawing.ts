@@ -110,6 +110,19 @@ export function extractRoute(net: Network, outletId: string, choice: Record<stri
   return { route, branches };
 }
 
+/**
+ * 経路（下流→上流）を最上流のマスで切る（マスより先の屋内配管は縦断図に含めない）。
+ * 経路に下流端以外のマスが無ければそのまま返す。
+ */
+export function trimToManholes(doc: Doc, route: string[]): string[] {
+  let last = -1;
+  route.forEach((id, i) => {
+    const fx = doc.network.nodes[id]?.fixtureId ? doc.fixtures[doc.network.nodes[id].fixtureId!] : undefined;
+    if (i > 0 && fx && isManhole(fx.type)) last = i;
+  });
+  return last > 0 ? route.slice(0, last + 1) : route;
+}
+
 /** 経路（下流→上流）から縦断図のモデルを作る。図は上流を左に描くので nodes は上流→下流で返す */
 export function buildProfile(doc: Doc, route: string[], profile: MunicipalityProfile, title: string): ProfileModel {
   const net = doc.network;

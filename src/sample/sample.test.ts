@@ -3,6 +3,8 @@ import { useStore } from '../state/store';
 import { segmentsAt, validateNetwork } from '../model/network';
 import { computeEstimate } from '../model/estimate';
 import { validateFixtures } from '../model/fixtures';
+import { buildProfile, extractRoute, trimToManholes } from '../model/profileDrawing';
+import { STANDARD_PROFILE } from '../model/municipality';
 import { buildSample, SAMPLE_NAME } from './sample';
 
 const s = () => useStore.getState();
@@ -14,7 +16,7 @@ describe('サンプル工事', () => {
     const d = s().doc;
     expect(Object.keys(d.building.walls).length).toBeGreaterThan(0);
     const types = Object.values(d.fixtures).map((f) => f.type);
-    for (const t of ['waterMeter', 'roofTank', 'toilet', 'washbasin', 'kitchen'] as const) expect(types).toContain(t);
+    for (const t of ['waterMeter', 'roofTank', 'toilet', 'washbasin', 'kitchen', 'manholeSewage', 'publicSewage'] as const) expect(types).toContain(t);
     expect(Object.keys(d.network.segments).length).toBeGreaterThan(0);
     const branches = Object.keys(d.network.nodes).filter((id) => segmentsAt(d.network, id).length >= 3);
     expect(branches.length).toBeGreaterThanOrEqual(1);
@@ -28,9 +30,22 @@ describe('サンプル工事', () => {
       const f = Object.values(d.fixtures).find((x) => x.type === type)!;
       return Object.values(d.network.nodes).find((n) => n.fixtureId === f.id && n.portId === pid)!;
     };
-    for (const [t, p] of [['waterMeter', 'out'], ['roofTank', 'in'], ['roofTank', 'out'], ['toilet', 'water'], ['washbasin', 'water'], ['kitchen', 'water'], ['toilet', 'sewage']] as const) {
+    for (const [t, p] of [['waterMeter', 'out'], ['roofTank', 'in'], ['roofTank', 'out'], ['toilet', 'water'], ['washbasin', 'water'], ['kitchen', 'water'], ['toilet', 'sewage'], ['publicSewage', 'pipe']] as const) {
       expect(segmentsAt(d.network, port(t, p).id).length, `${t}.${p}`).toBe(1);
     }
+    expect(segmentsAt(d.network, port('manholeSewage', 'pipe').id).length).toBe(2);
+  });
+
+  it('申請図面: 設計GL が入っていて、公共マスから縦断図が警告なしで作れる', () => {
+    const d = s().doc;
+    expect(d.site?.designGL).toBe(-450);
+    const pub = Object.values(d.fixtures).find((x) => x.type === 'publicSewage')!;
+    const port = Object.values(d.network.nodes).find((n) => n.fixtureId === pub.id)!;
+    const r = extractRoute(d.network, port.id);
+    expect('route' in r).toBe(true);
+    const m = buildProfile(d, trimToManholes(d, 'route' in r ? r.route : []), STANDARD_PROFILE, 't');
+    expect(m.nodes.length).toBe(2);
+    expect(m.warnings.map((w) => w.message)).toEqual([]);
   });
 
   it('積算で配管の数量と継手が出る。履歴は空（「戻す」で消えない）', () => {

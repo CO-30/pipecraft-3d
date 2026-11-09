@@ -28,7 +28,7 @@ export function buildSample(meta: ProjectMeta): void {
 function build(meta: ProjectMeta): void {
   const st = () => useStore.getState();
   const building = createBuildingFromDims({ width: 9100, depth: 7280, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
-  st().newDoc({ building, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {} }, meta);
+  st().newDoc({ building, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {}, site: { designGL: -450 } }, meta);
   const [f1, f2] = building.floors;
 
   const place = (floorId: string, type: FixtureType, x: number, y: number) => {
@@ -73,10 +73,17 @@ function build(meta: ProjectMeta): void {
   branchTo(bw.x, basin, 'water');
   branchTo(4000, kitchen, 'water', [v(4000, kw.y, UNDER)]);
 
-  // トイレの汚水 → 床下へ下ろして屋外へ
-  const ts = port(toilet, 'sewage');
+  // トイレの汚水 → 床下へ下ろして屋外の汚水マス → 公共汚水マス（勾配 1/100。申請図面の縦断図の練習用）
+  // 設計GL は 1階床 −450。マスの管底高は GL から 550・610 下
+  const m1 = place(f1.id, 'manholeSewage', 1000, -1200);
+  st().updateFixtureParams(m1, { invertZ: -1000 });
+  const m2 = place(f1.id, 'publicSewage', 7000, -1200);
+  st().updateFixtureParams(m2, { invertZ: -1060 });
+  const ts = port(toilet, 'sewage'), p1 = port(m1, 'pipe'), p2 = port(m2, 'pipe');
   st().setDrawAttrs({ system: 'sewage', diameter: 75 });
-  st().drawPolyline([ts.pos, v(ts.pos.x, ts.pos.y, -400), v(ts.pos.x, -800, -400)], { startNodeId: ts.id });
+  st().drawPolyline([ts.pos, v(ts.pos.x, ts.pos.y, -950), v(p1.pos.x, p1.pos.y, -950), p1.pos], { startNodeId: ts.id, endNodeId: p1.id });
+  st().setDrawAttrs({ system: 'sewage', diameter: 100 });
+  st().drawPolyline([p1.pos, p2.pos], { startNodeId: p1.id, endNodeId: p2.id });
 
   // 練習用なので履歴は空にする（「戻す」でサンプルが消えないように）
   useStore.setState({ past: [], future: [], selection: null, tool: 'select', notice: null });

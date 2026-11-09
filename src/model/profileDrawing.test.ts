@@ -4,7 +4,7 @@ import type { Doc } from './doc';
 import { addPolyline, emptyNetwork, type Network } from './network';
 import { placeFixture, portNodes, type FixtureType } from './fixtures';
 import { STANDARD_PROFILE } from './municipality';
-import { branchPoints, buildProfile, extractRoute, outerDiameter } from './profileDrawing';
+import { branchPoints, buildProfile, extractRoute, outerDiameter, trimToManholes } from './profileDrawing';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 const base = (designGL?: number): Doc => ({ building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {}, site: designGL === undefined ? {} : { designGL } });
@@ -67,6 +67,20 @@ describe('経路の抽出', () => {
     const closed = addPolyline(loop.net, [v(3000, 3000), v(0, 0)], { system: 'sewage', diameter: 100 }, { startNodeId: loop.nodeIds[2], endNodeId: loop.nodeIds[0] });
     const r2 = extractRoute(closed.net, loop.nodeIds[0]);
     expect('error' in r2 && r2.error).toBe('経路が輪になっています');
+  });
+});
+
+describe('trimToManholes', () => {
+  test('最上流のマスより先（屋内の配管）は縦断図に含めない。マスが無ければそのまま', () => {
+    const { doc, a, b } = caseA();
+    // 汚水マス a の先にトイレ側の配管を足す
+    const r = pipe(doc.network, [v(0, 0, -700), v(0, 0, 0), v(0, 1000, 0)], a, undefined, 75);
+    const d2 = { ...doc, network: r.net };
+    const route = extractRoute(d2.network, b);
+    expect('route' in route && route.route.length).toBe(4);
+    expect(trimToManholes(d2, 'route' in route ? route.route : [])).toEqual([b, a]);
+    const noMass = addPolyline(emptyNetwork(), [v(0, 0, -10), v(3000, 0, -40)], { system: 'drain', diameter: 75 });
+    expect(trimToManholes({ ...base(0), network: noMass.net }, noMass.nodeIds.slice().reverse())).toEqual(noMass.nodeIds.slice().reverse());
   });
 });
 
