@@ -109,6 +109,23 @@ export function PlanView() {
     return () => ro.disconnect();
   }, []);
 
+  // 新しく取り込んだ下敷きが画面からはみ出すとき（実寸の CAD 図面など）は、全体が見えるように表示を合わせる
+  const knownUnderlays = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = Object.keys(underlays ?? {});
+    const known = knownUnderlays.current;
+    knownUnderlays.current = new Set(ids);
+    if (!known || !view || !(size.w > 0 && size.h > 0)) return;
+    const u = ids.filter((id) => !known.has(id)).map((id) => underlays![id]).find((x) => x.floorId === floorId);
+    if (!u) return;
+    const cs = underlayCorners(u);
+    const b = { x0: Math.min(...cs.map((c) => c.x)), y0: Math.min(...cs.map((c) => c.y)), x1: Math.max(...cs.map((c) => c.x)), y1: Math.max(...cs.map((c) => c.y)) };
+    const sx = (x: number) => x * view.scale + view.ox, sy = (y: number) => -y * view.scale + view.oy;
+    if (sx(b.x0) >= 0 && sx(b.x1) <= size.w && sy(b.y1) >= 0 && sy(b.y0) <= size.h) return;
+    setView(fitView(size.w, size.h, b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [underlays]);
+
   const vw = view ?? { scale: 0.08, ox: 40, oy: 400 };
   // 選んだ点・区間が（下のパネルが伸びるなどで）画面の外に出たら、見える位置まで表示を寄せる
   const selPoint = (() => {

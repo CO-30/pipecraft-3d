@@ -1,11 +1,12 @@
 /**
  * 下敷き（図面・写真・航空写真）の読み込みと調整。「下敷き」ツールのパネル。
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { initialPlacement, type Underlay } from '../model/underlay';
 import { fileToRaster } from '../import/image';
 import type { PdfDoc } from '../import/pdf';
+import { takePendingUnderlayFile, underlayFileKind } from '../import/pending';
 import { NumField, OptNumField } from './Panels';
 import { SiteImportDialog } from './SiteImportDialog';
 
@@ -28,18 +29,52 @@ export function UnderlayPanel() {
   const active = list.find((u) => u.id === activeId) ?? null;
   const imgRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
+  const cadRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [note, setNote] = useState('');
   const [pdf, setPdf] = useState<{ doc: PdfDoc; name: string; page: number } | null>(null);
   const [site, setSite] = useState(false);
 
   const add = (r: { src: string; widthPx: number; heightPx: number }, kind: Underlay['kind'], label: string) => {
-    st.addUnderlay({ floorId, kind, label, ...r, ...initialPlacement(r.widthPx, r.heightPx, viewCenter()), opacity: 0.6 });
+    // 読み込み中に階を切り替えても、置く階と位置がずれないように今の階を使う
+    st.addUnderlay({ floorId: useStore.getState().activeFloorId, kind, label, ...r, ...initialPlacement(r.widthPx, r.heightPx, viewCenter()), opacity: 0.6 });
   };
   const run = async (label: string, fn: () => Promise<void>) => {
-    setBusy(label); setErr('');
+    setBusy(label); setErr(''); setNote('');
     try { await fn(); } catch (e) { setErr(`${label}できませんでした: ${e instanceof Error ? e.message : String(e)}`); } finally { setBusy(''); }
   };
+
+  const baseName = (f: File) => f.name.replace(/\.[^.]+$/, '');
+  const addImage = (f: File) => run('読み込み', async () => add(await fileToRaster(f), 'image', baseName(f)));
+  const addPdf = (f: File) => run('PDFの読み込み', async () => {
+    const { openPdf } = await import('../import/pdf');
+    const doc = await openPdf(await f.arrayBuffer());
+    if (doc.pages === 1) { add(await doc.render(1), 'pdf', baseName(f)); doc.destroy(); } else setPdf({ doc, name: baseName(f), page: 1 });
+  });
+  /** Jw_cad（.jww）: 縮尺は図面から分かるので、縮尺確定済みの線画として置く */
+  const addCad = (f: File) => run('Jw_cad図面の読み込み', async () => {
+    const [{ readJww }, { renderCad }] = await Promise.all([import('../import/jww'), import('../import/cadRender')]);
+    const d = await readJww(await f.arrayBuffer());
+    if (d.empty) throw new Error('図面に線や文字が見つかりませんでした');
+    const { mmPerPx, ...r } = renderCad(d);
+    const id = st.addUnderlay({ floorId: useStore.getState().activeFloorId, kind: 'image', label: `${baseName(f)}（1/${d.scale}）`, ...r, ...initialPlacement(r.widthPx, r.heightPx, viewCenter(), mmPerPx), opacity: 0.6 });
+    if (id) setNote(d.notes.join(' '));
+  });
+  const addFile = (f: File) => {
+    const kind = underlayFileKind(f);
+    if (kind === 'pdf') return addPdf(f);
+    if (kind === 'jww') return addCad(f);
+    if (kind === 'image') return addImage(f);
+    setErr('この形式（DXF・DWG など）には対応していません。PDF か Jw_cad の .jww、または写真を選んでください'); setNote('');
+    return Promise.resolve();
+  };
+  // 「新しい工事」で選んだ図面をそのまま取り込む
+  useEffect(() => {
+    const f = takePendingUnderlayFile();
+    if (f) void addFile(f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="props underlay-panel" data-testid="underlay-panel">
@@ -47,21 +82,22 @@ export function UnderlayPanel() {
       <div className="row">
         <button data-testid="ul-image" disabled={!!busy} onClick={() => imgRef.current?.click()}>🖼 写真・画像</button>
         <button data-testid="ul-pdf" disabled={!!busy} onClick={() => pdfRef.current?.click()}>📄 PDF図面</button>
+        <button data-testid="ul-cad" disabled={!!busy} onClick={() => cadRef.current?.click()}>📐 Jw_cad図面</button>
         <button data-testid="ul-site" disabled={!!busy} onClick={() => setSite(true)}>🛰 航空写真・建物外形</button>
         <label className="field inline"><input type="checkbox" data-testid="ul-show" checked={show} onChange={(e) => st.setShowUnderlays(e.target.checked)} /> 表示</label>
       </div>
       <input ref={imgRef} type="file" accept="image/*" hidden data-testid="ul-image-file" onChange={(e) => {
         const f = e.target.files?.[0]; e.target.value = '';
-        if (f) void run('読み込み', async () => add(await fileToRaster(f), 'image', f.name.replace(/\.[^.]+$/, '')));
+        if (f) void addImage(f);
       }} />
       <input ref={pdfRef} type="file" accept="application/pdf,.pdf" hidden data-testid="ul-pdf-file" onChange={(e) => {
         const f = e.target.files?.[0]; e.target.value = '';
-        if (f) void run('PDFの読み込み', async () => {
-          const { openPdf } = await import('../import/pdf');
-          const doc = await openPdf(await f.arrayBuffer());
-          const name = f.name.replace(/\.[^.]+$/, '');
-          if (doc.pages === 1) { add(await doc.render(1), 'pdf', name); doc.destroy(); } else setPdf({ doc, name, page: 1 });
-        });
+        if (f) void addPdf(f);
+      }} />
+      {/* accept を付けない: iPhone は .jww を知らない種類として選べなくするため。種類は名前で判定する */}
+      <input ref={cadRef} type="file" hidden data-testid="ul-cad-file" onChange={(e) => {
+        const f = e.target.files?.[0]; e.target.value = '';
+        if (f) void addFile(f);
       }} />
       {pdf && (
         <div className="row" data-testid="pdf-pages">
@@ -73,6 +109,7 @@ export function UnderlayPanel() {
       )}
       {busy && <div className="muted small">{busy}中…</div>}
       {err && <div className="err" role="alert">{err}</div>}
+      {note && <div className="warn small" data-testid="ul-note">{note}</div>}
 
       {list.length > 0 && (
         <div className="chips" data-testid="ul-list">

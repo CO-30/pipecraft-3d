@@ -4,6 +4,8 @@ export type NewProjectInput = {
   name: string;
   address: string;
   mode: 'sketch' | 'dims' | 'photo' | 'facade' | 'blank';
+  /** 「図面を取り込む」で選んだ図面（PDF・Jw_cad・写真）。作成後に下敷きとして取り込む */
+  file?: File;
   width: number; depth: number; floors: number; floorHeight: number; wallThickness: number; slabThickness: number;
 };
 
@@ -19,7 +21,7 @@ const FIELDS: { key: keyof NewProjectInput; label: string; unit: string; min: nu
 const MODES: { id: 'sketch' | 'dims' | 'photo' | 'facade'; icon: string; title: string; desc: string; recommended?: boolean }[] = [
   { id: 'sketch', icon: '✏️', title: '指でなぞって描く', desc: '建物の外周を1周なぞると外壁になります。寸法はあとで実測を入れます', recommended: true },
   { id: 'dims', icon: '📐', title: '寸法を入れて作る', desc: '幅と奥行を入れると四角い建物ができます', },
-  { id: 'photo', icon: '🗺️', title: '間取り図を取り込む', desc: '間取り図の写真やPDFを下に敷いて、なぞって描きます' },
+  { id: 'photo', icon: '🗺️', title: '図面を取り込む', desc: '会社から届いた図面（PDF・Jw_cad）や間取り図の写真を下に敷いて、なぞって描きます' },
   { id: 'facade', icon: '📷', title: '外壁の写真から測る', desc: '外壁を撮った写真を正面に直し、縦管などを指でなぞって長さを出します（3Dの壁にも貼ります）' },
 ];
 
@@ -36,7 +38,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
 
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="新しい工事">
-      <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim() }); }}>
+      <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim(), file: v.mode === 'photo' ? v.file : undefined }); }}>
         <h2>新しい工事</h2>
         <label className="field">工事名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
         <label className="field">住所（任意）<input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
@@ -60,6 +62,13 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
         </div>
         <button type="button" className={`linkish ${v.mode === 'blank' ? 'on' : ''}`} onClick={() => setV({ ...v, mode: 'blank' })}>白紙から描く</button>
         {v.mode === 'blank' && <p className="hint">壁も階も自由に描きます（慣れた人向け）。</p>}
+        {v.mode === 'photo' && (
+          <label className="field">図面ファイル（PDF・Jw_cad の .jww・写真）
+            {/* accept を付けない: iPhone は .jww を選べなくするため */}
+            <input type="file" data-testid="np-file" onChange={(e) => setV({ ...v, file: e.target.files?.[0] })} />
+            <span className="hint">作成するとこの図面が下に敷かれます。あとから選ぶこともできます。</span>
+          </label>
+        )}
         {v.mode !== 'blank' && (
           <div className="grid2">
             {fields.map((f) => (
