@@ -81,6 +81,8 @@ const isOutletNode = (doc: Doc, nodeId: string): boolean => {
   return hasPublic ? f.type.startsWith('public') : true;
 };
 const defaultSlopeFor = (diameter: number) => defaultSlope(diameter);
+const lockedCount = (net: Network) => Object.values(net.segments).filter((x) => x.slopeLocked).length;
+const UNLOCK_NOTICE = '勾配を保てない区間の固定を外しました（区間を選ぶと勾配を付け直せます）';
 
 export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {}, site: {} });
 
@@ -633,7 +635,9 @@ export const useStore = create<State>((set, get) => {
     setNodeHeight: (nodeId, z) => {
       const net = get().doc.network, n = net.nodes[nodeId];
       // 設備の接続口の高さは器具で決まるので単独では変えない
-      if (n && !n.fixtureId) commit(withNet(propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId)));
+      if (!n || n.fixtureId) return;
+      const next = propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId);
+      commit(withNet(next), lockedCount(next) < lockedCount(net) ? { notice: UNLOCK_NOTICE } : {});
     },
     updateSite: (patch) => {
       const doc = get().doc;
@@ -645,7 +649,7 @@ export const useStore = create<State>((set, get) => {
         for (const n of Object.values(network.nodes)) if (n.fixtureId && n.pos.z !== doc.network.nodes[n.id]?.pos.z) network = propagateLockedSlopes(doc.network, network, n.id);
         next = network === next.network ? next : { ...next, network };
       }
-      commit(next);
+      commit(next, lockedCount(next.network) < lockedCount(doc.network) ? { notice: UNLOCK_NOTICE } : {});
     },
     updateFixtureParams: (id, patch) => {
       const doc = get().doc, f = doc.fixtures[id];
@@ -656,7 +660,7 @@ export const useStore = create<State>((set, get) => {
       // 管底が動いたら、固定勾配の区間の上流端も追従させる
       let network = next.network;
       for (const n of Object.values(next.network.nodes)) if (n.fixtureId === id && n.pos.z !== doc.network.nodes[n.id]?.pos.z) network = propagateLockedSlopes(doc.network, network, n.id);
-      commit(network === next.network ? next : { ...next, network });
+      commit(network === next.network ? next : { ...next, network }, lockedCount(network) < lockedCount(doc.network) ? { notice: UNLOCK_NOTICE } : {});
     },
     setSegmentSlope: (segId, denominator) => {
       const net = get().doc.network;
@@ -664,7 +668,14 @@ export const useStore = create<State>((set, get) => {
       const doc = get().doc, ratio = 1 / denominator;
       const isOutlet = (id: string) => isOutletNode(doc, id);
       const next = setSlopeRatio(net, segId, ratio, isOutlet);
-      if (next !== net) { commit(withNet(next)); return; }
+      if (next !== net) {
+        // 動いた端から下流へ固定区間を連鎖させる
+        const seg0 = net.segments[segId];
+        let out = next;
+        for (const id of [seg0.a, seg0.b]) if (out.nodes[id].pos.z !== net.nodes[id].pos.z) out = propagateLockedSlopes(net, out, id, { skip: [segId] });
+        commit(withNet(out), lockedCount(out) < lockedCount(net) ? { notice: UNLOCK_NOTICE } : {});
+        return;
+      }
       // 上流端がマス（管底高は器具で決まる）: そのマスの管底高を 下流端 + 勾配×距離 に変える
       const seg = net.segments[segId];
       const down = downstreamEnd(net, seg, isOutlet);
@@ -674,8 +685,10 @@ export const useStore = create<State>((set, get) => {
         const z = Math.round((net.nodes[downId].pos.z + ratio * planLength(net, seg)) * 10) / 10;
         const moved = moveFixture(doc, upMh.id, upMh, undefined, { invertZ: z });
         if (moved !== doc) {
-          const mnet = moved.network;
-          commit({ ...moved, network: { ...mnet, segments: { ...mnet.segments, [segId]: { ...mnet.segments[segId], slope: ratio, slopeLocked: true } } } });
+          let mnet: Network = { ...moved.network, segments: { ...moved.network.segments, [segId]: { ...moved.network.segments[segId], slope: ratio, slopeLocked: true } } };
+          // 動いたマスの管底につながる他の固定区間も追従させる
+          for (const n of Object.values(mnet.nodes)) if (n.fixtureId === upMh.id && n.pos.z !== net.nodes[n.id]?.pos.z) mnet = propagateLockedSlopes(net, mnet, n.id, { skip: [segId] });
+          commit({ ...moved, network: mnet }, lockedCount(mnet) < lockedCount(net) ? { notice: UNLOCK_NOTICE } : {});
           return;
         }
       }
@@ -916,7 +929,7 @@ export const useStore = create<State>((set, get) => {
       const { dragBase, doc, past } = get();
       if (!dragBase) return;
       const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site;
-      set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}) });
+      set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}), ...(changed && lockedCount(doc.network) < lockedCount(dragBase.network) ? { notice: UNLOCK_NOTICE } : {}) });
     },
 
     sketchOutline: (raw, tolerance) => {

@@ -688,3 +688,24 @@ describe('設計GL の変更', () => {
     expect(validateFixtures(s().doc)).toEqual([]);
   });
 });
+
+describe('勾配固定が保てないとき', () => {
+  it('固定区間の下流端を手で動かすと固定が外れ、お知らせが出る。勾配設定後の点の移動は連鎖する', () => {
+    s().setDrawAttrs({ system: 'drain', diameter: 100 });
+    s().drawPolyline([v(0, 0, 0), v(4000, 0, 0), v(7000, 0, 0)]);
+    const [s1, s2] = Object.values(net().segments);
+    const a = s1.a, b = s1.b, c = s2.b;
+    s().setSegmentSlope(s1.id, 100); // b = -40
+    s().setSegmentSlope(s2.id, 100); // c = -70
+    expect(net().nodes[c].pos.z).toBeCloseTo(-70, 5);
+    s().setSegmentSlope(s1.id, 50); // b = -80 → 連鎖で c = -110
+    expect(net().nodes[b].pos.z).toBeCloseTo(-80, 5);
+    expect(net().nodes[c].pos.z).toBeCloseTo(-110, 5);
+    s().clearNotice();
+    s().setNodeHeight(b, -50); // 下流端を手で動かす → s1 の固定が外れる、s2 は追従
+    expect(net().segments[s1.id].slopeLocked).toBe(false);
+    expect(net().nodes[c].pos.z).toBeCloseTo(-80, 5);
+    expect(s().notice).toContain('固定を外しました');
+    void a;
+  });
+});

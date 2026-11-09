@@ -72,10 +72,41 @@ describe('勾配固定', () => {
     expect(out.nodes[b].pos.z).toBe(20);
   });
 
+  test('downstreamEnd: 隣の固定区間がこの端へ流れ込んでいれば、その端が上流', () => {
+    const r = addPolyline(emptyNetwork(), [v(0, 0, 0), v(4000, 0, 0), v(7000, 0, 0)], { system: 'drain', diameter: 100 });
+    const net = setSlopeRatio(r.net, r.segmentIds[0], 1 / 100); // a→b 固定、b = -40（c は 0 のまま）
+    // b は c より低いが、a→b が b へ流れ込んでいるので b→c の下流は c
+    expect(downstreamEnd(net, net.segments[r.segmentIds[1]])).toBe('b');
+  });
+
   test('固定していない区間は動かさない', () => {
     const { net, a, b } = line(5000);
     const moved = moveNode(net, a, v(0, 0, 200));
     expect(propagateLockedSlopes(net, moved, a)).toBe(moved);
     expect(moved.nodes[b].pos.z).toBe(0);
+  });
+});
+
+describe('勾配固定: 合流点', () => {
+  /** U1→J→D と U2→J。高さは 1/100 に合わせて置き、固定の印だけ付ける（U1=0, J=-40, D=-70, U2=-10） */
+  function junction() {
+    const r1 = addPolyline(emptyNetwork(), [v(0, 0, 0), v(4000, 0, -40), v(7000, 0, -70)], { system: 'drain', diameter: 100 });
+    const [u1, j, d] = r1.nodeIds;
+    const r2 = addPolyline(r1.net, [v(4000, 3000, -10), v(4000, 0, -40)], { system: 'drain', diameter: 100 }, { endNodeId: j });
+    const u2 = r2.nodeIds[0];
+    const segments = { ...r2.net.segments };
+    for (const id of [...r1.segmentIds, ...r2.segmentIds]) segments[id] = { ...segments[id], slope: 0.01, slopeLocked: true };
+    return { net: { ...r2.net, segments }, u1, u2, j, d, s1: r1.segmentIds[0], s2: r1.segmentIds[1], s3: r2.segmentIds[0] };
+  }
+  test('上流 U1 を動かしても、合流点につながる別の枝 U2 は動かさない（固定は外す）', () => {
+    const { net, u1, u2, j, d, s3 } = junction();
+    const zj = net.nodes[j].pos.z, zu2 = net.nodes[u2].pos.z;
+    expect(zu2).toBeGreaterThan(zj);
+    const moved = moveNode(net, u1, v(0, 0, 500));
+    const out = propagateLockedSlopes(net, moved, u1);
+    expect(out.nodes[j].pos.z).toBeCloseTo(460, 5);
+    expect(out.nodes[d].pos.z).toBeCloseTo(430, 5);
+    expect(out.nodes[u2].pos.z).toBe(zu2); // 触っていない枝は動かない
+    expect(out.segments[s3].slopeLocked).toBe(false); // 勾配が保てないので固定を外す
   });
 });
