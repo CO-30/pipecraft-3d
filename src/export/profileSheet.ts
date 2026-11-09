@@ -84,7 +84,9 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
         sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: warnNode.has(n.nodeId) ? RED : INK, fill: '#fff', lw: 0.3 });
         drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, warnNode.has(n.nodeId) ? RED : INK);
         sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
+        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 10.5, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
       } else {
+        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.invertLevel) - 3, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
         sheet.ops.push({ t: 'circle', cx: x, cy: Y(n.invertLevel), r: 0.8, fill: warnNode.has(n.nodeId) ? RED : INK, stroke: warnNode.has(n.nodeId) ? RED : INK });
       }
       sheet.ops.push({ t: 'text', x, y: tableTop - 1.5, s: `No.${i + 1}`, size: 2.4, anchor: 'middle', color: GRAY });
@@ -138,12 +140,16 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   });
 
   // 欄外: 警告・要確認（表題欄の左）
+  // 「⚠」は PDF のフォント（NotoSansJP-JIS）に無いので「※」を使う
   const notes: { s: string; color: string }[] = [];
-  for (const w of model.warnings) notes.push({ s: `⚠ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : RED });
+  for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : RED });
   if (profile.unverified.length) notes.push({ s: `要確認: ${profile.unverified.join('、')}（自治体の手引きで確認してください）`, color: GRAY });
   const noteX = 10 + M, noteW = sheet.width - 10 - TITLE_W - 10 - noteX - 5;
   const noteY0 = sheet.height - 10 - titleH;
-  notes.slice(0, 8).forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));
+  const MAX_NOTES = 8;
+  const shown = notes.length > MAX_NOTES ? notes.slice(0, MAX_NOTES - 1) : notes;
+  shown.forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));
+  if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * MAX_NOTES, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: RED });
 
   // 表題欄
   const values: Record<string, string> = {

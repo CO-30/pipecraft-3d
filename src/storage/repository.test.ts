@@ -201,3 +201,29 @@ describe('自治体プロファイルの保存', () => {
     expect((await r2.listProfiles())[0].name).toBe('編集済み');
   });
 });
+
+describe('全現場バックアップとプロファイル', () => {
+  it('exportAll にユーザープロファイルが入り、importAny で未保存分だけ保存される', async () => {
+    const r1 = new DexieProjectRepository(nextName());
+    const d = duplicateProfile(STANDARD_PROFILE, '沖縄市（仮）');
+    await r1.saveProfile(d);
+    await r1.save({ ...sample(), site: { municipalityProfileId: d.id } });
+    const { json } = await r1.exportAll();
+    expect(JSON.parse(json).profiles?.map((p: { id: string }) => p.id)).toEqual([d.id]);
+    const r2 = new DexieProjectRepository(nextName());
+    await r2.saveProfile({ ...d, name: '先に保存済み' });
+    const res = await r2.importAny(json);
+    expect(res.imported).toHaveLength(1);
+    expect((await r2.listProfiles())[0].name).toBe('先に保存済み');
+    const r3 = new DexieProjectRepository(nextName());
+    await r3.importAny(json);
+    expect((await r3.listProfiles()).map((p) => p.name)).toEqual(['沖縄市（仮）']);
+  });
+  it('壊れたプロファイル行があっても他は読める', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const d = duplicateProfile(STANDARD_PROFILE, '正常');
+    await r.saveProfile(d);
+    await r._corruptProfile('broken', '{not json');
+    expect((await r.listProfiles()).map((p) => p.name)).toEqual(['正常']);
+  });
+});

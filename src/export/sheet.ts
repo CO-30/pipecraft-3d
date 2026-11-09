@@ -58,6 +58,21 @@ export function sheetToSvg(sheet: Sheet): string {
     + `<rect x="0" y="0" width="${n(sheet.width)}" height="${n(sheet.height)}" fill="#fff"/>` + parts.join('') + '</svg>';
 }
 
+/** 複数ページを縦に並べた 1 つの SVG（SVG 書き出し用） */
+export function sheetsToSvg(sheets: Sheet[]): string {
+  if (sheets.length === 1) return sheetToSvg(sheets[0]);
+  const width = Math.max(...sheets.map((s) => s.width));
+  const height = sheets.reduce((a, s) => a + s.height, 0);
+  let y = 0;
+  const pages = sheets.map((s) => {
+    const inner = sheetToSvg(s).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+    const out = `<g transform="translate(0 ${n(y)})">${inner}</g>`;
+    y += s.height;
+    return out;
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(width)} ${n(height)}" width="${n(width)}mm" height="${n(height)}mm" font-family="'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif">${pages.join('')}</svg>`;
+}
+
 const hex = (h: string): RGB => {
   const m = /^#?([0-9a-f]{6})$/i.exec(h.trim());
   if (!m) return rgb(0.5, 0.5, 0.5);

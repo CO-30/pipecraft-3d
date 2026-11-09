@@ -80,7 +80,7 @@ export function renderRiserSheet(model: RiserModel, meta: SheetMeta): Sheet {
   // 凡例・警告
   const noteX = 10 + M, noteY = sheet.height - 10 - titleH + 3;
   sheet.ops.push({ t: 'text', x: noteX, y: noteY, s: '凡例: ― 給水  ― 給湯（橙）  高さは ' + (profile.riser.heightLabel === 'GL+' ? '設計GL' : 'その階の床') + ' 基準（mm）', size: 2.6, color: GRAY });
-  model.warnings.forEach((w, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY + 3.5 * (i + 1), s: `⚠ ${w}`, size: 2.6, color: '#d91e18' }));
+  model.warnings.forEach((w, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY + 3.5 * (i + 1), s: `※ ${w}`, size: 2.6, color: '#d91e18' }));
   if (profile.unverified.length) sheet.ops.push({ t: 'text', x: noteX, y: noteY + 3.5 * (model.warnings.length + 1), s: `要確認: ${profile.unverified.join('、')}`, size: 2.6, color: GRAY });
 
   const values: Record<string, string> = { '工事名': meta.siteName, '図面名': model.title, '縮尺': `V 1/${vS}`, '作成日': dateJa(meta.date) };

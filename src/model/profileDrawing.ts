@@ -11,7 +11,12 @@ import { formatSlope, minSlopeFor, type MunicipalityProfile } from './municipali
 import type { Network, Segment } from './network';
 import { isDrain, planLength } from './slope';
 
-export type RouteResult = { route: string[]; branches: { atNodeId: string; nodeIds: string[] }[] } | { error: string };
+export type RouteResult = {
+  route: string[];
+  branches: { atNodeId: string; nodeIds: string[] }[];
+  /** 枝の中にさらにあった分岐（図に含めていない。警告用） */
+  omitted: { atNodeId: string }[];
+} | { error: string };
 
 /** VU/VP 管の外径(mm)。表に無い口径は 1.1 倍 */
 export const OUTER_DIAMETER: Record<number, number> = { 40: 48, 50: 60, 65: 76, 75: 89, 100: 114, 125: 140, 150: 165, 200: 216 };
@@ -21,13 +26,15 @@ export type ProfileWarning = { kind: 'minSlope' | 'reverseSlope' | 'cover' | 'te
 export type ProfileNode = {
   nodeId: string; cumDistance: number; groundLevel: number; invertLevel: number; cover: number;
   manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string };
+  /** 分岐点の注記（「→別図 枝1」など） */
+  note?: string;
 };
 export type ProfileSegment = { segId: string; distance: number; slope: number | null; slopeText: string; diameter: number; material: string; pipeSpec: string };
 export type ProfileModel = { nodes: ProfileNode[]; segments: ProfileSegment[]; warnings: ProfileWarning[]; tentativeGL: boolean; profile: MunicipalityProfile; title: string };
 
-/** ノードにつながる排水系の区間 */
+/** ノードにつながる排水系の区間（通気管は縦断図に含めない） */
 function drainSegmentsAt(net: Network, nodeId: string): Segment[] {
-  return Object.values(net.segments).filter((s) => isDrain(s.system) && (s.a === nodeId || s.b === nodeId));
+  return Object.values(net.segments).filter((s) => isDrain(s.system) && s.system !== 'vent' && (s.a === nodeId || s.b === nodeId));
 }
 const otherEnd = (s: Segment, id: string) => (s.a === id ? s.b : s.a);
 
@@ -37,6 +44,7 @@ const otherEnd = (s: Segment, id: string) => (s.a === id ? s.b : s.a);
  */
 function upstreamTree(net: Network, outletId: string): { children: Map<string, string[]>; order: string[] } | null {
   const children = new Map<string, string[]>();
+  const parent = new Map<string, string>();
   const seen = new Set<string>([outletId]);
   const order: string[] = [];
   const stack = [outletId];
@@ -48,11 +56,11 @@ function upstreamTree(net: Network, outletId: string): { children: Map<string, s
       const o = otherEnd(s, cur);
       if (seen.has(o)) {
         // 親へ戻る辺は無視。それ以外の既訪問は閉路
-        const parentOf = [...children.entries()].find(([, ks]) => ks.includes(cur))?.[0];
-        if (o !== parentOf) return null;
+        if (o !== parent.get(cur)) return null;
         continue;
       }
       seen.add(o);
+      parent.set(o, cur);
       kids.push(o);
       stack.push(o);
     }
@@ -61,11 +69,12 @@ function upstreamTree(net: Network, outletId: string): { children: Map<string, s
   return { children, order };
 }
 
-/** 上流側へ 2 本以上に分かれる点とその隣ノード */
-export function branchPoints(net: Network, outletId: string): { nodeId: string; options: string[] }[] {
+/** 本線上で上流側へ 2 本以上に分かれる点とその隣ノード（枝の中の分岐は出さない。choice で本線が変わると分岐点も変わる） */
+export function branchPoints(net: Network, outletId: string, choice: Record<string, string> = {}): { nodeId: string; options: string[] }[] {
   const t = upstreamTree(net, outletId);
-  if (!t) return [];
-  return [...t.children.entries()].filter(([, ks]) => ks.length >= 2).map(([nodeId, options]) => ({ nodeId, options }));
+  const r = extractRoute(net, outletId, choice);
+  if (!t || 'error' in r) return [];
+  return r.route.filter((id) => (t.children.get(id)?.length ?? 0) >= 2).map((nodeId) => ({ nodeId, options: t.children.get(nodeId)! }));
 }
 
 /** node から上流へのいちばん長い水平距離（枝の自動選択用） */
@@ -88,6 +97,7 @@ export function extractRoute(net: Network, outletId: string, choice: Record<stri
   if (!t) return { error: '経路が輪になっています' };
   const { children } = t;
   const branches: { atNodeId: string; nodeIds: string[] }[] = [];
+  const omitted: { atNodeId: string }[] = [];
   const walk = (start: string, pickMain: boolean): string[] => {
     const path = [start];
     let cur = start;
@@ -97,9 +107,15 @@ export function extractRoute(net: Network, outletId: string, choice: Record<stri
       let next: string;
       if (kids.length === 1) next = kids[0];
       else {
-        const chosen = pickMain && choice[cur] && kids.includes(choice[cur]) ? choice[cur] : kids.slice().sort((p, q) => longest(net, children, q) - longest(net, children, p))[0];
+        // 枝の長さ ＝ cur→k の区間 ＋ k から先のいちばん長い経路
+        const len = (k: string) => planLength(net, drainSegmentsAt(net, cur).find((x) => otherEnd(x, cur) === k)!) + longest(net, children, k);
+        const chosen = pickMain && choice[cur] && kids.includes(choice[cur]) ? choice[cur] : kids.slice().sort((p, q) => len(q) - len(p))[0];
         next = chosen;
-        if (pickMain) for (const k of kids) if (k !== chosen) branches.push({ atNodeId: cur, nodeIds: [cur, ...walk(k, false)] });
+        if (pickMain) {
+          for (const k of kids) if (k !== chosen) branches.push({ atNodeId: cur, nodeIds: [cur, ...walk(k, false)] });
+        } else {
+          omitted.push({ atNodeId: cur });
+        }
       }
       path.push(next);
       cur = next;
@@ -107,7 +123,7 @@ export function extractRoute(net: Network, outletId: string, choice: Record<stri
     return path;
   };
   const route = walk(outletId, true);
-  return { route, branches };
+  return { route, branches, omitted };
 }
 
 /**
@@ -124,7 +140,7 @@ export function trimToManholes(doc: Doc, route: string[]): string[] {
 }
 
 /** 経路（下流→上流）から縦断図のモデルを作る。図は上流を左に描くので nodes は上流→下流で返す */
-export function buildProfile(doc: Doc, route: string[], profile: MunicipalityProfile, title: string): ProfileModel {
+export function buildProfile(doc: Doc, route: string[], profile: MunicipalityProfile, title: string, notes: Record<string, string> = {}): ProfileModel {
   const net = doc.network;
   const ids = route.slice().reverse(); // 上流 → 下流
   const tentativeGL = doc.site?.designGL === undefined;
@@ -146,7 +162,8 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
       const riser = L < 1;
       const slope = riser ? null : (up - down) / L;
       const material = seg.material || 'VU';
-      segments.push({ segId: seg.id, distance: L, slope, slopeText: riser ? '立管' : formatSlope(Math.max(0, slope!), profile.profileTable.slopeFormat), diameter: seg.diameter, material, pipeSpec: `${material}φ${seg.diameter}` });
+      const slopeText = riser ? '立管' : slope! < -1e-9 ? '逆勾配' : formatSlope(slope!, profile.profileTable.slopeFormat);
+      segments.push({ segId: seg.id, distance: L, slope, slopeText, diameter: seg.diameter, material, pipeSpec: `${material}φ${seg.diameter}` });
       if (!riser) {
         if (slope! < -1e-9) warnings.push({ kind: 'reverseSlope', segId: seg.id, message: `区間 ${segments.length}: 逆勾配（下流のほうが高い）` });
         else {
@@ -165,7 +182,7 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     const manhole = fx && fl && isManhole(fx.type)
       ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle' }
       : undefined;
-    nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole });
+    nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole, ...(notes[id] ? { note: notes[id] } : {}) });
     if (od && cover + 1e-9 < profile.profileTable.minCover) warnings.push({ kind: 'cover', nodeId: id, message: `点 ${nodes.length}: 土被り ${Math.round(cover)}mm が最小 ${profile.profileTable.minCover}mm より少ない` });
   }
   return { nodes, segments, warnings, tentativeGL, profile, title };

@@ -6,6 +6,7 @@ import { placeFixture, portNodes, type FixtureType } from '../model/fixtures';
 import { STANDARD_PROFILE } from '../model/municipality';
 import { buildProfile, extractRoute } from '../model/profileDrawing';
 import { renderProfileSheet, renderProfileSvg } from './profileSheet';
+import { sheetsToSvg } from './sheet';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 const base = (designGL?: number): Doc => ({ building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {}, site: designGL === undefined ? {} : { designGL } });
@@ -41,7 +42,7 @@ describe('排水縦断図の描画', () => {
     expect(svg).toContain('テスト工事');
     expect(svg).toContain('H 1/100 V 1/50');
     expect(svg).toContain('2026年11月9日');
-    expect(svg).not.toContain('⚠');
+    expect(svg).not.toContain('※');
   });
   test('GL未入力は仮表示', () => {
     const svg = renderProfileSvg(caseA(null), meta);
@@ -52,7 +53,7 @@ describe('排水縦断図の描画', () => {
     const m = caseA();
     m.warnings.push({ kind: 'cover', nodeId: m.nodes[0].nodeId, message: '点 1: 土被りが少ない' });
     const svg = renderProfileSvg(m, meta);
-    expect(svg).toContain('⚠');
+    expect(svg).toContain('※');
     expect(svg).toContain('土被りが少ない');
     expect(svg).toContain('#d91e18');
   });
@@ -64,6 +65,22 @@ describe('排水縦断図の描画', () => {
     expect(sheet.width).toBe(420);
     const svg = renderProfileSvg(m, meta);
     expect(svg).toMatch(/H 1\/(200|250|300)/);
+  });
+  test('分岐点の注記は図に出る。警告が多いときは「他 n 件」', () => {
+    const m = caseA();
+    m.nodes[0].note = '→別図 枝1';
+    for (let i = 0; i < 10; i++) m.warnings.push({ kind: 'cover', message: `警告 ${i}` });
+    const svg = renderProfileSvg(m, meta);
+    expect(svg).toContain('→別図 枝1');
+    expect(svg).toContain('他 3 件');
+    expect(svg).not.toContain('警告 9');
+    expect(svg).not.toContain('⚠'); // PDF のフォントに無い記号は使わない
+  });
+  test('sheetsToSvg は複数ページを縦に並べた 1 つの SVG', () => {
+    const a = renderProfileSheet(caseA(), meta), b = renderProfileSheet(caseA(), meta);
+    const svg = sheetsToSvg([a, b]);
+    expect(svg).toContain('viewBox="0 0 420 594"');
+    expect(svg.match(/排水設備 縦断図/g)?.length).toBe(4); // 見出し＋表題欄 × 2 ページ
   });
   test('unverified は要確認として出る', () => {
     const m = caseA();

@@ -56,6 +56,37 @@ describe('経路の抽出', () => {
     // 未指定なら長いほう（a2 側 3000 < a1 側 4000 → a1）が本線
     const r2 = extractRoute(net, out.port);
     expect('route' in r2 && r2.route).toEqual([out.port, c.port, a1.port]);
+    // 分岐点直後の区間の長さも含めて比べる（a1 側に 1 区間しか無くても、長ければ本線）
+    const far = manhole({ ...d, network: net }, 'manholeSewage', -9000, 0, -650);
+    const net2 = pipe(far.doc.network, [v(-9000, 0, -650), v(4000, 0, -750)], far.port, c.port).net;
+    const r3 = extractRoute(net2, out.port);
+    expect('route' in r3 && r3.route).toEqual([out.port, c.port, far.port]);
+    expect('route' in r2 && r2.omitted).toEqual([]);
+  });
+  test('枝の中の分岐は図に含めず omitted に。branchPoints は本線上の分岐点だけ', () => {
+    let d = base(-100);
+    const out = manhole(d, 'publicSewage', 8000, 0, -800); d = out.doc;
+    const c = manhole(d, 'manholeSewage', 4000, 0, -750); d = c.doc;
+    const a1 = manhole(d, 'manholeSewage', 0, 0, -700); d = a1.doc;
+    const a2 = manhole(d, 'manholeSewage', 4000, 2000, -720); d = a2.doc; // 枝
+    const a3 = manhole(d, 'manholeSewage', 4000, 3500, -700); d = a3.doc; // 枝の中の分岐先 1
+    const a4 = manhole(d, 'manholeSewage', 5000, 2000, -700); d = a4.doc; // 枝の中の分岐先 2
+    let net = pipe(d.network, [v(4000, 0, -750), v(8000, 0, -800)], c.port, out.port).net;
+    net = pipe(net, [v(0, 0, -700), v(4000, 0, -750)], a1.port, c.port).net;
+    net = pipe(net, [v(4000, 2000, -720), v(4000, 0, -750)], a2.port, c.port).net;
+    net = pipe(net, [v(4000, 3500, -700), v(4000, 2000, -720)], a3.port, a2.port).net;
+    net = pipe(net, [v(5000, 2000, -700), v(4000, 2000, -720)], a4.port, a2.port).net;
+    const r = extractRoute(net, out.port, { [c.port]: a1.port });
+    expect('route' in r && r.route).toEqual([out.port, c.port, a1.port]);
+    expect('route' in r && r.omitted.map((o) => o.atNodeId)).toEqual([a2.port]);
+    // 本線上の分岐点は c だけ（a2 は枝の中なので出さない）
+    expect(branchPoints(net, out.port, { [c.port]: a1.port }).map((b) => b.nodeId)).toEqual([c.port]);
+  });
+  test('通気管は縦断図の経路に含めない', () => {
+    const { doc, a, b } = caseA();
+    const r = addPolyline(doc.network, [v(0, 0, -700), v(0, 0, 2000)], { system: 'vent', diameter: 50 }, { startNodeId: a });
+    const route = extractRoute(r.net, b);
+    expect('route' in route && route.route).toEqual([b, a]);
   });
   test('排水がつながっていない点・閉路はエラー', () => {
     const d = base(-100);
@@ -106,6 +137,13 @@ describe('縦断図の計算（手計算ケース）', () => {
     expect(m.warnings).toEqual([]);
     expect(m.tentativeGL).toBe(false);
   });
+  test('分岐点の注記（→別図）がノードに付く', () => {
+    const { doc, a, b } = caseA();
+    const r = extractRoute(doc.network, b);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], STANDARD_PROFILE, 't', { [a]: '→別図 枝1' });
+    expect(m.nodes[0].note).toBe('→別図 枝1');
+    expect(m.nodes[1].note).toBeUndefined();
+  });
   test('ケース B: 折れ 2 区間（上流→下流の順に並ぶ）', () => {
     let d = base(0);
     const a = manhole(d, 'manholeSewage', 0, 0, -600); d = a.doc;
@@ -139,6 +177,7 @@ describe('縦断図の計算（手計算ケース）', () => {
     expect(m.tentativeGL).toBe(true);
     expect(m.nodes[0].groundLevel).toBe(0);
     expect(m.segments[1].slope).toBeLessThan(0);
+    expect(m.segments[1].slopeText).toBe('逆勾配');
   });
   test('立て管（水平距離 0）は勾配なし', () => {
     const d = base(0);

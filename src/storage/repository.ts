@@ -117,15 +117,22 @@ export class DexieProjectRepository implements ProjectRepository, ProfileReposit
       if (p) projects.push(p);
       else skipped.push(r.name);
     }
-    return { json: JSON.stringify({ format: BACKUP_FORMAT, version: 1, exportedAt: Date.now(), projects }), skipped };
+    // ユーザーの自治体プロファイルも一緒に（別端末での復元で体裁が変わらないように）
+    const profiles = await this.listProfiles();
+    return { json: JSON.stringify({ format: BACKUP_FORMAT, version: 1, exportedAt: Date.now(), projects, ...(profiles.length ? { profiles } : {}) }), skipped };
   }
 
   async importAny(json: string): Promise<{ imported: ProjectData[]; failed: number }> {
     let raw: unknown;
     try { raw = JSON.parse(json); } catch { throw new InvalidProjectError('JSONとして読み込めません'); }
-    const b = raw as { format?: string; projects?: unknown[] };
+    const b = raw as { format?: string; projects?: unknown[]; profiles?: unknown[] };
     if (b?.format !== BACKUP_FORMAT) return { imported: [await this.importJson(json)], failed: 0 };
     if (!Array.isArray(b.projects)) throw new InvalidProjectError('バックアップの形式が正しくありません');
+    // 同梱プロファイルは未保存のものだけ保存（保存済みは上書きしない）
+    for (const raw of Array.isArray(b.profiles) ? b.profiles : []) {
+      const p = municipalityProfileSchema.safeParse(raw);
+      if (p.success && !isBuiltinProfile(p.data.id) && !(await this.db.profiles.get(p.data.id))) await this.saveProfile(p.data);
+    }
     const imported: ProjectData[] = [];
     let failed = 0;
     for (const p of b.projects) {
@@ -176,8 +183,11 @@ export class DexieProjectRepository implements ProjectRepository, ProfileReposit
     const rows = await this.db.profiles.orderBy('name').toArray();
     const out: MunicipalityProfile[] = [];
     for (const r of rows) {
-      const p = municipalityProfileSchema.safeParse(JSON.parse(r.json));
-      if (p.success) out.push(p.data);
+      // 壊れた行は飛ばす（他のプロファイルは読めるように）
+      try {
+        const p = municipalityProfileSchema.safeParse(JSON.parse(r.json));
+        if (p.success) out.push(p.data);
+      } catch { /* skip */ }
     }
     return out;
   }
@@ -196,6 +206,9 @@ export class DexieProjectRepository implements ProjectRepository, ProfileReposit
   /** テスト用: 生データを書き換える */
   async _corrupt(id: string, json: string) {
     await this.db.projects.update(id, { json });
+  }
+  async _corruptProfile(id: string, json: string) {
+    await this.db.profiles.put({ id, name: id, json });
   }
 
   close() {

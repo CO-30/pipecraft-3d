@@ -53,6 +53,35 @@ describe('申請図面の画面', () => {
     expect((screen.getByTestId('shinsei-root') as HTMLSelectElement).options[0].textContent).toContain('水道メーター');
   });
 
+  it('分岐がある工事: 「全部」なら本線に「→別図」の注記、枝の中の分岐は警告に出る。保存されていないプロファイル ID は警告して標準で描く', async () => {
+    // 公共マス(m2) ← 汚水マス(m1) ← 本線: m6（遠い）／枝: 汚水マス(m3) ← 枝の中の分岐: m4, m5
+    const place = (type: FixtureType, x: number, y: number) => { s().setFixtureType(type); s().placeFixtureAt({ x, y }); return Object.values(s().doc.fixtures).filter((f) => f.type === type).pop()!.id; };
+    const port = (fid: string) => Object.values(s().doc.network.nodes).find((n) => n.fixtureId === fid)!;
+    const m3 = place('manholeSewage', 0, -3000); s().updateFixtureParams(m3, { invertZ: -950 });
+    const m4 = place('manholeSewage', 0, -5000); s().updateFixtureParams(m4, { invertZ: -900 });
+    const m5 = place('manholeSewage', 2000, -3000); s().updateFixtureParams(m5, { invertZ: -900 });
+    const m6 = place('manholeSewage', -9000, -1200); s().updateFixtureParams(m6, { invertZ: -900 });
+    const m1 = Object.values(s().doc.fixtures).find((f) => f.type === 'manholeSewage' && f.y === -1200)!.id;
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([port(m3).pos, port(m1).pos], { startNodeId: port(m3).id, endNodeId: port(m1).id });
+    s().drawPolyline([port(m4).pos, port(m3).pos], { startNodeId: port(m4).id, endNodeId: port(m3).id });
+    s().drawPolyline([port(m5).pos, port(m3).pos], { startNodeId: port(m5).id, endNodeId: port(m3).id });
+    s().drawPolyline([port(m6).pos, port(m1).pos], { startNodeId: port(m6).id, endNodeId: port(m1).id });
+    s().updateSite({ municipalityProfileId: 'mp_missing' });
+    render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    // 本線上の分岐点は m1 だけ（m3 の分岐は枝の中）
+    await waitFor(() => expect(screen.getAllByTestId(/^shinsei-branch-/)).toHaveLength(1));
+    expect(screen.getByTestId(`shinsei-branch-${port(m1).id}`)).toBeTruthy();
+    const html = () => screen.getByTestId('shinsei-preview').innerHTML;
+    await waitFor(() => expect(html()).toContain('→別図'));
+    expect(html().match(/<svg/g)?.length).toBe(2); // 本線＋枝
+    const warnings = screen.getByTestId('shinsei-warnings').textContent ?? '';
+    expect(warnings).toContain('含めていません');
+    expect(warnings).toContain('見つからない');
+    expect(html()).toContain('標準（下水道協会方式を参考）');
+  });
+
   it('設計GL を空にすると「仮」、排水の無い工事ではエラー表示', async () => {
     s().updateSite({ designGL: undefined });
     render(<ShinseiScreen onClose={() => {}} />);

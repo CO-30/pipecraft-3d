@@ -8,12 +8,12 @@ import { useStore } from '../state/store';
 import { FIXTURE_CATALOG, isManhole, MANHOLE_TYPES } from '../model/fixtures';
 import { floorById } from '../model/building';
 import { isDrain } from '../model/slope';
-import { resolveProfile, type MunicipalityProfile } from '../model/municipality';
+import { isBuiltinProfile, resolveProfile, type MunicipalityProfile } from '../model/municipality';
 import { branchPoints, buildProfile, extractRoute, trimToManholes, type ProfileModel } from '../model/profileDrawing';
 import { buildRiser, defaultRiserRoot, type RiserModel } from '../model/riser';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderRiserSheet } from '../export/riserSheet';
-import { sheetToSvg, type Sheet } from '../export/sheet';
+import { sheetsToSvg, sheetToSvg, type Sheet } from '../export/sheet';
 import { useProfiles } from './useProfiles';
 import { NumField } from './Panels';
 import { ProfileSettingsDialog } from './ProfileSettingsDialog';
@@ -107,33 +107,45 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, showProfiles]);
 
-  const profile: MunicipalityProfile = resolveProfile(doc.site?.municipalityProfileId, profiles.user);
+  const profileId = doc.site?.municipalityProfileId;
+  const profile: MunicipalityProfile = resolveProfile(profileId, profiles.user);
+  /** 現場が指すプロファイルがこの端末に無い（別端末の現場・削除後など） */
+  const profileMissing = !!profileId && profiles.loaded && !isBuiltinProfile(profileId) && !profiles.user.some((p) => p.id === profileId);
   const outlets = useMemo(() => outletCandidates(doc), [doc]);
   const roots = useMemo(() => rootCandidates(doc), [doc]);
   const outletId = outlets.some((o) => o.id === outlet) ? outlet : outlets[0]?.id ?? '';
   const rootId = roots.some((o) => o.id === root) ? root : roots[0]?.id ?? '';
-  const branches = useMemo(() => (outletId ? branchPoints(doc.network, outletId) : []), [doc, outletId]);
+  const pick = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(choice)) if (v && v !== ALL) out[k] = v;
+    return out;
+  }, [choice]);
+  const branches = useMemo(() => (outletId ? branchPoints(doc.network, outletId, pick) : []), [doc, outletId, pick]);
   const siteName = meta?.name ?? '現場';
 
   const built: ShinseiBuild = useMemo(() => {
     if (kind === 'profile') {
       if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
-      const pick: Record<string, string> = {};
-      for (const b of branches) if (choice[b.nodeId] && choice[b.nodeId] !== ALL) pick[b.nodeId] = choice[b.nodeId];
       const r = extractRoute(doc.network, outletId, pick);
       if ('error' in r) return { sheets: [], svg: '', warnings: [], error: r.error, kind };
-      const models: ProfileModel[] = [buildProfile(doc, trimToManholes(doc, r.route), profile, PROFILE_TITLE)];
-      // 「全部」を選んだ分岐の枝は別図
-      const all = branches.filter((b) => !choice[b.nodeId] || choice[b.nodeId] === ALL).map((b) => b.nodeId);
-      r.branches.filter((b) => all.includes(b.atNodeId)).forEach((b, i) => models.push(buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${PROFILE_TITLE}（枝 ${i + 1}: ${nodeLabel(b.atNodeId)} から）`)));
+      // 分岐の枝は別図。本線の分岐点に「→別図 枝n」と記す
+      const notes: Record<string, string> = {};
+      r.branches.forEach((b, i) => { notes[b.atNodeId] = [notes[b.atNodeId], `→別図 枝${i + 1}`].filter(Boolean).join(' '); });
+      const models: ProfileModel[] = [buildProfile(doc, trimToManholes(doc, r.route), profile, PROFILE_TITLE, notes)];
+      r.branches.forEach((b, i) => models.push(buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${PROFILE_TITLE}（枝${i + 1}: ${nodeLabel(b.atNodeId)} から）`)));
       const sheets = models.map((m) => renderProfileSheet(m, { siteName, date }));
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: models.flatMap((m) => m.warnings.map((w) => w.message)), error: null, kind };
+      const warnings = models.flatMap((m) => m.warnings.map((w) => w.message));
+      for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）は図に含めていません。別の下流端を選んで別に作図してください`);
+      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
+      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings, error: null, kind };
     }
     if (!rootId) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
     const m: RiserModel = buildRiser(doc, rootId, profile, RISER_TITLE);
     const sheet = renderRiserSheet(m, { siteName, date });
-    return { sheets: [sheet], svg: sheetToSvg(sheet), warnings: m.warnings, error: null, kind };
-  }, [doc, kind, outletId, rootId, choice, branches, profile, siteName, date]);
+    const warnings = [...m.warnings];
+    if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
+    return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
+  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date]);
 
   const download = async (fmt: 'pdf' | 'svg') => {
     setBusy(fmt); setErr('');
@@ -141,7 +153,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
       const base = `${safeName(siteName)}_${kind === 'profile' ? '縦断図' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'svg') {
-        downloadBytes(new TextEncoder().encode(built.sheets.length === 1 ? built.svg : sheetToSvg(built.sheets[0])), `${base}.svg`, 'image/svg+xml');
+        // 枝が別図のときは、ページを縦に並べた 1 つの SVG
+        downloadBytes(new TextEncoder().encode(sheetsToSvg(built.sheets)), `${base}.svg`, 'image/svg+xml');
       } else {
         const [{ sheetsToPdf }, font] = await Promise.all([
           import('../export/sheet'),
@@ -216,6 +229,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       </div>
       {built.error && <p className="est-provisional" role="alert" data-testid="shinsei-error">{built.error}</p>}
       {err && <p className="est-provisional" role="alert">{err}</p>}
+      {profiles.error && <p className="est-provisional" role="alert">保存したプロファイルを読み込めませんでした: {profiles.error}</p>}
       {built.warnings.length > 0 && (
         <ul className="shinsei-warnings small" data-testid="shinsei-warnings">
           {built.warnings.map((w, i) => <li key={i} className="warn">⚠ {w}</li>)}

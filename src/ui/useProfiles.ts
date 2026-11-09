@@ -4,9 +4,8 @@
 import { create } from 'zustand';
 import { BUILTIN_PROFILES, type MunicipalityProfile } from '../model/municipality';
 import { repo } from '../storage/instance';
-import type { ProfileRepository } from '../storage/repository';
 
-const profileRepo = () => repo as unknown as ProfileRepository;
+const profileRepo = () => repo;
 
 type ProfilesState = {
   user: MunicipalityProfile[];
