@@ -21,7 +21,7 @@ import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
-import { applySlope, defaultSlope, isDrain, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
+import { applySlope, defaultSlope, downstreamEnd, isDrain, planLength, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
@@ -67,11 +67,18 @@ const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', member: 'show', pipes: 'show', fixtures: 'show',
 });
 
-/** 勾配の下流判定に使う流末（マスの接続口） */
-const isOutletNode = (doc: Doc, nodeId: string): boolean => {
+/** 勾配の下流判定に使う流末: 公共マスの接続口（無ければ他のマス） */
+const manholeAt = (doc: Doc, nodeId: string) => {
   const fid = doc.network.nodes[nodeId]?.fixtureId;
   const f = fid ? doc.fixtures[fid] : undefined;
-  return !!f && isManhole(f.type);
+  return f && isManhole(f.type) ? f : undefined;
+};
+const isOutletNode = (doc: Doc, nodeId: string): boolean => {
+  const f = manholeAt(doc, nodeId);
+  if (!f) return false;
+  // 公共マスがどこかにあれば公共マスだけを流末にする（マス間の区間で向きが決まるように）
+  const hasPublic = Object.values(doc.fixtures).some((x) => x.type.startsWith('public'));
+  return hasPublic ? f.type.startsWith('public') : true;
 };
 const defaultSlopeFor = (diameter: number) => defaultSlope(diameter);
 
@@ -643,9 +650,25 @@ export const useStore = create<State>((set, get) => {
     setSegmentSlope: (segId, denominator) => {
       const net = get().doc.network;
       if (!net.segments[segId] || !(denominator > 0)) return;
-      const next = setSlopeRatio(net, segId, 1 / denominator, (id) => isOutletNode(get().doc, id));
-      if (next === net) set({ notice: '勾配をつけると配管がつながらなくなります（端の高さを確認してください）' });
-      else commit(withNet(next));
+      const doc = get().doc, ratio = 1 / denominator;
+      const isOutlet = (id: string) => isOutletNode(doc, id);
+      const next = setSlopeRatio(net, segId, ratio, isOutlet);
+      if (next !== net) { commit(withNet(next)); return; }
+      // 上流端がマス（管底高は器具で決まる）: そのマスの管底高を 下流端 + 勾配×距離 に変える
+      const seg = net.segments[segId];
+      const down = downstreamEnd(net, seg, isOutlet);
+      const upId = down === 'a' ? seg.b : seg.a, downId = down === 'a' ? seg.a : seg.b;
+      const upMh = manholeAt(doc, upId);
+      if (upMh) {
+        const z = Math.round((net.nodes[downId].pos.z + ratio * planLength(net, seg)) * 10) / 10;
+        const moved = moveFixture(doc, upMh.id, upMh, undefined, { invertZ: z });
+        if (moved !== doc) {
+          const mnet = moved.network;
+          commit({ ...moved, network: { ...mnet, segments: { ...mnet.segments, [segId]: { ...mnet.segments[segId], slope: ratio, slopeLocked: true } } } });
+          return;
+        }
+      }
+      set({ notice: '勾配をつけると配管がつながらなくなります（端の高さを確認してください）' });
     },
     setSegmentSlopeLocked: (segId, locked) => {
       const net = get().doc.network, s = net.segments[segId];

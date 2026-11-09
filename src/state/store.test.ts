@@ -639,3 +639,28 @@ describe('マス', () => {
     expect(net().segments[seg.id].slopeLocked).toBe(true);
   });
 });
+
+describe('マス間の勾配', () => {
+  it('両端がマスの区間に勾配をつけると、上流のマスの管底高が 下流の管底高 + 勾配×距離 になる', () => {
+    s().updateSite({ designGL: -450 });
+    s().setFixtureType('manholeSewage');
+    s().placeFixtureAt({ x: 0, y: 0 });
+    const m1 = Object.values(s().doc.fixtures).find((f) => f.type === 'manholeSewage')!;
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: 5000, y: 0 });
+    const m2 = Object.values(s().doc.fixtures).find((f) => f.type === 'publicSewage')!;
+    s().updateFixtureParams(m1.id, { invertZ: -1000 });
+    s().updateFixtureParams(m2.id, { invertZ: -1060 });
+    const p1 = Object.values(net().nodes).find((n) => n.fixtureId === m1.id)!, p2 = Object.values(net().nodes).find((n) => n.fixtureId === m2.id)!;
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([p1.pos, p2.pos], { startNodeId: p1.id, endNodeId: p2.id });
+    const seg = Object.values(net().segments)[0];
+    const before = s().past.length;
+    s().setSegmentSlope(seg.id, 50);
+    expect(net().nodes[p1.id].pos.z).toBeCloseTo(-960, 5);
+    expect(s().doc.fixtures[m1.id].params?.invertZ).toBeCloseTo(-960, 5);
+    expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
+    expect(s().past.length).toBe(before + 1);
+    expect(s().notice).toBeNull();
+  });
+});
