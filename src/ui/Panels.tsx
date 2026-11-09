@@ -210,7 +210,7 @@ export function PropertyPanel() {
     const def = FIXTURE_CATALOG[f.type];
     const ports = portNodes(net, f.id);
     const fl = floorById(doc.building, f.floorId);
-    const size = fixtureSize(f, fl, doc.site);
+    const size = fixtureSize(f, doc.building, doc.site);
     const manhole = isManhole(f.type) && fl;
     return (
       <div className="props">
@@ -223,8 +223,8 @@ export function PropertyPanel() {
                 <option value="round">丸</option><option value="square">角</option>
               </select>
             </label>
-            <NumField label="管底高 FL" value={manholeInvertZ(f, fl, doc.site) - fl.elevation} testId="manhole-invert" onCommit={(v) => st.updateFixtureParams(f.id, { invertZ: v + fl.elevation })} />
-            <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, fl, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}FL{groundZ(fl, doc.site) - fl.elevation >= 0 ? '+' : ''}{Math.round(groundZ(fl, doc.site) - fl.elevation)}）</span>
+            <NumField label="管底高 FL" value={manholeInvertZ(f, doc.building, doc.site) - fl.elevation} testId="manhole-invert" onCommit={(v) => st.updateFixtureParams(f.id, { invertZ: v + fl.elevation })} />
+            <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, doc.building, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}1階FL{groundZ(doc.building, doc.site) >= 0 ? '+' : ''}{Math.round(groundZ(doc.building, doc.site))}）</span>
           </div>
         )}
         <div className="subhead">接続口（押すと選択して立て管などを追加できます。✓=配管あり）</div>

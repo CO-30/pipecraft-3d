@@ -84,20 +84,20 @@ export const FIXTURE_GROUPS: { label: string; types: FixtureType[] }[] = [
   { label: '電気', types: ['panel', 'outlet', 'light'] },
 ];
 
-/** 設計地盤高（絶対 mm）＝ 階の床高 + 現場の designGL（未入力は 0） */
-export const groundZ = (floor: Floor, site?: SiteSettings) => floor.elevation + (site?.designGL ?? 0);
+/** 設計地盤高（絶対 mm）＝ いちばん低い階（1階）の床高 + 現場の designGL（未入力は 0）。どの階に置いたマスでも同じ */
+export const groundZ = (b: Pick<Building, 'floors'>, site?: SiteSettings) => Math.min(0, ...b.floors.map((f) => f.elevation)) + (site?.designGL ?? 0);
 
 /** マスの管底高（絶対 mm） */
-export const manholeInvertZ = (f: Fixture, floor: Floor, site?: SiteSettings) => f.params?.invertZ ?? groundZ(floor, site) - MANHOLE_DEFAULT_DEPTH;
+export const manholeInvertZ = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => f.params?.invertZ ?? groundZ(b, site) - MANHOLE_DEFAULT_DEPTH;
 /** マスの深さ ＝ GL − 管底高 */
-export const manholeDepth = (f: Fixture, floor: Floor, site?: SiteSettings) => groundZ(floor, site) - manholeInvertZ(f, floor, site);
+export const manholeDepth = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => groundZ(b, site) - manholeInvertZ(f, b, site);
 
 /** 器具の寸法。マスは口径（既定 300）と深さ、他はカタログ */
-export function fixtureSize(f: Fixture, floor?: Floor, site?: SiteSettings): { w: number; d: number; h: number } {
+export function fixtureSize(f: Fixture, b?: Pick<Building, 'floors'>, site?: SiteSettings): { w: number; d: number; h: number } {
   const size = FIXTURE_CATALOG[f.type].size;
   if (!isManhole(f.type)) return size;
   const dia = f.params?.diameter ?? size.w;
-  return { w: dia, d: dia, h: floor ? Math.max(100, manholeDepth(f, floor, site)) : size.h };
+  return { w: dia, d: dia, h: b ? Math.max(100, manholeDepth(f, b, site)) : size.h };
 }
 
 /** 器具の設置面の高さ（絶対 mm） */
@@ -114,8 +114,9 @@ export function localToPlan(f: Pick<Fixture, 'x' | 'y' | 'rotation'>, dx: number
   return { x: f.x + dx * c - dy * s, y: f.y + dx * s + dy * c };
 }
 
-export function portWorldPos(f: Fixture, floor: Floor, port: PortDef, site?: SiteSettings): Vec3 {
-  if (isManhole(f.type)) return { ...localToPlan(f, port.dx, port.dy), z: manholeInvertZ(f, floor, site) };
+/** b: マスの管底高（GL 基準）のために建物が要る。無ければその階だけで計算 */
+export function portWorldPos(f: Fixture, floor: Floor, port: PortDef, site?: SiteSettings, b?: Pick<Building, 'floors'>): Vec3 {
+  if (isManhole(f.type)) return { ...localToPlan(f, port.dx, port.dy), z: manholeInvertZ(f, b ?? { floors: [floor] }, site) };
   return { ...localToPlan(f, port.dx, port.dy), z: fixtureBaseZ(f, floor) + port.dz };
 }
 
@@ -134,7 +135,7 @@ export function placeFixture(doc: Doc, floorId: string, type: FixtureType, p: { 
   const nodes = { ...doc.network.nodes };
   for (const port of FIXTURE_CATALOG[type].ports) {
     const id = newId('n');
-    nodes[id] = { id, kind: 'fixture', fixedKind: true, fixtureId: f.id, portId: port.id, floorId, pos: portWorldPos(f, floor, port, doc.site) };
+    nodes[id] = { id, kind: 'fixture', fixedKind: true, fixtureId: f.id, portId: port.id, floorId, pos: portWorldPos(f, floor, port, doc.site, doc.building) };
   }
   return { doc: { ...doc, fixtures: { ...doc.fixtures, [f.id]: f }, network: { ...doc.network, nodes } }, fixtureId: f.id };
 }
@@ -147,7 +148,7 @@ function syncPorts(net: Network, b: Building, f: Fixture, site?: SiteSettings): 
   for (const n of portNodes(net, f.id)) {
     const port = FIXTURE_CATALOG[f.type].ports.find((p) => p.id === n.portId);
     if (!port) continue;
-    const pos = portWorldPos(f, floor, port, site);
+    const pos = portWorldPos(f, floor, port, site, b);
     if (dist(cur.nodes[n.id].pos, pos) < 1e-9) continue;
     cur = moveNode(cur, n.id, pos);
     if (dist(cur.nodes[n.id].pos, pos) > 1e-6) return null;
@@ -203,7 +204,7 @@ export function validateFixtures(doc: Doc): string[] {
     for (const def of defs) {
       const ns = ports.filter((n) => n.portId === def.id);
       if (ns.length !== 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} が ${ns.length} 個`);
-      else if (floor && dist(ns[0].pos, portWorldPos(f, floor, def, doc.site)) > 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} の位置が器具とずれている`);
+      else if (floor && dist(ns[0].pos, portWorldPos(f, floor, def, doc.site, doc.building)) > 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} の位置が器具とずれている`);
     }
     for (const n of ports) if (!defs.some((d) => d.id === n.portId)) errors.push(`node ${n.id}: 器具 ${f.id} にない接続口 ${n.portId}`);
   }

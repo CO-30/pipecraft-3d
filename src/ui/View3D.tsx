@@ -19,11 +19,12 @@ import { fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../
 function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; selected: boolean; clip: THREE.Plane[] }) {
   const floor = useStore((s) => s.doc.building.floors.find((x) => x.id === f.floorId));
   const site = useStore((s) => s.doc.site);
+  const building = useStore((s) => s.doc.building);
   if (mode === 'hide' || !floor) return null;
   const manhole = isManhole(f.type);
-  const { w, d, h } = fixtureSize(f, floor, site);
+  const { w, d, h } = fixtureSize(f, building, site);
   // マスは地面（GL）から下へ埋まる
-  const z = manhole ? groundZ(floor, site) - h / 2 : fixtureBaseZ(f, floor) + h / 2;
+  const z = manhole ? groundZ(building, site) - h / 2 : fixtureBaseZ(f, floor) + h / 2;
   const ghost = mode === 'ghost';
   return (
     <mesh name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} renderOrder={1}

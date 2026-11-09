@@ -58,7 +58,7 @@ export function buildRiser(doc: Doc, rootNodeId: string, profile: MunicipalityPr
     const n = net.nodes[id];
     const fl = floorOf(doc, id);
     const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
-    const label = profile.riser.heightLabel === 'GL+' ? `GL${fmtSigned(n.pos.z - groundZ(fl, doc.site))}` : `FL${fmtSigned(n.pos.z - fl.elevation)}`;
+    const label = profile.riser.heightLabel === 'GL+' ? `GL${fmtSigned(n.pos.z - groundZ(doc.building, doc.site))}` : `FL${fmtSigned(n.pos.z - fl.elevation)}`;
     return {
       nodeId: id, x: 0, z: n.pos.z, floorName: fl.name, heightLabel: label,
       ...(fx ? { fixture: { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, symbol: profile.symbols[fx.type] ?? 'faucet' } } : {}),

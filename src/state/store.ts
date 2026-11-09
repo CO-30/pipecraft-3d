@@ -635,7 +635,18 @@ export const useStore = create<State>((set, get) => {
       // 設備の接続口の高さは器具で決まるので単独では変えない
       if (n && !n.fixtureId) commit(withNet(propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId)));
     },
-    updateSite: (patch) => commit({ ...get().doc, site: { ...get().doc.site, ...patch } }),
+    updateSite: (patch) => {
+      const doc = get().doc;
+      let next: Doc = { ...doc, site: { ...doc.site, ...patch } };
+      // 設計GL が変わると、管底高が既定（GL−600）のマスの接続口が動く。固定勾配の区間も追従させる
+      if ('designGL' in patch && patch.designGL !== doc.site?.designGL) {
+        next = syncAllFixturePorts(next);
+        let network = next.network;
+        for (const n of Object.values(network.nodes)) if (n.fixtureId && n.pos.z !== doc.network.nodes[n.id]?.pos.z) network = propagateLockedSlopes(doc.network, network, n.id);
+        next = network === next.network ? next : { ...next, network };
+      }
+      commit(next);
+    },
     updateFixtureParams: (id, patch) => {
       const doc = get().doc, f = doc.fixtures[id];
       if (!f) return;

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { emptyDoc, findUpstreamBranchPoint, useStore } from './store';
 import { totalLength, validateNetwork } from '../model/network';
 import { createBuildingFromDims, validateBuilding, wallsOnFloor } from '../model/building';
+import { validateFixtures } from '../model/fixtures';
 import { emptyNetwork } from '../model/network';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -662,5 +663,28 @@ describe('マス間の勾配', () => {
     expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
     expect(s().past.length).toBe(before + 1);
     expect(s().notice).toBeNull();
+  });
+});
+
+describe('設計GL の変更', () => {
+  it('GL を変えると、管底高が既定のマスの接続口が追従し、保存データが壊れない（2階に置いたマスも 1階 FL 基準）', () => {
+    s().setFixtureType('manholeSewage');
+    s().placeFixtureAt({ x: 0, y: 0 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const port = Object.values(net().nodes).find((n) => n.fixtureId === f.id)!;
+    expect(port.pos.z).toBe(-600);
+    s().updateSite({ designGL: -300 });
+    expect(net().nodes[port.id].pos.z).toBe(-900);
+    expect(validateFixtures(s().doc)).toEqual([]);
+    // 2 階に置いても GL は 1 階 FL 基準（階高分ずれない）
+    s().addFloor(false);
+    const f2 = s().doc.building.floors[1];
+    s().setActiveFloor(f2.id);
+    s().setFixtureType('manholeRain');
+    s().placeFixtureAt({ x: 3000, y: 0 });
+    const g = Object.values(s().doc.fixtures).find((x) => x.type === 'manholeRain')!;
+    const p2 = Object.values(net().nodes).find((n) => n.fixtureId === g.id)!;
+    expect(p2.pos.z).toBe(-900);
+    expect(validateFixtures(s().doc)).toEqual([]);
   });
 });

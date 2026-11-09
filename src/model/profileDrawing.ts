@@ -130,13 +130,8 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
   const tentativeGL = doc.site?.designGL === undefined;
   const warnings: ProfileWarning[] = [];
   if (tentativeGL) warnings.push({ kind: 'tentativeGL', message: '設計GL が未入力のため、仮の地盤高（1階の床と同じ高さ）で描いています' });
-  const firstFloor = doc.building.floors[0];
-  const glOf = (nodeId: string) => {
-    const n = net.nodes[nodeId];
-    if (n.groundLevel !== undefined) return n.groundLevel;
-    const fl = (n.floorId && floorById(doc.building, n.floorId)) || firstFloor;
-    return groundZ(fl, doc.site);
-  };
+  const gl0 = groundZ(doc.building, doc.site);
+  const glOf = (nodeId: string) => net.nodes[nodeId].groundLevel ?? gl0;
   const nodes: ProfileNode[] = [];
   const segments: ProfileSegment[] = [];
   let cum = 0;
@@ -168,7 +163,7 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
     const fl = fx ? floorById(doc.building, fx.floorId) : undefined;
     const manhole = fx && fl && isManhole(fx.type)
-      ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, fl, doc.site), symbol: profile.symbols[fx.type] ?? 'circle' }
+      ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle' }
       : undefined;
     nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole });
     if (od && cover + 1e-9 < profile.profileTable.minCover) warnings.push({ kind: 'cover', nodeId: id, message: `点 ${nodes.length}: 土被り ${Math.round(cover)}mm が最小 ${profile.profileTable.minCover}mm より少ない` });

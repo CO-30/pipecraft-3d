@@ -134,9 +134,9 @@ describe('マス（排水）', () => {
     const d0: Doc = { ...doc0(), site: { designGL: -400 } };
     const { doc, fixtureId } = placeFixture(d0, floorOf(d0).id, 'manholeSewage', { x: 1000, y: 0 });
     const port = portNodes(doc.network, fixtureId!)[0];
-    expect(groundZ(floorOf(doc), doc.site)).toBe(-400);
+    expect(groundZ(doc.building, doc.site)).toBe(-400);
     expect(port.pos.z).toBe(-1000);
-    expect(manholeDepth(doc.fixtures[fixtureId!], floorOf(doc), doc.site)).toBe(600);
+    expect(manholeDepth(doc.fixtures[fixtureId!], doc.building, doc.site)).toBe(600);
     expect(validateFixtures(doc)).toEqual([]);
   });
   it('invertZ を変えると接続口ノードと深さが変わる（配管の端も追従）', () => {
@@ -147,18 +147,18 @@ describe('マス（排水）', () => {
     const f = d2.fixtures[fixtureId!];
     const d3 = moveFixture(d2, fixtureId!, f, undefined, { invertZ: -1200 });
     expect(portNodes(d3.network, fixtureId!)[0].pos.z).toBe(-1200);
-    expect(manholeDepth(d3.fixtures[fixtureId!], floorOf(d3), d3.site)).toBe(1200);
+    expect(manholeDepth(d3.fixtures[fixtureId!], d3.building, d3.site)).toBe(1200);
     expect(validateFixtures(d3)).toEqual([]);
     expect(validateNetwork(d3.network)).toEqual([]);
   });
   it('fixtureSize: マスは口径と深さ、トイレは catalog', () => {
     const d0 = doc0();
     const { doc, fixtureId } = placeFixture(d0, floorOf(d0).id, 'manholeRain', { x: 0, y: 0 });
-    expect(fixtureSize(doc.fixtures[fixtureId!], floorOf(doc), doc.site)).toEqual({ w: 300, d: 300, h: 600 });
+    expect(fixtureSize(doc.fixtures[fixtureId!], doc.building, doc.site)).toEqual({ w: 300, d: 300, h: 600 });
     const d2 = moveFixture(doc, fixtureId!, doc.fixtures[fixtureId!], undefined, { diameter: 450 });
-    expect(fixtureSize(d2.fixtures[fixtureId!], floorOf(d2), d2.site).w).toBe(450);
+    expect(fixtureSize(d2.fixtures[fixtureId!], d2.building, d2.site).w).toBe(450);
     const t = toilet();
-    expect(fixtureSize(t.doc.fixtures[t.id], floorOf(t.doc), t.doc.site)).toEqual(FIXTURE_CATALOG.toilet.size);
+    expect(fixtureSize(t.doc.fixtures[t.id], t.doc.building, t.doc.site)).toEqual(FIXTURE_CATALOG.toilet.size);
   });
   it('params 付きのマスを保存形式で往復できる', () => {
     const d0 = doc0();
