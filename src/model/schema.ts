@@ -172,6 +172,8 @@ export const projectSchema = z.object({
   /** 立面（外壁の写真と取付）。v5 の途中で追加したため省略可 */
   elevations: z.record(z.string(), elevationSchema).optional(),
   site: siteSchema.optional(),
+  /** 書き出し時にだけ付く、使用中の自治体プロファイル本体（読み込み時に取り出して保存する。DB には残さない） */
+  bundledProfile: z.unknown().optional(),
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;

@@ -7,6 +7,7 @@ import { validateNetwork } from '../model/network';
 import { validateBuilding } from '../model/building';
 import { validateFixtures } from '../model/fixtures';
 import { newId } from '../model/id';
+import { isBuiltinProfile, municipalityProfileSchema, type MunicipalityProfile } from '../model/municipality';
 
 export type ProjectSummary = Pick<ProjectData, 'id' | 'name' | 'address' | 'createdAt' | 'updatedAt'>;
 
@@ -26,15 +27,26 @@ export interface ProjectRepository {
   importAny(json: string): Promise<{ imported: ProjectData[]; failed: number }>;
 }
 
+/** 自治体プロファイル（ユーザーが追加・編集した分）の保存 */
+export interface ProfileRepository {
+  listProfiles(): Promise<MunicipalityProfile[]>;
+  /** 同梱プロファイルの id は保存できない（InvalidProjectError） */
+  saveProfile(p: MunicipalityProfile): Promise<void>;
+  deleteProfile(id: string): Promise<void>;
+}
+
 export const BACKUP_FORMAT = 'pipecraft-backup';
 
 type Row = { id: string; name: string; address?: string; createdAt: number; updatedAt: number; json: string; backupJson?: string };
+type ProfileRow = { id: string; name: string; json: string };
 
 class PipeCraftDB extends Dexie {
   projects!: Table<Row, string>;
+  profiles!: Table<ProfileRow, string>;
   constructor(name: string) {
     super(name);
     this.version(1).stores({ projects: 'id, updatedAt, name' });
+    this.version(2).stores({ projects: 'id, updatedAt, name', profiles: 'id, name' });
   }
 }
 
@@ -63,7 +75,7 @@ export function parseProject(json: string): ProjectData {
   return r.data;
 }
 
-export class DexieProjectRepository implements ProjectRepository {
+export class DexieProjectRepository implements ProjectRepository, ProfileRepository {
   private db: PipeCraftDB;
   constructor(dbName = 'pipecraft3d') {
     this.db = new PipeCraftDB(dbName);
@@ -140,18 +152,45 @@ export class DexieProjectRepository implements ProjectRepository {
     return copy;
   }
 
+  /** 使用中の自治体プロファイルがユーザー分なら本体も同梱する（別端末でも同じ体裁で開けるように） */
   async exportJson(id: string): Promise<string> {
     const p = await this.load(id);
     if (!p) throw new InvalidProjectError('現場が見つかりません');
-    return JSON.stringify(p, null, 2);
+    const pid = p.site?.municipalityProfileId;
+    const bundled = pid && !isBuiltinProfile(pid) ? (await this.listProfiles()).find((x) => x.id === pid) : undefined;
+    return JSON.stringify(bundled ? { ...p, bundledProfile: bundled } : p, null, 2);
   }
 
-  /** 読み込んだ現場は常に新しいIDで追加する（既存を上書きしない） */
+  /** 読み込んだ現場は常に新しいIDで追加する（既存を上書きしない）。同梱プロファイルは未保存のときだけ保存する */
   async importJson(json: string): Promise<ProjectData> {
     const p = parseProject(json);
-    const imported: ProjectData = { ...p, id: newId('p'), updatedAt: Date.now() };
+    const { bundledProfile, ...rest } = p as ProjectData & { bundledProfile?: unknown };
+    const imported: ProjectData = { ...rest, id: newId('p'), updatedAt: Date.now() };
     await this.save(imported);
+    const bp = municipalityProfileSchema.safeParse(bundledProfile);
+    if (bp.success && !isBuiltinProfile(bp.data.id) && !(await this.db.profiles.get(bp.data.id))) await this.saveProfile(bp.data);
     return imported;
+  }
+
+  async listProfiles(): Promise<MunicipalityProfile[]> {
+    const rows = await this.db.profiles.orderBy('name').toArray();
+    const out: MunicipalityProfile[] = [];
+    for (const r of rows) {
+      const p = municipalityProfileSchema.safeParse(JSON.parse(r.json));
+      if (p.success) out.push(p.data);
+    }
+    return out;
+  }
+
+  async saveProfile(p: MunicipalityProfile): Promise<void> {
+    if (isBuiltinProfile(p.id)) throw new InvalidProjectError('同梱のプロファイルは上書きできません（複製して編集してください）');
+    const r = municipalityProfileSchema.safeParse(p);
+    if (!r.success) throw new InvalidProjectError('プロファイルの形式が正しくありません: ' + r.error.issues[0]?.message);
+    await this.db.profiles.put({ id: r.data.id, name: r.data.name, json: JSON.stringify(r.data) });
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    await this.db.profiles.delete(id);
   }
 
   /** テスト用: 生データを書き換える */
