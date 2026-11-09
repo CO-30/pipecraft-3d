@@ -261,7 +261,7 @@
 ## 追加: 申請図面（排水縦断図・給水立面図）と自治体プロファイル（2026-11-09 ユーザー依頼）
 - 目的: plusCAD水道の「平面図→縦断図・立面図の自動作図」を費用ゼロで。自治体差は JSON の自治体プロファイルで吸収
 - 設計: `docs/superpowers/specs/2026-11-09-shinsei-zumen-design.md`（末尾「実装時の決定」も参照）、計画: `docs/superpowers/plans/2026-11-09-shinsei-zumen.md`
-- ブランチ: `feat/shinsei-zumen`（main `d7a5ede` から派生）→ **PR #19** 作成済み。**main へのマージ・Pages 更新はユーザー確認待ち**
+- ブランチ: `feat/shinsei-zumen`（main `d7a5ede` から派生、`origin/main` の PR #17 を取り込み）→ **PR #19 を main にマージ（`534d16f`）、GitHub Pages を更新（`gh-pages` = `2191b0b`）**（2026-11-10 ユーザー指示）→ https://co-30.github.io/pipecraft-3d/
 - 実装
   - データ（保存形式は v5 のまま、追加はすべて省略可）: 現場 `site`（`designGL`＝1階FL基準の設計地盤高、`municipalityProfileId`）、区間 `slopeLocked`、ノード `groundLevel`（UI なし）、器具 `params`（マスの口径・形状・管底高）。`slope` は既存どおり比率で保存し表示だけ 1/n
   - マス 6 種（`src/model/fixtures.ts`: 汚水・雨水・トラップ・インバート・公共汚水・公共雨水。接続口は中心 1 つ＝管底高、既定 GL−600）。3D は円筒/直方体で地面から下へ、2D は丸/角に略号。器具パネルで口径・形状・管底高（FL 基準）・深さ
