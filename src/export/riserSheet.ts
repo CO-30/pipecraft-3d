@@ -6,7 +6,7 @@ import type { RiserEdge, RiserModel, RiserNode } from '../model/riser';
 import { riserNodes } from '../model/riser';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
-import { drawFrame, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, TITLE_W, type Sheet } from './sheet';
+import { drawFrame, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
 import type { SheetMeta } from './profileSheet';
 
 const M = 15;
@@ -23,7 +23,7 @@ export function renderRiserSheet(model: RiserModel, meta: SheetMeta): Sheet {
   const nodes = riserNodes(model.root);
   const titleH = 7 * profile.paper.titleBlockFields.length + 6;
   const top = 10 + M + 14, bottom = sheet.height - 10 - titleH - 8;
-  const left = 10 + M + 20, right = sheet.width - 10 - M - TITLE_W;
+  const left = 10 + M + 20, right = sheet.width - 10 - M - titleWidth(sheet.width);
   const zs = nodes.map((n) => n.z).concat(model.floors.map((f) => f.z));
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const span = Math.max(1000, maxZ - minZ + 600);

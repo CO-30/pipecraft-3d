@@ -3,7 +3,7 @@ import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork, type Network } from './network';
 import { placeFixture, portNodes, type FixtureType } from './fixtures';
-import { STANDARD_PROFILE } from './municipality';
+import { BUILTIN_PROFILES, STANDARD_PROFILE } from './municipality';
 import { branchPoints, buildProfile, extractRoute, outerDiameter, trimToManholes } from './profileDrawing';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -112,6 +112,31 @@ describe('trimToManholes', () => {
     expect(trimToManholes(d2, 'route' in route ? route.route : [])).toEqual([b, a]);
     const noMass = addPolyline(emptyNetwork(), [v(0, 0, -10), v(3000, 0, -40)], { system: 'drain', diameter: 75 });
     expect(trimToManholes({ ...base(0), network: noMass.net }, noMass.nodeIds.slice().reverse())).toEqual(noMass.nodeIds.slice().reverse());
+  });
+});
+
+describe('沖縄市の様式', () => {
+  test('datum publicInvert: 公共桝の管底を 0 にして全部ずらす。GL の差 glDiff は下流端基準。桝は上流から NO.1', () => {
+    const { doc, b } = caseA();
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    const r = extractRoute(doc.network, b);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], p, 't');
+    expect(m.nodes.map((n) => n.invertLevel)).toEqual([100, 0]); // -700, -800 → +800
+    expect(m.nodes.map((n) => n.groundLevel)).toEqual([700, 700]); // -100 → +800
+    expect(m.nodes.map((n) => n.glDiff)).toEqual([0, 0]);
+    expect(m.nodes[0].cover).toBe(486); // 土被りは変わらない
+    expect(m.nodes[0].manhole?.name).toBe('NO.1汚水マス');
+    expect(m.nodes[1].manhole?.name).toBe('公共汚水マス');
+    expect(m.segments[0]).toMatchObject({ slopeText: '1.0/100', pipeSpec: '100VU' });
+    expect(m.datumLabel).toBe('公共桝の管底を ±0 とする');
+  });
+  test('datum absolute（standard）では glDiff も name も無い', () => {
+    const { doc, b } = caseA();
+    const r = extractRoute(doc.network, b);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], STANDARD_PROFILE, 't');
+    expect(m.nodes[0].glDiff).toBeUndefined();
+    expect(m.nodes[0].manhole?.name).toBe('汚水マス');
+    expect(m.datumLabel).toBeUndefined();
   });
 });
 

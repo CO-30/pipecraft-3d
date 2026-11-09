@@ -31,13 +31,22 @@ export const municipalityProfileSchema = z.object({
   symbols: z.record(z.string(), z.string()),
   profileTable: z.object({
     rows: z.array(z.object({ key: z.enum(PROFILE_ROW_KEYS), label: z.string() })).min(1),
-    slopeFormat: z.enum(['ratio', 'permille', 'percent']),
+    /** 勾配の書き方: 1/100・10.0‰・1.00%・1.0/100（沖縄市の図面） */
+    slopeFormat: z.enum(['ratio', 'permille', 'percent', 'per100']),
     hScale: z.number().positive(),
     vScale: z.number().positive(),
     /** 口径(mm) → 最小勾配の分母 */
     minSlopeByDiameter: z.record(z.string(), z.number().positive()),
     minCover: z.number().nonnegative(),
     unit: z.enum(['m', 'mm']).default('m'),
+    /** 高さの基準: absolute＝1階 FL 基準の絶対値、publicInvert＝下流端（公共桝）の管底を ±0 */
+    datum: z.enum(['absolute', 'publicInvert']).default('absolute'),
+    /** 管種口径の書き方: VUφ100 ／ 100VU */
+    pipeSpecFormat: z.enum(['materialFirst', 'diameterFirst']).default('materialFirst'),
+    /** 距離（m）の小数桁 */
+    lengthDecimals: z.union([z.literal(2), z.literal(3)]).default(3),
+    /** 桝の名前・口径・深さを表に書く（table）か、図の上に書く（above。上流から NO.1, NO.2…） */
+    manholeLabel: z.enum(['table', 'above']).default('table'),
   }),
   riser: z.object({
     lineStyle: z.literal('single'),
@@ -89,6 +98,10 @@ export const STANDARD_PROFILE: MunicipalityProfile = {
     minSlopeByDiameter: { 65: 50, 75: 100, 100: 100, 125: 150, 150: 200 },
     minCover: 200,
     unit: 'm',
+    datum: 'absolute',
+    pipeSpecFormat: 'materialFirst',
+    lengthDecimals: 3,
+    manholeLabel: 'table',
   },
   riser: { lineStyle: 'single', diameterLabelPos: 'above', showFloorLines: true, heightLabel: 'FL+' },
   paper: { size: 'A3', orientation: 'landscape', titleBlockFields: ['工事名', '申請者', '施工者', '図面名', '縮尺', '作成日'] },
@@ -115,9 +128,17 @@ const A3_FOLDED: Partial<MunicipalityProfile['paper']> = { size: 'A4', orientati
 export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
   municipal({
     id: 'okinawa-city', name: '沖縄市',
-    source: { title: '沖縄市 下水道排水設備計画確認申請書（様式第1号）の注意書き（新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。A3 二つ折り（申請書→平面図及び縦断面図→配管立図→見取図）', url: 'https://www.city.okinawa.okinawa.jp/documents/318/1-1sinsei.pdf', checkedAt: '2026-11-10' },
-    unverified: ['表の行（項目・順番）', '縮尺', ...COMMON_UNVERIFIED],
-    paper: A3_FOLDED,
+    source: {
+      title: '沖縄市で受理されている申請図面（指定工事店作成の「立面図（展開図）」＝排水のアイソメ図＋縦断図、A4 縦、S=1/200。2026-11-10 入手）と、下水道排水設備計画確認申請書（様式第1号）の注意書き（新設・増設は赤、既設は青、公共下水道は黒。' + JGES_TEXT + '。A3 二つ折り）。'
+        + '縦断図: 公共桝の管底を ±0 とし、表は 地盤高・土かぶり・管底高（m、3 桁）、区間に 100VU／3.0/100／長さ(m 2 桁)、桝は「NO.n小口径桝 φ150 H410」を図の上に、GL の差を (−600) のように表示。表題欄は 受付番号・水道番号・縮尺 と 申請地・申請者・指定工事店',
+      url: 'https://www.city.okinawa.okinawa.jp/documents/318/1-1sinsei.pdf', checkedAt: '2026-11-10',
+    },
+    unverified: ['最小勾配（口径ごと。実例は φ100 で 2.0〜3.3/100）', '最小土被り', 'ますの記号（実例は小さな楕円）'],
+    paper: { ...A3_FOLDED, titleBlockFields: ['申請地', '申請者', '指定工事店'] },
+    profileTable: {
+      rows: [{ key: 'groundLevel', label: '地盤高' }, { key: 'cover', label: '土かぶり' }, { key: 'invertLevel', label: '管底高' }],
+      slopeFormat: 'per100', hScale: 200, vScale: 200, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above',
+    },
   }),
   municipal({
     id: 'itoman', name: '糸満市',
@@ -180,6 +201,7 @@ export function formatSlope(ratio: number, format: SlopeFormat): string {
   if (!(ratio > 0)) return '水平';
   if (format === 'permille') return `${(ratio * 1000).toFixed(1)}‰`;
   if (format === 'percent') return `${(ratio * 100).toFixed(2)}%`;
+  if (format === 'per100') return `${(ratio * 100).toFixed(1)}/100`;
   return `1/${Math.round(1 / ratio)}`;
 }
 

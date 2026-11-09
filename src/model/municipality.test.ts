@@ -104,3 +104,33 @@ describe('レビュー修正', () => {
     expect(i.unverified.join(' ')).toContain('順番');
   });
 });
+
+describe('沖縄市の実際の申請図面に合わせた項目', () => {
+  test('formatSlope の per100（3.0/100）', () => {
+    expect(formatSlope(0.03, 'per100')).toBe('3.0/100');
+    expect(formatSlope(0.033, 'per100')).toBe('3.3/100');
+    expect(formatSlope(0.01, 'per100')).toBe('1.0/100');
+  });
+  test('沖縄市: 公共桝の管底を ±0、表は 地盤高・土かぶり・管底高、100VU、3.0/100、長さ 2 桁、桝の名前は図の上、縮尺 1/200', () => {
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    expect(p.profileTable.rows.map((r) => r.key)).toEqual(['groundLevel', 'cover', 'invertLevel']);
+    expect(p.profileTable.rows.map((r) => r.label)).toEqual(['地盤高', '土かぶり', '管底高']);
+    expect(p.profileTable.slopeFormat).toBe('per100');
+    expect(p.profileTable.pipeSpecFormat).toBe('diameterFirst');
+    expect(p.profileTable.lengthDecimals).toBe(2);
+    expect(p.profileTable.datum).toBe('publicInvert');
+    expect(p.profileTable.manholeLabel).toBe('above');
+    expect(p.profileTable.hScale).toBe(200);
+    expect(p.profileTable.vScale).toBe(200);
+    expect(p.paper).toMatchObject({ size: 'A4', orientation: 'portrait' });
+    expect(p.paper.titleBlockFields).toEqual(['申請地', '申請者', '指定工事店']);
+    expect(p.source.title).toContain('受理');
+    expect(p.unverified.join(' ')).toContain('最小勾配');
+    expect(p.unverified.join(' ')).not.toContain('表の行');
+    expect(p.unverified.join(' ')).not.toContain('用紙');
+  });
+  test('新しい項目は省略できる（既定: absolute / materialFirst / 3 桁 / table）', () => {
+    const r = municipalityProfileSchema.safeParse(STANDARD_PROFILE);
+    expect(r.success && r.data.profileTable).toMatchObject({ datum: 'absolute', pipeSpecFormat: 'materialFirst', lengthDecimals: 3, manholeLabel: 'table' });
+  });
+});

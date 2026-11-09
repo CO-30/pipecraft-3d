@@ -5,7 +5,7 @@
 import type { ProfileModel } from '../model/profileDrawing';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
-import { drawFrame, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, TITLE_W, WARN, type Sheet } from './sheet';
+import { drawFrame, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
 
 export type SheetMeta = { siteName: string; date: Date };
 
@@ -13,8 +13,10 @@ const M = 15; // 枠内の余白
 const LABEL_W = 26; // 表の行ラベルの幅
 const ROW_H = 11;
 
-/** 数値表示（m 小数3位 / mm 整数） */
-export const fmtLen = (mm: number, unit: 'm' | 'mm') => (unit === 'mm' ? String(Math.round(mm)) : (Math.round(mm) / 1000).toFixed(3));
+/** 数値表示（m 小数3位 / mm 整数）。decimals は m のときの小数桁 */
+export const fmtLen = (mm: number, unit: 'm' | 'mm', decimals: 2 | 3 = 3) => (unit === 'mm' ? String(Math.round(mm)) : (Math.round(mm) / 1000).toFixed(decimals));
+/** 符号付きの mm（(±0) (−600) のように） */
+const fmtDiff = (mm: number) => (mm === 0 ? '±0' : `${mm < 0 ? '−' : '+'}${Math.abs(mm)}`);
 
 /** 図が収まる横縮尺（1/N）。プロファイルの hScale 以上で、SCALES から最小のもの */
 export function pickHScale(totalMm: number, areaW: number, base: number): number {
@@ -28,12 +30,14 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   const sheet: Sheet = { ...paperSize(profile.paper), ops: [] };
   drawFrame(sheet);
   const unit = pt.unit ?? 'm';
+  const above = pt.manholeLabel === 'above';
   const left = 10 + M + LABEL_W, right = sheet.width - 10 - M;
   const rows = pt.rows;
   const tableH = ROW_H * rows.length;
   const titleH = 7 * profile.paper.titleBlockFields.length + 6;
   const tableTop = sheet.height - 10 - M - tableH - Math.max(titleH, 0) - 4;
-  const graphTop = 10 + M + 12;
+  // 桝の名前を図の上に縦書きするときは、その分の高さを空ける
+  const graphTop = 10 + M + 12 + (above ? 30 : 0);
   const graphBottom = tableTop - 8;
 
   // 見出し
@@ -84,9 +88,17 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
       const a = model.nodes[i], b = model.nodes[i + 1], s = model.segments[i];
       const c = segColor(s);
       sheet.ops.push({ t: 'line', x1: X(a.cumDistance), y1: Y(a.invertLevel), x2: X(b.cumDistance), y2: Y(b.invertLevel), w: 0.6, color: c });
-      // 区間の上に 管種口径・勾配
+      // 区間の上に 管種口径・勾配（沖縄市の様式では 管種口径／勾配／長さ を 3 行で下に）
       const mx = (X(a.cumDistance) + X(b.cumDistance)) / 2, my = (Y(a.invertLevel) + Y(b.invertLevel)) / 2;
-      sheet.ops.push({ t: 'text', x: mx, y: my - 2, s: `${s.pipeSpec} ${s.slopeText}`, size: 2.6, anchor: 'middle', color: c });
+      if (above) {
+        // 管種口径／勾配／長さ を 3 行（表に重ならないよう線の上）
+        const top = Math.min(Y(a.groundLevel), Y(b.groundLevel)) - 1.5;
+        sheet.ops.push({ t: 'text', x: mx, y: top - 7, s: s.pipeSpec, size: 2.6, anchor: 'middle', color: c });
+        sheet.ops.push({ t: 'text', x: mx, y: top - 3.5, s: s.slopeText, size: 2.6, anchor: 'middle', color: c });
+        sheet.ops.push({ t: 'text', x: mx, y: top, s: fmtLen(s.distance, unit, pt.lengthDecimals), size: 2.6, anchor: 'middle', color: c });
+      } else {
+        sheet.ops.push({ t: 'text', x: mx, y: my - 2, s: `${s.pipeSpec} ${s.slopeText}`, size: 2.6, anchor: 'middle', color: c });
+      }
     }
     // 各点: 縦の引出線、マスの記号
     model.nodes.forEach((n, i) => {
@@ -96,16 +108,29 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
         // マス: GL から管底までの箱と記号
         const hw = Math.max(1.5, n.manhole.diameter / hScale / 2);
         const c = nodeColor(i);
-        sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: c, fill: '#fff', lw: 0.3 });
+        sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: c, fill: '#ffffff', lw: 0.3 });
         drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, c);
-        sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
-        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 10.5, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
+        if (above) {
+          // 「NO.1小口径桝 φ150 H410」を縦書きで図の上に、GL の差を (−600) のように
+          const diff = n.glDiff !== undefined ? ` (${fmtDiff(n.glDiff)})` : '';
+          sheet.ops.push({ t: 'text', x: x + 0.9, y: Y(n.groundLevel) - 7, s: `${n.manhole.name} φ${n.manhole.diameter} H${Math.round(n.manhole.depth)}${diff}`, size: 2.6, anchor: 'start', rotate: -90 });
+        } else {
+          sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
+        }
+        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - (above ? 38 : 10.5), s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
       } else {
         if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.invertLevel) - 3, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
         sheet.ops.push({ t: 'circle', cx: x, cy: Y(n.invertLevel), r: 0.8, fill: nodeColor(i), stroke: nodeColor(i) });
       }
-      sheet.ops.push({ t: 'text', x, y: tableTop - 1.5, s: `No.${i + 1}`, size: 2.4, anchor: 'middle', color: GRAY });
+      if (!above) sheet.ops.push({ t: 'text', x, y: tableTop - 1.5, s: `No.${i + 1}`, size: 2.4, anchor: 'middle', color: GRAY });
     });
+    // 沖縄市の様式: 縮尺の矢印（S=1/200）
+    if (above) {
+      const ax = right - 12, ay = graphBottom;
+      sheet.ops.push({ t: 'line', x1: ax, y1: ay, x2: ax - 14, y2: ay, color: INK }, { t: 'line', x1: ax, y1: ay, x2: ax, y2: ay - 14, color: INK });
+      sheet.ops.push({ t: 'text', x: ax - 7, y: ay + 3.5, s: `S=1/${hScale}`, size: 2.4, anchor: 'middle' });
+      sheet.ops.push({ t: 'text', x: ax + 1.2, y: ay - 7, s: `S=1/${vS}`, size: 2.4, anchor: 'middle', rotate: -90 });
+    }
   }
 
   // 下段の表
@@ -123,7 +148,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
         const a = model.nodes[i], b = model.nodes[i + 1];
         const x = (X(a.cumDistance) + X(b.cumDistance)) / 2;
         const bad = warnSeg.has(s.segId) && (r.key === 'slope');
-        const text = r.key === 'distance' ? fmtLen(s.distance, unit) : r.key === 'slope' ? s.slopeText : s.pipeSpec;
+        const text = r.key === 'distance' ? fmtLen(s.distance, unit, pt.lengthDecimals) : r.key === 'slope' ? s.slopeText : s.pipeSpec;
         sheet.ops.push({ t: 'text', x, y: y + ROW_H / 2 + 1, s: text, size: 2.6, anchor: 'middle', color: bad ? WARN : INK });
       });
     } else {
@@ -144,7 +169,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
           return;
         }
         let text = '';
-        if (r.key === 'cumDistance') text = fmtLen(n.cumDistance, unit);
+        if (r.key === 'cumDistance') text = fmtLen(n.cumDistance, unit, pt.lengthDecimals);
         else if (r.key === 'groundLevel') text = fmtLen(n.groundLevel, unit);
         else if (r.key === 'invertLevel') text = fmtLen(n.invertLevel, unit);
         else if (r.key === 'cover') text = fmtLen(n.cover, unit);
@@ -159,10 +184,11 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   const notes: { s: string; color: string }[] = [];
   for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : WARN });
   if (profile.unverified.length) notes.push({ s: `要確認: ${profile.unverified.join('、')}（自治体の手引きで確認してください）`, color: GRAY });
-  const noteX = 10 + M, noteW = sheet.width - 10 - TITLE_W - 10 - noteX - 5;
+  if (model.datumLabel) notes.unshift({ s: `※ ${model.datumLabel}。単位は ${pt.unit}、管長は m`, color: GRAY });
+  const noteX = 10 + M, noteW = sheet.width - 10 - titleWidth(sheet.width) - 10 - noteX - 5;
   const noteY0 = sheet.height - 10 - titleH;
   // 凡例は警告の上に 1 行（件数の上限に数えない）
-  sheet.ops.push({ t: 'text', x: noteX, y: noteY0, s: fitText('凡例: 赤＝新設・増設 青＝既設 黒＝公共下水道 橙＝警告（申請前に直す）', 2.4, noteW), size: 2.4, color: GRAY });
+  sheet.ops.push({ t: 'text', x: noteX, y: noteY0, s: fitText('凡例: 赤＝新設・増設　青＝既設　黒＝公共下水道　橙＝警告', 2.4, noteW), size: 2.4, color: GRAY });
   const MAX_NOTES = 8;
   const shown = notes.length > MAX_NOTES ? notes.slice(0, MAX_NOTES - 1) : notes;
   shown.forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));

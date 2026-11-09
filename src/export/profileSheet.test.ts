@@ -124,8 +124,28 @@ describe('排水縦断図の描画', () => {
     expect(sheet.width).toBe(210);
     const legend = sheet.ops.find((o) => o.t === 'text' && o.s.startsWith('凡例')) as { s: string; x: number } | undefined;
     expect(legend).toBeTruthy();
-    // 文字数 × 2.4mm が 表題欄の左端 (210-10-120=80) − 余白 に収まる
-    expect(legend!.s.length * 2.4).toBeLessThanOrEqual(80 - legend!.x + 1);
+    // 文字数 × 2.4mm が 表題欄の左端 (210-10-84=116) − 余白 に収まる
+    expect(legend!.s.length * 2.4).toBeLessThanOrEqual(116 - legend!.x + 1);
+  });
+  test('沖縄市の様式: 桝の名前が図の上に「NO.1汚水マス φ300 H600」、表は 3 行、長さは 2 桁、基準の注記', () => {
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    const d = base(-100);
+    const a = manhole(d, 'manholeSewage', 0, 0, -700);
+    const b = manhole(a.doc, 'publicSewage', 10000, 0, -800);
+    const r = addPolyline(b.doc.network, [v(0, 0, -700), v(10000, 0, -800)], { system: 'sewage', diameter: 100, material: 'VU' }, { startNodeId: a.port, endNodeId: b.port });
+    const doc = { ...b.doc, network: r.net };
+    const rt = extractRoute(doc.network, b.port);
+    const model = buildProfile(doc, 'route' in rt ? rt.route : [], p, '排水設備 縦断図');
+    const svg = renderProfileSvg(model, meta);
+    expect(svg).toContain('NO.1汚水マス φ300 H600');
+    expect(svg).toContain('公共汚水マス φ300 H700');
+    expect(svg).toContain('10.00'); // 長さ 2 桁
+    expect(svg).toContain('1.0/100');
+    expect(svg).toContain('100VU');
+    expect(svg).toContain('公共桝の管底を ±0');
+    expect(svg).toContain('(±0)');
+    expect(svg).toContain('S=1/200');
+    expect(svg).not.toContain('累加距離');
   });
   test('unverified は要確認として出る', () => {
     const m = caseA();
