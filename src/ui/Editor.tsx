@@ -13,10 +13,13 @@ import { HelpDialog } from './HelpDialog';
 import { PLAN_HINTS } from './hints';
 import { usePrefs } from './prefs';
 import { DimWizard } from './DimWizard';
+import { ElevationDialog } from './ElevationDialog';
 
 type Layout = '2d' | '3d' | 'split';
 
-export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }) {
+export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: SaveState; onBack: () => void; startFacade?: boolean; onFacadeStarted?: () => void }) {
+  const [facadeOpen, setFacadeOpen] = useState(!!startFacade);
+  useEffect(() => { if (startFacade) onFacadeStarted?.(); }, [startFacade, onFacadeStarted]);
   const meta = useStore((s) => s.meta);
   const net = useStore((s) => s.doc.network);
   const sel = useStore((s) => s.selection);
@@ -40,6 +43,7 @@ export function Editor({ save, onBack }: { save: SaveState; onBack: () => void }
 
   return (
     <div className={`app ${isWide ? 'wide' : 'narrow'}`} data-testid="editor">
+      {facadeOpen && <ElevationDialog wallId={null} onClose={() => setFacadeOpen(false)} />}
       <header>
         <button className="back" data-testid="back-home" onClick={onBack} aria-label="工事の一覧へ戻る">‹<span className="wide-only"> 一覧</span></button>
         <strong className="pname" data-testid="project-name">{meta?.name}</strong>
@@ -136,6 +140,7 @@ function PlanCoach() {
   const empty = useStore((s) => Object.keys(s.doc.building.walls).length === 0 && Object.keys(s.doc.fixtures).length === 0
     && Object.keys(s.doc.network.segments).length === 0 && Object.keys(s.doc.underlays ?? {}).length === 0);
   const [closed, setClosed] = useState<string | null>(null);
+  const [facade, setFacade] = useState(false);
   const text = pendingMerge ? '結合する隣の部屋をタップ（他の所をタップで取り消し）' : PLAN_HINTS[tool];
   const st = useStore.getState();
   if (empty && (tool === 'select' || tool === 'outline')) {
@@ -147,9 +152,11 @@ function PlanCoach() {
           <div className="pe-card">
             <b>まず建物の形を作りましょう</b>
             <button className="primary big" data-testid="empty-outline" onClick={() => { st.setTool('outline'); st.select(null); }}>✏️ 外周を指でなぞる</button>
-            <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 図面・写真を取り込む</button>
+            <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 間取り図を取り込む</button>
+            <button className="big" data-testid="empty-facade" onClick={() => setFacade(true)}>📷 外壁の写真から測る</button>
           </div>
         )}
+        {facade && <ElevationDialog wallId={null} onClose={() => setFacade(false)} />}
       </div>
     );
   }

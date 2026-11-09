@@ -14,6 +14,36 @@ import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { FIXTURE_CATALOG, fixtureBaseZ, type Fixture } from '../model/fixtures';
+import { photoPlane } from '../model/facadePhoto';
+import type { Elevation } from '../model/elevation';
+
+/** 立面の写真を 3D の外壁の表面に貼る（タップは後ろの壁へ通す） */
+function FacadePhoto({ el, mode, clip }: { el: Elevation; mode: VisMode; clip: THREE.Plane[] }) {
+  const src = el.photo?.src;
+  const tex = useMemo(() => {
+    if (!src) return null;
+    const t = new THREE.TextureLoader().load(src);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  }, [src]);
+  useEffect(() => () => tex?.dispose(), [tex]);
+  const { pos, quat, w, h } = useMemo(() => {
+    const p = photoPlane(el);
+    const v = (q: Vec3) => new THREE.Vector3(q.x, q.z, -q.y);
+    const m = new THREE.Matrix4().makeBasis(v(p.right), v(p.up), v(p.normal));
+    return { pos: toThree(p.center), quat: new THREE.Quaternion().setFromRotationMatrix(m), w: p.size.w / 1000, h: p.size.h / 1000 };
+  }, [el]);
+  if (!tex || mode === 'hide') return null;
+  const ghost = mode === 'ghost';
+  return (
+    <mesh name={`facade-photo-${el.id}`} position={pos} quaternion={quat} raycast={() => null} renderOrder={1}>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial map={tex} toneMapped={false} transparent={ghost} opacity={ghost ? 0.35 : 1} depthWrite={!ghost} clippingPlanes={clip}
+        polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+    </mesh>
+  );
+}
 
 /** 器具の簡易3D形状（箱）。表示モードと選択強調つき */
 function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; selected: boolean; clip: THREE.Plane[] }) {
@@ -80,9 +110,19 @@ const BoxMesh = memo(function BoxMesh({ box, mode, selected, onSelect, onGrab, c
 
 /** E2Eテスト用フック（e2e ビルドのみ） */
 function TestHook() {
-  const { camera, size } = useThree();
+  const { camera, size, scene } = useThree();
   if (import.meta.env.MODE === 'e2e') {
     (window as unknown as { __pc3d: unknown }).__pc3d = {
+      /** 外壁に貼った写真（読み込み済みの画像の幅つき） */
+      facadePhotos: () => {
+        const out: { name: string; imageWidth: number }[] = [];
+        scene.traverse((o) => {
+          if (!o.name.startsWith('facade-photo-')) return;
+          const map = ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).map;
+          out.push({ name: o.name, imageWidth: (map?.image as { width?: number } | undefined)?.width ?? 0 });
+        });
+        return out;
+      },
       project: (nodeId: string) => {
         const n = useStore.getState().doc.network.nodes[nodeId];
         const v = toThree(n.pos).project(camera);
@@ -109,6 +149,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const floorFilter = useStore((s) => s.floorFilter);
   const activeFloorId = useStore((s) => s.activeFloorId);
   const fixtures = useStore((s) => s.doc.fixtures);
+  const elevations = useStore((s) => s.doc.elevations);
   useColors((c) => c.overrides);
   const allBoxes = useMemo(() => buildingBoxes(building), [building]);
   const boxes = useMemo(() => {
@@ -248,6 +289,9 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
             onGrab={selected && k === 'wall' && tool === 'select' ? (e) => startBuildingDrag(e, { kind: 'wall', wallId: b.elementId }) : undefined} />
         );
       })}
+      {Object.values(elevations ?? {}).filter((el) => el.photo && (floorFilter === 'all' || shownFloorIds.has(el.floorId))).map((el) => (
+        <FacadePhoto key={el.id} el={el} clip={clip} mode={el.wallId ? modeFor('exteriorWall', el.wallId) : vis.exteriorWall} />
+      ))}
       {tool === 'select' && sel?.kind === 'wall' && building.walls[sel.id] && shownFloorIds.has(building.walls[sel.id].floorId) && (() => {
         const w = building.walls[sel.id];
         const f = floorById(building, w.floorId);

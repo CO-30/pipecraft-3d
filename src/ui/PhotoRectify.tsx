@@ -4,6 +4,7 @@
  */
 import { useRef, useState } from 'react';
 import { rectify } from '../model/homography';
+import { checkRefRect, refRectPx, type RefRect } from '../model/facadePhoto';
 import { canvasFrom, loadBitmap } from '../import/image';
 import type { Vec2 } from '../model/building';
 
@@ -25,9 +26,15 @@ export const convexQuad = (q: Vec2[]) => {
   return s.every((v) => v > 0) || s.every((v) => v < 0);
 };
 
-export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, intro, onDone, hidden }: {
-  aspectW: number; aspectH: number; maxPx?: number; quality?: number; intro: string; onDone: (f: Face) => void; hidden?: boolean;
+/**
+ * allowPartial: 壁全体が写っていないとき「壁の一部（大きさの分かる四角）」で合わせられる。
+ * その場合 aspectW×aspectH は立面全体の実寸(mm)で、四角の外も同じ変換で延長する。
+ */
+export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, intro, onDone, hidden, allowPartial }: {
+  aspectW: number; aspectH: number; maxPx?: number; quality?: number; intro: string; onDone: (f: Face) => void; hidden?: boolean; allowPartial?: boolean;
 }) {
+  const [partial, setPartial] = useState(false);
+  const [ref, setRef] = useState<Record<keyof RefRect, string>>({ left: '0', bottom: '0', width: String(Math.round(aspectW)), height: String(Math.round(aspectH)) });
   const fileRef = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<{ url: string; w: number; h: number; data: ImageData } | null>(null);
   const [quad, setQuad] = useState<Vec2[]>([]);
@@ -52,7 +59,14 @@ export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, i
     setMsg('');
     const k = maxPx / Math.max(aspectW, aspectH);
     const w = Math.max(50, Math.round(aspectW * k)), h = Math.max(50, Math.round(aspectH * k));
-    const out = rectify(photo.data, quad, w, h);
+    let dst;
+    if (partial) {
+      const r: RefRect = { left: Number(ref.left), bottom: Number(ref.bottom), width: Number(ref.width), height: Number(ref.height) };
+      const err = checkRefRect(r, aspectW, aspectH);
+      if (err) { setMsg(err); return; }
+      dst = refRectPx(r, aspectW, aspectH, w, h);
+    }
+    const out = rectify(photo.data, quad, w, h, dst);
     if (!out) { setMsg('四隅の位置を見直してください（一直線に並んでいます）'); return; }
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
@@ -71,7 +85,30 @@ export function PhotoRectify({ aspectW, aspectH, maxPx = 1000, quality = 0.85, i
       )}
       {photo && (
         <>
-          <p className="small">印（左上・右上・右下・左下）を、写真の壁の四隅に合わせてください。</p>
+          {allowPartial && (
+            <div className="row">
+              <span className="small">四隅は</span>
+              <span className="seg-btns small">
+                <button type="button" data-testid="wp-mode-whole" className={partial ? '' : 'on'} onClick={() => setPartial(false)}>壁全体の角</button>
+                <button type="button" data-testid="wp-mode-partial" className={partial ? 'on' : ''} onClick={() => setPartial(true)}>壁の一部（大きさの分かる四角）</button>
+              </span>
+            </div>
+          )}
+          {partial ? (
+            <>
+              <p className="small">壁の端が写っていないときは、実寸の分かる四角（窓1つ、1階の床から屋上までの柱の間 など）に印を合わせ、その大きさと位置を入れます。四角の外も同じ割合で延ばします。</p>
+              <div className="row ref-fields">
+                {([['width', '四角の横幅'], ['height', '四角の高さ'], ['left', '壁の左端から'], ['bottom', '下端の高さ']] as [keyof RefRect, string][]).map(([k, label]) => (
+                  <label key={k} className="field inline small">{label}
+                    <input type="number" inputMode="numeric" data-testid={`wp-ref-${k}`} value={ref[k]} onChange={(e) => setRef({ ...ref, [k]: e.target.value })} />mm
+                  </label>
+                ))}
+              </div>
+              <p className="small muted">立面全体: 横幅 {Math.round(aspectW)}mm × 高さ {Math.round(aspectH)}mm（左下が 0）</p>
+            </>
+          ) : (
+            <p className="small">印（左上・右上・右下・左下）を、写真の壁の四隅に合わせてください。</p>
+          )}
           <svg ref={svgRef} className="wp-svg" viewBox={`0 0 ${photo.w} ${photo.h}`} data-testid="wp-photo"
             onPointerMove={(e) => { if (drag.current === null) return; const p = svgPoint(svgRef.current!, e); setQuad((q) => q.map((v, i) => (i === drag.current ? { x: Math.max(0, Math.min(photo.w, p.x)), y: Math.max(0, Math.min(photo.h, p.y)) } : v))); }}
             onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>

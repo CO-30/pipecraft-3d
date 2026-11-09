@@ -3,7 +3,7 @@ import { useState } from 'react';
 export type NewProjectInput = {
   name: string;
   address: string;
-  mode: 'sketch' | 'dims' | 'photo' | 'blank';
+  mode: 'sketch' | 'dims' | 'photo' | 'facade' | 'blank';
   width: number; depth: number; floors: number; floorHeight: number; wallThickness: number; slabThickness: number;
 };
 
@@ -16,17 +16,18 @@ const FIELDS: { key: keyof NewProjectInput; label: string; unit: string; min: nu
   { key: 'slabThickness', label: '床の厚さ', unit: 'mm', min: 0, max: 500 },
 ];
 
-const MODES: { id: 'sketch' | 'dims' | 'photo'; icon: string; title: string; desc: string; recommended?: boolean }[] = [
+const MODES: { id: 'sketch' | 'dims' | 'photo' | 'facade'; icon: string; title: string; desc: string; recommended?: boolean }[] = [
   { id: 'sketch', icon: '✏️', title: '指でなぞって描く', desc: '建物の外周を1周なぞると外壁になります。寸法はあとで実測を入れます', recommended: true },
   { id: 'dims', icon: '📐', title: '寸法を入れて作る', desc: '幅と奥行を入れると四角い建物ができます', },
-  { id: 'photo', icon: '🗺️', title: '図面・写真を取り込む', desc: '間取り図の写真やPDFを下に敷いて、なぞって描きます' },
+  { id: 'photo', icon: '🗺️', title: '間取り図を取り込む', desc: '間取り図の写真やPDFを下に敷いて、なぞって描きます' },
+  { id: 'facade', icon: '📷', title: '外壁の写真から測る', desc: '外壁を撮った写真を正面に直し、縦管などを指でなぞって長さを出します（3Dの壁にも貼ります）' },
 ];
 
 export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (v: NewProjectInput) => void }) {
   const [v, setV] = useState<NewProjectInput>({
     name: '', address: '', mode: 'sketch', width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200,
   });
-  const fields = v.mode === 'sketch' || v.mode === 'photo' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
+  const fields = v.mode === 'sketch' || v.mode === 'photo' || v.mode === 'facade' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
   const invalid = fields.filter((f) => {
     const n = v[f.key] as number;
     return !(Number.isFinite(n) && n >= f.min && n <= f.max && (f.key !== 'floors' || Number.isInteger(n)));
