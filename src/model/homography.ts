@@ -35,16 +35,29 @@ export function applyH(H: Mat3, p: Vec2): Vec2 {
   return { x: (H[0] * p.x + H[1] * p.y + H[2]) / w, y: (H[3] * p.x + H[4] * p.y + H[5]) / w };
 }
 
-/** quad（元写真の 左上・右上・右下・左下）を outW×outH の正面画像に補正 */
-export function rectify(src: { data: Uint8ClampedArray; width: number; height: number }, quad: Vec2[], outW: number, outH: number): Uint8ClampedArray | null {
-  const H = solveHomography([{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }], quad);
+/** 写真の外に当たる画素の色（立面の面と同じ薄い灰色） */
+export const OUTSIDE_RGB = [226, 232, 240] as const;
+
+/**
+ * quad（元写真の 左上・右上・右下・左下）を outW×outH の正面画像に補正。
+ * dst を渡すと、quad が出力画像の dst（左上・右上・右下・左下）に写り、その外側も同じ変換で延長する（壁の一部で合わせる場合）。
+ */
+export function rectify(src: { data: Uint8ClampedArray; width: number; height: number }, quad: Vec2[], outW: number, outH: number, dst?: Vec2[]): Uint8ClampedArray | null {
+  const H = solveHomography(dst ?? [{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }], quad);
   if (!H) return null;
+  // 写真の視点の向こう側（延長しすぎて地平線を越えた所）は w の符号が基準の四角の中心と逆になる
+  const d4 = dst ?? [{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }];
+  const cx = d4.reduce((a, p) => a + p.x, 0) / 4, cy = d4.reduce((a, p) => a + p.y, 0) / 4;
+  const sgn = Math.sign(H[6] * cx + H[7] * cy + H[8]) || 1;
   const out = new Uint8ClampedArray(outW * outH * 4);
   for (let y = 0; y < outH; y++) for (let x = 0; x < outW; x++) {
     const s = applyH(H, { x: x + 0.5, y: y + 0.5 });
     const sx = Math.floor(s.x), sy = Math.floor(s.y);
     const o = (y * outW + x) * 4;
-    if (sx < 0 || sy < 0 || sx >= src.width || sy >= src.height) { out[o + 3] = 255; continue; }
+    const w = (H[6] * (x + 0.5) + H[7] * (y + 0.5) + H[8]) * sgn;
+    if (!(w > 0) || !Number.isFinite(s.x) || !Number.isFinite(s.y) || sx < 0 || sy < 0 || sx >= src.width || sy >= src.height) {
+      out[o] = OUTSIDE_RGB[0]; out[o + 1] = OUTSIDE_RGB[1]; out[o + 2] = OUTSIDE_RGB[2]; out[o + 3] = 255; continue;
+    }
     const i = (sy * src.width + sx) * 4;
     out[o] = src.data[i]; out[o + 1] = src.data[i + 1]; out[o + 2] = src.data[i + 2]; out[o + 3] = 255;
   }

@@ -72,16 +72,16 @@ export function ElevationDialog({ wallId, onClose }: { wallId: string | null; on
         <MountFields mount={mount} onChange={setMount} />
         <p className="small muted">取付はあとで立面図の上から変えられます（描いた配管もいっしょに動きます）。</p>
         <h3>外壁の写真（なくても描けます）</h3>
-        {face ? (
+        {face && (
           <div>
             <img src={face.url} alt="補正した外壁" className="el-face-preview" data-testid="el-face" />
             <div className="row"><button onClick={() => setFace(null)}>写真をやり直す</button></div>
           </div>
-        ) : ok ? (
-          <PhotoRectify key={`${W}x${H}`} aspectW={W} aspectH={H} maxPx={1600} quality={0.8}
-            intro="外壁を撮った写真を選び、四隅を壁の角（入力した横幅・高さの範囲）に合わせます。"
-            onDone={setFace} />
-        ) : null}
+        )}
+        {/* 横幅・高さを直しても、選んだ写真・四隅・基準の四角は残す（補正だけやり直す） */}
+        <PhotoRectify aspectW={W} aspectH={H} maxPx={1600} quality={0.8} allowPartial hidden={!ok || !!face}
+          intro="外壁を撮った写真を選び、四隅を壁の角（入力した横幅・高さの範囲）に合わせます。壁の端が写っていなければ、大きさの分かる四角（窓など）でも合わせられます。"
+          onDone={setFace} />
         {msg && <p className="err" role="alert">{msg}</p>}
         <div className="modal-btns">
           <button onClick={onClose}>閉じる</button>

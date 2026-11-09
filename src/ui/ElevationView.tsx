@@ -13,6 +13,9 @@ import { MountFields } from './ElevationDialog';
 import { PhotoRectify } from './PhotoRectify';
 import { NumField } from './Panels';
 import { membersOf, MEMBER_LABEL, type FaceRect } from '../model/members';
+import { faceLengths } from '../model/facadePhoto';
+import { SYSTEM_NAME } from '../model/systems';
+import type { SystemType } from '../model/network';
 
 /** 立面に描いた形: 四角 or 斜め線 */
 type Shape = { kind: 'rect'; r: FaceRect } | { kind: 'line'; p: UV; q: UV };
@@ -298,6 +301,14 @@ export function ElevationView() {
     return [{ m, ua: ea.u, ub: eb.u, z0, z1 }];
   });
   const strokePath = stroke?.map(toS).map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' ');
+  /** なぞっている線の長さ（描き終えたときと同じ間引き・直角補正をした目安） */
+  const strokeLen = (() => {
+    if (draw !== 'pipe' || !stroke || stroke.length < 2) return 0;
+    const q = orthoSnap(simplify(stroke.map((x) => ({ x: x.u, y: x.v })), 8 / vw.scale), st.orthoSnap ? 15 : 0);
+    return q.reduce((a, p, i) => (i ? a + Math.hypot(p.x - q[i - 1].x, p.y - q[i - 1].y) : 0), 0);
+  })();
+  const lens = faceLengths(net, segs.map((x) => x.id));
+  const m1 = (mm: number) => (mm / 1000).toFixed(1);
   const selSeg = sel?.kind === 'segment' ? sel.id : null, selNode = sel?.kind === 'node' ? sel.id : null;
 
   return (
@@ -314,6 +325,12 @@ export function ElevationView() {
           <button data-testid="elev-draw-pipe" className={draw === 'pipe' ? 'on' : ''} onClick={() => { st.setElevDraw('pipe'); setShape(null); }}>〰️ 配管</button>
           <button data-testid="elev-draw-build" className={draw === 'build' ? 'on' : ''} onClick={() => st.setElevDraw('build')}>🏠 建物</button>
         </span>
+        {lens.total > 0 && (
+          <span className="small elev-total" data-testid="elev-total" title="写真・図から測った長さ（目安）。実測長は数量表で優先されます">
+            配管 計 <strong>{m1(lens.total)}m</strong>
+            {lens.bySystem.length > 1 && <>（{lens.bySystem.map((x) => `${SYSTEM_NAME[x.system as SystemType] ?? x.system} ${m1(x.length)}m`).join('・')}）</>}
+          </span>
+        )}
         {msg && <span className="small" data-testid="elev-msg" role="status">{msg}</span>}
       </div>
       {draw === 'build' && shape && (
@@ -404,6 +421,9 @@ export function ElevationView() {
           return <circle key={nid} data-node={nid} cx={p.x} cy={p.y} r={through ? 7 : deg === 1 ? 5 : 4} fill={selNode === nid ? SELECT_COLOR : through ? '#fff' : '#111827'} stroke="#111827" strokeWidth={through ? 2 : 1} />;
         })}
         {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} pointerEvents="none" />}
+        {strokeLen > 0 && stroke && (() => { const p = toS(stroke[stroke.length - 1]); return (
+          <text data-testid="elev-stroke-len" x={Math.min(size.w - 90, p.x + 14)} y={Math.max(20, p.y - 28)} fontSize={16} fontWeight={700} fill="#111827" stroke="#fff" strokeWidth={4} paintOrder="stroke" pointerEvents="none">約 {m1(strokeLen)}m</text>
+        ); })()}
         <text x={8} y={size.h - 8} fontSize={11} fill="#334155" stroke="#fff" strokeWidth={3} paintOrder="stroke" pointerEvents="none">
           {draw === 'build' ? '四角を描く → 窓・ドア・梁・軒・バルコニー・張り出し／斜め線 → 階段'
             : <>{tool === 'pipe' ? '写真の上を指でなぞると、壁の外側に配管を描きます' : '「配管」を選んで壁の上をなぞると描けます'}（{MOUNT_LABEL[el.mount.type]}{el.mount.type === 'tBracket' ? ` ${el.mount.standoff}mm` : ''}）</>}
@@ -413,8 +433,8 @@ export function ElevationView() {
         <div className="modal-back" onClick={() => setPhotoOpen(false)}>
           <div className="modal wide-modal" data-testid="elev-photo-dialog" onClick={(e) => e.stopPropagation()}>
             <h2>外壁の写真（{Math.round(el.width)}×{Math.round(el.height)}mm）</h2>
-            <PhotoRectify aspectW={el.width} aspectH={el.height} maxPx={1600} quality={0.8}
-              intro="外壁を撮った写真を選び、四隅を壁の角（横幅・高さの範囲）に合わせます。"
+            <PhotoRectify aspectW={el.width} aspectH={el.height} maxPx={1600} quality={0.8} allowPartial
+              intro="外壁を撮った写真を選び、四隅を壁の角（横幅・高さの範囲）に合わせます。壁の端が写っていなければ、大きさの分かる四角（窓など）でも合わせられます。"
               onDone={(f) => { const r = st.updateElevation(el.id, { photo: { src: f.url, w: f.w, h: f.h } }); if (r) setMsg(r); setPhotoOpen(false); }} />
             <div className="modal-btns">
               {el.photo && <button className="danger" onClick={() => { st.updateElevation(el.id, { photo: undefined }); setPhotoOpen(false); }}>写真を外す</button>}
