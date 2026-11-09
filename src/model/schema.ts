@@ -16,6 +16,7 @@ export const nodeSchema = z.object({
   floorId: z.string().min(1).optional(),
   fitting: z.object({ type: z.string().min(1), degree: z.number().int().nonnegative() }).optional(),
   avoid: z.enum(['beam', 'eave', 'balcony']).optional(),
+  groundLevel: z.number().finite().optional(),
 });
 
 export const segmentSchema = z.object({
@@ -30,6 +31,7 @@ export const segmentSchema = z.object({
   extraRate: z.number().nonnegative().optional(),
   note: z.string().optional(),
   slope: z.number().finite().min(0).max(1).optional(),
+  slopeLocked: z.boolean().optional(),
   support: z.enum(['saddle', 'levelBand', 'tBracket', 'none']).optional(),
   face: z.string().min(1).optional(),
   substrate: z.enum(['concrete', 'wood']).optional(),
@@ -142,6 +144,14 @@ export const elevationSchema = z.object({
   opacity: z.number().min(0).max(1),
 });
 
+/** 申請図面の現場設定（v5 の途中で追加したため省略可） */
+export const siteSchema = z.object({
+  /** 設計地盤高(mm)。1階床面（FL±0）との高低差。GL が床より下なら負 */
+  designGL: z.number().finite().optional(),
+  /** 使用中の自治体プロファイル ID（既定 standard） */
+  municipalityProfileId: z.string().min(1).optional(),
+});
+
 export const SCHEMA_VERSION = 5;
 
 export const projectSchema = z.object({
@@ -158,6 +168,7 @@ export const projectSchema = z.object({
   underlays: z.record(z.string(), underlaySchema),
   /** 立面（外壁の写真と取付）。v5 の途中で追加したため省略可 */
   elevations: z.record(z.string(), elevationSchema).optional(),
+  site: siteSchema.optional(),
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;

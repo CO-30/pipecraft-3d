@@ -570,3 +570,37 @@ describe('器具の接続口へつなぐ（お知らせ）', () => {
     expect(s().notice).toBeTruthy();
   });
 });
+
+describe('申請図面: 現場設定と勾配固定', () => {
+  it('updateSite は履歴に残り、保存データに site が入る', () => {
+    const before = s().past.length;
+    s().updateSite({ designGL: -450 });
+    expect(s().doc.site?.designGL).toBe(-450);
+    expect(s().past.length).toBe(before + 1);
+    expect(s().toProjectData()?.site).toEqual({ designGL: -450 });
+    s().updateSite({ municipalityProfileId: 'standard' });
+    expect(s().doc.site).toEqual({ designGL: -450, municipalityProfileId: 'standard' });
+  });
+
+  it('setSegmentSlope は 1/n を比率で保存し下流端を下げる。固定中に上流端の高さを変えると下流端が追従', () => {
+    s().setDrawAttrs({ system: 'drain', diameter: 100 });
+    s().drawPolyline([v(0, 0, 0), v(5000, 0, 0)]);
+    const seg = Object.values(net().segments)[0];
+    s().setSegmentSlope(seg.id, 50);
+    expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
+    expect(net().nodes[seg.b].pos.z).toBeCloseTo(-100, 5);
+    s().setNodeHeight(seg.a, 300);
+    expect(net().nodes[seg.b].pos.z).toBeCloseTo(200, 5);
+    s().setSegmentSlopeLocked(seg.id, false);
+    expect(net().segments[seg.id].slopeLocked).toBe(false);
+  });
+
+  it('openProject は site を読み、無ければ空', () => {
+    const p = s().toProjectData()!;
+    s().openProject({ ...p, site: { designGL: -200 } });
+    expect(s().doc.site?.designGL).toBe(-200);
+    const { site: _x, ...noSite } = p;
+    s().openProject(noSite);
+    expect(s().doc.site).toEqual({});
+  });
+});

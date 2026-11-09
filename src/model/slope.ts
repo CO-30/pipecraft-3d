@@ -96,3 +96,91 @@ export function applySlope(net: Network, outletId: string, slope: number | 'auto
   if (validateNetwork(out).length) return null;
   return { net: out, nodes: moved, segments: used.size };
 }
+
+/** その区間を通らずに node から排水管をたどって到達できるノードに pred を満たすものがあるか */
+function sideReaches(net: Network, s: Segment, startId: string, pred: (nodeId: string) => boolean): boolean {
+  const seen = new Set<string>([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    if (pred(cur)) return true;
+    for (const t of Object.values(net.segments)) {
+      if (t.id === s.id || !isDrain(t.system) || (t.a !== cur && t.b !== cur)) continue;
+      const o = t.a === cur ? t.b : t.a;
+      if (!seen.has(o)) { seen.add(o); queue.push(o); }
+    }
+  }
+  return false;
+}
+
+/**
+ * 区間の下流端。isOutlet（マス・流末の判定）が与えられ、片側だけがそこへ届くならその側。
+ * そうでなければ高さが低いほう。同じ高さなら b（描いた向きの終点）。
+ */
+export function downstreamEnd(net: Network, s: Segment, isOutlet?: (nodeId: string) => boolean): 'a' | 'b' {
+  if (isOutlet) {
+    const ra = sideReaches(net, s, s.a, isOutlet), rb = sideReaches(net, s, s.b, isOutlet);
+    if (ra !== rb) return ra ? 'a' : 'b';
+  }
+  const za = net.nodes[s.a].pos.z, zb = net.nodes[s.b].pos.z;
+  if (Math.abs(za - zb) < 0.05) return 'b';
+  return za < zb ? 'a' : 'b';
+}
+
+/** 下流端 Z ＝ 上流端 Z − ratio × 水平距離 にする。だめ（配管が壊れる・器具の接続口）なら元の net */
+function applyLockedSlope(net: Network, s: Segment, down: 'a' | 'b'): Network {
+  const ratio = s.slope ?? 0;
+  const upId = down === 'a' ? s.b : s.a, downId = down === 'a' ? s.a : s.b;
+  const dn = net.nodes[downId];
+  if (dn.fixtureId) return net;
+  const z = Math.round((net.nodes[upId].pos.z - ratio * planLength(net, s)) * 10) / 10;
+  if (Math.abs(dn.pos.z - z) < 0.05) return net;
+  const next = moveNode(net, downId, { ...dn.pos, z });
+  return next === net || validateNetwork(next).length ? net : next;
+}
+
+/** 区間に設計勾配（比率）を設定して固定し、下流端の高さを勾配から決める。失敗なら元の net */
+export function setSlopeRatio(net: Network, segId: string, ratio: number, isOutlet?: (nodeId: string) => boolean): Network {
+  const s = net.segments[segId];
+  if (!s || !(ratio >= 0) || !Number.isFinite(ratio)) return net;
+  const down = downstreamEnd(net, s, isOutlet);
+  const seg: Segment = { ...s, slope: ratio, slopeLocked: true };
+  const withSeg: Network = { ...net, segments: { ...net.segments, [segId]: seg } };
+  const out = applyLockedSlope(withSeg, seg, down);
+  return out === withSeg && Math.abs(net.nodes[down === 'a' ? s.a : s.b].pos.z - (net.nodes[down === 'a' ? s.b : s.a].pos.z - ratio * planLength(net, s))) > 0.05 ? net : out;
+}
+
+/**
+ * movedNodeId の高さが変わったあと（prev → net）の後始末。
+ * - 動かす前に下流端（低いほう）だった固定区間: 手で動かしたので固定を外す。
+ * - 上流端だった固定区間: 下流端を勾配から再計算し、下流へ連鎖する。
+ */
+export function propagateLockedSlopes(prev: Network, net: Network, movedNodeId: string): Network {
+  let out = net;
+  const queue = [movedNodeId];
+  const seen = new Set<string>([movedNodeId]);
+  const doneSegs = new Set<string>();
+  let first = true;
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const s0 of Object.values(out.segments)) {
+      if (!s0.slopeLocked || doneSegs.has(s0.id) || (s0.a !== cur && s0.b !== cur)) continue;
+      const s = out.segments[s0.id];
+      doneSegs.add(s.id);
+      const other = s.a === cur ? s.b : s.a;
+      const ps = prev.segments[s.id];
+      const curWasDown = first && !!ps && prev.nodes[ps.a] && prev.nodes[ps.b] && downstreamEnd(prev, ps) === (s.a === cur ? 'a' : 'b');
+      if (curWasDown) {
+        out = { ...out, segments: { ...out.segments, [s.id]: { ...s, slopeLocked: false } } };
+        continue;
+      }
+      const next = applyLockedSlope(out, s, s.a === cur ? 'b' : 'a');
+      if (next !== out) {
+        out = next;
+        if (!seen.has(other)) { seen.add(other); queue.push(other); }
+      }
+    }
+    first = false;
+  }
+  return out;
+}

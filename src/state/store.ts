@@ -9,7 +9,7 @@ import {
   setSegmentLength as setSegLen, translateNodes, validateNetwork, projectOnSegment, splitSegment,
   detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
-import type { Doc } from '../model/doc';
+import type { Doc, SiteSettings } from '../model/doc';
 import { deleteFixture, moveFixture, placeFixture, syncAllFixturePorts, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import * as B from '../model/building';
@@ -21,7 +21,7 @@ import type { BoxCategory } from '../model/building3d';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
-import { applySlope, isDrain } from '../model/slope';
+import { applySlope, defaultSlope, isDrain, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
@@ -67,7 +67,11 @@ const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', member: 'show', pipes: 'show', fixtures: 'show',
 });
 
-export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {} });
+/** 勾配の下流判定に使う流末（マスの接続口）。Task 2 でマスを追加するまでは常に false */
+const isOutletNode = (_doc: Doc, _nodeId: string): boolean => false;
+const defaultSlopeFor = (diameter: number) => defaultSlope(diameter);
+
+export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {}, site: {} });
 
 type State = {
   doc: Doc;
@@ -191,6 +195,12 @@ type State = {
   detachSegmentEnd(segId: string, end: 'a' | 'b'): void;
   /** 排水: この点を流末にして勾配をつける（'auto' = 管径別の最小勾配）。履歴1件 */
   setSlopeFromOutlet(nodeId: string, slope: number | 'auto'): void;
+  // 申請図面
+  /** 現場設定（設計GL・自治体プロファイル）。履歴1件 */
+  updateSite(patch: Partial<SiteSettings>): void;
+  /** 区間の設計勾配 1/denominator を設定して固定し、下流端の高さを決める。だめならお知らせ */
+  setSegmentSlope(segId: string, denominator: number): void;
+  setSegmentSlopeLocked(segId: string, locked: boolean): void;
   /** 区間の支持金具・取付下地（undefined = 自動・現場の既定） */
   setSegmentSupport(segId: string, patch: { support?: 'saddle' | 'levelBand' | 'tBracket' | 'none' | null; substrate?: 'concrete' | 'wood' | null }): void;
   updateEstimate(patch: Partial<Omit<EstimateSettings, 'prices' | 'extras'>>): void;
@@ -268,7 +278,7 @@ export const useStore = create<State>((set, get) => {
   /** 新しい Doc を履歴付きで確定。変化がなければ何もしない */
   const commit = (next: Doc, extra: Partial<State> = {}) => {
     const { doc, past } = get();
-    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations) return false;
+    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations && next.site === doc.site) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
     // 新しく描いた・動かした配管が梁・軒などにぶつかったらお知らせ
     if (next.network !== doc.network && next.building.members && Object.keys(next.building.members).length) {
@@ -406,15 +416,15 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {} };
+      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {} };
       set({ doc, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(doc) });
     },
-    newDoc: (doc, meta) => set({ doc: { underlays: {}, elevations: {}, ...doc }, meta, ...resetView(doc) }),
+    newDoc: (doc, meta) => set({ doc: { underlays: {}, elevations: {}, site: {}, ...doc }, meta, ...resetView(doc) }),
     closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null }),
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
-      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {}, elevations: doc.elevations ?? {} };
+      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {}, elevations: doc.elevations ?? {}, site: doc.site ?? {} };
     },
     renameProject: (name, address) => {
       const m = get().meta;
@@ -608,9 +618,23 @@ export const useStore = create<State>((set, get) => {
       if (f) commit(moveFixture(get().doc, id, f, ((f.rotation + 90) % 360) as Rotation));
     },
     setNodeHeight: (nodeId, z) => {
-      const n = get().doc.network.nodes[nodeId];
+      const net = get().doc.network, n = net.nodes[nodeId];
       // 設備の接続口の高さは器具で決まるので単独では変えない
-      if (n && !n.fixtureId) commit(withNet(moveNode(get().doc.network, nodeId, { ...n.pos, z })));
+      if (n && !n.fixtureId) commit(withNet(propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId)));
+    },
+    updateSite: (patch) => commit({ ...get().doc, site: { ...get().doc.site, ...patch } }),
+    setSegmentSlope: (segId, denominator) => {
+      const net = get().doc.network;
+      if (!net.segments[segId] || !(denominator > 0)) return;
+      const next = setSlopeRatio(net, segId, 1 / denominator, (id) => isOutletNode(get().doc, id));
+      if (next === net) set({ notice: '勾配をつけると配管がつながらなくなります（端の高さを確認してください）' });
+      else commit(withNet(next));
+    },
+    setSegmentSlopeLocked: (segId, locked) => {
+      const net = get().doc.network, s = net.segments[segId];
+      if (!s || !!s.slopeLocked === locked) return;
+      if (locked) { get().setSegmentSlope(segId, s.slope ? Math.round(1 / s.slope) : Math.round(1 / defaultSlopeFor(s.diameter))); return; }
+      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, slopeLocked: false } } }));
     },
     updateSegment: (segId, patch) => {
       const net = get().doc.network;
@@ -807,7 +831,8 @@ export const useStore = create<State>((set, get) => {
     beginDrag: () => set({ dragBase: get().doc }),
     // ドラッグ中（beginDrag 後）だけ有効。途中で Undo 等により終了したドラッグの続きは無視する
     dragNode: (nodeId, pos) => {
-      if (get().dragBase && !get().doc.network.nodes[nodeId]?.fixtureId) set({ doc: withNet(moveNode(get().doc.network, nodeId, pos)) });
+      const base = get().dragBase;
+      if (base && !get().doc.network.nodes[nodeId]?.fixtureId) set({ doc: withNet(propagateLockedSlopes(base.network, moveNode(get().doc.network, nodeId, pos), nodeId)) });
     },
     dragSegment: (segId, d) => {
       const base = get().dragBase;
@@ -839,7 +864,7 @@ export const useStore = create<State>((set, get) => {
     endDrag: () => {
       const { dragBase, doc, past } = get();
       if (!dragBase) return;
-      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations;
+      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}) });
     },
 
