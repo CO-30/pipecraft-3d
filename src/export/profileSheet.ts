@@ -5,7 +5,7 @@
 import type { ProfileModel } from '../model/profileDrawing';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
-import { drawFrame, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, RED, sheetToSvg, TITLE_W, type Sheet } from './sheet';
+import { drawFrame, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, TITLE_W, WARN, type Sheet } from './sheet';
 
 export type SheetMeta = { siteName: string; date: Date };
 
@@ -60,6 +60,10 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   sheet.ops.push({ t: 'text', x: left - 1, y: graphBottom + 1, s: `DL ${fmtLen(DL, unit)}`, size: 2.6, anchor: 'end', color: GRAY });
   const warnSeg = new Set(model.warnings.filter((w) => w.segId).map((w) => w.segId));
   const warnNode = new Set(model.warnings.filter((w) => w.nodeId).map((w) => w.nodeId));
+  // 色分け（申請書の指示）: 新設・増設＝赤、既設＝青、公共＝黒。警告は橙
+  const colors = profile.colors;
+  const segColor = (s: { segId: string; existing?: boolean }) => (warnSeg.has(s.segId) ? WARN : s.existing ? colors.existing : colors.newWork);
+  const nodeColor = (n: { nodeId: string; existing?: boolean; manhole?: { isPublic: boolean } }) => (warnNode.has(n.nodeId) ? WARN : n.manhole?.isPublic ? colors.public : n.existing ? colors.existing : colors.newWork);
 
   // GL 線
   if (model.nodes.length) {
@@ -68,11 +72,11 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
     // 管底線（区間ごと。警告は赤）
     for (let i = 0; i < model.segments.length; i++) {
       const a = model.nodes[i], b = model.nodes[i + 1], s = model.segments[i];
-      const bad = warnSeg.has(s.segId);
-      sheet.ops.push({ t: 'line', x1: X(a.cumDistance), y1: Y(a.invertLevel), x2: X(b.cumDistance), y2: Y(b.invertLevel), w: 0.6, color: bad ? RED : INK });
+      const c = segColor(s);
+      sheet.ops.push({ t: 'line', x1: X(a.cumDistance), y1: Y(a.invertLevel), x2: X(b.cumDistance), y2: Y(b.invertLevel), w: 0.6, color: c });
       // 区間の上に 管種口径・勾配
       const mx = (X(a.cumDistance) + X(b.cumDistance)) / 2, my = (Y(a.invertLevel) + Y(b.invertLevel)) / 2;
-      sheet.ops.push({ t: 'text', x: mx, y: my - 2, s: `${s.pipeSpec} ${s.slopeText}`, size: 2.6, anchor: 'middle', color: bad ? RED : INK });
+      sheet.ops.push({ t: 'text', x: mx, y: my - 2, s: `${s.pipeSpec} ${s.slopeText}`, size: 2.6, anchor: 'middle', color: c });
     }
     // 各点: 縦の引出線、マスの記号
     model.nodes.forEach((n, i) => {
@@ -81,13 +85,14 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
       if (n.manhole) {
         // マス: GL から管底までの箱と記号
         const hw = Math.max(1.5, n.manhole.diameter / hScale / 2);
-        sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: warnNode.has(n.nodeId) ? RED : INK, fill: '#fff', lw: 0.3 });
-        drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, warnNode.has(n.nodeId) ? RED : INK);
+        const c = nodeColor(n);
+        sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: c, fill: '#fff', lw: 0.3 });
+        drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, c);
         sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
         if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 10.5, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
       } else {
         if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.invertLevel) - 3, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
-        sheet.ops.push({ t: 'circle', cx: x, cy: Y(n.invertLevel), r: 0.8, fill: warnNode.has(n.nodeId) ? RED : INK, stroke: warnNode.has(n.nodeId) ? RED : INK });
+        sheet.ops.push({ t: 'circle', cx: x, cy: Y(n.invertLevel), r: 0.8, fill: nodeColor(n), stroke: nodeColor(n) });
       }
       sheet.ops.push({ t: 'text', x, y: tableTop - 1.5, s: `No.${i + 1}`, size: 2.4, anchor: 'middle', color: GRAY });
     });
@@ -109,7 +114,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
         const x = (X(a.cumDistance) + X(b.cumDistance)) / 2;
         const bad = warnSeg.has(s.segId) && (r.key === 'slope');
         const text = r.key === 'distance' ? fmtLen(s.distance, unit) : r.key === 'slope' ? s.slopeText : s.pipeSpec;
-        sheet.ops.push({ t: 'text', x, y: y + ROW_H / 2 + 1, s: text, size: 2.6, anchor: 'middle', color: bad ? RED : INK });
+        sheet.ops.push({ t: 'text', x, y: y + ROW_H / 2 + 1, s: text, size: 2.6, anchor: 'middle', color: bad ? WARN : INK });
       });
     } else {
       model.nodes.forEach((n, i) => {
@@ -134,7 +139,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
         else if (r.key === 'invertLevel') text = fmtLen(n.invertLevel, unit);
         else if (r.key === 'cover') text = fmtLen(n.cover, unit);
         // 縦書き（-90°、行の中央）で列幅を節約
-        sheet.ops.push({ t: 'text', x: x + 0.9, y: y + ROW_H / 2, s: text, size: 2.4, anchor: 'middle', color: bad ? RED : INK, rotate: -90 });
+        sheet.ops.push({ t: 'text', x: x + 0.9, y: y + ROW_H / 2, s: text, size: 2.4, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
       });
     }
   });
@@ -142,14 +147,16 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta): Sheet 
   // 欄外: 警告・要確認（表題欄の左）
   // 「⚠」は PDF のフォント（NotoSansJP-JIS）に無いので「※」を使う
   const notes: { s: string; color: string }[] = [];
-  for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : RED });
+  for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : WARN });
   if (profile.unverified.length) notes.push({ s: `要確認: ${profile.unverified.join('、')}（自治体の手引きで確認してください）`, color: GRAY });
   const noteX = 10 + M, noteW = sheet.width - 10 - TITLE_W - 10 - noteX - 5;
   const noteY0 = sheet.height - 10 - titleH;
+  // 凡例は警告の上に 1 行（件数の上限に数えない）
+  sheet.ops.push({ t: 'text', x: noteX, y: noteY0, s: '凡例: 赤＝新設・増設  青＝既設  黒＝公共下水道  橙＝警告（図面上の印。申請前に直してください）', size: 2.4, color: GRAY });
   const MAX_NOTES = 8;
   const shown = notes.length > MAX_NOTES ? notes.slice(0, MAX_NOTES - 1) : notes;
   shown.forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));
-  if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * MAX_NOTES, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: RED });
+  if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * MAX_NOTES, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: WARN });
 
   // 表題欄
   const values: Record<string, string> = {

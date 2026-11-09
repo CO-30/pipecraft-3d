@@ -144,6 +144,19 @@ describe('縦断図の計算（手計算ケース）', () => {
     expect(m.nodes[0].note).toBe('→別図 枝1');
     expect(m.nodes[1].note).toBeUndefined();
   });
+  test('既設の区間・マスは existing、公共マスは isPublic', () => {
+    const { doc, a, b, seg } = caseA();
+    const net = { ...doc.network, segments: { ...doc.network.segments, [seg]: { ...doc.network.segments[seg], existing: true } } };
+    const fa = doc.network.nodes[a].fixtureId!;
+    const d2 = { ...doc, network: net, fixtures: { ...doc.fixtures, [fa]: { ...doc.fixtures[fa], params: { ...doc.fixtures[fa].params, existing: true } } } };
+    const r = extractRoute(net, b);
+    const m = buildProfile(d2, 'route' in r ? r.route : [], STANDARD_PROFILE, 't');
+    expect(m.segments[0].existing).toBe(true);
+    expect(m.nodes[0].existing).toBe(true);
+    expect(m.nodes[0].manhole?.isPublic).toBe(false);
+    expect(m.nodes[1].manhole?.isPublic).toBe(true);
+    expect(m.nodes[1].existing).toBeFalsy();
+  });
   test('ケース B: 折れ 2 区間（上流→下流の順に並ぶ）', () => {
     let d = base(0);
     const a = manhole(d, 'manholeSewage', 0, 0, -600); d = a.doc;

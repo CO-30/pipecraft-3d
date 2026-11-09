@@ -19,6 +19,8 @@ export const PAPER_MM = { A3: [420, 297], A4: [297, 210] } as const;
 export const INK = '#1f2328';
 export const GRAY = '#8b8f96';
 export const RED = '#d91e18';
+/** 警告の色（新設の赤と区別するため橙） */
+export const WARN = '#ea580c';
 export const PT_PER_MM = 72 / 25.4;
 
 export function paperSize(p: MunicipalityProfile['paper']): { width: number; height: number } {

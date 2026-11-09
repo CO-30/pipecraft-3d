@@ -16,7 +16,7 @@ export type FixtureType =
   | 'manholeSewage' | 'manholeRain' | 'manholeTrap' | 'manholeInvert' | 'publicSewage' | 'publicRain';
 export type Rotation = 0 | 90 | 180 | 270;
 /** マスの個別設定。diameter: 口径(mm、既定 300)、shape: 丸/角、invertZ: 管底高(mm、絶対。既定 GL−600) */
-export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number };
+export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean };
 export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation; params?: FixtureParams };
 
 /**

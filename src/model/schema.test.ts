@@ -15,6 +15,18 @@ describe('v5 の省略可フィールド（申請図面）', () => {
     const r = projectSchema.safeParse({ ...base(), site: { designGL: -450, municipalityProfileId: 'standard' } });
     expect(r.success && r.data.site).toEqual({ designGL: -450, municipalityProfileId: 'standard' });
   });
+  test('区間と器具の existing（既設）を受け付ける', () => {
+    const p = base();
+    const network = {
+      nodes: { a: { id: 'a', kind: 'end', pos: { x: 0, y: 0, z: 0 } }, b: { id: 'b', kind: 'end', pos: { x: 1000, y: 0, z: -10 } } },
+      segments: { s: { id: 's', a: 'a', b: 'b', system: 'drain', diameter: 100, existing: true } },
+    };
+    const fixtures = { f: { id: 'f', floorId: p.building.floors[0].id, type: 'manholeSewage', x: 0, y: 0, rotation: 0, params: { existing: true } } };
+    const r = projectSchema.safeParse({ ...p, network, fixtures });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.network.segments.s.existing).toBe(true);
+    expect(r.success && r.data.fixtures.f.params?.existing).toBe(true);
+  });
   test('区間の slopeLocked とノードの groundLevel を受け付ける', () => {
     const p = base();
     const network = {

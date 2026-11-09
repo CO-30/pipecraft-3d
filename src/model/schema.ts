@@ -32,6 +32,7 @@ export const segmentSchema = z.object({
   note: z.string().optional(),
   slope: z.number().finite().min(0).max(1).optional(),
   slopeLocked: z.boolean().optional(),
+  existing: z.boolean().optional(),
   support: z.enum(['saddle', 'levelBand', 'tBracket', 'none']).optional(),
   face: z.string().min(1).optional(),
   substrate: z.enum(['concrete', 'wood']).optional(),
@@ -74,7 +75,7 @@ export const fixtureSchema = z.object({
   y: z.number().finite(),
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
   /** マスの口径・形状・管底高（v5 の途中で追加したため省略可） */
-  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional() }).optional(),
+  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional(), existing: z.boolean().optional() }).optional(),
 });
 
 const money = z.number().finite().nonnegative();

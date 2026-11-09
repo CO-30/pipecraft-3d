@@ -25,11 +25,13 @@ export const outerDiameter = (nominal: number) => OUTER_DIAMETER[nominal] ?? Mat
 export type ProfileWarning = { kind: 'minSlope' | 'reverseSlope' | 'cover' | 'tentativeGL'; segId?: string; nodeId?: string; message: string };
 export type ProfileNode = {
   nodeId: string; cumDistance: number; groundLevel: number; invertLevel: number; cover: number;
-  manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string };
+  manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string; /** 公共マス（黒で描く） */ isPublic: boolean };
   /** 分岐点の注記（「→別図 枝1」など） */
   note?: string;
+  /** 既設のマス（青で描く） */
+  existing?: boolean;
 };
-export type ProfileSegment = { segId: string; distance: number; slope: number | null; slopeText: string; diameter: number; material: string; pipeSpec: string };
+export type ProfileSegment = { segId: string; distance: number; slope: number | null; slopeText: string; diameter: number; material: string; pipeSpec: string; /** 既設（青） */ existing?: boolean };
 export type ProfileModel = { nodes: ProfileNode[]; segments: ProfileSegment[]; warnings: ProfileWarning[]; tentativeGL: boolean; profile: MunicipalityProfile; title: string };
 
 /** ノードにつながる排水系の区間（通気管は縦断図に含めない） */
@@ -163,7 +165,7 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
       const slope = riser ? null : (up - down) / L;
       const material = seg.material || 'VU';
       const slopeText = riser ? '立管' : slope! < -1e-9 ? '逆勾配' : formatSlope(slope!, profile.profileTable.slopeFormat);
-      segments.push({ segId: seg.id, distance: L, slope, slopeText, diameter: seg.diameter, material, pipeSpec: `${material}φ${seg.diameter}` });
+      segments.push({ segId: seg.id, distance: L, slope, slopeText, diameter: seg.diameter, material, pipeSpec: `${material}φ${seg.diameter}`, ...(seg.existing ? { existing: true } : {}) });
       if (!riser) {
         if (slope! < -1e-9) warnings.push({ kind: 'reverseSlope', segId: seg.id, message: `区間 ${segments.length}: 逆勾配（下流のほうが高い）` });
         else {
@@ -180,9 +182,9 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
     const fl = fx ? floorById(doc.building, fx.floorId) : undefined;
     const manhole = fx && fl && isManhole(fx.type)
-      ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle' }
+      ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle', isPublic: fx.type.startsWith('public') }
       : undefined;
-    nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole, ...(notes[id] ? { note: notes[id] } : {}) });
+    nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole, ...(notes[id] ? { note: notes[id] } : {}), ...(fx?.params?.existing ? { existing: true } : {}) });
     if (od && cover + 1e-9 < profile.profileTable.minCover) warnings.push({ kind: 'cover', nodeId: id, message: `点 ${nodes.length}: 土被り ${Math.round(cover)}mm が最小 ${profile.profileTable.minCover}mm より少ない` });
   }
   return { nodes, segments, warnings, tentativeGL, profile, title };

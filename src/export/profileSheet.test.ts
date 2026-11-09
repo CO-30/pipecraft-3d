@@ -55,7 +55,7 @@ describe('排水縦断図の描画', () => {
     const svg = renderProfileSvg(m, meta);
     expect(svg).toContain('※');
     expect(svg).toContain('土被りが少ない');
-    expect(svg).toContain('#d91e18');
+    expect(svg).toContain('#ea580c');
   });
   test('長い経路は収まる縮尺に上げる（A3 横）', () => {
     const m = caseA();
@@ -81,6 +81,22 @@ describe('排水縦断図の描画', () => {
     const svg = sheetsToSvg([a, b]);
     expect(svg).toContain('viewBox="0 0 420 594"');
     expect(svg.match(/排水設備 縦断図/g)?.length).toBe(4); // 見出し＋表題欄 × 2 ページ
+  });
+  test('色分け: 新設の管とマスは赤、公共マスは黒、既設の区間は青。凡例あり', () => {
+    const m = caseA();
+    const svg = renderProfileSvg(m, meta);
+    expect(svg).toContain('凡例');
+    expect(svg).toContain('stroke="#d91e18"'); // 新設の管・汚水マス
+    expect(svg).toContain('stroke="#1f2328"'); // 公共マス
+    const m2 = caseA();
+    m2.segments[0].existing = true;
+    m2.nodes[0].existing = true;
+    const svg2 = renderProfileSvg(m2, meta);
+    expect(svg2).toContain('stroke="#1d4ed8"');
+    // 警告は橙（赤＝新設と区別）
+    const m3 = caseA();
+    m3.warnings.push({ kind: 'cover', nodeId: m3.nodes[0].nodeId, message: '点 1: 土被りが少ない' });
+    expect(renderProfileSvg(m3, meta)).toContain('#ea580c');
   });
   test('unverified は要確認として出る', () => {
     const m = caseA();

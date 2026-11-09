@@ -44,6 +44,8 @@ export type SystemType =
 
 export type SegmentAttrs = {
   system: SystemType;
+  /** 既設（申請図面では青で描く。新設・増設は赤） */
+  existing?: boolean;
   /** 口径(mm) またはケーブルサイズ */
   diameter: number;
   material?: string;
@@ -66,6 +68,7 @@ export type Segment = SegmentAttrs & {
   slope?: number;
   /** 勾配固定: 上流端の高さが変わったら下流端を勾配から再計算する（下流端を手で動かすと解除） */
   slopeLocked?: boolean;
+
   /** 支持金具（未指定 = 自動） */
   support?: 'saddle' | 'levelBand' | 'tBracket' | 'none';
   /** 立面（外壁）で描いた配管: その立面の ID（取付の変更を反映するため） */

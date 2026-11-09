@@ -164,6 +164,12 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
           </label>
           <label className="field inline"><input type="checkbox" checked={p.riser.showFloorLines} onChange={(e) => setP({ ...p, riser: { ...p.riser, showFloorLines: e.target.checked } })} /> 階の線を描く</label>
         </div>
+        <h3>色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒）</h3>
+        <div className="row">
+          {([['newWork', '新設・増設'], ['existing', '既設'], ['public', '公共下水道']] as const).map(([k, label]) => (
+            <label key={k} className="field inline">{label} <input type="color" data-testid={`pf-color-${k}`} value={p.colors[k]} onChange={(e) => setP({ ...p, colors: { ...p.colors, [k]: e.target.value } })} /></label>
+          ))}
+        </div>
         <h3>用紙</h3>
         <div className="row">
           <label className="field">サイズ <select value={p.paper.size} onChange={(e) => setP({ ...p, paper: { ...p.paper, size: e.target.value as 'A3' | 'A4' } })}><option>A3</option><option>A4</option></select></label>

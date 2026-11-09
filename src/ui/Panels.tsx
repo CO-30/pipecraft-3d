@@ -223,6 +223,7 @@ export function PropertyPanel() {
                 <option value="round">丸</option><option value="square">角</option>
               </select>
             </label>
+            <label className="small inline" title="申請図面では既設を青で描きます"><input type="checkbox" data-testid="manhole-existing" checked={!!f.params?.existing} onChange={(e) => st.updateFixtureParams(f.id, { existing: e.target.checked || undefined })} /> 既設</label>
             <NumField label="管底高 FL" value={manholeInvertZ(f, doc.building, doc.site) - fl.elevation} testId="manhole-invert" onCommit={(v) => st.updateFixtureParams(f.id, { invertZ: v + fl.elevation })} />
             <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, doc.building, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}1階FL{groundZ(doc.building, doc.site) >= 0 ? '+' : ''}{Math.round(groundZ(doc.building, doc.site))}）</span>
           </div>
@@ -515,6 +516,7 @@ function SegmentSlopeInput({ segId }: { segId: string }) {
           onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); } }} />
       </label>
       <label className="small inline"><input type="checkbox" data-testid="seg-slope-lock" checked={!!seg.slopeLocked} onChange={(e) => st.setSegmentSlopeLocked(segId, e.target.checked)} /> 勾配を固定</label>
+      <label className="small inline" title="申請図面では既設を青、新設・増設を赤で描きます"><input type="checkbox" data-testid="seg-existing" checked={!!seg.existing} onChange={(e) => st.updateSegment(segId, { existing: e.target.checked || undefined })} /> 既設</label>
       <span className="muted small">固定すると、上流の高さを変えても下流端がこの勾配で動きます</span>
     </div>
   );
