@@ -302,7 +302,20 @@
 - テスト: 単体 440件・E2E 130件（shinsei-08〜10: 沖縄市の縦断図＋アイソメ、給水アイソメ）・PWA 1件。証拠 `test-evidence/*shinsei-09/10*`
 - 運用: 他の自治体も記入例（手引き・受理済み図面）が入手できたら同様に確定する
 
+## 追加: 沖縄市の実例 2 件目と申請書類の自動作成（2026-11-10 ユーザーが様式を入手）
+- ブランチ `feat/okinawa-samples2`。入手: 沖縄市の受理済み図面 2 件目（比屋根。給水はヘッダー工法）、給水装置申込及び工事申請書（xls）、給水申請チェックシート（xlsx）、下水道排水設備計画確認申請書（様式第1号 PDF）、給水装置使用製品一覧表（PDF、発行元の企業団は要確認）
+- 図面（8f04ad1）: 右上の受付欄「受付番号｜水道番号｜縮尺 NO SCALE」（`paper.headerFields`）。公共桝は新設なら赤・既設なら青（実例: 「新設公共桝」赤、「既存公共汚水桝」青。黒は市下水管だけ）。沖縄市の最小勾配を日下協テキストの標準値に（実例 2.0〜5.4/100 と整合、手引きは未確認）
+- 申請書（a5bb62d）: 申請図面画面に「申請書」タブ。仕様 `docs/superpowers/specs/2026-11-10-shinsei-shorui-design.md`
+  - 入力欄は様式定義 `src/forms/okinawaCity.ts` から自動生成、値は現場の `site.application`（省略可、`SCHEMA_VERSION` 据え置き）。工事店の情報は端末の IndexedDB `settings`（DB v3）に保存し、現場ファイル・バックアップには入れない
+  - 給水装置申込及び工事申請書: `public/forms/okinawa-city/water-application.xlsx`（LibreOffice で xls→xlsx、記入例の値・画像を除去、18KB）に ExcelJS で差し込み（`src/forms/waterExcel.ts`、セル位置は `CELLS`）。選択肢は丸数字 ①②、有/無は ○
+  - 下水道排水設備計画確認申請書: `public/forms/okinawa-city/sewer-application.pdf` に pdf-lib で重ね書き（`src/forms/sewerPdf.ts`、座標は `POS`）。2 面に縦断図、3 面に排水の立面図を `drawSheetOnPage` で縮小して載せる。4 面（見取図）は空欄
+  - 給水装置使用製品一覧表: 積算の給水の管・部品・メーターから A4 横（`src/forms/productList.ts`）
+  - チェックリスト: 給水申請チェックシートの項目を表示（アプリで作れるものに印）
+- 未対応（PROGRESS に記録）: 落差桝（実例 H530-830）、給水ヘッダー工法（給水ヘッダー・給湯ヘッダー・PB13）、見取り図・建物側面図の欄への画像貼付、手数料の確定（実例の値を既定にして要確認表示）、製品一覧表の発行元
+- テスト: 単体 451 件（forms 7・UI 3 追加）、E2E 130 件（shinsei に申請書タブとダウンロード 3 種を追加、shinsei-11-forms）、PWA 1 件
+
 ## 次の作業
+- `feat/okinawa-samples2` の独立レビュー → 修正 → PR → main マージ・Pages 更新（ユーザーの明示指示が必要）
 - PR #20（docs）と `feat/municipal-profiles` の PR を main へマージ・Pages 更新（ユーザーの明示指示が必要）
 - 申請図面の実機確認（沖縄市の実例と並べて見比べる）。他の自治体の記入例が届いたらプロファイルの要確認項目を確定（表の行・勾配表記・最小勾配・土被り・記号）
 - 次段階 C 案: 申請書・数量表の Excel 様式差し込み
