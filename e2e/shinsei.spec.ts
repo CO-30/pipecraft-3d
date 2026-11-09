@@ -137,6 +137,34 @@ test.describe('申請図面', () => {
     await expect(page.getByTestId('shinsei-preview')).toContainText('NO SCALE');
     await expect(page.getByTestId('shinsei-preview')).toContainText('HI');
     await page.screenshot({ path: evidence('shinsei-10-okinawa-iso') });
+    // 申請書タブ: 工事店の情報を保存 → 申請情報を入力 → 給水申請書 (Excel)・下水道申請書 (PDF)・製品一覧表 (PDF) をダウンロード
+    await page.getByTestId('shinsei-kind-forms').click();
+    await expect(page.getByTestId('shinsei-forms')).toBeVisible();
+    await page.getByTestId('forms-contractor-toggle').click();
+    await page.getByTestId('contractor-name').fill('テスト設備');
+    await page.getByTestId('contractor-licenseNo').fill('123');
+    await page.getByTestId('contractor-chiefEngineer').fill('主任 花子');
+    await page.getByTestId('contractor-save').click();
+    await expect(page.getByTestId('forms-msg')).toContainText('保存しました');
+    await page.getByTestId('forms-contractor-toggle').click();
+    await page.getByTestId('app-applicantName').fill('水道 太郎');
+    await page.getByTestId('app-applicantAddress').fill('沖縄市仲宗根町26-1');
+    await expect(page.getByTestId('app-diameter')).toHaveValue('20');
+    await page.screenshot({ path: evidence('shinsei-11-forms') });
+    const [xlsx] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-water').click()]);
+    expect(xlsx.suggestedFilename()).toContain('給水装置申込及び工事申請書.xlsx');
+    const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-sewer').click()]);
+    expect(pdf.suggestedFilename()).toContain('下水道排水設備計画確認申請書.pdf');
+    const [list] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-products').click()]);
+    expect(list.suggestedFilename()).toContain('給水装置使用製品一覧表.pdf');
+    // 入力は現場に保存される
+    await page.getByTestId('close-shinsei').click();
+    await expect(page.getByTestId('save-state')).toHaveText('保存済み');
+    await page.reload();
+    await page.getByTestId('project-item').first().locator('.pmain').click();
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-kind-forms').click();
+    await expect(page.getByTestId('app-applicantName')).toHaveValue('水道 太郎');
   });
 
   test('後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける', async ({ page }) => {

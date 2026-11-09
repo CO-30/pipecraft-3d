@@ -3,7 +3,7 @@
  * プレビューは SVG に、出力は pdf-lib で PDF に変換する（同じ命令から作るので見た目が一致する）。
  * 座標: 原点は用紙の左上、x 右向き、y 下向き、単位 mm。
  */
-import { degrees, PDFDocument, rgb, type RGB } from 'pdf-lib';
+import { degrees, PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { MunicipalityProfile } from '../model/municipality';
 
@@ -91,7 +91,17 @@ export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | Array
   const font = await pdf.embedFont(fontBytes, { subset: false });
   for (const sheet of sheets) {
     const page = pdf.addPage([sheet.width * PT_PER_MM, sheet.height * PT_PER_MM]);
-    const X = (x: number) => x * PT_PER_MM, Y = (y: number) => (sheet.height - y) * PT_PER_MM, W = (w: number) => w * PT_PER_MM;
+    drawSheetOnPage(page, font, sheet, { x: 0, top: 0, w: sheet.width * PT_PER_MM, h: sheet.height * PT_PER_MM });
+  }
+  return pdf.save();
+}
+
+/** 既存のページの枠 box（pt、top は上端からの距離）に Sheet を縮小して描く。様式 PDF の図面欄に載せるときに使う */
+export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box: { x: number; top: number; w: number; h: number }): void {
+  const k = Math.min(box.w / (sheet.width * PT_PER_MM), box.h / (sheet.height * PT_PER_MM));
+  const pageH = page.getHeight();
+  const X = (x: number) => box.x + x * PT_PER_MM * k, Y = (y: number) => pageH - (box.top + y * PT_PER_MM * k), W = (w: number) => w * PT_PER_MM * k;
+  {
     for (const o of sheet.ops) {
       switch (o.t) {
         case 'line':
@@ -124,7 +134,6 @@ export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | Array
       }
     }
   }
-  return pdf.save();
 }
 
 /** 図面記号。r は半径(mm) */

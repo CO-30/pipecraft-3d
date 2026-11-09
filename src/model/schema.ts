@@ -154,6 +154,8 @@ export const siteSchema = z.object({
   designGL: z.number().finite().optional(),
   /** 使用中の自治体プロファイル ID（既定 standard） */
   municipalityProfileId: z.string().min(1).optional(),
+  /** 申請書類の入力値（様式の項目 id → 文字列）。省略可 */
+  application: z.record(z.string(), z.string()).optional(),
 });
 
 export const SCHEMA_VERSION = 5;

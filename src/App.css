@@ -347,3 +347,17 @@ header .lbl { margin-left: 2px; }
   .shinsei-preview { padding: 4px; }
   .app.narrow .est-open .lbl { display: none; }
 }
+
+/* 申請書（様式への差し込み） */
+.shinsei-preview.forms { background: #f8fafc; }
+.shinsei-forms { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; font-size: 13px; }
+.shinsei-forms-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.shinsei-forms-group { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
+.shinsei-forms-group h3 { margin: 0 0 8px; font-size: 14px; }
+.shinsei-forms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; }
+.shinsei-forms-grid .field { display: flex; flex-direction: column; gap: 3px; }
+.shinsei-forms-grid .field input, .shinsei-forms-grid .field select { font-size: 14px; padding: 6px 8px; }
+.shinsei-forms .badge.warn { background: #fef3c7; color: #92400e; border-radius: 6px; padding: 1px 6px; margin-left: 4px; font-size: 11px; }
+.shinsei-forms .badge.ok { background: #dcfce7; color: #166534; border-radius: 6px; padding: 1px 6px; margin-left: 4px; font-size: 11px; }
+.shinsei-forms .warn { color: #b45309; }
+.shinsei-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
