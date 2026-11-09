@@ -62,20 +62,45 @@ describe('同梱の自治体プロファイル', () => {
       expect(isBuiltinProfile(p.id)).toBe(true);
     }
   });
-  test('沖縄市・糸満市・南風原町は A3 二つ折り（A4 縦）、色分けは 新設=赤・既設=青・公共=黒', () => {
-    for (const id of ['okinawa-city', 'itoman', 'haebaru']) {
+  test('沖縄市・糸満市は A3 二つ折り（A4 縦）、3 市町とも色分けは 新設=赤・既設=青・公共=黒', () => {
+    for (const id of ['okinawa-city', 'itoman']) {
       const p = BUILTIN_PROFILES.find((x) => x.id === id)!;
       expect(p.paper, id).toMatchObject({ size: 'A4', orientation: 'portrait' });
       expect(p.colors, id).toEqual(DEFAULT_COLORS);
       expect(p.unverified.join(' '), id).toContain('最小勾配');
     }
-    // 糸満市は縦断面図に「管渠の大きさと勾配、ますの大きさ、地表と管渠の高さ」が明記されているので、その行は要確認に含めない
-    const itoman = BUILTIN_PROFILES.find((x) => x.id === 'itoman')!;
-    expect(itoman.unverified.join(' ')).not.toContain('表の行');
+    expect(BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!.colors).toEqual(DEFAULT_COLORS);
   });
   test('colors を省略した古いプロファイル JSON は既定の色になる', () => {
     const { colors: _c, ...rest } = STANDARD_PROFILE;
     const r = municipalityProfileSchema.safeParse(rest);
     expect(r.success && r.data.colors).toEqual(DEFAULT_COLORS);
+  });
+});
+
+describe('レビュー修正', () => {
+  test('色は #rrggbb のみ受け付ける（SVG への注入を防ぐ）', () => {
+    const bad = { ...STANDARD_PROFILE, colors: { ...DEFAULT_COLORS, newWork: '"/><img src=x onerror=alert(1)>' } };
+    expect(municipalityProfileSchema.safeParse(bad).success).toBe(false);
+    expect(municipalityProfileSchema.safeParse({ ...STANDARD_PROFILE, colors: { ...DEFAULT_COLORS, newWork: 'red' } }).success).toBe(false);
+    expect(municipalityProfileSchema.safeParse({ ...STANDARD_PROFILE, colors: { ...DEFAULT_COLORS, newWork: '#FF0000' } }).success).toBe(true);
+    expect('error' in parseProfileJson(JSON.stringify(bad))).toBe(true);
+  });
+  test('同梱プロファイル同士・standard と配列やオブジェクトを共有しない', () => {
+    for (const p of BUILTIN_PROFILES.slice(1)) {
+      expect(p.paper.titleBlockFields).not.toBe(STANDARD_PROFILE.paper.titleBlockFields);
+      expect(p.profileTable.rows).not.toBe(STANDARD_PROFILE.profileTable.rows);
+      expect(p.colors).not.toBe(STANDARD_PROFILE.colors);
+      expect(p.symbols).not.toBe(STANDARD_PROFILE.symbols);
+    }
+    expect(STANDARD_PROFILE.colors).not.toBe(DEFAULT_COLORS);
+  });
+  test('南風原町は用紙が未確認なので standard と同じ A3 横のまま。糸満市も表の項目の順番は要確認', () => {
+    const h = BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!;
+    expect(h.paper).toMatchObject({ size: 'A3', orientation: 'landscape' });
+    expect(h.unverified.join(' ')).toContain('用紙');
+    expect(h.source.title).toContain('赤');
+    const i = BUILTIN_PROFILES.find((x) => x.id === 'itoman')!;
+    expect(i.unverified.join(' ')).toContain('順番');
   });
 });

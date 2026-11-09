@@ -29,6 +29,8 @@ export function paperSize(p: MunicipalityProfile['paper']): { width: number; hei
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** 色は #rrggbb だけを属性に入れる（それ以外は既定色。プロファイルの色が属性に入るので注入を防ぐ） */
+const col = (c: string | undefined, fallback = INK) => (c && /^#[0-9a-fA-F]{6}$/.test(c) ? c : fallback);
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
 
 /** プレビュー用 SVG（単位 mm、viewBox = 用紙） */
@@ -37,21 +39,21 @@ export function sheetToSvg(sheet: Sheet): string {
   for (const o of sheet.ops) {
     switch (o.t) {
       case 'line':
-        parts.push(`<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.color ?? INK}" stroke-width="${n(o.w ?? 0.25)}"${o.dash ? ' stroke-dasharray="2 1"' : ''} stroke-linecap="round"/>`);
+        parts.push(`<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${col(o.color)}" stroke-width="${n(o.w ?? 0.25)}"${o.dash ? ' stroke-dasharray="2 1"' : ''} stroke-linecap="round"/>`);
         break;
       case 'poly':
-        parts.push(`<${o.close ? 'polygon' : 'polyline'} points="${o.pts.map(([x, y]) => `${n(x)},${n(y)}`).join(' ')}" fill="${o.fill ?? 'none'}" stroke="${o.color ?? INK}" stroke-width="${n(o.w ?? 0.25)}" stroke-linejoin="round"/>`);
+        parts.push(`<${o.close ? 'polygon' : 'polyline'} points="${o.pts.map(([x, y]) => `${n(x)},${n(y)}`).join(' ')}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.color)}" stroke-width="${n(o.w ?? 0.25)}" stroke-linejoin="round"/>`);
         break;
       case 'rect':
-        parts.push(`<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill ?? 'none'}" stroke="${o.stroke ?? INK}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
+        parts.push(`<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.stroke)}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
         break;
       case 'circle':
-        parts.push(`<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${n(o.r)}" fill="${o.fill ?? 'none'}" stroke="${o.stroke ?? INK}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
+        parts.push(`<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${n(o.r)}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.stroke)}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
         break;
       case 'text': {
         const anchor = o.anchor ?? 'start';
         const tr = o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : '';
-        parts.push(`<text x="${n(o.x)}" y="${n(o.y)}" font-size="${n(o.size)}" text-anchor="${anchor}" fill="${o.color ?? INK}"${o.bold ? ' font-weight="bold"' : ''}${tr}>${esc(o.s)}</text>`);
+        parts.push(`<text x="${n(o.x)}" y="${n(o.y)}" font-size="${n(o.size)}" text-anchor="${anchor}" fill="${col(o.color)}"${o.bold ? ' font-weight="bold"' : ''}${tr}>${esc(o.s)}</text>`);
         break;
       }
     }

@@ -3,7 +3,7 @@ import { addFloor, emptyBuilding } from '../model/building';
 import type { Doc } from '../model/doc';
 import { addPolyline, emptyNetwork } from '../model/network';
 import { placeFixture, portNodes, type FixtureType } from '../model/fixtures';
-import { STANDARD_PROFILE } from '../model/municipality';
+import { BUILTIN_PROFILES, STANDARD_PROFILE } from '../model/municipality';
 import { buildProfile, extractRoute } from '../model/profileDrawing';
 import { renderProfileSheet, renderProfileSvg } from './profileSheet';
 import { sheetsToSvg } from './sheet';
@@ -87,16 +87,45 @@ describe('排水縦断図の描画', () => {
     const svg = renderProfileSvg(m, meta);
     expect(svg).toContain('凡例');
     expect(svg).toContain('stroke="#d91e18"'); // 新設の管・汚水マス
-    expect(svg).toContain('stroke="#1f2328"'); // 公共マス
+    // 公共マスの記号（◎の点）は黒
+    expect(svg).toMatch(/<circle[^>]*fill="#1f2328"[^>]*stroke="#1f2328"/);
     const m2 = caseA();
     m2.segments[0].existing = true;
     m2.nodes[0].existing = true;
     const svg2 = renderProfileSvg(m2, meta);
     expect(svg2).toContain('stroke="#1d4ed8"');
+    expect(svg2).not.toContain('stroke="#d91e18"'); // 既設だけなら赤は無い
     // 警告は橙（赤＝新設と区別）
     const m3 = caseA();
     m3.warnings.push({ kind: 'cover', nodeId: m3.nodes[0].nodeId, message: '点 1: 土被りが少ない' });
     expect(renderProfileSvg(m3, meta)).toContain('#ea580c');
+  });
+  test('器具の無い曲がり点は、両側の区間が既設なら青、どちらかが新設なら赤', () => {
+    // A(マス) → 曲がり点 → B(公共マス)。区間 1 既設、区間 2 新設
+    const d = base(-100);
+    const a = manhole(d, 'manholeSewage', 0, 0, -700);
+    const b = manhole(a.doc, 'publicSewage', 8000, 0, -800);
+    const r = addPolyline(b.doc.network, [v(0, 0, -700), v(4000, 0, -750), v(8000, 0, -800)], { system: 'sewage', diameter: 100, material: 'VU' }, { startNodeId: a.port, endNodeId: b.port });
+    const seg1 = r.segmentIds[0], seg2 = r.segmentIds[1];
+    const mk = (ex1: boolean, ex2: boolean) => {
+      const net = { ...r.net, segments: { ...r.net.segments, [seg1]: { ...r.net.segments[seg1], existing: ex1 }, [seg2]: { ...r.net.segments[seg2], existing: ex2 } } };
+      const route = extractRoute(net, b.port);
+      return buildProfile({ ...b.doc, network: net }, 'route' in route ? route.route : [], STANDARD_PROFILE, 't');
+    };
+    const both = renderProfileSvg(mk(true, true), meta);
+    expect(both).toMatch(/<circle[^>]*r="0.8"[^>]*fill="#1d4ed8"/);
+    const mixed = renderProfileSvg(mk(true, false), meta);
+    expect(mixed).toMatch(/<circle[^>]*r="0.8"[^>]*fill="#d91e18"/);
+  });
+  test('A4 縦でも凡例が表題欄に重ならず収まる（糸満市）', () => {
+    const m = caseA();
+    m.profile = BUILTIN_PROFILES.find((p) => p.id === 'itoman')!;
+    const sheet = renderProfileSheet(m, meta);
+    expect(sheet.width).toBe(210);
+    const legend = sheet.ops.find((o) => o.t === 'text' && o.s.startsWith('凡例')) as { s: string; x: number } | undefined;
+    expect(legend).toBeTruthy();
+    // 文字数 × 2.4mm が 表題欄の左端 (210-10-120=80) − 余白 に収まる
+    expect(legend!.s.length * 2.4).toBeLessThanOrEqual(80 - legend!.x + 1);
   });
   test('unverified は要確認として出る', () => {
     const m = caseA();

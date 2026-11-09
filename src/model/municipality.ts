@@ -19,6 +19,9 @@ export const SYMBOL_LABEL: Record<SymbolId, string> = {
   circle: '○', square: '□', circleDot: '◎（点）', squareCross: '□に×', triangle: '△', meter: 'メーター（M）', valve: 'バルブ（蝶）', faucet: '水栓',
 };
 
+/** 色は #rrggbb だけ（SVG の属性にそのまま入るので、他の形式や文字列は受け付けない） */
+export const colorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, '色は #rrggbb の形式');
+
 export const municipalityProfileSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -49,10 +52,10 @@ export const municipalityProfileSchema = z.object({
   }),
   /** 図面の色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒）。省略時は既定 */
   colors: z.object({
-    newWork: z.string().default('#d91e18'),
-    existing: z.string().default('#1d4ed8'),
-    public: z.string().default('#1f2328'),
-  }).default({ newWork: '#d91e18', existing: '#1d4ed8', public: '#1f2328' }),
+    newWork: colorSchema.default('#d91e18'),
+    existing: colorSchema.default('#1d4ed8'),
+    public: colorSchema.default('#1f2328'),
+  }).default(() => ({ newWork: '#d91e18', existing: '#1d4ed8', public: '#1f2328' })),
 });
 export type MunicipalityProfile = z.infer<typeof municipalityProfileSchema>;
 export type SlopeFormat = MunicipalityProfile['profileTable']['slopeFormat'];
@@ -89,18 +92,20 @@ export const STANDARD_PROFILE: MunicipalityProfile = {
   },
   riser: { lineStyle: 'single', diameterLabelPos: 'above', showFloorLines: true, heightLabel: 'FL+' },
   paper: { size: 'A3', orientation: 'landscape', titleBlockFields: ['工事名', '申請者', '施工者', '図面名', '縮尺', '作成日'] },
-  colors: DEFAULT_COLORS,
+  colors: { ...DEFAULT_COLORS },
 };
 
 /** standard を基に、自治体の公開資料で確認できた項目だけを上書きする */
-function municipal(over: Partial<MunicipalityProfile> & Pick<MunicipalityProfile, 'id' | 'name' | 'source' | 'unverified'>): MunicipalityProfile {
-  return { ...structuredClone(STANDARD_PROFILE), ...over, paper: { ...STANDARD_PROFILE.paper, ...(over.paper ?? {}) }, profileTable: { ...structuredClone(STANDARD_PROFILE.profileTable), ...(over.profileTable ?? {}) } };
+function municipal(over: Partial<Omit<MunicipalityProfile, 'paper' | 'profileTable' | 'colors'>> & { paper?: Partial<MunicipalityProfile['paper']>; profileTable?: Partial<MunicipalityProfile['profileTable']>; colors?: Partial<MunicipalityProfile['colors']> } & Pick<MunicipalityProfile, 'id' | 'name' | 'source' | 'unverified'>): MunicipalityProfile {
+  const base = structuredClone(STANDARD_PROFILE);
+  // 配列・オブジェクトを standard や他のプロファイルと共有しない（どこかで破壊的に変えても波及しないように）
+  return structuredClone({ ...base, ...over, paper: { ...base.paper, ...(over.paper ?? {}) }, profileTable: { ...base.profileTable, ...(over.profileTable ?? {}) }, colors: { ...base.colors, ...(over.colors ?? {}) } });
 }
 
 /** 南部の自治体に共通する「要確認」（公開資料に書かれていない項目） */
 const COMMON_UNVERIFIED = ['最小勾配（口径ごと）', '最小土被り', '勾配の書き方（1/100・‰・%）', 'ますの記号', '表題欄の項目'];
 const JGES_TEXT = '設計図は「排水設備工事責任技術者講習用テキスト」（日本下水道協会）に沿って作成する';
-const A3_FOLDED = { size: 'A4' as const, orientation: 'portrait' as const };
+const A3_FOLDED: Partial<MunicipalityProfile['paper']> = { size: 'A4', orientation: 'portrait' };
 
 /**
  * 同梱の自治体プロファイル（2026-11-10 に各自治体の公開ページを確認）。
@@ -110,21 +115,20 @@ const A3_FOLDED = { size: 'A4' as const, orientation: 'portrait' as const };
 export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
   municipal({
     id: 'okinawa-city', name: '沖縄市',
-    source: { title: '沖縄市 下水道排水設備計画確認申請書（様式第1号）の注意書き。' + JGES_TEXT + '。A3 二つ折り（申請書→平面図及び縦断面図→配管立図→見取図）', url: 'https://www.city.okinawa.okinawa.jp/documents/318/1-1sinsei.pdf', checkedAt: '2026-11-10' },
+    source: { title: '沖縄市 下水道排水設備計画確認申請書（様式第1号）の注意書き（新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。A3 二つ折り（申請書→平面図及び縦断面図→配管立図→見取図）', url: 'https://www.city.okinawa.okinawa.jp/documents/318/1-1sinsei.pdf', checkedAt: '2026-11-10' },
     unverified: ['表の行（項目・順番）', '縮尺', ...COMMON_UNVERIFIED],
-    paper: { ...A3_FOLDED, titleBlockFields: STANDARD_PROFILE.paper.titleBlockFields },
+    paper: A3_FOLDED,
   }),
   municipal({
     id: 'itoman', name: '糸満市',
-    source: { title: '糸満市「【公共下水道】排水設備工事等の申請について」。平面図は 1/200 程度、縦断面図は管渠の大きさと勾配・ますの大きさ・地表と管渠の高さ。' + JGES_TEXT + '。A3 見開き', url: 'https://www.city.itoman.lg.jp/soshiki/25/22748.html', checkedAt: '2026-11-10' },
-    unverified: ['縦断図の縮尺（平面図は 1/200 程度と明記）', ...COMMON_UNVERIFIED],
-    paper: { ...A3_FOLDED, titleBlockFields: STANDARD_PROFILE.paper.titleBlockFields },
+    source: { title: '糸満市「【公共下水道】排水設備工事等の申請について」。平面図は 1/200 程度、縦断面図は管渠の大きさと勾配・ますの大きさ・地表と管渠の高さ（新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。A3 見開き', url: 'https://www.city.itoman.lg.jp/soshiki/25/22748.html', checkedAt: '2026-11-10' },
+    unverified: ['表の項目の順番と名前（書く内容は明記: 管渠の大きさと勾配・ますの大きさ・地表と管渠の高さ）', '縦断図の縮尺（平面図は 1/200 程度と明記）', ...COMMON_UNVERIFIED],
+    paper: A3_FOLDED,
   }),
   municipal({
     id: 'haebaru', name: '南風原町',
-    source: { title: '南風原町 排水設備計画確認申請書の注意書き（図面は平面図及び縦断面図・配管立図・見取図）。' + JGES_TEXT, url: 'https://www.town.haebaru.lg.jp/uploaded/attachment/9638.pdf', checkedAt: '2026-11-10' },
-    unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ（沖縄市・糸満市と同じ A3 二つ折りと推定）', ...COMMON_UNVERIFIED],
-    paper: { ...A3_FOLDED, titleBlockFields: STANDARD_PROFILE.paper.titleBlockFields },
+    source: { title: '南風原町 排水設備計画確認申請書の注意書き（図面は平面図及び縦断面図・配管立図・見取図。新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。用紙サイズ・綴じ方の記載なし', url: 'https://www.town.haebaru.lg.jp/uploaded/attachment/9638.pdf', checkedAt: '2026-11-10' },
+    unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ（申請書に記載なし。沖縄市・糸満市は A3 二つ折り）', ...COMMON_UNVERIFIED],
   }),
   municipal({
     id: 'naha', name: '那覇市',
