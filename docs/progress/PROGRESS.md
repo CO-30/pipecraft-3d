@@ -246,7 +246,7 @@
 ## 追加: 申請図面（排水縦断図・給水立面図）と自治体プロファイル（2026-11-09 ユーザー依頼）
 - 目的: plusCAD水道の「平面図→縦断図・立面図の自動作図」を費用ゼロで。自治体差は JSON の自治体プロファイルで吸収
 - 設計: `docs/superpowers/specs/2026-11-09-shinsei-zumen-design.md`（末尾「実装時の決定」も参照）、計画: `docs/superpowers/plans/2026-11-09-shinsei-zumen.md`
-- ブランチ: `feat/shinsei-zumen`（main `d7a5ede` から派生）→ PR 作成済み。**main へのマージ・Pages 更新はユーザー確認待ち**
+- ブランチ: `feat/shinsei-zumen`（main `d7a5ede` から派生）→ **PR #19** 作成済み。**main へのマージ・Pages 更新はユーザー確認待ち**
 - 実装
   - データ（保存形式は v5 のまま、追加はすべて省略可）: 現場 `site`（`designGL`＝1階FL基準の設計地盤高、`municipalityProfileId`）、区間 `slopeLocked`、ノード `groundLevel`（UI なし）、器具 `params`（マスの口径・形状・管底高）。`slope` は既存どおり比率で保存し表示だけ 1/n
   - マス 6 種（`src/model/fixtures.ts`: 汚水・雨水・トラップ・インバート・公共汚水・公共雨水。接続口は中心 1 つ＝管底高、既定 GL−600）。3D は円筒/直方体で地面から下へ、2D は丸/角に略号。器具パネルで口径・形状・管底高（FL 基準）・深さ
@@ -269,7 +269,7 @@
 - 次段階（範囲外）: 申請書・数量表の Excel 様式差し込み（C 案）、本管図、管割図・日報、水理計算
 
 ## 次の作業
-- 申請図面（PR `feat/shinsei-zumen`）を main へマージ・Pages 更新（ユーザーの明示指示が必要）
+- 申請図面（PR #19 `feat/shinsei-zumen`）を main へマージ・Pages 更新（ユーザーの明示指示が必要）
 - 申請図面の実機確認と自治体手引きとの照合 → 個別自治体プロファイルの追加（那覇市・豊見城市など）
 - 次段階 C 案: 申請書・数量表の Excel 様式差し込み
 - 実機テストの結果を受けて操作性の改善（Phase 5 の残り）
