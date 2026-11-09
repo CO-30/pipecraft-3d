@@ -135,4 +135,5 @@ plusCAD水道（水道設備工事業向け申請CAD）の「平面図から縦�
 - 描画は用紙 mm 座標の命令列（`Sheet`）を SVG（プレビュー）と pdf-lib（PDF）の両方に変換する。PDF では多角形の塗りつぶしを省略（輪郭のみ）。
 - 設定画面はホームではなく申請図面画面内の「⚙ プロファイルを管理」から開く。
 - `groundLevel` はノードのフィールドと計算だけ用意（UI なし）。
+- 沖縄市の実例に合わせた項目（2026-11-10）: `datum`（公共桝の管底 ±0）、`pipeSpecFormat`（100VU）、`lengthDecimals`、`manholeLabel: above`（NO.n を図の上に）、`slopeFormat: per100`、`drainageIsometric`、`riser.lineStyle: isometric`（アイソメ図）。
 - 色分け（2026-11-10）: プロファイルの `colors`（新設・増設＝赤、既設＝青、公共下水道＝黒。沖縄市・糸満市・南風原町の申請書の指示）。区間・マスの `existing` で既設を指定。警告は橙。
