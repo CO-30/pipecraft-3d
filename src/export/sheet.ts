@@ -19,6 +19,8 @@ export const PAPER_MM = { A3: [420, 297], A4: [297, 210] } as const;
 export const INK = '#1f2328';
 export const GRAY = '#8b8f96';
 export const RED = '#d91e18';
+/** 警告の色（新設の赤と区別するため橙） */
+export const WARN = '#ea580c';
 export const PT_PER_MM = 72 / 25.4;
 
 export function paperSize(p: MunicipalityProfile['paper']): { width: number; height: number } {
@@ -27,6 +29,8 @@ export function paperSize(p: MunicipalityProfile['paper']): { width: number; hei
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** 色は #rrggbb だけを属性に入れる（それ以外は既定色。プロファイルの色が属性に入るので注入を防ぐ） */
+const col = (c: string | undefined, fallback = INK) => (c && /^#[0-9a-fA-F]{6}$/.test(c) ? c : fallback);
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
 
 /** プレビュー用 SVG（単位 mm、viewBox = 用紙） */
@@ -35,21 +39,21 @@ export function sheetToSvg(sheet: Sheet): string {
   for (const o of sheet.ops) {
     switch (o.t) {
       case 'line':
-        parts.push(`<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.color ?? INK}" stroke-width="${n(o.w ?? 0.25)}"${o.dash ? ' stroke-dasharray="2 1"' : ''} stroke-linecap="round"/>`);
+        parts.push(`<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${col(o.color)}" stroke-width="${n(o.w ?? 0.25)}"${o.dash ? ' stroke-dasharray="2 1"' : ''} stroke-linecap="round"/>`);
         break;
       case 'poly':
-        parts.push(`<${o.close ? 'polygon' : 'polyline'} points="${o.pts.map(([x, y]) => `${n(x)},${n(y)}`).join(' ')}" fill="${o.fill ?? 'none'}" stroke="${o.color ?? INK}" stroke-width="${n(o.w ?? 0.25)}" stroke-linejoin="round"/>`);
+        parts.push(`<${o.close ? 'polygon' : 'polyline'} points="${o.pts.map(([x, y]) => `${n(x)},${n(y)}`).join(' ')}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.color)}" stroke-width="${n(o.w ?? 0.25)}" stroke-linejoin="round"/>`);
         break;
       case 'rect':
-        parts.push(`<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill ?? 'none'}" stroke="${o.stroke ?? INK}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
+        parts.push(`<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.stroke)}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
         break;
       case 'circle':
-        parts.push(`<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${n(o.r)}" fill="${o.fill ?? 'none'}" stroke="${o.stroke ?? INK}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
+        parts.push(`<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${n(o.r)}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.stroke)}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
         break;
       case 'text': {
         const anchor = o.anchor ?? 'start';
         const tr = o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : '';
-        parts.push(`<text x="${n(o.x)}" y="${n(o.y)}" font-size="${n(o.size)}" text-anchor="${anchor}" fill="${o.color ?? INK}"${o.bold ? ' font-weight="bold"' : ''}${tr}>${esc(o.s)}</text>`);
+        parts.push(`<text x="${n(o.x)}" y="${n(o.y)}" font-size="${n(o.size)}" text-anchor="${anchor}" fill="${col(o.color)}"${o.bold ? ' font-weight="bold"' : ''}${tr}>${esc(o.s)}</text>`);
         break;
       }
     }
@@ -128,38 +132,40 @@ export function drawSymbol(sheet: Sheet, id: string, x: number, y: number, r: nu
   const ops = sheet.ops;
   switch (id) {
     case 'square':
-      ops.push({ t: 'rect', x: x - r, y: y - r, w: r * 2, h: r * 2, stroke: color, fill: '#fff', lw: 0.3 });
+      ops.push({ t: 'rect', x: x - r, y: y - r, w: r * 2, h: r * 2, stroke: color, fill: '#ffffff', lw: 0.3 });
       break;
     case 'squareCross':
-      ops.push({ t: 'rect', x: x - r, y: y - r, w: r * 2, h: r * 2, stroke: color, fill: '#fff', lw: 0.3 });
+      ops.push({ t: 'rect', x: x - r, y: y - r, w: r * 2, h: r * 2, stroke: color, fill: '#ffffff', lw: 0.3 });
       ops.push({ t: 'line', x1: x - r, y1: y - r, x2: x + r, y2: y + r, color }, { t: 'line', x1: x - r, y1: y + r, x2: x + r, y2: y - r, color });
       break;
     case 'circleDot':
-      ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#fff', lw: 0.3 }, { t: 'circle', cx: x, cy: y, r: r * 0.35, stroke: color, fill: color });
+      ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#ffffff', lw: 0.3 }, { t: 'circle', cx: x, cy: y, r: r * 0.35, stroke: color, fill: color });
       break;
     case 'triangle':
-      ops.push({ t: 'poly', pts: [[x, y - r], [x + r, y + r], [x - r, y + r]], close: true, color, fill: '#fff' });
+      ops.push({ t: 'poly', pts: [[x, y - r], [x + r, y + r], [x - r, y + r]], close: true, color, fill: '#ffffff' });
       break;
     case 'meter':
-      ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#fff', lw: 0.3 }, { t: 'text', x, y: y + r * 0.6, s: 'M', size: r * 1.6, anchor: 'middle', color });
+      ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#ffffff', lw: 0.3 }, { t: 'text', x, y: y + r * 0.6, s: 'M', size: r * 1.6, anchor: 'middle', color });
       break;
     case 'valve':
-      ops.push({ t: 'poly', pts: [[x - r, y - r], [x + r, y + r], [x + r, y - r], [x - r, y + r]], close: true, color, fill: '#fff' });
+      ops.push({ t: 'poly', pts: [[x - r, y - r], [x + r, y + r], [x + r, y - r], [x - r, y + r]], close: true, color, fill: '#ffffff' });
       break;
     case 'faucet':
       ops.push({ t: 'line', x1: x, y1: y, x2: x, y2: y - r * 1.5, color }, { t: 'line', x1: x, y1: y - r * 1.5, x2: x + r * 1.5, y2: y - r * 1.5, color }, { t: 'circle', cx: x, cy: y, r: r * 0.5, stroke: color, fill: color });
       break;
     default:
-      ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#fff', lw: 0.3 });
+      ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#ffffff', lw: 0.3 });
   }
 }
 
 export const TITLE_W = 120;
+/** 表題欄の幅: 用紙幅の 40% まで（A4 縦では 84mm） */
+export const titleWidth = (sheetWidth: number) => Math.min(TITLE_W, Math.round(sheetWidth * 0.4));
 export const DISCLAIMER = '本図は作図支援ツール（PipeCraft 3D）の出力です。自治体の審査基準への適合を保証しません。';
 
 /** 右下の表題欄（幅 120mm、1 行 7mm）。免責は表題欄の下に小さく */
 export function drawTitleBlock(sheet: Sheet, fields: { label: string; value: string }[], disclaimer = DISCLAIMER): void {
-  const rowH = 7, w = TITLE_W, labelW = 28;
+  const rowH = 7, w = titleWidth(sheet.width), labelW = Math.min(28, Math.round(w * 0.3));
   const h = rowH * fields.length;
   const x0 = sheet.width - 10 - w, y0 = sheet.height - 10 - h;
   sheet.ops.push({ t: 'rect', x: x0, y: y0, w, h, lw: 0.5 });

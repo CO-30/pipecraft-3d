@@ -3,7 +3,7 @@ import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork, type Network } from './network';
 import { placeFixture, portNodes, type FixtureType } from './fixtures';
-import { STANDARD_PROFILE } from './municipality';
+import { BUILTIN_PROFILES, STANDARD_PROFILE } from './municipality';
 import { branchPoints, buildProfile, extractRoute, outerDiameter, trimToManholes } from './profileDrawing';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -115,6 +115,58 @@ describe('trimToManholes', () => {
   });
 });
 
+describe('沖縄市の様式', () => {
+  test('datum publicInvert: 公共桝の管底を 0 にして全部ずらす。GL の差 glDiff は下流端基準。桝は上流から NO.1', () => {
+    const { doc, b } = caseA();
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    const r = extractRoute(doc.network, b);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], p, 't');
+    expect(m.nodes.map((n) => n.invertLevel)).toEqual([100, 0]); // -700, -800 → +800
+    expect(m.nodes.map((n) => n.groundLevel)).toEqual([700, 700]); // -100 → +800
+    expect(m.nodes.map((n) => n.glDiff)).toEqual([0, 0]);
+    expect(m.nodes[0].cover).toBe(486); // 土被りは変わらない
+    expect(m.nodes[0].manhole?.name).toBe('NO.1汚水マス');
+    expect(m.nodes[1].manhole?.name).toBe('公共汚水マス');
+    expect(m.segments[0]).toMatchObject({ slopeText: '1.0/100', pipeSpec: '100VU' });
+    expect(m.datumLabel).toBe('公共桝の管底を ±0 とする');
+  });
+  test('下流端が公共桝でなければ基準を動かさず、警告を出す。枝は本線の基準と番号を引き継ぐ', () => {
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    // 公共桝なし: a(汚水マス) → b(汚水マス)
+    let d = base(-100);
+    const a = manhole(d, 'manholeSewage', 0, 0, -700); d = a.doc;
+    const b = manhole(d, 'manholeSewage', 5000, 0, -750); d = b.doc;
+    const net = pipe(d.network, [v(0, 0, -700), v(5000, 0, -750)], a.port, b.port).net;
+    const r = extractRoute(net, b.port);
+    const m = buildProfile({ ...d, network: net }, 'route' in r ? r.route : [], p, 't');
+    expect(m.nodes.map((n) => n.invertLevel)).toEqual([-700, -750]); // 動かさない
+    expect(m.datumLabel).toBeUndefined();
+    expect(m.warnings.map((w) => w.kind)).toContain('datum');
+    // 枝: 本線の基準 z0 と NO. の続きを opts で渡す
+    const m2 = buildProfile({ ...d, network: net }, 'route' in r ? r.route : [], p, '枝', {}, { datumZ: -800, manholeNoStart: 3 });
+    expect(m2.nodes.map((n) => n.invertLevel)).toEqual([100, 50]);
+    expect(m2.nodes.map((n) => n.manhole?.name)).toEqual(['NO.4汚水マス', 'NO.5汚水マス']);
+    expect(m2.datumLabel).toBe('公共桝の管底を ±0 とする');
+    expect(m2.warnings.map((w) => w.kind)).not.toContain('datum');
+  });
+  test('本線は datumZ と manholeCount を返す（枝へ引き継ぐため）', () => {
+    const { doc, b } = caseA();
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    const r = extractRoute(doc.network, b);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], p, 't');
+    expect(m.datumZ).toBe(-800);
+    expect(m.manholeCount).toBe(1);
+  });
+  test('datum absolute（standard）では glDiff も name も無い', () => {
+    const { doc, b } = caseA();
+    const r = extractRoute(doc.network, b);
+    const m = buildProfile(doc, 'route' in r ? r.route : [], STANDARD_PROFILE, 't');
+    expect(m.nodes[0].glDiff).toBeUndefined();
+    expect(m.nodes[0].manhole?.name).toBe('汚水マス');
+    expect(m.datumLabel).toBeUndefined();
+  });
+});
+
 describe('縦断図の計算（手計算ケース）', () => {
   test('外径表', () => {
     expect(outerDiameter(100)).toBe(114);
@@ -143,6 +195,19 @@ describe('縦断図の計算（手計算ケース）', () => {
     const m = buildProfile(doc, 'route' in r ? r.route : [], STANDARD_PROFILE, 't', { [a]: '→別図 枝1' });
     expect(m.nodes[0].note).toBe('→別図 枝1');
     expect(m.nodes[1].note).toBeUndefined();
+  });
+  test('既設の区間・マスは existing、公共マスは isPublic', () => {
+    const { doc, a, b, seg } = caseA();
+    const net = { ...doc.network, segments: { ...doc.network.segments, [seg]: { ...doc.network.segments[seg], existing: true } } };
+    const fa = doc.network.nodes[a].fixtureId!;
+    const d2 = { ...doc, network: net, fixtures: { ...doc.fixtures, [fa]: { ...doc.fixtures[fa], params: { ...doc.fixtures[fa].params, existing: true } } } };
+    const r = extractRoute(net, b);
+    const m = buildProfile(d2, 'route' in r ? r.route : [], STANDARD_PROFILE, 't');
+    expect(m.segments[0].existing).toBe(true);
+    expect(m.nodes[0].existing).toBe(true);
+    expect(m.nodes[0].manhole?.isPublic).toBe(false);
+    expect(m.nodes[1].manhole?.isPublic).toBe(true);
+    expect(m.nodes[1].existing).toBeFalsy();
   });
   test('ケース B: 折れ 2 区間（上流→下流の順に並ぶ）', () => {
     let d = base(0);

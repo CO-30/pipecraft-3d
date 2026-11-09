@@ -28,6 +28,13 @@ describe('用紙描画', () => {
     expect(Math.round(width)).toBe(1191);
     expect(Math.round(height)).toBe(842);
   });
+  test('sheetToSvg は色を検証し、#rrggbb 以外は既定色にする（属性への注入を防ぐ）', () => {
+    const sheet: Sheet = { width: 100, height: 100, ops: [{ t: 'line', x1: 0, y1: 0, x2: 1, y2: 1, color: '"/><img src=x onerror=alert(1)>' }, { t: 'text', x: 1, y: 1, s: 'a', size: 3, color: 'red' }] };
+    const svg = sheetToSvg(sheet);
+    expect(svg).not.toContain('<img');
+    expect(svg).not.toContain('onerror');
+    expect(svg).not.toContain('stroke="red"');
+  });
   test('drawSymbol と drawTitleBlock は命令を追加する', () => {
     const sheet: Sheet = { width: 420, height: 297, ops: [] };
     drawSymbol(sheet, 'square', 10, 10, 2);

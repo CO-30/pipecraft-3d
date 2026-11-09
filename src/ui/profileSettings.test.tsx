@@ -17,7 +17,7 @@ describe('自治体プロファイルの管理', () => {
     expect((screen.getByTestId('pf-name') as HTMLInputElement).value).toContain('のコピー');
     fireEvent.change(screen.getByTestId('pf-name'), { target: { value: '那覇市（仮）' } });
     fireEvent.click(screen.getByTestId('pf-save'));
-    await waitFor(() => expect(screen.getAllByTestId(/^profile-row-/)).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByTestId(/^profile-row-/)).toHaveLength(8)); // 同梱 7 ＋ 複製 1
     expect(useProfiles.getState().user[0].name).toBe('那覇市（仮）');
   });
 

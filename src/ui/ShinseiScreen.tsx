@@ -13,6 +13,8 @@ import { branchPoints, buildProfile, extractRoute, trimToManholes, type ProfileM
 import { buildRiser, defaultRiserRoot, type RiserModel } from '../model/riser';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderRiserSheet } from '../export/riserSheet';
+import { buildIsometric } from '../model/isometric';
+import { renderIsoSheet } from '../export/isoSheet';
 import { sheetsToSvg, sheetToSvg, type Sheet } from '../export/sheet';
 import { useProfiles } from './useProfiles';
 import { NumField } from './Panels';
@@ -131,15 +133,34 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       // 分岐の枝は別図。本線の分岐点に「→別図 枝n」と記す
       const notes: Record<string, string> = {};
       r.branches.forEach((b, i) => { notes[b.atNodeId] = [notes[b.atNodeId], `→別図 枝${i + 1}`].filter(Boolean).join(' '); });
-      const models: ProfileModel[] = [buildProfile(doc, trimToManholes(doc, r.route), profile, PROFILE_TITLE, notes)];
-      r.branches.forEach((b, i) => models.push(buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${PROFILE_TITLE}（枝${i + 1}: ${nodeLabel(b.atNodeId)} から）`)));
-      const sheets = models.map((m) => renderProfileSheet(m, { siteName, date }));
+      const main = buildProfile(doc, trimToManholes(doc, r.route), profile, PROFILE_TITLE, notes);
+      const models: ProfileModel[] = [main];
+      // 枝は本線の基準（公共桝の管底）と桝番号の続きを使う
+      let manholeNoStart = main.manholeCount;
+      r.branches.forEach((b, i) => {
+        const bm = buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${PROFILE_TITLE}（枝${i + 1}: ${nodeLabel(b.atNodeId)} から）`, {}, { datumZ: main.datumZ, manholeNoStart });
+        manholeNoStart += bm.manholeCount;
+        models.push(bm);
+      });
+      // 沖縄市の様式: 縦断図の上に排水のアイソメ図（立面図・展開図）
+      const iso = profile.profileTable.drainageIsometric ? buildIsometric(doc, 'drain', profile) : undefined;
+      const sheets = models.map((m, i) => renderProfileSheet(m, { siteName, date }, i === 0 ? iso : undefined));
       const warnings = models.flatMap((m) => m.warnings.map((w) => w.message));
+      if (iso && iso.lines.length === 0) warnings.push('排水の立面図（展開図）を描く配管がないため、縦断図だけを出しています');
       for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）は図に含めていません。別の下流端を選んで別に作図してください`);
       if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
       return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings, error: null, kind };
     }
     if (!rootId) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
+    if (profile.riser.lineStyle === 'isometric') {
+      // アイソメ図（3D を斜めから見た展開図）。沖縄市の様式
+      const iso = buildIsometric(doc, 'water', profile);
+      if (iso.lines.length === 0) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
+      const sheet = renderIsoSheet(iso, profile, { siteName, date, title: '立面図（展開図）' });
+      const warnings: string[] = [];
+      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
+      return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
+    }
     const m: RiserModel = buildRiser(doc, rootId, profile, RISER_TITLE);
     const sheet = renderRiserSheet(m, { siteName, date });
     const warnings = [...m.warnings];

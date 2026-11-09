@@ -143,7 +143,7 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
         <div className="row">
           <label className="field">勾配の書き方
             <select data-testid="pf-slope-format" value={pt.slopeFormat} onChange={(e) => setPt({ slopeFormat: e.target.value as typeof pt.slopeFormat })}>
-              <option value="ratio">1/100</option><option value="permille">10.0‰</option><option value="percent">1.00%</option>
+              <option value="ratio">1/100</option><option value="permille">10.0‰</option><option value="percent">1.00%</option><option value="per100">1.0/100</option>
             </select>
           </label>
           <label className="field">単位
@@ -154,8 +154,26 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
         </div>
         <label className="field">最小勾配（口径:分母 をカンマ区切り）<input data-testid="pf-minslope" value={minSlope} onChange={(e) => setMinSlope(e.target.value)} placeholder="75:100, 100:100, 150:200" /></label>
         <label className="field">最小土被り(mm) <input type="number" value={pt.minCover} onChange={(e) => setPt({ minCover: Number(e.target.value) })} /></label>
+        <div className="row">
+          <label className="field">高さの基準
+            <select value={pt.datum} onChange={(e) => setPt({ datum: e.target.value as 'absolute' | 'publicInvert' })}><option value="absolute">1階 FL 基準</option><option value="publicInvert">公共桝の管底を ±0</option></select>
+          </label>
+          <label className="field">管種口径の書き方
+            <select value={pt.pipeSpecFormat} onChange={(e) => setPt({ pipeSpecFormat: e.target.value as 'materialFirst' | 'diameterFirst' })}><option value="materialFirst">VUφ100</option><option value="diameterFirst">100VU</option></select>
+          </label>
+          <label className="field">距離の桁
+            <select value={pt.lengthDecimals} onChange={(e) => setPt({ lengthDecimals: Number(e.target.value) as 2 | 3 })}><option value={3}>0.000</option><option value={2}>0.00</option></select>
+          </label>
+          <label className="field">桝の名前
+            <select value={pt.manholeLabel} onChange={(e) => setPt({ manholeLabel: e.target.value as 'table' | 'above' })}><option value="table">表に書く</option><option value="above">図の上に NO.1〜</option></select>
+          </label>
+          <label className="field inline"><input type="checkbox" checked={pt.drainageIsometric} onChange={(e) => setPt({ drainageIsometric: e.target.checked })} /> 縦断図の上に排水のアイソメ図</label>
+        </div>
         <h3>立面図</h3>
         <div className="row">
+          <label className="field">描き方
+            <select data-testid="pf-riser-style" value={p.riser.lineStyle} onChange={(e) => setP({ ...p, riser: { ...p.riser, lineStyle: e.target.value as 'single' | 'isometric' } })}><option value="single">系統図（平ら）</option><option value="isometric">アイソメ図（展開図）</option></select>
+          </label>
           <label className="field">口径の位置
             <select value={p.riser.diameterLabelPos} onChange={(e) => setP({ ...p, riser: { ...p.riser, diameterLabelPos: e.target.value as 'above' | 'side' } })}><option value="above">線の上</option><option value="side">横</option></select>
           </label>
@@ -163,6 +181,12 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
             <select value={p.riser.heightLabel} onChange={(e) => setP({ ...p, riser: { ...p.riser, heightLabel: e.target.value as 'FL+' | 'GL+' } })}><option value="FL+">FL（各階の床）</option><option value="GL+">GL（設計地盤）</option></select>
           </label>
           <label className="field inline"><input type="checkbox" checked={p.riser.showFloorLines} onChange={(e) => setP({ ...p, riser: { ...p.riser, showFloorLines: e.target.checked } })} /> 階の線を描く</label>
+        </div>
+        <h3>色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒）</h3>
+        <div className="row">
+          {([['newWork', '新設・増設'], ['existing', '既設'], ['public', '公共下水道']] as const).map(([k, label]) => (
+            <label key={k} className="field inline">{label} <input type="color" data-testid={`pf-color-${k}`} value={p.colors[k]} onChange={(e) => setP({ ...p, colors: { ...p.colors, [k]: e.target.value } })} /></label>
+          ))}
         </div>
         <h3>用紙</h3>
         <div className="row">
