@@ -34,6 +34,8 @@ export type PipeNode = {
   fitting?: { type: string; degree: number };
   /** 梁・軒などを避けるために作った曲がり（数量表の内訳用） */
   avoid?: 'beam' | 'eave' | 'balcony';
+  /** 申請図面: この点の地盤高(mm、絶対)。未指定なら現場の設計GL（将来の拡張。UI なし） */
+  groundLevel?: number;
 };
 
 export type SystemType =
@@ -62,6 +64,8 @@ export type Segment = SegmentAttrs & {
   note?: string;
   /** 設計勾配（0.02 = 1/50）。排水管に勾配をつけたときに記録 */
   slope?: number;
+  /** 勾配固定: 上流端の高さが変わったら下流端を勾配から再計算する（下流端を手で動かすと解除） */
+  slopeLocked?: boolean;
   /** 支持金具（未指定 = 自動） */
   support?: 'saddle' | 'levelBand' | 'tBracket' | 'none';
   /** 立面（外壁）で描いた配管: その立面の ID（取付の変更を反映するため） */

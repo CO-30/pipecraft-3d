@@ -96,3 +96,122 @@ export function applySlope(net: Network, outletId: string, slope: number | 'auto
   if (validateNetwork(out).length) return null;
   return { net: out, nodes: moved, segments: used.size };
 }
+
+/** その区間を通らずに node から排水管をたどって到達できるノードに pred を満たすものがあるか */
+function sideReaches(net: Network, s: Segment, startId: string, pred: (nodeId: string) => boolean): boolean {
+  const seen = new Set<string>([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    if (pred(cur)) return true;
+    for (const t of Object.values(net.segments)) {
+      if (t.id === s.id || !isDrain(t.system) || (t.a !== cur && t.b !== cur)) continue;
+      const o = t.a === cur ? t.b : t.a;
+      if (!seen.has(o)) { seen.add(o); queue.push(o); }
+    }
+  }
+  return false;
+}
+
+/**
+ * 区間の下流端。isOutlet（マス・流末の判定）が与えられ、片側だけがそこへ届くならその側。
+ * そうでなければ高さが低いほう。同じ高さなら b（描いた向きの終点）。
+ */
+export function downstreamEnd(net: Network, s: Segment, isOutlet?: (nodeId: string) => boolean): 'a' | 'b' {
+  if (isOutlet) {
+    const ra = sideReaches(net, s, s.a, isOutlet), rb = sideReaches(net, s, s.b, isOutlet);
+    if (ra !== rb) return ra ? 'a' : 'b';
+  }
+  // 隣の固定区間とのつながりで決める: 片方の端から固定区間が流れ出て（その端が高い）いればその端が下流（流れが続く）。
+  // それが無ければ、片方の端へ固定区間が流れ込んで（その端が低い）いればその端が上流
+  const neighbors = (nodeId: string) => Object.values(net.segments).filter((t) => t.id !== s.id && t.slopeLocked && isDrain(t.system) && (t.a === nodeId || t.b === nodeId));
+  const leaves = (nodeId: string) => neighbors(nodeId).some((t) => net.nodes[t.a === nodeId ? t.b : t.a].pos.z < net.nodes[nodeId].pos.z - 0.05);
+  const arrives = (nodeId: string) => neighbors(nodeId).some((t) => net.nodes[t.a === nodeId ? t.b : t.a].pos.z > net.nodes[nodeId].pos.z + 0.05);
+  const la = leaves(s.a), lb = leaves(s.b);
+  if (la !== lb) return la ? 'a' : 'b';
+  const fa = arrives(s.a), fb = arrives(s.b);
+  if (fa !== fb) return fa ? 'b' : 'a';
+  const za = net.nodes[s.a].pos.z, zb = net.nodes[s.b].pos.z;
+  if (Math.abs(za - zb) < 0.05) return 'b';
+  return za < zb ? 'a' : 'b';
+}
+
+/**
+ * 下流端 Z ＝ 上流端 Z − ratio × 水平距離 にする。下流端が器具の接続口（マスの管底など、高さが器具で決まる）なら
+ * 代わりに上流端を 下流端 Z + ratio × 水平距離 に上げる。どちらも器具、または配管が壊れるなら元の net
+ */
+function applyLockedSlope(net: Network, s: Segment, down: 'a' | 'b'): Network {
+  const ratio = s.slope ?? 0;
+  const upId = down === 'a' ? s.b : s.a, downId = down === 'a' ? s.a : s.b;
+  const L = planLength(net, s);
+  let moveId = downId, z = net.nodes[upId].pos.z - ratio * L;
+  if (net.nodes[downId].fixtureId) {
+    if (net.nodes[upId].fixtureId) return net;
+    moveId = upId;
+    z = net.nodes[downId].pos.z + ratio * L;
+  }
+  z = Math.round(z * 10) / 10;
+  const n = net.nodes[moveId];
+  if (Math.abs(n.pos.z - z) < 0.05) return net;
+  const next = moveNode(net, moveId, { ...n.pos, z });
+  return next === net || validateNetwork(next).length ? net : next;
+}
+
+/** 区間の勾配が設計勾配どおりか（0.05mm の誤差を許す） */
+function slopeSatisfied(net: Network, s: Segment, down: 'a' | 'b'): boolean {
+  const upZ = net.nodes[down === 'a' ? s.b : s.a].pos.z, downZ = net.nodes[down === 'a' ? s.a : s.b].pos.z;
+  return Math.abs(downZ - (upZ - (s.slope ?? 0) * planLength(net, s))) <= 0.05;
+}
+
+/** 区間に設計勾配（比率）を設定して固定し、下流端の高さを勾配から決める。失敗なら元の net */
+export function setSlopeRatio(net: Network, segId: string, ratio: number, isOutlet?: (nodeId: string) => boolean): Network {
+  const s = net.segments[segId];
+  if (!s || !(ratio >= 0) || !Number.isFinite(ratio)) return net;
+  const down = downstreamEnd(net, s, isOutlet);
+  const seg: Segment = { ...s, slope: ratio, slopeLocked: true };
+  const withSeg: Network = { ...net, segments: { ...net.segments, [segId]: seg } };
+  const out = applyLockedSlope(withSeg, seg, down);
+  return slopeSatisfied(out, seg, down) ? out : net;
+}
+
+/**
+ * movedNodeId の高さが変わったあと（prev → net）の後始末。向きは動かす前（prev）の高低で決める。
+ * - 手で動かした点が下流端だった固定区間: 固定を外す（マスの管底が動いた場合は上流端を合わせる）。
+ * - 上流端だった固定区間: 下流端を勾配から再計算し、下流へ連鎖する。
+ * - 連鎖の途中で、別の枝の下流端（合流点）に当たった区間: その枝は動かさず、勾配が保てなければ固定を外す。
+ * - 再計算できなかった（配管が壊れる・両端が器具）区間も固定を外す。固定が付いている区間は常に勾配どおり。
+ */
+export function propagateLockedSlopes(prev: Network, net: Network, movedNodeId: string, opts: { skip?: string[] } = {}): Network {
+  let out = net;
+  const queue = [movedNodeId];
+  const seen = new Set<string>([movedNodeId]);
+  /** skip: 今まさに勾配を設定した区間（向きの推定に使わず、再計算もしない） */
+  const doneSegs = new Set<string>(opts.skip ?? []);
+  const unlock = (id: string) => { out = { ...out, segments: { ...out.segments, [id]: { ...out.segments[id], slopeLocked: false } } }; };
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const s0 of Object.values(out.segments)) {
+      if (!s0.slopeLocked || doneSegs.has(s0.id) || (s0.a !== cur && s0.b !== cur)) continue;
+      const s = out.segments[s0.id];
+      doneSegs.add(s.id);
+      const other = s.a === cur ? s.b : s.a;
+      const ps = prev.segments[s.id];
+      const curSide: 'a' | 'b' = s.a === cur ? 'a' : 'b';
+      const curWasDown = !!ps && !!prev.nodes[ps.a] && !!prev.nodes[ps.b] && downstreamEnd(prev, ps) === curSide;
+      if (curWasDown && !out.nodes[cur].fixtureId) {
+        // 下流端が動いた（手で動かした／別の枝の連鎖で動いた）→ この区間の勾配は保てないので固定を外す
+        if (!slopeSatisfied(out, s, curSide)) unlock(s.id);
+        continue;
+      }
+      // 上流端が動いた → 下流端を再計算。マスの管底が動いた → 上流端を合わせる
+      const next = applyLockedSlope(out, s, curWasDown ? curSide : (curSide === 'a' ? 'b' : 'a'));
+      if (next !== out) {
+        out = next;
+        if (!seen.has(other)) { seen.add(other); queue.push(other); }
+      } else if (!slopeSatisfied(out, s, curWasDown ? curSide : (curSide === 'a' ? 'b' : 'a'))) {
+        unlock(s.id);
+      }
+    }
+  }
+  return out;
+}

@@ -16,6 +16,7 @@ export const nodeSchema = z.object({
   floorId: z.string().min(1).optional(),
   fitting: z.object({ type: z.string().min(1), degree: z.number().int().nonnegative() }).optional(),
   avoid: z.enum(['beam', 'eave', 'balcony']).optional(),
+  groundLevel: z.number().finite().optional(),
 });
 
 export const segmentSchema = z.object({
@@ -30,6 +31,7 @@ export const segmentSchema = z.object({
   extraRate: z.number().nonnegative().optional(),
   note: z.string().optional(),
   slope: z.number().finite().min(0).max(1).optional(),
+  slopeLocked: z.boolean().optional(),
   support: z.enum(['saddle', 'levelBand', 'tBracket', 'none']).optional(),
   face: z.string().min(1).optional(),
   substrate: z.enum(['concrete', 'wood']).optional(),
@@ -66,10 +68,13 @@ export const buildingSchema = z.object({
 export const fixtureSchema = z.object({
   id: z.string().min(1),
   floorId: z.string().min(1),
-  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank']),
+  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank',
+    'manholeSewage', 'manholeRain', 'manholeTrap', 'manholeInvert', 'publicSewage', 'publicRain']),
   x: z.number().finite(),
   y: z.number().finite(),
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
+  /** マスの口径・形状・管底高（v5 の途中で追加したため省略可） */
+  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional() }).optional(),
 });
 
 const money = z.number().finite().nonnegative();
@@ -142,6 +147,14 @@ export const elevationSchema = z.object({
   opacity: z.number().min(0).max(1),
 });
 
+/** 申請図面の現場設定（v5 の途中で追加したため省略可） */
+export const siteSchema = z.object({
+  /** 設計地盤高(mm)。1階床面（FL±0）との高低差。GL が床より下なら負 */
+  designGL: z.number().finite().optional(),
+  /** 使用中の自治体プロファイル ID（既定 standard） */
+  municipalityProfileId: z.string().min(1).optional(),
+});
+
 export const SCHEMA_VERSION = 5;
 
 export const projectSchema = z.object({
@@ -158,6 +171,9 @@ export const projectSchema = z.object({
   underlays: z.record(z.string(), underlaySchema),
   /** 立面（外壁の写真と取付）。v5 の途中で追加したため省略可 */
   elevations: z.record(z.string(), elevationSchema).optional(),
+  site: siteSchema.optional(),
+  /** 書き出し時にだけ付く、使用中の自治体プロファイル本体（読み込み時に取り出して保存する。DB には残さない） */
+  bundledProfile: z.unknown().optional(),
 });
 
 export type ProjectData = z.infer<typeof projectSchema>;

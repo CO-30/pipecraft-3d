@@ -5,6 +5,7 @@ import { DexieProjectRepository, InvalidProjectError, parseProject } from './rep
 import { addPolyline, branchFromSegment, emptyNetwork } from '../model/network';
 import { createBuildingFromDims } from '../model/building';
 import { SCHEMA_VERSION, type ProjectData } from '../model/schema';
+import { duplicateProfile, STANDARD_PROFILE } from '../model/municipality';
 
 function sample(): ProjectData {
   const a = addPolyline(emptyNetwork(), [{ x: 0, y: 0, z: 0 }, { x: 4000, y: 0, z: 0 }], { system: 'water', diameter: 20 });
@@ -164,5 +165,65 @@ describe('現場の管理', () => {
     await r.save(sample());
     await r.delete('p1');
     expect(await r.list()).toHaveLength(0);
+  });
+});
+
+describe('自治体プロファイルの保存', () => {
+  it('saveProfile → listProfiles に出る。同梱 id は保存できない', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const d = duplicateProfile(STANDARD_PROFILE, '那覇市（仮）');
+    await r.saveProfile(d);
+    expect(await r.listProfiles()).toEqual([d]);
+    await expect(r.saveProfile({ ...STANDARD_PROFILE, name: '上書き' })).rejects.toBeInstanceOf(InvalidProjectError);
+    await r.deleteProfile(d.id);
+    expect(await r.listProfiles()).toEqual([]);
+  });
+  it('exportJson にユーザープロファイルが同梱され、importJson で未保存なら保存・保存済みなら上書きしない', async () => {
+    const r1 = new DexieProjectRepository(nextName());
+    const d = duplicateProfile(STANDARD_PROFILE, '豊見城市（仮）');
+    await r1.saveProfile(d);
+    await r1.save({ ...sample(), site: { municipalityProfileId: d.id } });
+    const json = await r1.exportJson('p1');
+    expect(JSON.parse(json).bundledProfile?.id).toBe(d.id);
+    // standard を使う現場には同梱しない
+    await r1.save({ ...sample(), id: 'p2', site: { municipalityProfileId: 'standard' } });
+    expect(JSON.parse(await r1.exportJson('p2')).bundledProfile).toBeUndefined();
+
+    const r2 = new DexieProjectRepository(nextName());
+    const imported = await r2.importJson(json);
+    expect((await r2.listProfiles()).map((p) => p.id)).toEqual([d.id]);
+    expect((imported as { bundledProfile?: unknown }).bundledProfile).toBeUndefined();
+    expect(JSON.parse(await r2.exportJson(imported.id)).site.municipalityProfileId).toBe(d.id);
+    // 保存済みの同じ id は上書きしない
+    const edited = { ...d, name: '編集済み' };
+    await r2.saveProfile(edited);
+    await r2.importJson(json);
+    expect((await r2.listProfiles())[0].name).toBe('編集済み');
+  });
+});
+
+describe('全現場バックアップとプロファイル', () => {
+  it('exportAll にユーザープロファイルが入り、importAny で未保存分だけ保存される', async () => {
+    const r1 = new DexieProjectRepository(nextName());
+    const d = duplicateProfile(STANDARD_PROFILE, '沖縄市（仮）');
+    await r1.saveProfile(d);
+    await r1.save({ ...sample(), site: { municipalityProfileId: d.id } });
+    const { json } = await r1.exportAll();
+    expect(JSON.parse(json).profiles?.map((p: { id: string }) => p.id)).toEqual([d.id]);
+    const r2 = new DexieProjectRepository(nextName());
+    await r2.saveProfile({ ...d, name: '先に保存済み' });
+    const res = await r2.importAny(json);
+    expect(res.imported).toHaveLength(1);
+    expect((await r2.listProfiles())[0].name).toBe('先に保存済み');
+    const r3 = new DexieProjectRepository(nextName());
+    await r3.importAny(json);
+    expect((await r3.listProfiles()).map((p) => p.name)).toEqual(['沖縄市（仮）']);
+  });
+  it('壊れたプロファイル行があっても他は読める', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const d = duplicateProfile(STANDARD_PROFILE, '正常');
+    await r.saveProfile(d);
+    await r._corruptProfile('broken', '{not json');
+    expect((await r.listProfiles()).map((p) => p.name)).toEqual(['正常']);
   });
 });

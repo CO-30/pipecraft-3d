@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { emptyDoc, findUpstreamBranchPoint, useStore } from './store';
 import { totalLength, validateNetwork } from '../model/network';
 import { createBuildingFromDims, validateBuilding, wallsOnFloor } from '../model/building';
+import { validateFixtures } from '../model/fixtures';
 import { emptyNetwork } from '../model/network';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
@@ -568,5 +569,143 @@ describe('器具の接続口へつなぐ（お知らせ）', () => {
     s().connectToPort(ids[0], ids[1]);
     expect(Object.keys(net().segments)).toHaveLength(0);
     expect(s().notice).toBeTruthy();
+  });
+});
+
+describe('申請図面: 現場設定と勾配固定', () => {
+  it('updateSite は履歴に残り、保存データに site が入る', () => {
+    const before = s().past.length;
+    s().updateSite({ designGL: -450 });
+    expect(s().doc.site?.designGL).toBe(-450);
+    expect(s().past.length).toBe(before + 1);
+    expect(s().toProjectData()?.site).toEqual({ designGL: -450 });
+    s().updateSite({ municipalityProfileId: 'standard' });
+    expect(s().doc.site).toEqual({ designGL: -450, municipalityProfileId: 'standard' });
+  });
+
+  it('setSegmentSlope は 1/n を比率で保存し下流端を下げる。固定中に上流端の高さを変えると下流端が追従', () => {
+    s().setDrawAttrs({ system: 'drain', diameter: 100 });
+    s().drawPolyline([v(0, 0, 0), v(5000, 0, 0)]);
+    const seg = Object.values(net().segments)[0];
+    s().setSegmentSlope(seg.id, 50);
+    expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
+    expect(net().nodes[seg.b].pos.z).toBeCloseTo(-100, 5);
+    s().setNodeHeight(seg.a, 300);
+    expect(net().nodes[seg.b].pos.z).toBeCloseTo(200, 5);
+    s().setSegmentSlopeLocked(seg.id, false);
+    expect(net().segments[seg.id].slopeLocked).toBe(false);
+  });
+
+  it('openProject は site を読み、無ければ空', () => {
+    const p = s().toProjectData()!;
+    s().openProject({ ...p, site: { designGL: -200 } });
+    expect(s().doc.site?.designGL).toBe(-200);
+    const { site: _x, ...noSite } = p;
+    s().openProject(noSite);
+    expect(s().doc.site).toEqual({});
+  });
+});
+
+describe('マス', () => {
+  it('updateFixtureParams で管底高を変えると接続口が動き履歴1件', () => {
+    s().setFixtureType('manholeSewage');
+    s().placeFixtureAt({ x: 1000, y: 1000 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const port = Object.values(net().nodes).find((n) => n.fixtureId === f.id)!;
+    expect(port.pos.z).toBe(-600);
+    const before = s().past.length;
+    s().updateFixtureParams(f.id, { invertZ: -900, diameter: 350 });
+    expect(net().nodes[port.id].pos.z).toBe(-900);
+    expect(s().doc.fixtures[f.id].params).toEqual({ invertZ: -900, diameter: 350 });
+    expect(s().past.length).toBe(before + 1);
+  });
+  it('マスにつながる排水区間の下流端はマス側（高さに関係なく）', () => {
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: 5000, y: 0 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const port = Object.values(net().nodes).find((n) => n.fixtureId === f.id)!;
+    s().updateFixtureParams(f.id, { invertZ: 0 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([v(0, 0, -50), v(5000, 0, 0)], { endNodeId: port.id });
+    const seg = Object.values(net().segments)[0];
+    const up = seg.a === port.id ? seg.b : seg.a;
+    s().setSegmentSlope(seg.id, 100);
+    // マス側（下流端）の管底高は固定なので、上流端を 管底高 + 勾配×距離 に上げる
+    expect(net().nodes[up].pos.z).toBeCloseTo(50, 5);
+    expect(net().segments[seg.id].slopeLocked).toBe(true);
+    // マスの管底高を下げると、固定区間の上流端も追従する
+    s().updateFixtureParams(f.id, { invertZ: -200 });
+    expect(net().nodes[port.id].pos.z).toBe(-200);
+    expect(net().nodes[up].pos.z).toBeCloseTo(-150, 5);
+    expect(net().segments[seg.id].slopeLocked).toBe(true);
+  });
+});
+
+describe('マス間の勾配', () => {
+  it('両端がマスの区間に勾配をつけると、上流のマスの管底高が 下流の管底高 + 勾配×距離 になる', () => {
+    s().updateSite({ designGL: -450 });
+    s().setFixtureType('manholeSewage');
+    s().placeFixtureAt({ x: 0, y: 0 });
+    const m1 = Object.values(s().doc.fixtures).find((f) => f.type === 'manholeSewage')!;
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: 5000, y: 0 });
+    const m2 = Object.values(s().doc.fixtures).find((f) => f.type === 'publicSewage')!;
+    s().updateFixtureParams(m1.id, { invertZ: -1000 });
+    s().updateFixtureParams(m2.id, { invertZ: -1060 });
+    const p1 = Object.values(net().nodes).find((n) => n.fixtureId === m1.id)!, p2 = Object.values(net().nodes).find((n) => n.fixtureId === m2.id)!;
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([p1.pos, p2.pos], { startNodeId: p1.id, endNodeId: p2.id });
+    const seg = Object.values(net().segments)[0];
+    const before = s().past.length;
+    s().setSegmentSlope(seg.id, 50);
+    expect(net().nodes[p1.id].pos.z).toBeCloseTo(-960, 5);
+    expect(s().doc.fixtures[m1.id].params?.invertZ).toBeCloseTo(-960, 5);
+    expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
+    expect(s().past.length).toBe(before + 1);
+    expect(s().notice).toBeNull();
+  });
+});
+
+describe('設計GL の変更', () => {
+  it('GL を変えると、管底高が既定のマスの接続口が追従し、保存データが壊れない（2階に置いたマスも 1階 FL 基準）', () => {
+    s().setFixtureType('manholeSewage');
+    s().placeFixtureAt({ x: 0, y: 0 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const port = Object.values(net().nodes).find((n) => n.fixtureId === f.id)!;
+    expect(port.pos.z).toBe(-600);
+    s().updateSite({ designGL: -300 });
+    expect(net().nodes[port.id].pos.z).toBe(-900);
+    expect(validateFixtures(s().doc)).toEqual([]);
+    // 2 階に置いても GL は 1 階 FL 基準（階高分ずれない）
+    s().addFloor(false);
+    const f2 = s().doc.building.floors[1];
+    s().setActiveFloor(f2.id);
+    s().setFixtureType('manholeRain');
+    s().placeFixtureAt({ x: 3000, y: 0 });
+    const g = Object.values(s().doc.fixtures).find((x) => x.type === 'manholeRain')!;
+    const p2 = Object.values(net().nodes).find((n) => n.fixtureId === g.id)!;
+    expect(p2.pos.z).toBe(-900);
+    expect(validateFixtures(s().doc)).toEqual([]);
+  });
+});
+
+describe('勾配固定が保てないとき', () => {
+  it('固定区間の下流端を手で動かすと固定が外れ、お知らせが出る。勾配設定後の点の移動は連鎖する', () => {
+    s().setDrawAttrs({ system: 'drain', diameter: 100 });
+    s().drawPolyline([v(0, 0, 0), v(4000, 0, 0), v(7000, 0, 0)]);
+    const [s1, s2] = Object.values(net().segments);
+    const a = s1.a, b = s1.b, c = s2.b;
+    s().setSegmentSlope(s1.id, 100); // b = -40
+    s().setSegmentSlope(s2.id, 100); // c = -70
+    expect(net().nodes[c].pos.z).toBeCloseTo(-70, 5);
+    s().setSegmentSlope(s1.id, 50); // b = -80 → 連鎖で c = -110
+    expect(net().nodes[b].pos.z).toBeCloseTo(-80, 5);
+    expect(net().nodes[c].pos.z).toBeCloseTo(-110, 5);
+    s().clearNotice();
+    s().setNodeHeight(b, -50); // 下流端を手で動かす → s1 の固定が外れる、s2 は追従
+    expect(net().segments[s1.id].slopeLocked).toBe(false);
+    expect(net().nodes[c].pos.z).toBeCloseTo(-80, 5);
+    expect(s().notice).toContain('固定を外しました');
+    void a;
   });
 });

@@ -328,3 +328,22 @@ header .lbl { margin-left: 2px; }
 .vis-presets button.on { background: #1e3a8a; border-color: #1e3a8a; }
 /* スマホの器具の見出しは横書きで小さく（縦書きだと切れていた） */
 .narrow .fgroup-label { writing-mode: horizontal-tb; max-height: none; max-width: 3.6em; line-height: 1.2; white-space: normal; font-size: 10px; }
+
+/* 申請図面 */
+.shinsei { grid-template-rows: auto auto auto 1fr; }
+.shinsei > header .grow { flex: 1; }
+.shinsei-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+.shinsei-controls .badge.warn { background: #fef3c7; color: #92400e; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+.shinsei-warnings { margin: 0; padding: 6px 10px 6px 28px; background: #fff7ed; border-bottom: 1px solid #fed7aa; }
+.shinsei-preview { overflow: auto; background: #e5e7eb; padding: 12px; touch-action: pan-x pan-y pinch-zoom; -webkit-overflow-scrolling: touch; }
+.shinsei-pages { min-width: 320px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.shinsei-pages svg { width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); display: block; }
+.plain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.plain-list .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.symbol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.modal h3 { margin: 8px 0 0; font-size: 14px; }
+@media (max-width: 700px) {
+  .shinsei-controls { font-size: 12px; }
+  .shinsei-preview { padding: 4px; }
+  .app.narrow .est-open .lbl { display: none; }
+}

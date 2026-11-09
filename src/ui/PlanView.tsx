@@ -9,7 +9,7 @@ import { hitTestBuilding } from '../model/buildingHit';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { pointInPolygon } from '../model/roomOps';
 import { connectedComponent, segmentLength, segmentsAt, type Network } from '../model/network';
-import { FIXTURE_CATALOG, fixtureCorners } from '../model/fixtures';
+import { FIXTURE_CATALOG, fixtureCorners, fixtureSize, isManhole, MANHOLE_SHORT } from '../model/fixtures';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { underlayCorners } from '../model/underlay';
 import { pointInRing } from '../model/geo';
@@ -594,6 +594,19 @@ export function PlanView() {
         const pts = fixtureCorners(f).map(toScreen);
         const c = toScreen(f);
         const selected = isSel('fixture', f.id);
+        if (isManhole(f.type)) {
+          // マス: 丸（既定）または角に略号。大きさは口径
+          const r = Math.max(8, (fixtureSize(f).w / 2) * vw.scale);
+          const stroke = selected ? SELECT_COLOR : '#57534e';
+          return (
+            <g key={f.id} data-fixture={f.id} data-type={f.type}>
+              {f.params?.shape === 'square'
+                ? <rect x={c.x - r} y={c.y - r} width={r * 2} height={r * 2} fill={selected ? '#fde68a' : '#fafaf9'} stroke={stroke} strokeWidth={selected ? 3 : 1.5} />
+                : <circle cx={c.x} cy={c.y} r={r} fill={selected ? '#fde68a' : '#fafaf9'} stroke={stroke} strokeWidth={selected ? 3 : 1.5} />}
+              <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize={11} fill="#44403c" pointerEvents="none">{MANHOLE_SHORT[f.type]}</text>
+            </g>
+          );
+        }
         return (
           <g key={f.id} data-fixture={f.id} data-type={f.type}>
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
