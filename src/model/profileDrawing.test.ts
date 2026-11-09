@@ -126,7 +126,7 @@ describe('沖縄市の様式', () => {
     expect(m.nodes.map((n) => n.glDiff)).toEqual([0, 0]);
     expect(m.nodes[0].cover).toBe(486); // 土被りは変わらない
     expect(m.nodes[0].manhole?.name).toBe('NO.1汚水マス');
-    expect(m.nodes[1].manhole?.name).toBe('公共汚水マス');
+    expect(m.nodes[1].manhole?.name).toBe('新設公共汚水マス');
     expect(m.segments[0]).toMatchObject({ slopeText: '1.0/100', pipeSpec: '100VU' });
     expect(m.datumLabel).toBe('公共桝の管底を ±0 とする');
   });

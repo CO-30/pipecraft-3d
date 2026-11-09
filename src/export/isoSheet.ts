@@ -6,7 +6,7 @@
 import type { IsoModel } from '../model/isometric';
 import type { MunicipalityProfile } from '../model/municipality';
 import { dateJa } from './report';
-import { drawFrame, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
+import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
 import type { SheetMeta } from './profileSheet';
 
 export type IsoMeta = SheetMeta & { title: string };
@@ -33,7 +33,7 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
   }
   for (const p of iso.points) {
     const x = X(p.x), y = Y(p.y);
-    const c = p.isPublic ? colors.public : p.existing ? colors.existing : colors.newWork;
+    const c = p.existing ? colors.existing : colors.newWork;
     if (p.isManhole) {
       sheet.ops.push({ t: 'circle', cx: x, cy: y, r: 1.4, stroke: c, fill: '#ffffff', lw: 0.3 });
       sheet.ops.push({ t: 'text', x: x + 2, y: y + 4, s: p.label, size: 2.2, color: c });
@@ -50,10 +50,9 @@ function legend(sheet: Sheet, iso: IsoModel, profile: MunicipalityProfile, x: nu
   // 図に出ている色だけ
   const hasExisting = iso.lines.some((l) => l.existing) || iso.points.some((p) => p.existing);
   const hasHot = iso.lines.some((l) => l.system === 'hotWater');
-  const hasPublic = iso.points.some((p) => p.isPublic);
   const items: [string, string][] = iso.kind === 'water'
     ? [['給水', profile.colors.newWork] as [string, string], ...(hasHot ? [['給湯', HOT] as [string, string]] : []), ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : [])]
-    : [['新設', profile.colors.newWork], ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : []), ...(hasPublic ? [['市下水管（公共桝）', profile.colors.public] as [string, string]] : [])];
+    : [['新設', profile.colors.newWork], ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : [])];
   sheet.ops.push({ t: 'rect', x, y, w: 40, h: 4 * items.length + 5, lw: 0.3 });
   sheet.ops.push({ t: 'text', x: x + 1, y: y + 3, s: '凡例', size: 2.2, color: GRAY });
   items.forEach(([label, color], i) => {
@@ -69,9 +68,11 @@ export function renderIsoSheet(iso: IsoModel, profile: MunicipalityProfile, meta
   const sheet: Sheet = { ...paperSize(profile.paper), ops: [] };
   drawFrame(sheet);
   sheet.ops.push({ t: 'text', x: 25, y: 27, s: meta.title, size: 6, bold: true });
-  sheet.ops.push({ t: 'text', x: sheet.width - 25, y: 27, s: 'NO SCALE', size: 3, anchor: 'end', color: GRAY });
+  const headerBottom = drawHeaderBlock(sheet, profile.paper.headerFields, { '縮尺': 'NO SCALE' }, 22);
+  if (!profile.paper.headerFields.length) sheet.ops.push({ t: 'text', x: sheet.width - 25, y: 27, s: 'NO SCALE', size: 3, anchor: 'end', color: GRAY });
   const titleH = 7 * profile.paper.titleBlockFields.length + 6;
-  drawIsometric(sheet, iso, profile, { x: 25, y: 32, w: sheet.width - 50, h: sheet.height - 32 - titleH - 30 });
+  const top = Math.max(32, headerBottom + 4);
+  drawIsometric(sheet, iso, profile, { x: 25, y: top, w: sheet.width - 50, h: sheet.height - top - titleH - 30 });
   legend(sheet, iso, profile, sheet.width - 10 - titleWidth(sheet.width) - 45, sheet.height - 10 - titleH - 20);
   const values: Record<string, string> = { '工事名': meta.siteName, '申請地': meta.siteName, '図面名': meta.title, '縮尺': 'NO SCALE', '作成日': dateJa(meta.date) };
   drawTitleBlock(sheet, profile.paper.titleBlockFields.map((f) => ({ label: f, value: values[f] ?? '' })));

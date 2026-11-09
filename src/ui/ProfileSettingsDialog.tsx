@@ -182,7 +182,7 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
           </label>
           <label className="field inline"><input type="checkbox" checked={p.riser.showFloorLines} onChange={(e) => setP({ ...p, riser: { ...p.riser, showFloorLines: e.target.checked } })} /> 階の線を描く</label>
         </div>
-        <h3>色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒）</h3>
+        <h3>色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒。公共桝は新設/既設の色、黒は市下水管用）</h3>
         <div className="row">
           {([['newWork', '新設・増設'], ['existing', '既設'], ['public', '公共下水道']] as const).map(([k, label]) => (
             <label key={k} className="field inline">{label} <input type="color" data-testid={`pf-color-${k}`} value={p.colors[k]} onChange={(e) => setP({ ...p, colors: { ...p.colors, [k]: e.target.value } })} /></label>
@@ -195,6 +195,9 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
         </div>
         <label className="field">表題欄の項目（カンマ区切り。工事名・図面名・縮尺・作成日は自動で入ります）
           <input value={p.paper.titleBlockFields.join(', ')} onChange={(e) => setP({ ...p, paper: { ...p.paper, titleBlockFields: e.target.value.split(/[,、]/).map((s) => s.trim()).filter(Boolean) } })} />
+        </label>
+        <label className="field">右上の受付欄（カンマ区切り。空なら描かない。縮尺は自動で入ります）
+          <input data-testid="pf-header-fields" value={p.paper.headerFields.join(', ')} onChange={(e) => setP({ ...p, paper: { ...p.paper, headerFields: e.target.value.split(/[,、]/).map((s) => s.trim()).filter(Boolean) } })} />
         </label>
         <h3>記号</h3>
         <div className="symbol-grid">

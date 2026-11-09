@@ -61,6 +61,8 @@ export const municipalityProfileSchema = z.object({
     size: z.enum(['A3', 'A4']),
     orientation: z.enum(['landscape', 'portrait']),
     titleBlockFields: z.array(z.string()),
+    /** 右上の受付欄（沖縄市: 受付番号・水道番号・縮尺）。空なら描かない。省略可 */
+    headerFields: z.array(z.string()).default([]),
   }),
   /** 図面の色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒）。省略時は既定 */
   colors: z.object({
@@ -108,7 +110,7 @@ export const STANDARD_PROFILE: MunicipalityProfile = {
     drainageIsometric: false,
   },
   riser: { lineStyle: 'single', diameterLabelPos: 'above', showFloorLines: true, heightLabel: 'FL+' },
-  paper: { size: 'A3', orientation: 'landscape', titleBlockFields: ['工事名', '申請者', '施工者', '図面名', '縮尺', '作成日'] },
+  paper: { size: 'A3', orientation: 'landscape', titleBlockFields: ['工事名', '申請者', '施工者', '図面名', '縮尺', '作成日'], headerFields: [] },
   colors: { ...DEFAULT_COLORS },
 };
 
@@ -134,13 +136,14 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
     id: 'okinawa-city', name: '沖縄市',
     source: {
       title: '沖縄市で受理されている申請図面（指定工事店作成の「立面図（展開図）」＝排水のアイソメ図＋縦断図、A4 縦、S=1/200。2026-11-10 入手）と、下水道排水設備計画確認申請書（様式第1号）の注意書き（新設・増設は赤、既設は青、公共下水道は黒。' + JGES_TEXT + '。A3 二つ折り）。'
-        + '縦断図: 公共桝の管底を ±0 とし、表は 地盤高・土かぶり・管底高（m、3 桁）、区間に 100VU／3.0/100／長さ(m 2 桁)、桝は「NO.n小口径桝 φ150 H410」を図の上に、GL の差を (−600) のように表示。表題欄は 受付番号・水道番号・縮尺 と 申請地・申請者・指定工事店',
+        + '縦断図: 公共桝の管底を ±0 とし、表は 地盤高・土かぶり・管底高（m、3 桁）、区間に 100VU／3.0/100／長さ(m 2 桁)、桝は「NO.n小口径桝 φ150 H410」を図の上に、GL の差を (−600) のように表示。表題欄は 受付番号・水道番号・縮尺 と 申請地・申請者・指定工事店。公共桝は新設なら赤・既設なら青（黒は市下水管）',
       url: 'https://www.city.okinawa.okinawa.jp/documents/318/1-1sinsei.pdf', checkedAt: '2026-11-10',
     },
-    unverified: ['最小勾配（口径ごと。実例は φ100 で 2.0〜3.3/100）', '最小土被り', 'ますの記号（実例は小さな楕円）'],
-    paper: { ...A3_FOLDED, titleBlockFields: ['申請地', '申請者', '指定工事店'] },
+    unverified: ['最小勾配は日下協テキストの標準値（φ75 3/100・φ100 2/100・φ125 1.7/100・φ150 1.5/100。実例 2 件の 2.0〜5.4/100 と整合）。市の手引きでの確認は未', '最小土被り', 'ますの記号（実例は小さな楕円）', '落差桝（実例に H530-830 のような段差あり。未対応）'],
+    paper: { ...A3_FOLDED, titleBlockFields: ['申請地', '申請者', '指定工事店'], headerFields: ['受付番号', '水道番号', '縮尺'] },
     profileTable: {
       rows: [{ key: 'groundLevel', label: '地盤高' }, { key: 'cover', label: '土かぶり' }, { key: 'invertLevel', label: '管底高' }],
+      minSlopeByDiameter: { 75: 100 / 3, 100: 50, 125: 100 / 1.7, 150: 100 / 1.5 },
       slopeFormat: 'per100', hScale: 200, vScale: 200, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above', drainageIsometric: true,
     },
     riser: { lineStyle: 'isometric', diameterLabelPos: 'above', showFloorLines: false, heightLabel: 'FL+' },

@@ -223,9 +223,7 @@ export function PropertyPanel() {
                 <option value="round">丸</option><option value="square">角</option>
               </select>
             </label>
-            {f.type.startsWith('public')
-              ? <span className="small muted">公共マス（申請図面では黒）</span>
-              : <label className="small inline" title="申請図面では既設を青で描きます"><input type="checkbox" data-testid="manhole-existing" checked={!!f.params?.existing} onChange={(e) => st.updateFixtureParams(f.id, { existing: e.target.checked || undefined })} /> 既設</label>}
+            <label className="small inline" title={f.type.startsWith('public') ? '既存の公共マスなら付ける（申請図面では青。新設なら赤）' : '申請図面では既設を青で描きます'}><input type="checkbox" data-testid="manhole-existing" checked={!!f.params?.existing} onChange={(e) => st.updateFixtureParams(f.id, { existing: e.target.checked || undefined })} /> 既設</label>
             <NumField label="管底高 FL" value={manholeInvertZ(f, doc.building, doc.site) - fl.elevation} testId="manhole-invert" onCommit={(v) => st.updateFixtureParams(f.id, { invertZ: v + fl.elevation })} />
             <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, doc.building, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}1階FL{groundZ(doc.building, doc.site) >= 0 ? '+' : ''}{Math.round(groundZ(doc.building, doc.site))}）</span>
           </div>

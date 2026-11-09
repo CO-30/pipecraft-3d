@@ -192,3 +192,20 @@ export function fitText(s: string, size: number, w: number): string {
   while (t.length > 1 && width(t + '…') > w) t = t.slice(0, -1);
   return t + '…';
 }
+
+/** 右上の受付欄（「受付番号 | — | 水道番号 | — | 縮尺 | NO SCALE」）。fields が空なら何も描かない。戻り値は欄の下端 y */
+export function drawHeaderBlock(sheet: Sheet, fields: string[], values: Record<string, string>, top = 12): number {
+  if (!fields.length) return top;
+  const labelW = 16, valueW = 22, h = 7;
+  const w = fields.length * (labelW + valueW);
+  const x0 = sheet.width - 10 - w;
+  sheet.ops.push({ t: 'rect', x: x0, y: top, w, h, stroke: INK, lw: 0.4 });
+  fields.forEach((f, i) => {
+    const x = x0 + i * (labelW + valueW);
+    if (i > 0) sheet.ops.push({ t: 'line', x1: x, y1: top, x2: x, y2: top + h, color: INK, w: 0.4 });
+    sheet.ops.push({ t: 'line', x1: x + labelW, y1: top, x2: x + labelW, y2: top + h, color: INK, w: 0.25 });
+    sheet.ops.push({ t: 'text', x: x + labelW / 2, y: top + h / 2 + 1, s: fitText(f, 2.6, labelW - 1), size: 2.6, anchor: 'middle' });
+    sheet.ops.push({ t: 'text', x: x + labelW + valueW / 2, y: top + h / 2 + 1, s: fitText(values[f] ?? '—', 2.6, valueW - 1), size: 2.6, anchor: 'middle' });
+  });
+  return top + h;
+}

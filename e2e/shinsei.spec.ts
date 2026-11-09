@@ -129,6 +129,8 @@ test.describe('申請図面', () => {
     await page.getByTestId('shinsei-profile').selectOption('okinawa-city');
     await expect(page.getByTestId('shinsei-preview')).toContainText('公共桝の管底を ±0');
     await expect(page.getByTestId('shinsei-preview')).toContainText('NO.1汚水マス');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('新設公共汚水マス');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('受付番号');
     await expect(page.getByTestId('shinsei-preview')).toContainText('立面図（展開図）');
     await page.screenshot({ path: evidence('shinsei-09-okinawa-profile'), fullPage: false });
     await page.getByTestId('shinsei-kind-riser').click();

@@ -25,7 +25,7 @@ export const outerDiameter = (nominal: number) => OUTER_DIAMETER[nominal] ?? Mat
 export type ProfileWarning = { kind: 'minSlope' | 'reverseSlope' | 'cover' | 'tentativeGL' | 'datum'; segId?: string; nodeId?: string; message: string };
 export type ProfileNode = {
   nodeId: string; cumDistance: number; groundLevel: number; invertLevel: number; cover: number;
-  manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string; /** 公共マス（黒で描く） */ isPublic: boolean; /** 図に書く名前（manholeLabel above のとき上流から NO.1〜。公共マスは種類名） */ name: string };
+  manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string; /** 公共マス（±0 の基準。色は新設/既設で決める） */ isPublic: boolean; /** 図に書く名前（manholeLabel above のとき上流から NO.1〜。公共マスは種類名） */ name: string };
   /** datum publicInvert のとき: 下流端の地盤高との差(mm) */
   glDiff?: number;
   /** 分岐点の注記（「→別図 枝1」など） */
@@ -212,7 +212,7 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
   // 桝の名前: 図の上に書く様式では、上流から NO.1, NO.2 …（公共マスは種類名のまま。枝は本線の続き）
   let no = opts.manholeNoStart ?? 0;
   if (profile.profileTable.manholeLabel === 'above') {
-    for (const n of nodes) if (n.manhole && !n.manhole.isPublic) n.manhole.name = `NO.${++no}${n.manhole.label}`;
+    for (const n of nodes) if (n.manhole) n.manhole.name = n.manhole.isPublic ? `${n.existing ? '既存' : '新設'}${n.manhole.label}` : `NO.${++no}${n.manhole.label}`;
   }
   const manholeCount = no - (opts.manholeNoStart ?? 0);
   // 高さの基準: 下流端（公共桝）の管底を ±0 にする。下流端が公共桝でなければ動かさず警告（枝は本線の基準を使う）
