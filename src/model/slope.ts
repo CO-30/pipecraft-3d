@@ -127,16 +127,31 @@ export function downstreamEnd(net: Network, s: Segment, isOutlet?: (nodeId: stri
   return za < zb ? 'a' : 'b';
 }
 
-/** 下流端 Z ＝ 上流端 Z − ratio × 水平距離 にする。だめ（配管が壊れる・器具の接続口）なら元の net */
+/**
+ * 下流端 Z ＝ 上流端 Z − ratio × 水平距離 にする。下流端が器具の接続口（マスの管底など、高さが器具で決まる）なら
+ * 代わりに上流端を 下流端 Z + ratio × 水平距離 に上げる。どちらも器具、または配管が壊れるなら元の net
+ */
 function applyLockedSlope(net: Network, s: Segment, down: 'a' | 'b'): Network {
   const ratio = s.slope ?? 0;
   const upId = down === 'a' ? s.b : s.a, downId = down === 'a' ? s.a : s.b;
-  const dn = net.nodes[downId];
-  if (dn.fixtureId) return net;
-  const z = Math.round((net.nodes[upId].pos.z - ratio * planLength(net, s)) * 10) / 10;
-  if (Math.abs(dn.pos.z - z) < 0.05) return net;
-  const next = moveNode(net, downId, { ...dn.pos, z });
+  const L = planLength(net, s);
+  let moveId = downId, z = net.nodes[upId].pos.z - ratio * L;
+  if (net.nodes[downId].fixtureId) {
+    if (net.nodes[upId].fixtureId) return net;
+    moveId = upId;
+    z = net.nodes[downId].pos.z + ratio * L;
+  }
+  z = Math.round(z * 10) / 10;
+  const n = net.nodes[moveId];
+  if (Math.abs(n.pos.z - z) < 0.05) return net;
+  const next = moveNode(net, moveId, { ...n.pos, z });
   return next === net || validateNetwork(next).length ? net : next;
+}
+
+/** 区間の勾配が設計勾配どおりか（0.05mm の誤差を許す） */
+function slopeSatisfied(net: Network, s: Segment, down: 'a' | 'b'): boolean {
+  const upZ = net.nodes[down === 'a' ? s.b : s.a].pos.z, downZ = net.nodes[down === 'a' ? s.a : s.b].pos.z;
+  return Math.abs(downZ - (upZ - (s.slope ?? 0) * planLength(net, s))) <= 0.05;
 }
 
 /** 区間に設計勾配（比率）を設定して固定し、下流端の高さを勾配から決める。失敗なら元の net */
@@ -147,7 +162,7 @@ export function setSlopeRatio(net: Network, segId: string, ratio: number, isOutl
   const seg: Segment = { ...s, slope: ratio, slopeLocked: true };
   const withSeg: Network = { ...net, segments: { ...net.segments, [segId]: seg } };
   const out = applyLockedSlope(withSeg, seg, down);
-  return out === withSeg && Math.abs(net.nodes[down === 'a' ? s.a : s.b].pos.z - (net.nodes[down === 'a' ? s.b : s.a].pos.z - ratio * planLength(net, s))) > 0.05 ? net : out;
+  return slopeSatisfied(out, seg, down) ? out : net;
 }
 
 /**
@@ -170,11 +185,13 @@ export function propagateLockedSlopes(prev: Network, net: Network, movedNodeId: 
       const other = s.a === cur ? s.b : s.a;
       const ps = prev.segments[s.id];
       const curWasDown = first && !!ps && prev.nodes[ps.a] && prev.nodes[ps.b] && downstreamEnd(prev, ps) === (s.a === cur ? 'a' : 'b');
-      if (curWasDown) {
+      if (curWasDown && !out.nodes[cur].fixtureId) {
+        // 下流端を手で動かした → 固定を外す
         out = { ...out, segments: { ...out.segments, [s.id]: { ...s, slopeLocked: false } } };
         continue;
       }
-      const next = applyLockedSlope(out, s, s.a === cur ? 'b' : 'a');
+      // 上流端が動いた（または マスの管底が動いた）→ 反対側を勾配から再計算
+      const next = applyLockedSlope(out, s, curWasDown ? (s.a === cur ? 'a' : 'b') : (s.a === cur ? 'b' : 'a'));
       if (next !== out) {
         out = next;
         if (!seen.has(other)) { seen.add(other); queue.push(other); }

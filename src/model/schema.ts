@@ -68,10 +68,13 @@ export const buildingSchema = z.object({
 export const fixtureSchema = z.object({
   id: z.string().min(1),
   floorId: z.string().min(1),
-  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank']),
+  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank',
+    'manholeSewage', 'manholeRain', 'manholeTrap', 'manholeInvert', 'publicSewage', 'publicRain']),
   x: z.number().finite(),
   y: z.number().finite(),
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
+  /** マスの口径・形状・管底高（v5 の途中で追加したため省略可） */
+  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional() }).optional(),
 });
 
 const money = z.number().finite().nonnegative();

@@ -10,7 +10,7 @@ import {
   detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc, SiteSettings } from '../model/doc';
-import { deleteFixture, moveFixture, placeFixture, syncAllFixturePorts, type FixtureType, type Rotation } from '../model/fixtures';
+import { deleteFixture, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import * as B from '../model/building';
 import type { Building, OpeningType, Vec2 } from '../model/building';
@@ -67,8 +67,12 @@ const defaultVisibility = (): Record<VisCategory, VisMode> => ({
   exteriorWall: 'show', interiorWall: 'show', floor: 'show', ceiling: 'hide', door: 'show', window: 'show', member: 'show', pipes: 'show', fixtures: 'show',
 });
 
-/** 勾配の下流判定に使う流末（マスの接続口）。Task 2 でマスを追加するまでは常に false */
-const isOutletNode = (_doc: Doc, _nodeId: string): boolean => false;
+/** 勾配の下流判定に使う流末（マスの接続口） */
+const isOutletNode = (doc: Doc, nodeId: string): boolean => {
+  const fid = doc.network.nodes[nodeId]?.fixtureId;
+  const f = fid ? doc.fixtures[fid] : undefined;
+  return !!f && isManhole(f.type);
+};
 const defaultSlopeFor = (diameter: number) => defaultSlope(diameter);
 
 export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {}, site: {} });
@@ -201,6 +205,8 @@ type State = {
   /** 区間の設計勾配 1/denominator を設定して固定し、下流端の高さを決める。だめならお知らせ */
   setSegmentSlope(segId: string, denominator: number): void;
   setSegmentSlopeLocked(segId: string, locked: boolean): void;
+  /** マスの口径・形状・管底高。履歴1件（管底高の変更は接続口と配管の端を動かす） */
+  updateFixtureParams(id: string, patch: Partial<FixtureParams>): void;
   /** 区間の支持金具・取付下地（undefined = 自動・現場の既定） */
   setSegmentSupport(segId: string, patch: { support?: 'saddle' | 'levelBand' | 'tBracket' | 'none' | null; substrate?: 'concrete' | 'wood' | null }): void;
   updateEstimate(patch: Partial<Omit<EstimateSettings, 'prices' | 'extras'>>): void;
@@ -623,6 +629,17 @@ export const useStore = create<State>((set, get) => {
       if (n && !n.fixtureId) commit(withNet(propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId)));
     },
     updateSite: (patch) => commit({ ...get().doc, site: { ...get().doc.site, ...patch } }),
+    updateFixtureParams: (id, patch) => {
+      const doc = get().doc, f = doc.fixtures[id];
+      if (!f) return;
+      if (patch.diameter !== undefined && !(patch.diameter > 0)) return;
+      const next = moveFixture(doc, id, f, undefined, patch);
+      if (next === doc) { set({ notice: '管底高を変えると配管がつながらなくなります' }); return; }
+      // 管底が動いたら、固定勾配の区間の上流端も追従させる
+      let network = next.network;
+      for (const n of Object.values(next.network.nodes)) if (n.fixtureId === id && n.pos.z !== doc.network.nodes[n.id]?.pos.z) network = propagateLockedSlopes(doc.network, network, n.id);
+      commit(network === next.network ? next : { ...next, network });
+    },
     setSegmentSlope: (segId, denominator) => {
       const net = get().doc.network;
       if (!net.segments[segId] || !(denominator > 0)) return;

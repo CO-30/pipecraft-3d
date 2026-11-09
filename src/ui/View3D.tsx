@@ -13,21 +13,24 @@ import { buildingBoxes, type Box } from '../model/building3d';
 import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
-import { FIXTURE_CATALOG, fixtureBaseZ, type Fixture } from '../model/fixtures';
+import { fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
 
 /** 器具の簡易3D形状（箱）。表示モードと選択強調つき */
 function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; selected: boolean; clip: THREE.Plane[] }) {
   const floor = useStore((s) => s.doc.building.floors.find((x) => x.id === f.floorId));
+  const site = useStore((s) => s.doc.site);
   if (mode === 'hide' || !floor) return null;
-  const { w, d, h } = FIXTURE_CATALOG[f.type].size;
-  const z = fixtureBaseZ(f, floor) + h / 2;
+  const manhole = isManhole(f.type);
+  const { w, d, h } = fixtureSize(f, floor, site);
+  // マスは地面（GL）から下へ埋まる
+  const z = manhole ? groundZ(floor, site) - h / 2 : fixtureBaseZ(f, floor) + h / 2;
   const ghost = mode === 'ghost';
   return (
     <mesh name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} renderOrder={1}
       onClick={(e) => { e.stopPropagation(); useStore.getState().select({ kind: 'fixture', id: f.id }); }}
       raycast={ghost ? () => null : undefined}>
-      <boxGeometry args={[w / 1000, h / 1000, d / 1000]} />
-      <meshStandardMaterial color={selected ? SELECT_COLOR : '#e0f2fe'} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.3 : 0}
+      {manhole && f.params?.shape !== 'square' ? <cylinderGeometry args={[w / 2000, w / 2000, h / 1000, 24]} /> : <boxGeometry args={[w / 1000, h / 1000, d / 1000]} />}
+      <meshStandardMaterial color={selected ? SELECT_COLOR : manhole ? '#d6d3d1' : '#e0f2fe'} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.3 : 0}
         transparent={ghost} opacity={ghost ? 0.3 : 1} clippingPlanes={clip} />
     </mesh>
   );

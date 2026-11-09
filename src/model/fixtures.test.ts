@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork, segmentsAt, validateNetwork } from './network';
-import { deleteFixture, fixtureConnected, moveFixture, placeFixture, portNodes, validateFixtures, FIXTURE_CATALOG, FIXTURE_GROUPS, FIXTURE_TYPES } from './fixtures';
+import { deleteFixture, fixtureConnected, fixtureSize, groundZ, isManhole, manholeDepth, MANHOLE_TYPES, moveFixture, placeFixture, portNodes, validateFixtures, FIXTURE_CATALOG, FIXTURE_GROUPS, FIXTURE_TYPES } from './fixtures';
 import { parseProject } from '../storage/repository';
 import { SCHEMA_VERSION } from './schema';
 
@@ -18,8 +18,8 @@ function toilet() {
 const port = (d: Doc, fid: string, pid: string) => portNodes(d.network, fid).find((n) => n.portId === pid)!;
 
 describe('設備機器', () => {
-  it('カタログは設計書の13種＋水栓3種、接続口は重ならない', () => {
-    expect(FIXTURE_TYPES).toHaveLength(17);
+  it('カタログは設計書の13種＋水栓3種＋屋上タンク＋マス6種、接続口は重ならない', () => {
+    expect(FIXTURE_TYPES).toHaveLength(23);
     expect(new Set(FIXTURE_TYPES)).toEqual(new Set(Object.keys(FIXTURE_CATALOG)));
     for (const t of FIXTURE_TYPES) {
       const ps = FIXTURE_CATALOG[t].ports;
@@ -115,5 +115,57 @@ describe('屋上タンク・器具の見出し', () => {
     const all = FIXTURE_GROUPS.flatMap((g) => g.types);
     expect(all).toHaveLength(FIXTURE_TYPES.length);
     expect(new Set(all)).toEqual(new Set(FIXTURE_TYPES));
+  });
+});
+
+describe('マス（排水）', () => {
+  const floorOf = (d: Doc) => d.building.floors[0];
+  it('6 種類あり、すべて排水系の接続口を 1 つ持つ', () => {
+    expect(MANHOLE_TYPES).toHaveLength(6);
+    for (const t of MANHOLE_TYPES) {
+      expect(isManhole(t)).toBe(true);
+      expect(FIXTURE_CATALOG[t].ports).toHaveLength(1);
+      expect(['drain', 'sewage']).toContain(FIXTURE_CATALOG[t].ports[0].system);
+    }
+    expect(isManhole('toilet')).toBe(false);
+    expect(FIXTURE_GROUPS.some((g) => g.types.includes('publicSewage'))).toBe(true);
+  });
+  it('マスを置くと接続口の高さは GL−600（designGL 反映）、深さ 600', () => {
+    const d0: Doc = { ...doc0(), site: { designGL: -400 } };
+    const { doc, fixtureId } = placeFixture(d0, floorOf(d0).id, 'manholeSewage', { x: 1000, y: 0 });
+    const port = portNodes(doc.network, fixtureId!)[0];
+    expect(groundZ(floorOf(doc), doc.site)).toBe(-400);
+    expect(port.pos.z).toBe(-1000);
+    expect(manholeDepth(doc.fixtures[fixtureId!], floorOf(doc), doc.site)).toBe(600);
+    expect(validateFixtures(doc)).toEqual([]);
+  });
+  it('invertZ を変えると接続口ノードと深さが変わる（配管の端も追従）', () => {
+    const d0 = doc0();
+    const { doc: d1, fixtureId } = placeFixture(d0, floorOf(d0).id, 'publicSewage', { x: 1000, y: 0 });
+    const port = portNodes(d1.network, fixtureId!)[0];
+    const d2 = { ...d1, network: addPolyline(d1.network, [{ x: 1000, y: 0, z: port.pos.z }, { x: 5000, y: 0, z: port.pos.z }], { system: 'sewage', diameter: 100 }, { startNodeId: port.id }).net };
+    const f = d2.fixtures[fixtureId!];
+    const d3 = moveFixture(d2, fixtureId!, f, undefined, { invertZ: -1200 });
+    expect(portNodes(d3.network, fixtureId!)[0].pos.z).toBe(-1200);
+    expect(manholeDepth(d3.fixtures[fixtureId!], floorOf(d3), d3.site)).toBe(1200);
+    expect(validateFixtures(d3)).toEqual([]);
+    expect(validateNetwork(d3.network)).toEqual([]);
+  });
+  it('fixtureSize: マスは口径と深さ、トイレは catalog', () => {
+    const d0 = doc0();
+    const { doc, fixtureId } = placeFixture(d0, floorOf(d0).id, 'manholeRain', { x: 0, y: 0 });
+    expect(fixtureSize(doc.fixtures[fixtureId!], floorOf(doc), doc.site)).toEqual({ w: 300, d: 300, h: 600 });
+    const d2 = moveFixture(doc, fixtureId!, doc.fixtures[fixtureId!], undefined, { diameter: 450 });
+    expect(fixtureSize(d2.fixtures[fixtureId!], floorOf(d2), d2.site).w).toBe(450);
+    const t = toilet();
+    expect(fixtureSize(t.doc.fixtures[t.id], floorOf(t.doc), t.doc.site)).toEqual(FIXTURE_CATALOG.toilet.size);
+  });
+  it('params 付きのマスを保存形式で往復できる', () => {
+    const d0 = doc0();
+    const { doc, fixtureId } = placeFixture(d0, floorOf(d0).id, 'manholeTrap', { x: 0, y: 0 });
+    const d2 = moveFixture(doc, fixtureId!, doc.fixtures[fixtureId!], undefined, { diameter: 350, shape: 'square', invertZ: -900 });
+    const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, id: 'x', name: 'n', createdAt: 1, updatedAt: 1, building: d2.building, network: d2.network, fixtures: d2.fixtures, estimate: defaultEstimate(), underlays: {} });
+    const p = parseProject(json);
+    expect(p.fixtures[fixtureId!].params).toEqual({ diameter: 350, shape: 'square', invertZ: -900 });
   });
 });

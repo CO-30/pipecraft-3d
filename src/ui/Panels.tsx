@@ -8,7 +8,7 @@ import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '
 import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
-import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, portNodes } from '../model/fixtures';
+import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
@@ -209,9 +209,24 @@ export function PropertyPanel() {
     const f = doc.fixtures[sel.id];
     const def = FIXTURE_CATALOG[f.type];
     const ports = portNodes(net, f.id);
+    const fl = floorById(doc.building, f.floorId);
+    const size = fixtureSize(f, fl, doc.site);
+    const manhole = isManhole(f.type) && fl;
     return (
       <div className="props">
-        <div className="ptitle">{def.label} <span className="muted small">{def.size.w}×{def.size.d}mm・向き {f.rotation}°</span></div>
+        <div className="ptitle">{def.label} <span className="muted small">{manhole ? `φ${size.w}` : `${size.w}×${size.d}mm`}・向き {f.rotation}°</span></div>
+        {manhole && (
+          <div className="row" data-testid="manhole-params">
+            <NumField label="口径" value={f.params?.diameter ?? 300} min={100} max={2000} testId="manhole-diameter" onCommit={(v) => st.updateFixtureParams(f.id, { diameter: v })} />
+            <label className="small">形状
+              <select data-testid="manhole-shape" value={f.params?.shape ?? 'round'} onChange={(e) => st.updateFixtureParams(f.id, { shape: e.target.value as 'round' | 'square' })}>
+                <option value="round">丸</option><option value="square">角</option>
+              </select>
+            </label>
+            <NumField label="管底高 FL" value={manholeInvertZ(f, fl, doc.site) - fl.elevation} testId="manhole-invert" onCommit={(v) => st.updateFixtureParams(f.id, { invertZ: v + fl.elevation })} />
+            <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, fl, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}FL{groundZ(fl, doc.site) - fl.elevation >= 0 ? '+' : ''}{Math.round(groundZ(fl, doc.site) - fl.elevation)}）</span>
+          </div>
+        )}
         <div className="subhead">接続口（押すと選択して立て管などを追加できます。✓=配管あり）</div>
         <div className="row">{def.ports.map((p) => {
           const n = ports.find((x) => x.portId === p.id);

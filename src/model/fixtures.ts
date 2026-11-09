@@ -5,16 +5,19 @@
  */
 import type { Building, Floor } from './building';
 import { floorById } from './building';
-import type { Doc } from './doc';
+import type { Doc, SiteSettings } from './doc';
 import { newId } from './id';
 import { dist, moveNode, normalize, segmentsAt, type Network, type SystemType, type Vec3 } from './network';
 
 export type FixtureType =
   | 'toilet' | 'washbasin' | 'kitchen' | 'bathtub' | 'shower' | 'washer' | 'waterHeater'
   | 'waterMeter' | 'pump' | 'panel' | 'outlet' | 'light' | 'aircon'
-  | 'faucet' | 'mixFaucet' | 'outdoorFaucet' | 'roofTank';
+  | 'faucet' | 'mixFaucet' | 'outdoorFaucet' | 'roofTank'
+  | 'manholeSewage' | 'manholeRain' | 'manholeTrap' | 'manholeInvert' | 'publicSewage' | 'publicRain';
 export type Rotation = 0 | 90 | 180 | 270;
-export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation };
+/** マスの個別設定。diameter: 口径(mm、既定 300)、shape: 丸/角、invertZ: 管底高(mm、絶対。既定 GL−600) */
+export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number };
+export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation; params?: FixtureParams };
 
 /**
  * ネジでつなぐ接続口の継手。給水・給湯の器具接続は配管側がネジ（シールテープを巻く）になる。
@@ -51,21 +54,51 @@ export const FIXTURE_CATALOG: Record<FixtureType, FixtureDef> = {
   mixFaucet: { label: '混合水栓（壁付）', size: { w: 300, d: 180, h: 120 }, base: 1000, ports: [P('hot', 'hotWater', 13, -100, 90, 60, '給湯'), P('water', 'water', 13, 100, 90, 60, '給水')] },
   roofTank: { label: '屋上タンク（高置水槽）', size: { w: 1500, d: 1000, h: 1200 }, base: 'roof', ports: [P('in', 'water', 20, -600, 0, 1100, '入口', 'threadSocket'), P('out', 'water', 25, 600, 0, 100, '出口', 'threadSocket')] },
   outdoorFaucet: { label: '立水栓（屋外）', size: { w: 100, d: 100, h: 900 }, base: 0, ports: [P('water', 'water', 13, 0, 0, 0, '給水', 'faucetSocket')] },
+  // マス（排水）。接続口は中心 1 つ（流入・流出とも同じ管底高）。高さは params.invertZ（既定 GL−600）
+  manholeSewage: { label: '汚水マス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'sewage', 100, 0, 0, 0, '管底', null)] },
+  manholeRain: { label: '雨水マス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'drain', 100, 0, 0, 0, '管底', null)] },
+  manholeTrap: { label: 'トラップマス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'sewage', 100, 0, 0, 0, '管底', null)] },
+  manholeInvert: { label: 'インバートマス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'sewage', 100, 0, 0, 0, '管底', null)] },
+  publicSewage: { label: '公共汚水マス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'sewage', 100, 0, 0, 0, '管底', null)] },
+  publicRain: { label: '公共雨水マス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'drain', 100, 0, 0, 0, '管底', null)] },
 };
+export const MANHOLE_TYPES: FixtureType[] = ['manholeSewage', 'manholeRain', 'manholeTrap', 'manholeInvert', 'publicSewage', 'publicRain'];
+export const isManhole = (t: FixtureType) => MANHOLE_TYPES.includes(t);
+/** 2D の略号 */
+export const MANHOLE_SHORT: Partial<Record<FixtureType, string>> = { manholeSewage: '汚', manholeRain: '雨', manholeTrap: 'ト', manholeInvert: 'イ', publicSewage: '公汚', publicRain: '公雨' };
+const MANHOLE_DEFAULT_DEPTH = 600;
 /** 選ぶ画面の並び（水まわり → 水栓 → 設備 → 電気） */
 export const FIXTURE_TYPES: FixtureType[] = [
   'toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet', 'outdoorFaucet',
   'waterHeater', 'waterMeter', 'roofTank', 'pump', 'panel', 'outlet', 'light', 'aircon',
+  ...MANHOLE_TYPES,
 ];
 
 /** 器具を選ぶ画面の見出し（初心者が探しやすい並び） */
 export const FIXTURE_GROUPS: { label: string; types: FixtureType[] }[] = [
   { label: 'メーター・タンク', types: ['waterMeter', 'roofTank', 'pump'] },
+  { label: 'マス（排水）', types: MANHOLE_TYPES },
   { label: '水まわり', types: ['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer'] },
   { label: '水栓', types: ['faucet', 'mixFaucet', 'outdoorFaucet'] },
   { label: '給湯・空調', types: ['waterHeater', 'aircon'] },
   { label: '電気', types: ['panel', 'outlet', 'light'] },
 ];
+
+/** 設計地盤高（絶対 mm）＝ 階の床高 + 現場の designGL（未入力は 0） */
+export const groundZ = (floor: Floor, site?: SiteSettings) => floor.elevation + (site?.designGL ?? 0);
+
+/** マスの管底高（絶対 mm） */
+export const manholeInvertZ = (f: Fixture, floor: Floor, site?: SiteSettings) => f.params?.invertZ ?? groundZ(floor, site) - MANHOLE_DEFAULT_DEPTH;
+/** マスの深さ ＝ GL − 管底高 */
+export const manholeDepth = (f: Fixture, floor: Floor, site?: SiteSettings) => groundZ(floor, site) - manholeInvertZ(f, floor, site);
+
+/** 器具の寸法。マスは口径（既定 300）と深さ、他はカタログ */
+export function fixtureSize(f: Fixture, floor?: Floor, site?: SiteSettings): { w: number; d: number; h: number } {
+  const size = FIXTURE_CATALOG[f.type].size;
+  if (!isManhole(f.type)) return size;
+  const dia = f.params?.diameter ?? size.w;
+  return { w: dia, d: dia, h: floor ? Math.max(100, manholeDepth(f, floor, site)) : size.h };
+}
 
 /** 器具の設置面の高さ（絶対 mm） */
 export function fixtureBaseZ(f: Fixture, floor: Floor): number {
@@ -81,13 +114,14 @@ export function localToPlan(f: Pick<Fixture, 'x' | 'y' | 'rotation'>, dx: number
   return { x: f.x + dx * c - dy * s, y: f.y + dx * s + dy * c };
 }
 
-export function portWorldPos(f: Fixture, floor: Floor, port: PortDef): Vec3 {
+export function portWorldPos(f: Fixture, floor: Floor, port: PortDef, site?: SiteSettings): Vec3 {
+  if (isManhole(f.type)) return { ...localToPlan(f, port.dx, port.dy), z: manholeInvertZ(f, floor, site) };
   return { ...localToPlan(f, port.dx, port.dy), z: fixtureBaseZ(f, floor) + port.dz };
 }
 
 /** 器具の平面上の四隅（回転済み） */
 export function fixtureCorners(f: Fixture): { x: number; y: number }[] {
-  const { w, d } = FIXTURE_CATALOG[f.type].size;
+  const { w, d } = fixtureSize(f);
   return [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([dx, dy]) => localToPlan(f, dx, dy));
 }
 
@@ -100,20 +134,20 @@ export function placeFixture(doc: Doc, floorId: string, type: FixtureType, p: { 
   const nodes = { ...doc.network.nodes };
   for (const port of FIXTURE_CATALOG[type].ports) {
     const id = newId('n');
-    nodes[id] = { id, kind: 'fixture', fixedKind: true, fixtureId: f.id, portId: port.id, floorId, pos: portWorldPos(f, floor, port) };
+    nodes[id] = { id, kind: 'fixture', fixedKind: true, fixtureId: f.id, portId: port.id, floorId, pos: portWorldPos(f, floor, port, doc.site) };
   }
   return { doc: { ...doc, fixtures: { ...doc.fixtures, [f.id]: f }, network: { ...doc.network, nodes } }, fixtureId: f.id };
 }
 
 /** 器具の接続口ノードを器具の位置に合わせる。配管が長さ0になる場合は null */
-function syncPorts(net: Network, b: Building, f: Fixture): Network | null {
+function syncPorts(net: Network, b: Building, f: Fixture, site?: SiteSettings): Network | null {
   const floor = floorById(b, f.floorId);
   if (!floor) return null;
   let cur = net;
   for (const n of portNodes(net, f.id)) {
     const port = FIXTURE_CATALOG[f.type].ports.find((p) => p.id === n.portId);
     if (!port) continue;
-    const pos = portWorldPos(f, floor, port);
+    const pos = portWorldPos(f, floor, port, site);
     if (dist(cur.nodes[n.id].pos, pos) < 1e-9) continue;
     cur = moveNode(cur, n.id, pos);
     if (dist(cur.nodes[n.id].pos, pos) > 1e-6) return null;
@@ -121,13 +155,13 @@ function syncPorts(net: Network, b: Building, f: Fixture): Network | null {
   return cur;
 }
 
-/** 器具の移動・回転（接続口につながった配管の端も追従）。配管が長さ0になる移動は拒否 */
-export function moveFixture(doc: Doc, id: string, p: { x: number; y: number }, rotation?: Rotation): Doc {
+/** 器具の移動・回転・個別設定（接続口につながった配管の端も追従）。配管が長さ0になる移動は拒否 */
+export function moveFixture(doc: Doc, id: string, p: { x: number; y: number }, rotation?: Rotation, params?: Partial<FixtureParams>): Doc {
   const f0 = doc.fixtures[id];
   if (!f0) return doc;
-  const f = { ...f0, x: p.x, y: p.y, rotation: rotation ?? f0.rotation };
-  if (f.x === f0.x && f.y === f0.y && f.rotation === f0.rotation) return doc;
-  const net = syncPorts(doc.network, doc.building, f);
+  const f: Fixture = { ...f0, x: p.x, y: p.y, rotation: rotation ?? f0.rotation, ...(params ? { params: { ...f0.params, ...params } } : {}) };
+  if (f.x === f0.x && f.y === f0.y && f.rotation === f0.rotation && !params) return doc;
+  const net = syncPorts(doc.network, doc.building, f, doc.site);
   if (!net) return doc;
   return { ...doc, network: net, fixtures: { ...doc.fixtures, [id]: f } };
 }
@@ -135,7 +169,7 @@ export function moveFixture(doc: Doc, id: string, p: { x: number; y: number }, r
 /** 階の床高・階高が変わったあとに、すべての器具の接続口を合わせ直す（合わせられない器具はそのまま） */
 export function syncAllFixturePorts(doc: Doc): Doc {
   let net = doc.network;
-  for (const f of Object.values(doc.fixtures)) net = syncPorts(net, doc.building, f) ?? net;
+  for (const f of Object.values(doc.fixtures)) net = syncPorts(net, doc.building, f, doc.site) ?? net;
   return net === doc.network ? doc : { ...doc, network: net };
 }
 
@@ -169,7 +203,7 @@ export function validateFixtures(doc: Doc): string[] {
     for (const def of defs) {
       const ns = ports.filter((n) => n.portId === def.id);
       if (ns.length !== 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} が ${ns.length} 個`);
-      else if (floor && dist(ns[0].pos, portWorldPos(f, floor, def)) > 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} の位置が器具とずれている`);
+      else if (floor && dist(ns[0].pos, portWorldPos(f, floor, def, doc.site)) > 1) errors.push(`fixture ${f.id}: 接続口 ${def.id} の位置が器具とずれている`);
     }
     for (const n of ports) if (!defs.some((d) => d.id === n.portId)) errors.push(`node ${n.id}: 器具 ${f.id} にない接続口 ${n.portId}`);
   }

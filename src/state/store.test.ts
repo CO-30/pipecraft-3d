@@ -604,3 +604,38 @@ describe('申請図面: 現場設定と勾配固定', () => {
     expect(s().doc.site).toEqual({});
   });
 });
+
+describe('マス', () => {
+  it('updateFixtureParams で管底高を変えると接続口が動き履歴1件', () => {
+    s().setFixtureType('manholeSewage');
+    s().placeFixtureAt({ x: 1000, y: 1000 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const port = Object.values(net().nodes).find((n) => n.fixtureId === f.id)!;
+    expect(port.pos.z).toBe(-600);
+    const before = s().past.length;
+    s().updateFixtureParams(f.id, { invertZ: -900, diameter: 350 });
+    expect(net().nodes[port.id].pos.z).toBe(-900);
+    expect(s().doc.fixtures[f.id].params).toEqual({ invertZ: -900, diameter: 350 });
+    expect(s().past.length).toBe(before + 1);
+  });
+  it('マスにつながる排水区間の下流端はマス側（高さに関係なく）', () => {
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: 5000, y: 0 });
+    const f = Object.values(s().doc.fixtures)[0];
+    const port = Object.values(net().nodes).find((n) => n.fixtureId === f.id)!;
+    s().updateFixtureParams(f.id, { invertZ: 0 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([v(0, 0, -50), v(5000, 0, 0)], { endNodeId: port.id });
+    const seg = Object.values(net().segments)[0];
+    const up = seg.a === port.id ? seg.b : seg.a;
+    s().setSegmentSlope(seg.id, 100);
+    // マス側（下流端）の管底高は固定なので、上流端を 管底高 + 勾配×距離 に上げる
+    expect(net().nodes[up].pos.z).toBeCloseTo(50, 5);
+    expect(net().segments[seg.id].slopeLocked).toBe(true);
+    // マスの管底高を下げると、固定区間の上流端も追従する
+    s().updateFixtureParams(f.id, { invertZ: -200 });
+    expect(net().nodes[port.id].pos.z).toBe(-200);
+    expect(net().nodes[up].pos.z).toBeCloseTo(-150, 5);
+    expect(net().segments[seg.id].slopeLocked).toBe(true);
+  });
+});
