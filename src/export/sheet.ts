@@ -6,6 +6,7 @@
 import { degrees, PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { MunicipalityProfile } from '../model/municipality';
+import { textWidth } from './labelLayout';
 
 export type Op =
   | { t: 'line'; x1: number; y1: number; x2: number; y2: number; w?: number; color?: string; dash?: boolean }
@@ -221,9 +222,9 @@ export function drawFrame(sheet: Sheet): void {
   sheet.ops.push({ t: 'rect', x: 10, y: 10, w: sheet.width - 20, h: sheet.height - 20, lw: 0.5 });
 }
 
-/** 文字列が幅 w(mm) に収まるように切り詰める（文字幅 ≒ size×0.95、半角は半分） */
+/** 文字列が幅 w(mm) に収まるように切り詰める（文字幅は labelLayout の textWidth） */
 export function fitText(s: string, size: number, w: number): string {
-  const width = (t: string) => [...t].reduce((a, c) => a + (c.charCodeAt(0) < 0x100 ? 0.55 : 1) * size, 0);
+  const width = (t: string) => textWidth(t, size);
   if (width(s) <= w) return s;
   let t = s;
   while (t.length > 1 && width(t + '…') > w) t = t.slice(0, -1);

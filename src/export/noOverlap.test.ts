@@ -69,6 +69,26 @@ export function crowdedWater() {
   return { doc: { ...doc, network: net }, out: out.id };
 }
 
+/** 桝が 13 個続く現場（0.5〜6m の間隔） */
+export function manyManholes() {
+  let doc: Doc = { building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {}, site: { designGL: 0 } };
+  const f = doc.building.floors[0].id;
+  const gaps = [600, 500, 2000, 600, 600, 3000, 500, 800, 6000, 600, 1500, 700];
+  const ports: { id: string; pos: { x: number; y: number; z: number } }[] = [];
+  let x = 0;
+  for (let i = 0; i <= gaps.length; i++) {
+    const r = placeFixture(doc, f, i === gaps.length ? 'publicSewage' : i % 3 === 2 ? 'manholeTrap' : 'manholeSewage', { x, y: 0 });
+    doc = r.doc;
+    const port = portNodes(doc.network, r.fixtureId!)[0], z = -400 - i * 30, fx = doc.fixtures[r.fixtureId!];
+    doc = { ...doc, fixtures: { ...doc.fixtures, [fx.id]: { ...fx, params: { invertZ: z } } }, network: { ...doc.network, nodes: { ...doc.network.nodes, [port.id]: { ...port, pos: { ...port.pos, z } } } } };
+    ports.push(doc.network.nodes[port.id]);
+    x += gaps[i] ?? 0;
+  }
+  let net = doc.network;
+  for (let i = 1; i < ports.length; i++) net = addPolyline(net, [ports[i - 1].pos, ports[i].pos], { ...S, diameter: 100 }, { startNodeId: ports[i - 1].id, endNodeId: ports[i].id }).net;
+  return { doc: { ...doc, network: net }, outlet: ports[ports.length - 1].id };
+}
+
 describe('全ての申請図面で文字が重ならない', () => {
   for (const profile of PROFILES) {
     test(`排水のアイソメ図（${profile.name}）`, () => {
@@ -90,6 +110,19 @@ describe('全ての申請図面で文字が重ならない', () => {
       expect(model.nodes.length).toBeGreaterThan(5);
       const iso = buildIsometric(doc, 'drain', profile);
       expect(findTextOverlaps(renderProfileSheet(model, meta, iso))).toEqual([]);
+    });
+    test(`桝が 13 個続く縦断図とアイソメ図（${profile.name}）`, () => {
+      const { doc, outlet } = manyManholes();
+      const route = extractRoute(doc.network, outlet);
+      if (!('route' in route)) throw new Error('経路が取れない');
+      const model = buildProfile(doc, route.route, profile, '排水設備 縦断図');
+      expect(model.nodes).toHaveLength(13);
+      const iso = buildIsometric(doc, 'drain', profile);
+      const sheet = renderProfileSheet(model, meta, iso);
+      expect(findTextOverlaps(sheet)).toEqual([]);
+      // 表の数値は切り詰めない
+      expect(sheet.ops.filter((o) => o.t === 'text' && /^[\d./]+…$/.test(o.s))).toEqual([]);
+      expect(findTextOverlaps(renderIsoSheet(iso, profile, { ...meta, title: '立面図（展開図）' }))).toEqual([]);
     });
     test(`給水立面図（${profile.name}）`, () => {
       const { doc, out } = crowdedWater();

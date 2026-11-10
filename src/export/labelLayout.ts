@@ -77,12 +77,16 @@ export class LabelPlacer {
   /** 配管などの線。文字はなるべく線をまたがない */
   blockSeg(x1: number, y1: number, x2: number, y2: number, id?: string): void { this.segs.push({ x1, y1, x2, y2, id }); }
 
-  private cost(c: Cand, ignoreSeg?: string): number {
+  /** 重ならない場所が見つからず、重なったまま置いた札の数（呼び出し側で注意書きに使う） */
+  collisions = 0;
+
+  private cost(c: Cand, ignoreSeg: string | undefined, limit: number): number {
     let cost = c.penalty;
     const b = this.bounds;
     for (const t of c.texts) for (const r of textRects(t, 0.25)) {
       if (r.x1 < b.x1 || r.y1 < b.y1 || r.x2 > b.x2 || r.y2 > b.y2) cost += 5000;
       for (const h of this.hard) if (hit(r, h)) cost += 1000 + area(r, h) * 10;
+      if (cost >= limit) return cost; // これより良い候補がすでにある
       // 自分の線は、線に沿って書く札（引出線なし）のときだけ無視する
       for (const s of this.segs) if ((s.id === undefined || s.id !== ignoreSeg || c.leader) && segHitsRect(s, r)) cost += 60;
     }
@@ -92,15 +96,17 @@ export class LabelPlacer {
     return cost;
   }
 
-  /** 候補から選んで描く。全部ぶつかるときは、いちばんましな場所に置く */
+  /** 候補から選んで描く。全部ぶつかるときは、いちばんましな場所に置く（collisions に数える） */
   place(cands: Cand[], opts: { ignoreSeg?: string } = {}): Cand | undefined {
     let best: Cand | undefined, bestCost = Infinity;
-    for (const c of cands) {
-      const k = this.cost(c, opts.ignoreSeg);
+    // 優先度の順に試し、残りの候補がこれ以上良くならなくなったら打ち切る
+    for (const c of [...cands].sort((p, q) => p.penalty - q.penalty)) {
+      if (c.penalty >= bestCost) break;
+      const k = this.cost(c, opts.ignoreSeg, bestCost);
       if (k < bestCost) { best = c; bestCost = k; }
-      if (k <= c.penalty && k < 1) break; // 最優先の場所がきれいに空いている
     }
     if (!best) return undefined;
+    if (bestCost >= 1000) this.collisions++;
     if (best.leader) {
       this.sheet.ops.push({ t: 'line', x1: best.leader.x1, y1: best.leader.y1, x2: best.leader.x2, y2: best.leader.y2, w: 0.12, color: best.leader.color });
       this.segs.push(best.leader);
@@ -124,7 +130,7 @@ export function around(ax: number, ay: number, lines: LabelLine[], opts: { gap?:
   const W = Math.max(...lines.map((l) => textWidth(l.s, l.size))), H = lineH * lines.length;
   const dirs = [...(opts.prefer ?? []), ...DIRS.filter((d) => !(opts.prefer ?? []).includes(d))];
   const out: Cand[] = [];
-  const dists = [0, 3, 6, 10, 15, 22, 30].filter((d) => d <= (opts.maxDist ?? 30));
+  const dists = [0, 3, 6, 10, 15, 22, 30, 40, 52, 66, 82].filter((d) => d <= (opts.maxDist ?? 82));
   dists.forEach((extra, di) => {
     dirs.forEach((deg, i) => {
       const r = (deg * Math.PI) / 180, dx = Math.cos(r), dy = Math.sin(r);

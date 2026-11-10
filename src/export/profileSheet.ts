@@ -51,7 +51,10 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   let graphTop = headTop + (above ? ABOVE_H : 0);
   if (withIso) {
     const isoTop = headTop - 4;
-    const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45));
+    // 縦断図に要る高さ（縦の縮尺どおり）を残して、空きは全部アイソメ図に使う（大きく描けば文字が混まない）。最低でも従来の 45%
+    const zs = model.nodes.flatMap((n) => [n.invertLevel, n.groundLevel]);
+    const needH = zs.length ? (Math.max(...zs, 0) - (Math.floor(Math.min(...zs, 0) / 1000) * 1000 - 200)) / pt.vScale + 16 : 30;
+    const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45), Math.floor(graphBottom - isoTop - (above ? ABOVE_H : 0) - needH - 4));
     sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: profile.paper.headerFields.length ? headerBottom + 4 : 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
     drawIsometric(sheet, iso!, profile, { x: 10 + M, y: isoTop, w: sheet.width - 20 - 2 * M, h: isoH });
     graphTop = isoTop + isoH + 4 + (above ? ABOVE_H : 0);
@@ -98,6 +101,8 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   // 入りきらずに詰めたときの縮み具合（桝名の切り詰めに使う）
   const slotSum = slots.reduce((a, b) => a + b, 0) - (slots[0] + slots[slots.length - 1]) / 2;
   const slotScale = slotSum > colHi - colLo ? (colHi - colLo) / slotSum : 1;
+  /** 文字が混み合って、重ならない場所が見つからなかった */
+  let crowded = false;
   /** 空いている場所を探して置く文字（区間の管種・勾配、桝名、注記）。線と記号を描き終えてから置く */
   const floats: Cand[][] = [];
 
@@ -241,6 +246,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
       placer.block({ x1: Math.min(...xs) - 1, y1: Math.min(...model.nodes.map((n) => Y(n.groundLevel))) - 0.2, x2: Math.max(...xs) + 1, y2: graphBottom });
     }
     floats.forEach((c, i) => placer.place(c, { ignoreSeg: i < model.segments.length ? `s${i}` : undefined }));
+    crowded = placer.collisions > 0;
   }
 
   // 下段の表
@@ -260,7 +266,11 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         const text = r.key === 'distance' ? fmtLen(s.distance, unit, pt.lengthDecimals) : r.key === 'slope' ? s.slopeText : s.pipeSpec;
         // 列が狭いときは縦書き
         if (textWidth(text, 2.6) <= Math.abs(colX[i + 1] - colX[i]) - 1) sheet.ops.push({ t: 'text', x, y: y + ROW_H / 2 + 1, s: text, size: 2.6, anchor: 'middle', color: bad ? WARN : INK });
-        else sheet.ops.push({ t: 'text', x: x + 0.9, y: y + ROW_H / 2, s: fitText(text, 2.4, ROW_H - 1.5), size: 2.4, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
+        else {
+          // 値は切り詰めない（申請の数値）。行の高さに入らなければ文字を小さくする
+          const size = Math.min(2.4, (2.4 * (ROW_H - 1)) / textWidth(text, 2.4));
+          sheet.ops.push({ t: 'text', x: x + size * 0.38, y: y + ROW_H / 2, s: text, size, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
+        }
       });
     } else {
       model.nodes.forEach((n, i) => {
@@ -270,13 +280,12 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
           if (!n.manhole) return;
           // 横書き 2 行（列幅は隣の点までの距離）
           const first = i === 0, last = i === model.nodes.length - 1;
-          const prev = first ? x : colX[i - 1], next = last ? x : colX[i + 1];
-          // 端の点は内側へ寄せて書く（1 点だけなら中央）
+                    // 端の点は内側へ寄せて書く（1 点だけなら中央）
           // 端の点は内側へ寄せる。鏡像（下流端が左）なら向きも反転
           const anchor = first && !last ? (mirror ? 'end' : 'start') : last && !first ? (mirror ? 'start' : 'end') : 'middle';
-          // 幅: 隣の点までの距離と、列をずらして確保した幅の大きいほう
-          const byNeighbor = (anchor === 'middle' ? Math.min(Math.abs(x - prev), Math.abs(next - x)) : anchor === 'start' ? Math.abs(next - x) : Math.abs(x - prev)) - 2;
-          const w = Math.max(8, byNeighbor, (anchor === 'middle' ? slots[i] : slots[i] / 2) * slotScale - 1.2);
+          // 幅: 列をずらして確保した幅（端の桝は内側へ書くので半分）。隣の桝名の幅を侵さない
+          const own = (anchor === 'middle' ? slots[i] : slots[i] / 2) * slotScale - 1.2;
+          const w = Math.max(Math.min(8, own), own);
           const tx = anchor === 'start' ? x + 1 : anchor === 'end' ? x - 1 : x;
           const [l1, l2] = mhLines(n);
           sheet.ops.push({ t: 'text', x: tx, y: y + 4, s: fitText(l1, 2.3, w), size: 2.3, anchor });
@@ -306,6 +315,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   const notes: { s: string; color: string }[] = [];
   for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : WARN });
   if (profile.unverified.length) notes.push({ s: `要確認: ${profile.unverified.join('、')}（自治体の手引きで確認してください）`, color: GRAY });
+  if (crowded) notes.unshift({ s: '※ 点が近く文字が混み合っています。経路を分けるか、用紙・縮尺の設定を見直してください', color: WARN });
   if (model.datumLabel) notes.unshift({ s: `※ ${model.datumLabel}。単位は ${pt.unit}、管長は m`, color: GRAY });
   const noteX = 10 + M, noteW = sheet.width - 10 - titleWidth(sheet.width) - 10 - noteX - 5;
   const noteY0 = sheet.height - 10 - titleH;
