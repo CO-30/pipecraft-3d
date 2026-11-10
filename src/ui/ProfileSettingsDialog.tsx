@@ -167,6 +167,9 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
           <label className="field">桝の名前
             <select value={pt.manholeLabel} onChange={(e) => setPt({ manholeLabel: e.target.value as 'table' | 'above' })}><option value="table">表に書く</option><option value="above">図の上に NO.1〜</option></select>
           </label>
+          <label className="field">下流端（公共桝）の位置
+            <select data-testid="pf-downstream-side" value={pt.downstreamSide} onChange={(e) => setPt({ downstreamSide: e.target.value as 'left' | 'right' })}><option value="right">右（上流を左から）</option><option value="left">左（沖縄市の実例）</option></select>
+          </label>
           <label className="field inline"><input type="checkbox" checked={pt.drainageIsometric} onChange={(e) => setPt({ drainageIsometric: e.target.checked })} /> 縦断図の上に排水のアイソメ図</label>
         </div>
         <h3>立面図</h3>

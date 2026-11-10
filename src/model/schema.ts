@@ -17,6 +17,7 @@ export const nodeSchema = z.object({
   fitting: z.object({ type: z.string().min(1), degree: z.number().int().nonnegative() }).optional(),
   avoid: z.enum(['beam', 'eave', 'balcony']).optional(),
   groundLevel: z.number().finite().optional(),
+  dropIn: z.number().finite().nonnegative().optional(),
 });
 
 export const segmentSchema = z.object({
@@ -69,13 +70,13 @@ export const buildingSchema = z.object({
 export const fixtureSchema = z.object({
   id: z.string().min(1),
   floorId: z.string().min(1),
-  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank',
+  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank', 'waterHeader', 'hotWaterHeader',
     'manholeSewage', 'manholeRain', 'manholeTrap', 'manholeInvert', 'publicSewage', 'publicRain']),
   x: z.number().finite(),
   y: z.number().finite(),
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
   /** マスの口径・形状・管底高（v5 の途中で追加したため省略可） */
-  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional(), existing: z.boolean().optional() }).optional(),
+  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional(), existing: z.boolean().optional(), drop: z.number().finite().nonnegative().optional() }).optional(),
 });
 
 const money = z.number().finite().nonnegative();

@@ -253,3 +253,30 @@ describe('縦断図の計算（手計算ケース）', () => {
     expect(m.nodes.map((n) => n.cumDistance)).toEqual([0, 0, 3000]);
   });
 });
+
+describe('落差桝', () => {
+  test('params.drop のマスは流入側の管底（invertIn）と深さ（depthIn）を持ち、上流の区間はそこへ向かう勾配。名前は H530-830 の形', () => {
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    let d = base(-100);
+    const a = manhole(d, 'manholeSewage', 0, 0, -400); d = a.doc;
+    const m = manhole(d, 'manholeSewage', 5000, 0, -930); d = m.doc; // 流出側の管底 −930、落差 300 → 流入側 −630
+    const b = manhole(d, 'publicSewage', 10000, 0, -1000); d = b.doc;
+    d = { ...d, fixtures: { ...d.fixtures, [m.fixtureId]: { ...d.fixtures[m.fixtureId], params: { ...d.fixtures[m.fixtureId].params, drop: 300 } } } };
+    d = { ...d, network: { ...d.network, nodes: { ...d.network.nodes, [m.port]: { ...d.network.nodes[m.port], dropIn: 300 } } } };
+    let r = pipe(d.network, [v(0, 0, -400), v(5000, 0, -930)], a.port, m.port); d = { ...d, network: r.net };
+    r = pipe(d.network, [v(5000, 0, -930), v(10000, 0, -1000)], m.port, b.port); d = { ...d, network: r.net };
+    const rt = extractRoute(d.network, b.port);
+    const model = buildProfile(d, 'route' in rt ? rt.route : [], p, 't');
+    const n = model.nodes[1];
+    // 公共桝の管底 −1000 を ±0 にずらした値
+    expect(n.invertLevel).toBeCloseTo(70, 6);
+    expect(n.invertIn).toBeCloseTo(370, 6);
+    expect(n.manhole?.depth).toBeCloseTo(830, 6); // GL −100 − (−930)
+    expect(n.manhole?.depthIn).toBeCloseTo(530, 6);
+    expect(n.manhole?.name).toBe('NO.2汚水マス');
+    expect(model.segments[0].slope).toBeCloseTo((630 - 400) / 5000, 9); // 上流の区間は流入側の管底へ
+    expect(model.segments[1].slope).toBeCloseTo(70 / 5000, 9);
+    expect(n.coverIn).toBeCloseTo(-100 - (-630 + outerDiameter(100)), 6); // GL − (流入管底 + 外径)
+    expect(model.nodes[0].invertIn).toBeUndefined();
+  });
+});

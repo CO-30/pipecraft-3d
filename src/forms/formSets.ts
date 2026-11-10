@@ -6,6 +6,8 @@ import { buildProfile, extractRoute, trimToManholes } from '../model/profileDraw
 import { outletCandidates } from '../model/outlets';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderIsoSheet } from '../export/isoSheet';
+import { buildRiser, defaultRiserRoot } from '../model/riser';
+import { renderRiserSheet } from '../export/riserSheet';
 import type { Sheet } from '../export/sheet';
 import { OKINAWA_FORMS } from './okinawaCity';
 import type { FormSet } from './types';
@@ -29,3 +31,12 @@ export function drainageSheetsFor(doc: Doc, profile: MunicipalityProfile, siteNa
   };
 }
 
+/** 給水の立面図（建物側面図の欄に貼る）。プロファイルの様式どおり（アイソメ or 系統図）。配管が無ければ undefined */
+export function waterSheetFor(doc: Doc, profile: MunicipalityProfile, siteName: string, date: Date): Sheet | undefined {
+  if (profile.riser.lineStyle === 'isometric') {
+    const iso = buildIsometric(doc, 'water', profile);
+    return iso.lines.length ? renderIsoSheet(iso, profile, { siteName, date, title: '建物側面図（給水）' }) : undefined;
+  }
+  const root = defaultRiserRoot(doc);
+  return root ? renderRiserSheet(buildRiser(doc, root, profile, '給水装置 立面図'), { siteName, date }) : undefined;
+}

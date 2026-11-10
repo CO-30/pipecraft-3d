@@ -38,7 +38,9 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
       sheet.ops.push({ t: 'circle', cx: x, cy: y, r: 1.4, stroke: c, fill: '#ffffff', lw: 0.3 });
       sheet.ops.push({ t: 'text', x: x + 2, y: y + 4, s: p.label, size: 2.2, color: c });
     } else {
-      drawSymbol(sheet, profile.symbols[p.label] ?? 'triangle', x, y, 1.2, c);
+      // 記号は器具の種類で選ぶ（ヘッダーは太い横棒）
+      const sym = p.type === 'waterHeader' || p.type === 'hotWaterHeader' ? 'header' : (p.type && profile.symbols[p.type]) || 'triangle';
+      drawSymbol(sheet, sym, x, y, 1.2, c);
       sheet.ops.push({ t: 'text', x: x + 2, y: y - 1, s: p.label, size: 2.2, color: INK });
       if (p.height !== undefined) sheet.ops.push({ t: 'text', x: x + 2, y: y + 2.2, s: p.height, size: 2, color: GRAY });
     }

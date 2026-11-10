@@ -47,6 +47,8 @@ export const municipalityProfileSchema = z.object({
     lengthDecimals: z.union([z.literal(2), z.literal(3)]).default(3),
     /** 桝の名前・口径・深さを表に書く（table）か、図の上に書く（above。上流から NO.1, NO.2…） */
     manholeLabel: z.enum(['table', 'above']).default('table'),
+    /** 下流端（公共桝）を図のどちらに描くか。沖縄市の実例は左。省略時は右 */
+    downstreamSide: z.enum(['left', 'right']).default('right'),
     /** 縦断図の上に排水のアイソメ図（立面図・展開図）を描く（沖縄市の様式） */
     drainageIsometric: z.boolean().default(false),
   }),
@@ -107,6 +109,7 @@ export const STANDARD_PROFILE: MunicipalityProfile = {
     pipeSpecFormat: 'materialFirst',
     lengthDecimals: 3,
     manholeLabel: 'table',
+    downstreamSide: 'right',
     drainageIsometric: false,
   },
   riser: { lineStyle: 'single', diameterLabelPos: 'above', showFloorLines: true, heightLabel: 'FL+' },
@@ -144,7 +147,7 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
     profileTable: {
       rows: [{ key: 'groundLevel', label: '地盤高' }, { key: 'cover', label: '土かぶり' }, { key: 'invertLevel', label: '管底高' }],
       minSlopeByDiameter: { 75: 100 / 3, 100: 50, 125: 100 / 1.7, 150: 100 / 1.5 },
-      slopeFormat: 'per100', hScale: 200, vScale: 200, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above', drainageIsometric: true,
+      slopeFormat: 'per100', hScale: 200, vScale: 200, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above', downstreamSide: 'left', drainageIsometric: true,
     },
     riser: { lineStyle: 'isometric', diameterLabelPos: 'above', showFloorLines: false, heightLabel: 'FL+' },
   }),

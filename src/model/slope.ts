@@ -22,21 +22,35 @@ export function planLength(net: Network, s: Segment): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+/**
+ * 区間の端の管底高。落差桝（node.dropIn）では、流入側の区間はノードの高さ + dropIn に着く。
+ * 流入側かどうかは「反対の端がノードより高い」で判定（流出側の区間は下がっていく）
+ */
+export function endZ(net: Network, s: Segment, side: 'a' | 'b', down?: 'a' | 'b'): number {
+  const n = net.nodes[side === 'a' ? s.a : s.b], o = net.nodes[side === 'a' ? s.b : s.a];
+  // dropIn はマスの接続口（fixtureId あり）だけで有効
+  if (!n.dropIn || !n.fixtureId || !o) return n.pos.z;
+  // 向きが分かっていれば（固定勾配の計算など）、この端が下流端のときだけ流入側
+  if (down) return side === down ? n.pos.z + n.dropIn : n.pos.z;
+  return o.pos.z > n.pos.z + 0.05 ? n.pos.z + n.dropIn : n.pos.z;
+}
+const dz = (net: Network, s: Segment) => Math.abs(endZ(net, s, 'a') - endZ(net, s, 'b'));
+
 /** 立て管（平面の長さが1mm未満、または高低差が平面の長さより大きい斜めの管） */
 export function isRiserLike(net: Network, s: Segment): boolean {
   const L = planLength(net, s);
-  return L < 1 || Math.abs(net.nodes[s.a].pos.z - net.nodes[s.b].pos.z) > L;
+  return L < 1 || dz(net, s) > L;
 }
 
 /** 勾配が足りているか（高さを0.1mmに丸めた誤差は許す） */
 export const slopeEnough = (net: Network, s: Segment, need: number) =>
-  Math.abs(net.nodes[s.a].pos.z - net.nodes[s.b].pos.z) + 0.15 >= need * planLength(net, s);
+  dz(net, s) + 0.15 >= need * planLength(net, s);
 
 /** 区間の実際の勾配（高低差 / 平面の長さ）。立て管は null */
 export function actualSlope(net: Network, s: Segment): number | null {
   const L = planLength(net, s);
   if (isRiserLike(net, s)) return null;
-  return Math.abs(net.nodes[s.a].pos.z - net.nodes[s.b].pos.z) / L;
+  return dz(net, s) / L;
 }
 
 /**
@@ -125,6 +139,7 @@ export function downstreamEnd(net: Network, s: Segment, isOutlet?: (nodeId: stri
   // 隣の固定区間とのつながりで決める: 片方の端から固定区間が流れ出て（その端が高い）いればその端が下流（流れが続く）。
   // それが無ければ、片方の端へ固定区間が流れ込んで（その端が低い）いればその端が上流
   const neighbors = (nodeId: string) => Object.values(net.segments).filter((t) => t.id !== s.id && t.slopeLocked && isDrain(t.system) && (t.a === nodeId || t.b === nodeId));
+  // ここは生の pos.z で比べる（落差桝の流入側は z + dropIn でさらに高いので、向きの判定は変わらない）
   const leaves = (nodeId: string) => neighbors(nodeId).some((t) => net.nodes[t.a === nodeId ? t.b : t.a].pos.z < net.nodes[nodeId].pos.z - 0.05);
   const arrives = (nodeId: string) => neighbors(nodeId).some((t) => net.nodes[t.a === nodeId ? t.b : t.a].pos.z > net.nodes[nodeId].pos.z + 0.05);
   const la = leaves(s.a), lb = leaves(s.b);
@@ -144,11 +159,13 @@ function applyLockedSlope(net: Network, s: Segment, down: 'a' | 'b'): Network {
   const ratio = s.slope ?? 0;
   const upId = down === 'a' ? s.b : s.a, downId = down === 'a' ? s.a : s.b;
   const L = planLength(net, s);
-  let moveId = downId, z = net.nodes[upId].pos.z - ratio * L;
+  // 下流端が落差桝なら、流入側の管底（node.z + dropIn）が勾配の着点
+  const dropDown = net.nodes[downId].fixtureId ? net.nodes[downId].dropIn ?? 0 : 0;
+  let moveId = downId, z = endZ(net, s, upId === s.a ? 'a' : 'b', down) - ratio * L - dropDown;
   if (net.nodes[downId].fixtureId) {
     if (net.nodes[upId].fixtureId) return net;
     moveId = upId;
-    z = net.nodes[downId].pos.z + ratio * L;
+    z = endZ(net, s, down, down) + ratio * L;
   }
   z = Math.round(z * 10) / 10;
   const n = net.nodes[moveId];
@@ -159,7 +176,7 @@ function applyLockedSlope(net: Network, s: Segment, down: 'a' | 'b'): Network {
 
 /** 区間の勾配が設計勾配どおりか（0.05mm の誤差を許す） */
 function slopeSatisfied(net: Network, s: Segment, down: 'a' | 'b'): boolean {
-  const upZ = net.nodes[down === 'a' ? s.b : s.a].pos.z, downZ = net.nodes[down === 'a' ? s.a : s.b].pos.z;
+  const upZ = endZ(net, s, down === 'a' ? 'b' : 'a', down), downZ = endZ(net, s, down, down);
   return Math.abs(downZ - (upZ - (s.slope ?? 0) * planLength(net, s))) <= 0.05;
 }
 

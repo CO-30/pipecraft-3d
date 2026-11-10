@@ -80,8 +80,34 @@ export function fillWaterApplication(ws: ExcelJS.Worksheet, v: ApplicationValues
   if (fa !== undefined || fd !== undefined || fi !== undefined) set(CELLS.feeTotal, (fa ?? 0) + (fd ?? 0) + (fi ?? 0));
 }
 
-/** テンプレートのバイト列から、値を入れた xlsx を作る */
-export async function buildWaterApplication(template: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor): Promise<Uint8Array> {
+export const BACK_SHEET_NAME = '申請書（裏）';
+
+/** 様式の図の欄に貼る画像（PNG）。sideView: 表の「建物側面図」、plan: 裏の「平面図」、iso: 裏の「平面図・アイソメ図」 */
+export type WaterImages = { sideView?: Uint8Array; plan?: Uint8Array; iso?: Uint8Array };
+/** 画像の欄（0 始まりの列・行。tl〜br の 2 セルアンカー） */
+export const IMAGE_BOXES = {
+  sideView: { tl: { col: 13, row: 47 }, br: { col: 20, row: 60 } },
+  plan: { tl: { col: 0, row: 1 }, br: { col: 10, row: 31 } },
+  iso: { tl: { col: 0, row: 32 }, br: { col: 10, row: 65 } },
+} as const;
+
+/** 欄の大きさを px で（列幅は文字数×7+5、行高は pt×96/72。Excel の既定） */
+export function boxPx(ws: ExcelJS.Worksheet, box: { tl: { col: number; row: number }; br: { col: number; row: number } }): { width: number; height: number } {
+  let width = 0, height = 0;
+  for (let c = box.tl.col; c < box.br.col; c++) width += Math.round((ws.getColumn(c + 1).width ?? 8.43) * 7 + 5);
+  for (let r = box.tl.row; r < box.br.row; r++) height += Math.round((ws.getRow(r + 1).height ?? 15) * 96 / 72);
+  return { width, height };
+}
+
+/** PNG の縦横（IHDR）。PNG でなければ undefined */
+export function pngSize(png: Uint8Array): { width: number; height: number } | undefined {
+  if (png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return undefined;
+  const dv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  return { width: dv.getUint32(16), height: dv.getUint32(20) };
+}
+
+/** テンプレートのバイト列から、値（と図の画像）を入れた xlsx を作る */
+export async function buildWaterApplication(template: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor, images: WaterImages = {}): Promise<Uint8Array> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(template as ArrayBuffer);
   const ws = wb.getWorksheet(SHEET_NAME);
@@ -89,5 +115,18 @@ export async function buildWaterApplication(template: ArrayBuffer | Uint8Array, 
   // 文書のプロパティに個人名などを残さない
   wb.creator = 'PipeCraft 3D'; wb.lastModifiedBy = 'PipeCraft 3D'; wb.company = ''; wb.modified = new Date();
   fillWaterApplication(ws, v, c);
+  const back = wb.getWorksheet(BACK_SHEET_NAME);
+  const put = (sheet: ExcelJS.Worksheet | undefined, png: Uint8Array | undefined, box: { tl: { col: number; row: number }; br: { col: number; row: number } }) => {
+    if (!sheet || !png) return;
+    const id = wb.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: 'png' });
+    // 欄の大きさ（px）に、画像の縦横比を保って収める（2 セルアンカーだと引き伸ばされる）
+    const bw = boxPx(sheet, box), dim = pngSize(png);
+    const k = dim ? Math.min(bw.width / dim.width, bw.height / dim.height) : 1;
+    const ext = dim ? { width: Math.floor(dim.width * k), height: Math.floor(dim.height * k) } : bw;
+    sheet.addImage(id, { tl: { col: box.tl.col, row: box.tl.row }, ext });
+  };
+  put(ws, images.sideView, IMAGE_BOXES.sideView);
+  put(back, images.plan, IMAGE_BOXES.plan);
+  put(back, images.iso, IMAGE_BOXES.iso);
   return new Uint8Array(await wb.xlsx.writeBuffer());
 }

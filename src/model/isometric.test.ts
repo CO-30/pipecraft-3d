@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork } from './network';
-import { placeFixture, portNodes } from './fixtures';
+import { FIXTURE_CATALOG, placeFixture, portNodes } from './fixtures';
 import { BUILTIN_PROFILES, STANDARD_PROFILE } from './municipality';
 import { buildIsometric, isoProject } from './isometric';
 
@@ -78,5 +78,33 @@ describe('アイソメ図（立面図・展開図）', () => {
     expect(p.profileTable.drainageIsometric).toBe(true);
     expect(STANDARD_PROFILE.riser.lineStyle).toBe('single');
     expect(STANDARD_PROFILE.profileTable.drainageIsometric).toBe(false);
+  });
+});
+
+describe('ヘッダー工法', () => {
+  test('給水ヘッダー・給湯ヘッダーは入口 1 と出口 6/4 の接続口。アイソメ図の名前は配管をつないだ出口の数で「給水ヘッダー3P」', () => {
+    expect(FIXTURE_CATALOG.waterHeader.ports.map((p) => p.id)).toEqual(['in', 'out1', 'out2', 'out3', 'out4', 'out5', 'out6']);
+    expect(FIXTURE_CATALOG.hotWaterHeader.ports.map((p) => p.id)).toEqual(['in', 'out1', 'out2', 'out3', 'out4']);
+    expect(FIXTURE_CATALOG.hotWaterHeader.ports.every((p) => p.system === 'hotWater')).toBe(true);
+    let d: Doc = { building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {} };
+    const fl = d.building.floors[0].id;
+    const h = placeFixture(d, fl, 'waterHeader', { x: 0, y: 0 }); d = h.doc;
+    const ports = portNodes(d.network, h.fixtureId!);
+    const inP = ports.find((p) => p.portId === 'in')!;
+    const m = placeFixture(d, fl, 'waterMeter', { x: -3000, y: 0 }); d = m.doc;
+    const mo = portNodes(d.network, m.fixtureId!).find((p) => p.portId === 'out')!;
+    d = { ...d, network: addPolyline(d.network, [mo.pos, inP.pos], { system: 'water', diameter: 20, material: 'HI' }, { startNodeId: mo.id, endNodeId: inP.id }).net };
+    for (const k of [1, 2, 3]) {
+      const f = placeFixture(d, fl, 'faucet', { x: 2000 * k, y: 2000 }); d = f.doc;
+      const fp = portNodes(d.network, f.fixtureId!)[0];
+      const op = ports.find((p) => p.portId === `out${k}`)!;
+      d = { ...d, network: addPolyline(d.network, [op.pos, fp.pos], { system: 'water', diameter: 13, material: 'PB' }, { startNodeId: op.id, endNodeId: fp.id }).net };
+    }
+    const iso = buildIsometric(d, 'water', STANDARD_PROFILE);
+    const hp = iso.points.find((p) => p.nodeId === inP.id)!;
+    expect(hp.label).toBe('給水ヘッダー3P');
+    // 出口の点は名前を重ねない
+    expect(iso.points.filter((p) => p.label.startsWith('給水ヘッダー')).length).toBe(1);
+    expect(iso.lines.some((l) => l.label.startsWith('PB13×'))).toBe(true);
   });
 });

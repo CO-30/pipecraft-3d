@@ -5,14 +5,14 @@
  */
 import type { Doc } from './doc';
 import { floorById } from './building';
-import { FIXTURE_CATALOG, isManhole } from './fixtures';
+import { FIXTURE_CATALOG, isHeader, isManhole, type FixtureType } from './fixtures';
 import type { MunicipalityProfile } from './municipality';
 import type { SystemType, Vec3 } from './network';
 import { isDrain } from './slope';
 
 export type IsoKind = 'water' | 'drain';
 export type IsoLine = { segId: string; x1: number; y1: number; x2: number; y2: number; label: string; system: SystemType; existing?: boolean };
-export type IsoPoint = { nodeId: string; x: number; y: number; label: string; height?: string; isPublic?: boolean; isManhole?: boolean; existing?: boolean };
+export type IsoPoint = { nodeId: string; x: number; y: number; label: string; /** 器具の種類（記号の選択用） */ type?: FixtureType; height?: string; isPublic?: boolean; isManhole?: boolean; existing?: boolean };
 export type IsoModel = { kind: IsoKind; lines: IsoLine[]; points: IsoPoint[]; bounds: { minX: number; minY: number; maxX: number; maxY: number } };
 
 const COS30 = Math.cos(Math.PI / 6), SIN30 = 0.5;
@@ -59,8 +59,12 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     const p = isoProject(n.pos);
     const fl = floorById(doc.building, fx.floorId);
     const mh = isManhole(fx.type);
+    // ヘッダーは配管をつないだ出口の数を付ける（給水ヘッダー6P）
+    const label = isHeader(fx.type)
+      ? `${FIXTURE_CATALOG[fx.type].label}${Object.values(doc.network.nodes).filter((m) => m.fixtureId === fx.id && m.portId?.startsWith('out') && Object.values(doc.network.segments).some((s) => s.a === m.id || s.b === m.id)).length}P`
+      : FIXTURE_CATALOG[fx.type].label;
     points.push({
-      nodeId: id, x: p.x, y: p.y, label: FIXTURE_CATALOG[fx.type].label,
+      nodeId: id, x: p.x, y: p.y, label, type: fx.type,
       ...(mh ? { isManhole: true, isPublic: fx.type.startsWith('public') } : { height: ((n.pos.z - (fl?.elevation ?? 0)) / 1000).toFixed(1) }),
       ...(fx.params?.existing ? { existing: true } : {}),
     });

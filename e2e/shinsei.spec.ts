@@ -89,7 +89,18 @@ test.describe('申請図面', () => {
     await page.getByTestId('manhole-invert').fill('-1100');
     await page.getByTestId('manhole-invert').press('Enter');
     await expect(page.getByTestId('manhole-depth')).toContainText('深さ 650mm');
+    // 落差桝: 落差 50 → 接続口ノードに dropIn、縦断図の桝名が H600-650（流入側-流出側）に
+    await page.getByTestId('manhole-drop').fill('50');
+    await page.getByTestId('manhole-drop').press('Enter');
+    await expect(page.getByTestId('manhole-drop-note')).toContainText('H600-650');
+    const d3 = await doc(page);
+    expect(d3.network.nodes[port.id].dropIn).toBe(50);
     await page.screenshot({ path: evidence('shinsei-05-manhole') });
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-profile').selectOption('okinawa-city');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('H600-650');
+    await page.screenshot({ path: evidence('shinsei-12-drop-manhole') });
+    await page.getByTestId('close-shinsei').click();
   });
 
   test('自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る', async ({ page }) => {
@@ -153,6 +164,13 @@ test.describe('申請図面', () => {
     await page.screenshot({ path: evidence('shinsei-11-forms') });
     const [xlsx] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-water').click()]);
     expect(xlsx.suggestedFilename()).toContain('給水装置申込及び工事申請書.xlsx');
+    // 図の欄に画像（給水の立面図の PNG）が入っている
+    const xlsxPath = await xlsx.path();
+    const { default: ExcelJS } = await import('exceljs');
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(xlsxPath!);
+    expect(wb.getWorksheet('申請書（表）')!.getImages().length).toBe(1);
+    expect(wb.getWorksheet('申請書（裏）')!.getImages().length).toBeGreaterThanOrEqual(1);
+    if (test.info().project.name === 'pc-chrome') await xlsx.saveAs('test-evidence/pc-chrome-shinsei-11-water-application.xlsx');
     const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-sewer').click()]);
     expect(pdf.suggestedFilename()).toContain('下水道排水設備計画確認申請書.pdf');
     const [list] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-products').click()]);

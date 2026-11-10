@@ -4,7 +4,7 @@
  */
 import type { ProfileModel } from '../model/profileDrawing';
 import type { IsoModel } from '../model/isometric';
-import { drawIsoLegend, drawIsometric } from './isoSheet';
+import { drawIsometric } from './isoSheet';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
 import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
@@ -58,13 +58,18 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
 
   // 見出し
   sheet.ops.push({ t: 'text', x: 10 + M, y: 10 + M + 2, s: model.title, size: 6, bold: true });
-  sheet.ops.push({ t: 'text', x: 10 + M + 60, y: 10 + M + 2, s: `（${profile.name}）`, size: 3, color: GRAY });
+  // 自治体名は見出しの下（右上の受付欄と重ねない）
+  sheet.ops.push({ t: 'text', x: 10 + M, y: 10 + M + 6.5, s: `（${profile.name}）`, size: 3, color: GRAY });
 
   const total = model.nodes.length ? model.nodes[model.nodes.length - 1].cumDistance : 0;
   const areaW = right - left - 10;
   const hScale = pickHScale(total, areaW, pt.hScale);
   const vScale = pt.vScale;
-  const X = (mm: number) => left + 5 + mm / hScale;
+  // 下流端を左に描く様式（沖縄市）は x を鏡にする
+  const mirror = pt.downstreamSide === 'left';
+  const X = (mm: number) => left + 5 + (mirror ? total - mm : mm) / hScale;
+  /** 上流側の列のずれ（落差桝の 2 列）: 上流は通常左、鏡なら右 */
+  const upSide = mirror ? 1 : -1;
 
   // 基準線 DL: 最小の管底高を 1m 単位で切り下げ
   const minZ = Math.min(...model.nodes.map((n) => Math.min(n.invertLevel, n.groundLevel)), 0);
@@ -98,14 +103,17 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   // GL 線
   if (model.nodes.length) {
     sheet.ops.push({ t: 'poly', pts: model.nodes.map((n) => [X(n.cumDistance), Y(n.groundLevel)]), w: 0.3, color: INK });
-    sheet.ops.push({ t: 'text', x: X(model.nodes[0].cumDistance) - 4, y: Y(model.nodes[0].groundLevel) - 1, s: `GL${model.tentativeGL ? '（仮）' : ''}`, size: 2.6, anchor: 'end' });
+    const leftmost = mirror ? model.nodes[model.nodes.length - 1] : model.nodes[0];
+    sheet.ops.push({ t: 'text', x: X(leftmost.cumDistance) - 4, y: Y(leftmost.groundLevel) - 1, s: `GL${model.tentativeGL ? '（仮）' : ''}`, size: 2.6, anchor: 'end' });
     // 管底線（区間ごと。警告は赤）
     for (let i = 0; i < model.segments.length; i++) {
       const a = model.nodes[i], b = model.nodes[i + 1], s = model.segments[i];
       const c = segColor(s);
-      sheet.ops.push({ t: 'line', x1: X(a.cumDistance), y1: Y(a.invertLevel), x2: X(b.cumDistance), y2: Y(b.invertLevel), w: 0.6, color: c });
+      // 下流端 b が落差桝なら流入側の管底に着く
+      const zb = b.invertIn ?? b.invertLevel;
+      sheet.ops.push({ t: 'line', x1: X(a.cumDistance), y1: Y(a.invertLevel), x2: X(b.cumDistance), y2: Y(zb), w: 0.6, color: c });
       // 区間の上に 管種口径・勾配（沖縄市の様式では 管種口径／勾配／長さ を 3 行で下に）
-      const mx = (X(a.cumDistance) + X(b.cumDistance)) / 2, my = (Y(a.invertLevel) + Y(b.invertLevel)) / 2;
+      const mx = (X(a.cumDistance) + X(b.cumDistance)) / 2, my = (Y(a.invertLevel) + Y(zb)) / 2;
       if (above) {
         // 管種口径／勾配／長さ を 3 行（表に重ならないよう線の上）
         const top = Math.min(Y(a.groundLevel), Y(b.groundLevel)) - 1.5;
@@ -125,13 +133,17 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         const hw = Math.max(1.5, n.manhole.diameter / hScale / 2);
         const c = nodeColor(i);
         sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: c, fill: '#ffffff', lw: 0.3 });
+        // 落差桝: 流入側の管底から流出側の管底へ落ちる線
+        if (n.invertIn !== undefined) sheet.ops.push({ t: 'line', x1: x + upSide * hw, y1: Y(n.invertIn), x2: x + upSide * hw, y2: Y(n.invertLevel), w: 0.6, color: c });
         drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, c);
+        // 深さ: 落差桝は H530-830（流入側-流出側）
+        const depthText = n.manhole.depthIn !== undefined ? `H${Math.round(n.manhole.depthIn)}-${Math.round(n.manhole.depth)}` : `H${Math.round(n.manhole.depth)}`;
         if (above) {
           // 「NO.1小口径桝 φ150 H410」を縦書きで図の上に、GL の差を (−600) のように
           const diff = n.glDiff !== undefined ? ` (${fmtDiff(n.glDiff)})` : '';
           // 2 列に分けて縦書き（名前 / 径・深さ・GL差）。各列は ABOVE_H−8 に収める
           sheet.ops.push({ t: 'text', x: x - 1.6, y: Y(n.groundLevel) - 7, s: fitText(n.manhole.name, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
-          sheet.ops.push({ t: 'text', x: x + 1.6, y: Y(n.groundLevel) - 7, s: fitText(`φ${n.manhole.diameter} H${Math.round(n.manhole.depth)}${diff}`, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
+          sheet.ops.push({ t: 'text', x: x + 1.6, y: Y(n.groundLevel) - 7, s: fitText(`φ${n.manhole.diameter} ${depthText}${diff}`, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
         } else {
           sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
         }
@@ -179,8 +191,9 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
           const first = i === 0, last = i === model.nodes.length - 1;
           const prev = first ? x : X(model.nodes[i - 1].cumDistance), next = last ? x : X(model.nodes[i + 1].cumDistance);
           // 端の点は内側へ寄せて書く（1 点だけなら中央）
-          const anchor = first && !last ? 'start' : last && !first ? 'end' : 'middle';
-          const w = Math.max(8, (anchor === 'middle' ? Math.min(x - prev, next - x) : anchor === 'start' ? next - x : x - prev) - 2);
+          // 端の点は内側へ寄せる。鏡像（下流端が左）なら向きも反転
+          const anchor = first && !last ? (mirror ? 'end' : 'start') : last && !first ? (mirror ? 'start' : 'end') : 'middle';
+          const w = Math.max(8, (anchor === 'middle' ? Math.min(Math.abs(x - prev), Math.abs(next - x)) : anchor === 'start' ? Math.abs(next - x) : Math.abs(x - prev)) - 2);
           const tx = anchor === 'start' ? x + 1 : anchor === 'end' ? x - 1 : x;
           sheet.ops.push({ t: 'text', x: tx, y: y + 4, s: fitText(n.manhole.label, 2.3, w), size: 2.3, anchor });
           sheet.ops.push({ t: 'text', x: tx, y: y + 8, s: fitText(`φ${n.manhole.diameter} 深${fmtLen(n.manhole.depth, unit)}`, 2.3, w), size: 2.3, anchor });
@@ -191,6 +204,13 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         else if (r.key === 'groundLevel') text = fmtLen(n.groundLevel, unit);
         else if (r.key === 'invertLevel') text = fmtLen(n.invertLevel, unit);
         else if (r.key === 'cover') text = fmtLen(n.cover, unit);
+        // 落差桝: 管底高・土被りは流入側（上流側の列）と流出側の 2 列
+        const inText = r.key === 'invertLevel' && n.invertIn !== undefined ? fmtLen(n.invertIn, unit) : r.key === 'cover' && n.coverIn !== undefined ? fmtLen(n.coverIn, unit) : undefined;
+        if (inText !== undefined) {
+          sheet.ops.push({ t: 'text', x: x + 0.9 + upSide * 2.2, y: y + ROW_H / 2, s: inText, size: 2.4, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
+          sheet.ops.push({ t: 'text', x: x + 0.9 - upSide * 2.2, y: y + ROW_H / 2, s: text, size: 2.4, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
+          return;
+        }
         // 縦書き（-90°、行の中央）で列幅を節約
         sheet.ops.push({ t: 'text', x: x + 0.9, y: y + ROW_H / 2, s: text, size: 2.4, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
       });
@@ -212,7 +232,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   shown.forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));
   if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * MAX_NOTES, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: WARN });
 
-  if (withIso) drawIsoLegend(sheet, iso!, profile, sheet.width - 10 - titleWidth(sheet.width) - 40, sheet.height - 10 - titleH - 22);
+  // アイソメ図の凡例は欄外の「凡例:」の行で足りる（箱の凡例は表や表題欄と重なるので描かない）
   // 表題欄
   const values: Record<string, string> = {
     '工事名': meta.siteName, '図面名': model.title, '縮尺': `H 1/${hScale} V 1/${vS}`, '作成日': dateJa(meta.date),

@@ -36,6 +36,8 @@ export type PipeNode = {
   avoid?: 'beam' | 'eave' | 'balcony';
   /** 申請図面: この点の地盤高(mm、絶対)。未指定なら現場の設計GL（将来の拡張。UI なし） */
   groundLevel?: number;
+  /** 落差桝: 流入側の管底が pos.z（流出側の管底）より高い分(mm)。マスの params.drop から同期 */
+  dropIn?: number;
 };
 
 export type SystemType =
