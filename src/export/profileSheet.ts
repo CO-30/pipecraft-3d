@@ -7,6 +7,7 @@ import type { IsoModel } from '../model/isometric';
 import { drawIsometric } from './isoSheet';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
+import { around, at, later, LabelPlacer, spread1D, textWidth, type Cand, type LabelLine } from './labelLayout';
 import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
 
 export type SheetMeta = { siteName: string; date: Date };
@@ -50,7 +51,10 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   let graphTop = headTop + (above ? ABOVE_H : 0);
   if (withIso) {
     const isoTop = headTop - 4;
-    const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45));
+    // 縦断図に要る高さ（縦の縮尺どおり）を残して、空きは全部アイソメ図に使う（大きく描けば文字が混まない）。最低でも従来の 45%
+    const zs = model.nodes.flatMap((n) => [n.invertLevel, n.groundLevel]);
+    const needH = zs.length ? (Math.max(...zs, 0) - (Math.floor(Math.min(...zs, 0) / 1000) * 1000 - 200)) / pt.vScale + 16 : 30;
+    const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45), Math.floor(graphBottom - isoTop - (above ? ABOVE_H : 0) - needH - 4));
     sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: profile.paper.headerFields.length ? headerBottom + 4 : 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
     drawIsometric(sheet, iso!, profile, { x: 10 + M, y: isoTop, w: sheet.width - 20 - 2 * M, h: isoH });
     graphTop = isoTop + isoH + 4 + (above ? ABOVE_H : 0);
@@ -79,6 +83,28 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   // 縦の縮尺はプロファイルの値。収まらなければ上げる
   const vS = (maxZ - DL) / vScale > availH ? pickHScale(maxZ - DL, availH, vScale) : vScale;
   const Y = (z: number) => graphBottom - (z - DL) / vS;
+
+  // 表の列の位置: 点が近すぎて数字が重なるときは、列だけを最小限ずらして引出線でつなぐ（図の位置は実寸のまま）
+  const hasManholeRow = rows.some((r) => r.key === 'manhole');
+  /** 表の「マス」行に書く 2 行（名前 / 径・深さ） */
+  const mhLines = (n: ProfileModel['nodes'][number]) => (n.manhole ? [n.manhole.label, `φ${n.manhole.diameter} 深${fmtLen(n.manhole.depth, unit)}`] : []);
+  // 列の幅: 数字だけなら 3.4mm、落差桝は 2 列ぶん。「マス」行がある様式は桝名が入る幅（端の桝は内側へ寄せて書くので 2 倍）
+  const slots = model.nodes.map((n, i) => {
+    const base = n.invertIn !== undefined ? 7.4 : 3.4;
+    if (!n.manhole || !hasManholeRow) return base;
+    const w = Math.min(26, Math.max(...mhLines(n).map((t) => textWidth(t, 2.3))) + 2);
+    const end = model.nodes.length > 1 && (i === 0 || i === model.nodes.length - 1);
+    return Math.max(base, end ? w * 2 : w);
+  });
+  const colLo = left + 3, colHi = right - 4;
+  const colX = spread1D(model.nodes.map((n) => X(n.cumDistance)), slots, colLo, colHi);
+  // 入りきらずに詰めたときの縮み具合（桝名の切り詰めに使う）
+  const slotSum = slots.reduce((a, b) => a + b, 0) - (slots[0] + slots[slots.length - 1]) / 2;
+  const slotScale = slotSum > colHi - colLo ? (colHi - colLo) / slotSum : 1;
+  /** 文字が混み合って、重ならない場所が見つからなかった */
+  let crowded = false;
+  /** 空いている場所を探して置く文字（区間の管種・勾配、桝名、注記）。線と記号を描き終えてから置く */
+  const floats: Cand[][] = [];
 
   // DL 線とラベル
   sheet.ops.push({ t: 'line', x1: left, y1: graphBottom, x2: right, y2: graphBottom, color: GRAY });
@@ -115,19 +141,32 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
       // 区間の上に 管種口径・勾配（沖縄市の様式では 管種口径／勾配／長さ を 3 行で下に）
       const mx = (X(a.cumDistance) + X(b.cumDistance)) / 2, my = (Y(a.invertLevel) + Y(zb)) / 2;
       if (above) {
-        // 管種口径／勾配／長さ を 3 行（表に重ならないよう線の上）
+        // 管種口径／勾配／長さ を 3 行（表に重ならないよう線の上）。桝名とぶつかるときは管の下へ出して引出線
         const top = Math.min(Y(a.groundLevel), Y(b.groundLevel)) - 1.5;
-        sheet.ops.push({ t: 'text', x: mx, y: top - 7, s: s.pipeSpec, size: 2.6, anchor: 'middle', color: c });
-        sheet.ops.push({ t: 'text', x: mx, y: top - 3.5, s: s.slopeText, size: 2.6, anchor: 'middle', color: c });
-        sheet.ops.push({ t: 'text', x: mx, y: top, s: fmtLen(s.distance, unit, pt.lengthDecimals), size: 2.6, anchor: 'middle', color: c });
+        const block: LabelLine[] = [s.pipeSpec, s.slopeText, fmtLen(s.distance, unit, pt.lengthDecimals)].map((t) => ({ s: t, size: 2.6, color: c }));
+        floats.push([
+          { texts: block.map((l, k) => ({ t: 'text' as const, x: mx, y: top - 7 + 3.5 * k, s: l.s, size: 2.6, anchor: 'middle' as const, color: c })), penalty: 0 },
+          ...around(mx, top + 1, block, { gap: 3, prefer: [-90, -60, -120, -30, -150, 0, 180], leaderAlways: true }).map(later(10)),
+        ]);
       } else {
-        sheet.ops.push({ t: 'text', x: mx, y: my - 2, s: `${s.pipeSpec} ${s.slopeText}`, size: 2.6, anchor: 'middle', color: c });
+        const l: LabelLine = { s: `${s.pipeSpec} ${s.slopeText}`, size: 2.6, color: c };
+        floats.push([at(mx, my - 2, l, 'middle'), at(mx, my + 3.8, l, 'middle', 1), ...around(mx, my, [l], { gap: 2, prefer: [-90, 90, -60, -120], leaderAlways: true }).map(later(10))]);
       }
     }
+    // 図の上の桝名（縦書き）: 桝が近いときは名前だけ横へずらす
+    const mhIdx = model.nodes.map((n, i) => (n.manhole ? i : -1)).filter((i) => i >= 0);
+    const nameXs = spread1D(mhIdx.map((i) => X(model.nodes[i].cumDistance)), 6.6, left - 2, right - 2);
+    const nameX = new Map(mhIdx.map((i, k) => [i, nameXs[k]]));
     // 各点: 縦の引出線、マスの記号
     model.nodes.forEach((n, i) => {
       const x = X(n.cumDistance);
-      sheet.ops.push({ t: 'line', x1: x, y1: Y(n.groundLevel), x2: x, y2: tableTop, color: GRAY, w: 0.15, dash: true });
+      const cx = colX[i];
+      if (Math.abs(cx - x) < 0.05) sheet.ops.push({ t: 'line', x1: x, y1: Y(n.groundLevel), x2: x, y2: tableTop, color: GRAY, w: 0.15, dash: true });
+      else {
+        // 表の列をずらした点: 図の下で折れて列へつなぐ
+        sheet.ops.push({ t: 'line', x1: x, y1: Y(n.groundLevel), x2: x, y2: tableTop - 7.5, color: GRAY, w: 0.15, dash: true });
+        sheet.ops.push({ t: 'line', x1: x, y1: tableTop - 7.5, x2: cx, y2: tableTop - 6, color: GRAY, w: 0.15 }, { t: 'line', x1: cx, y1: tableTop - 6, x2: cx, y2: tableTop, color: GRAY, w: 0.15, dash: true });
+      }
       if (n.manhole) {
         // マス: GL から管底までの箱と記号
         const hw = Math.max(1.5, n.manhole.diameter / hScale / 2);
@@ -142,17 +181,38 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
           // 「NO.1小口径桝 φ150 H410」を縦書きで図の上に、GL の差を (−600) のように
           const diff = n.glDiff !== undefined ? ` (${fmtDiff(n.glDiff)})` : '';
           // 2 列に分けて縦書き（名前 / 径・深さ・GL差）。各列は ABOVE_H−8 に収める
-          sheet.ops.push({ t: 'text', x: x - 1.6, y: Y(n.groundLevel) - 7, s: fitText(n.manhole.name, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
-          sheet.ops.push({ t: 'text', x: x + 1.6, y: Y(n.groundLevel) - 7, s: fitText(`φ${n.manhole.diameter} ${depthText}${diff}`, 2.4, ABOVE_H - 8), size: 2.4, anchor: 'start', rotate: -90 });
+          const nx = nameX.get(i) ?? x, moved = Math.abs(nx - x) > 0.05;
+          const by = Y(n.groundLevel) - (moved ? 9.5 : 7);
+          if (moved) sheet.ops.push({ t: 'line', x1: x, y1: Y(n.groundLevel) - 6.3, x2: nx, y2: by + 0.5, w: 0.12, color: GRAY });
+          const room = ABOVE_H - 8 - (moved ? 2.5 : 0);
+          sheet.ops.push({ t: 'text', x: nx - 1.6, y: by, s: fitText(n.manhole.name, 2.4, room), size: 2.4, anchor: 'start', rotate: -90 });
+          sheet.ops.push({ t: 'text', x: nx + 1.6, y: by, s: fitText(`φ${n.manhole.diameter} ${depthText}${diff}`, 2.4, room), size: 2.4, anchor: 'start', rotate: -90 });
         } else {
-          sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - 7.5, s: n.manhole.label, size: 2.4, anchor: 'middle' });
+          // 桝名: 真上が空いていなければ 1 段ずつ上げ、それでもだめなら横へ出して引出線
+          const l: LabelLine = { s: n.manhole.label, size: 2.4 };
+          const gy = Y(n.groundLevel);
+          floats.push([at(x, gy - 7.5, l, 'middle'), at(x, gy - 10.7, l, 'middle', 1), at(x, gy - 13.9, l, 'middle', 2), at(x, gy - 17.1, l, 'middle', 3), ...around(x, gy - 6.4, [l], { gap: 1.5, prefer: [-90, -45, -135], leaderAlways: true, leaderColor: GRAY }).map(later(10))]);
         }
-        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.groundLevel) - (above ? ABOVE_H - 1 : 10.5), s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
+        if (n.note) {
+          const l: LabelLine = { s: n.note, size: 2.4, color: GRAY };
+          const y0 = Y(n.groundLevel) - (above ? ABOVE_H - 1 : 10.5);
+          floats.push([at(x, y0, l, 'middle'), at(x, y0 - 3.2, l, 'middle', 1), at(x, y0 - 6.4, l, 'middle', 2), ...around(x, Y(n.groundLevel) - 6.4, [l], { gap: 2, prefer: [-90, -45, -135], leaderAlways: true }).map(later(10))]);
+        }
       } else {
-        if (n.note) sheet.ops.push({ t: 'text', x, y: Y(n.invertLevel) - 3, s: n.note, size: 2.4, anchor: 'middle', color: GRAY });
+        if (n.note) {
+          const l: LabelLine = { s: n.note, size: 2.4, color: GRAY };
+          const iy = Y(n.invertLevel);
+          floats.push([at(x, iy - 3, l, 'middle'), at(x, iy + 4.6, l, 'middle', 1), ...around(x, iy, [l], { gap: 2, prefer: [-90, 90, -45, 45], leaderAlways: true }).map(later(10))]);
+        }
         sheet.ops.push({ t: 'circle', cx: x, cy: Y(n.invertLevel), r: 0.8, fill: nodeColor(i), stroke: nodeColor(i) });
       }
-      if (!above) sheet.ops.push({ t: 'text', x, y: tableTop - 1.5, s: `No.${i + 1}`, size: 2.4, anchor: 'middle', color: GRAY });
+      if (!above) {
+        // 点の番号: 列が詰まっているときは縦書き
+        const no = `No.${i + 1}`;
+        const gapTo = Math.min(i > 0 ? Math.abs(cx - colX[i - 1]) : Infinity, i + 1 < colX.length ? Math.abs(colX[i + 1] - cx) : Infinity);
+        if (gapTo < textWidth(no, 2.4) + 0.8) sheet.ops.push({ t: 'text', x: cx - 0.6, y: tableTop - 0.8, s: no, size: 2.4, anchor: 'start', color: GRAY, rotate: -90 });
+        else sheet.ops.push({ t: 'text', x: cx, y: tableTop - 1.5, s: no, size: 2.4, anchor: 'middle', color: GRAY });
+      }
     });
     // 沖縄市の様式: 縮尺の矢印（S=1/200）
     if (above) {
@@ -163,8 +223,34 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
     }
   }
 
+  // 文字を置く（管・GL・桝・記号を避ける）
+  if (floats.length) {
+    const placer = new LabelPlacer(sheet, { x1: 11, y1: headTop - 6, x2: sheet.width - 11, y2: graphBottom - 0.4 });
+    for (let i = 0; i < model.segments.length; i++) {
+      const a = model.nodes[i], b = model.nodes[i + 1];
+      placer.blockSeg(X(a.cumDistance), Y(a.invertLevel), X(b.cumDistance), Y(b.invertIn ?? b.invertLevel), `s${i}`);
+      placer.blockSeg(X(a.cumDistance), Y(a.groundLevel), X(b.cumDistance), Y(b.groundLevel));
+    }
+    model.nodes.forEach((n) => {
+      const x = X(n.cumDistance);
+      placer.blockSeg(x, Y(n.groundLevel), x, graphBottom);
+      if (n.manhole) {
+        const hw = Math.max(1.5, n.manhole.diameter / hScale / 2);
+        placer.block({ x1: x - hw, y1: Y(n.groundLevel), x2: x + hw, y2: Y(n.invertLevel) });
+        placer.block({ x1: x - 2.4, y1: Y(n.groundLevel) - 6.4, x2: x + 2.4, y2: Y(n.groundLevel) - 1.6 });
+      }
+    });
+    // 図の上に桝名を書く様式では、GL から下（管・桝の帯）には文字を置かない
+    if (above && model.nodes.length) {
+      const xs = model.nodes.map((n) => X(n.cumDistance));
+      placer.block({ x1: Math.min(...xs) - 1, y1: Math.min(...model.nodes.map((n) => Y(n.groundLevel))) - 0.2, x2: Math.max(...xs) + 1, y2: graphBottom });
+    }
+    floats.forEach((c, i) => placer.place(c, { ignoreSeg: i < model.segments.length ? `s${i}` : undefined }));
+    crowded = placer.collisions > 0;
+  }
+
   // 下段の表
-  const tableRight = model.nodes.length ? Math.max(X(total) + 5, left + 40) : right;
+  const tableRight = model.nodes.length ? Math.max(X(total) + 5, Math.max(...colX) + 5, left + 40) : right;
   sheet.ops.push({ t: 'rect', x: left - LABEL_W, y: tableTop, w: tableRight - (left - LABEL_W), h: tableH, lw: 0.4 });
   sheet.ops.push({ t: 'line', x1: left, y1: tableTop, x2: left, y2: tableTop + tableH, w: 0.4 });
   rows.forEach((r, ri) => {
@@ -175,28 +261,35 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
     const segRow = r.key === 'distance' || r.key === 'slope' || r.key === 'pipeSpec';
     if (segRow) {
       model.segments.forEach((s, i) => {
-        const a = model.nodes[i], b = model.nodes[i + 1];
-        const x = (X(a.cumDistance) + X(b.cumDistance)) / 2;
+        const x = (colX[i] + colX[i + 1]) / 2;
         const bad = warnSeg.has(s.segId) && (r.key === 'slope');
         const text = r.key === 'distance' ? fmtLen(s.distance, unit, pt.lengthDecimals) : r.key === 'slope' ? s.slopeText : s.pipeSpec;
-        sheet.ops.push({ t: 'text', x, y: y + ROW_H / 2 + 1, s: text, size: 2.6, anchor: 'middle', color: bad ? WARN : INK });
+        // 列が狭いときは縦書き
+        if (textWidth(text, 2.6) <= Math.abs(colX[i + 1] - colX[i]) - 1) sheet.ops.push({ t: 'text', x, y: y + ROW_H / 2 + 1, s: text, size: 2.6, anchor: 'middle', color: bad ? WARN : INK });
+        else {
+          // 値は切り詰めない（申請の数値）。行の高さに入らなければ文字を小さくする
+          const size = Math.min(2.4, (2.4 * (ROW_H - 1)) / textWidth(text, 2.4));
+          sheet.ops.push({ t: 'text', x: x + size * 0.38, y: y + ROW_H / 2, s: text, size, anchor: 'middle', color: bad ? WARN : INK, rotate: -90 });
+        }
       });
     } else {
       model.nodes.forEach((n, i) => {
-        const x = X(n.cumDistance);
+        const x = colX[i];
         const bad = r.key === 'cover' && warnNode.has(n.nodeId);
         if (r.key === 'manhole') {
           if (!n.manhole) return;
           // 横書き 2 行（列幅は隣の点までの距離）
           const first = i === 0, last = i === model.nodes.length - 1;
-          const prev = first ? x : X(model.nodes[i - 1].cumDistance), next = last ? x : X(model.nodes[i + 1].cumDistance);
-          // 端の点は内側へ寄せて書く（1 点だけなら中央）
+                    // 端の点は内側へ寄せて書く（1 点だけなら中央）
           // 端の点は内側へ寄せる。鏡像（下流端が左）なら向きも反転
           const anchor = first && !last ? (mirror ? 'end' : 'start') : last && !first ? (mirror ? 'start' : 'end') : 'middle';
-          const w = Math.max(8, (anchor === 'middle' ? Math.min(Math.abs(x - prev), Math.abs(next - x)) : anchor === 'start' ? Math.abs(next - x) : Math.abs(x - prev)) - 2);
+          // 幅: 列をずらして確保した幅（端の桝は内側へ書くので半分）。隣の桝名の幅を侵さない
+          const own = (anchor === 'middle' ? slots[i] : slots[i] / 2) * slotScale - 1.2;
+          const w = Math.max(Math.min(8, own), own);
           const tx = anchor === 'start' ? x + 1 : anchor === 'end' ? x - 1 : x;
-          sheet.ops.push({ t: 'text', x: tx, y: y + 4, s: fitText(n.manhole.label, 2.3, w), size: 2.3, anchor });
-          sheet.ops.push({ t: 'text', x: tx, y: y + 8, s: fitText(`φ${n.manhole.diameter} 深${fmtLen(n.manhole.depth, unit)}`, 2.3, w), size: 2.3, anchor });
+          const [l1, l2] = mhLines(n);
+          sheet.ops.push({ t: 'text', x: tx, y: y + 4, s: fitText(l1, 2.3, w), size: 2.3, anchor });
+          sheet.ops.push({ t: 'text', x: tx, y: y + 8, s: fitText(l2, 2.3, w), size: 2.3, anchor });
           return;
         }
         let text = '';
@@ -222,6 +315,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   const notes: { s: string; color: string }[] = [];
   for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : WARN });
   if (profile.unverified.length) notes.push({ s: `要確認: ${profile.unverified.join('、')}（自治体の手引きで確認してください）`, color: GRAY });
+  if (crowded) notes.unshift({ s: '※ 点が近く文字が混み合っています。経路を分けるか、用紙・縮尺の設定を見直してください', color: WARN });
   if (model.datumLabel) notes.unshift({ s: `※ ${model.datumLabel}。単位は ${pt.unit}、管長は m`, color: GRAY });
   const noteX = 10 + M, noteW = sheet.width - 10 - titleWidth(sheet.width) - 10 - noteX - 5;
   const noteY0 = sheet.height - 10 - titleH;

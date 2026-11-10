@@ -30,3 +30,5 @@
 - 内部単位は mm。実測長を図面・モデル値で上書きしない。
 - 2D/3D は共通ストア（`src/state/store.ts`）だけを読み書きする。データを二重管理しない。
 - Phase 完了時: 独立レビュー（別モデルの reviewer subagent）→ 指摘修正 → PROGRESS 更新 → テスト証拠を `test-evidence/` に保存。
+- 使う人目線（2026-11-10 ユーザー指定）: 「痒いところに手が届く」気遣いを設計の基準にする。出力はそのまま提出・印刷できる見た目にする（文字の重なり・はみ出し・切れを残さない）。
+- 図面の文字は `src/export/labelLayout.ts`（LabelPlacer・spread1D）で置く。固定座標で文字を足さない。新しい図面・様式を足したら `src/export/noOverlap.test.ts` に加えて「重なり 0」を守る。
