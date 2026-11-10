@@ -1,3 +1,4 @@
+import { setPendingUnderlayFile } from './import/pending';
 import { defaultEstimate } from './model/estimate';
 import { useState } from 'react';
 import { HomeScreen } from './ui/HomeScreen';
@@ -22,6 +23,7 @@ export default function App() {
 
   const open = async (id: string) => {
     try {
+      setPendingUnderlayFile(null); // 前に選んだ図面を別の工事へ取り込まない
       const r = await repo.loadWithStatus(id);
       if (!r) throw new Error('工事が見つかりません');
       useStore.getState().openProject(r.project);
@@ -40,12 +42,14 @@ export default function App() {
     const st = useStore.getState();
     st.newDoc(doc, meta);
     if (v.mode === 'sketch') st.setTool('outline');
+    setPendingUnderlayFile(v.mode === 'photo' ? v.file ?? null : null);
     if (v.mode === 'photo') st.setTool('underlay');
     try {
       await repo.save(st.toProjectData()!);
       setStartFacade(v.mode === 'facade');
       setScreen('editor');
     } catch (e) {
+      setPendingUnderlayFile(null);
       setError('保存できませんでした: ' + (e as Error).message);
     }
   };

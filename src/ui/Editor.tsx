@@ -155,7 +155,7 @@ function PlanCoach({ onFacade }: { onFacade: () => void }) {
           <div className="pe-card">
             <b>まず建物の形を作りましょう</b>
             <button className="primary big" data-testid="empty-outline" onClick={() => { st.setTool('outline'); st.select(null); }}>✏️ 外周を指でなぞる</button>
-            <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 間取り図を取り込む</button>
+            <button className="big" data-testid="empty-underlay" onClick={() => { st.setTool('underlay'); st.select(null); }}>🗺️ 図面を取り込む</button>
             <button className="big" data-testid="empty-facade" onClick={onFacade}>📷 外壁の写真から測る</button>
           </div>
         )}
