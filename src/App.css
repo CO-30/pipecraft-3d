@@ -369,3 +369,6 @@ header .lbl { margin-left: 2px; }
 .import-report ul.small { font-size: 12px; }
 .import-report .muted { color: #6b7280; }
 .busy-back { z-index: 60; }
+.import-report ul.cands label { display: flex; gap: 8px; align-items: flex-start; min-height: 36px; }
+.import-report ul.cands input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
+.drop-pipes { align-items: flex-end; margin-bottom: 8px; }

@@ -226,6 +226,10 @@ describe('図面一式 → 建物（assemble）', () => {
     expect(wallsOnFloor(r.building, r.building.floors[1].id)).toHaveLength(7);
     expect(r.plans.map((p) => p.floorId)).toEqual(r.building.floors.map((f) => f.id));
     expect(r.report.sheets.every((s) => s.used)).toBe(true);
+    // 器具の候補は階ごと。屋外の立水栓は 1 階の図面から出たものだけ
+    const byFloor = (i: number) => r.fixtures.filter((f) => f.floorId === r.building.floors[i].id).map((f) => f.type).sort();
+    expect(byFloor(0)).toEqual(['kitchen', 'outdoorFaucet', 'toilet', 'washbasin', 'washer']);
+    expect(byFloor(1)).toEqual(['kitchen', 'toilet', 'washbasin', 'washer']);
   });
   it('線が多すぎて途中までしか読めなかった図面は知らせる', () => {
     const r = buildFromSheets([{ name: '平面', page: { ...planSheet(), truncated: true } }]);

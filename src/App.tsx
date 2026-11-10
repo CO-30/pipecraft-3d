@@ -14,7 +14,7 @@ import './App.css';
 import { UpdatePrompt } from './ui/UpdatePrompt';
 import { buildSample, SAMPLE_NAME } from './sample/sample';
 import { ImportReportDialog } from './ui/ImportReportDialog';
-import type { ImportReport } from './model/planRead/assemble';
+import type { ImportReport, PlacedCandidate } from './model/planRead/assemble';
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
@@ -23,7 +23,7 @@ export default function App() {
   const [startFacade, setStartFacade] = useState(false);
   /** 「図面から自動で3Dにする」の読み取り中の表示と、読み取り結果 */
   const [busy, setBusy] = useState('');
-  const [report, setReport] = useState<ImportReport | null>(null);
+  const [report, setReport] = useState<{ report: ImportReport; fixtures: PlacedCandidate[] } | null>(null);
   const save = useSaveState();
 
   const open = async (id: string) => {
@@ -68,7 +68,7 @@ export default function App() {
       await repo.save(st.toProjectData()!);
       setStartFacade(v.mode === 'facade');
       setScreen('editor');
-      setReport(auto?.report ?? null);
+      setReport(auto ? { report: auto.report, fixtures: auto.fixtures } : null);
       return true;
     } catch (e) {
       setPendingUnderlayFile(null);
@@ -100,7 +100,11 @@ export default function App() {
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}（タップで閉じる）</div>}
       {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} onSample={sample} /> : <Editor save={save} onBack={back} startFacade={startFacade} onFacadeStarted={() => setStartFacade(false)} />}
       {busy && <div className="modal-back busy-back" role="status" aria-live="polite" aria-busy="true"><div className="modal busy" data-testid="busy">{busy}</div></div>}
-      {report && screen === 'editor' && <ImportReportDialog report={report} onClose={() => setReport(null)} />}
+      {report && screen === 'editor' && (
+        <ImportReportDialog report={report.report} fixtures={report.fixtures}
+          floorNames={Object.fromEntries(useStore.getState().doc.building.floors.map((f) => [f.id, f.name]))}
+          onClose={(place) => { if (place.length) useStore.getState().placeFixtureCandidates(place); setReport(null); }} />
+      )}
       <UpdatePrompt />
     </>
   );
