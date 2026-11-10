@@ -383,7 +383,7 @@ export function ElevationView() {
           <rect key={op.id} x={a.x} y={a.y} width={(op.u1 - op.u0) * vw.scale} height={(op.v1 - op.v0) * vw.scale} fill={op.type === 'door' ? 'rgba(180,83,9,0.15)' : 'rgba(2,132,199,0.15)'} stroke={op.type === 'door' ? '#b45309' : '#0284c7'} strokeDasharray="4 3" pointerEvents="none" />
         ); })}
         {faceMembers.map(({ m, ua, ub, z0, z1 }) => {
-          const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : '#7c3aed';
+          const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : m.kind === 'footing' ? '#64748b' : '#7c3aed';
           const selected = sel?.kind === 'member' && sel.id === m.id;
           if (m.kind === 'stair') {
             const a = toS({ u: ua, v: z0 }), b = toS({ u: ub, v: z1 });

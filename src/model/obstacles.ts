@@ -27,7 +27,8 @@ const len3 = (v: Vec3) => Math.hypot(v.x, v.y, v.z);
 function obstacles(b: Building): Obstacle[] {
   const out: Obstacle[] = [];
   for (const m of membersOf(b)) {
-    if (m.kind === 'stair') continue;
+    // 基礎の立上りは配管が貫通（スリーブ）する前提なので、ぶつかり・かわしの対象にしない
+    if (m.kind === 'stair' || m.kind === 'footing') continue;
     const f = b.floors.find((x) => x.id === m.floorId);
     if (!f) continue;
     const L = Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y);

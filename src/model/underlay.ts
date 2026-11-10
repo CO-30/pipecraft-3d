@@ -28,7 +28,7 @@ export type Underlay = {
 };
 
 /** 選べる図面の縮尺（1/n の n） */
-export const PAPER_SCALES = [10, 20, 30, 50, 60, 100, 150, 200, 250, 300, 500, 600] as const;
+export const PAPER_SCALES = [10, 20, 30, 50, 60, 75, 100, 150, 200, 250, 300, 500, 600] as const;
 /** 図面から縮尺を読み取れなかったときの仮の縮尺（住宅の平面図で最も多い） */
 export const DEFAULT_PAPER_SCALE = 100;
 

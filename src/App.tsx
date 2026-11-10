@@ -13,12 +13,17 @@ import { newId } from './model/id';
 import './App.css';
 import { UpdatePrompt } from './ui/UpdatePrompt';
 import { buildSample, SAMPLE_NAME } from './sample/sample';
+import { ImportReportDialog } from './ui/ImportReportDialog';
+import type { ImportReport } from './model/planRead/assemble';
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
   const [error, setError] = useState('');
   /** 「外壁の写真から測る」で作った直後は立面の作成画面を開く */
   const [startFacade, setStartFacade] = useState(false);
+  /** 「図面から自動で3Dにする」の読み取り中の表示と、読み取り結果 */
+  const [busy, setBusy] = useState('');
+  const [report, setReport] = useState<ImportReport | null>(null);
   const save = useSaveState();
 
   const open = async (id: string) => {
@@ -35,7 +40,22 @@ export default function App() {
   };
 
   const create = async (v: NewProjectInput) => {
-    const doc = v.mode === 'dims'
+    let auto: Awaited<ReturnType<typeof import('./import/planSet').importPlanSet>> | null = null;
+    if (v.mode === 'auto') {
+      setBusy('図面を読み取っています…');
+      try {
+        auto = await (await import('./import/planSet')).importPlanSet(v.files ?? []);
+      } catch (e) {
+        // PlanReadError は使う人向けの文。それ以外は想定外の失敗
+        setError((e as Error).name === 'PlanReadError' ? (e as Error).message : '図面を読み取れませんでした: ' + (e as Error).message);
+        return;
+      } finally {
+        setBusy('');
+      }
+    }
+    const doc = auto
+      ? { ...emptyDoc(), building: auto.building, underlays: auto.underlays, site: auto.designGL === undefined ? {} : { designGL: auto.designGL } }
+      : v.mode === 'dims'
       ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} }
       : v.mode === 'sketch' || v.mode === 'photo' || v.mode === 'facade' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
@@ -48,6 +68,7 @@ export default function App() {
       await repo.save(st.toProjectData()!);
       setStartFacade(v.mode === 'facade');
       setScreen('editor');
+      setReport(auto?.report ?? null);
     } catch (e) {
       setPendingUnderlayFile(null);
       setError('保存できませんでした: ' + (e as Error).message);
@@ -76,6 +97,8 @@ export default function App() {
     <>
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}（タップで閉じる）</div>}
       {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} onSample={sample} /> : <Editor save={save} onBack={back} startFacade={startFacade} onFacadeStarted={() => setStartFacade(false)} />}
+      {busy && <div className="modal-back" role="status" aria-live="polite"><div className="modal busy" data-testid="busy">{busy}</div></div>}
+      {report && screen === 'editor' && <ImportReportDialog report={report} onClose={() => setReport(null)} />}
       <UpdatePrompt />
     </>
   );

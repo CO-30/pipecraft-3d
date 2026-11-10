@@ -62,7 +62,7 @@ export const buildingSchema = z.object({
   rooms: z.record(z.string(), z.object({ id: z.string().min(1), floorId: z.string().min(1), name: z.string(), polygon: z.array(vec2) })),
   /** 梁・軒/庇・バルコニー・階段（v5 の途中で追加したため省略可） */
   members: z.record(z.string(), z.object({
-    id: z.string().min(1), kind: z.enum(['beam', 'eave', 'balcony', 'stair']), floorId: z.string().min(1),
+    id: z.string().min(1), kind: z.enum(['beam', 'eave', 'balcony', 'stair', 'footing']), floorId: z.string().min(1),
     a: vec2, b: vec2, width: z.number().finite().positive(), z0: z.number().finite(), z1: z.number().finite(), outward: vec2.optional(),
   })).optional(),
 });

@@ -361,3 +361,10 @@ header .lbl { margin-left: 2px; }
 .shinsei-forms .badge.ok { background: #dcfce7; color: #166534; border-radius: 6px; padding: 1px 6px; margin-left: 4px; font-size: 11px; }
 .shinsei-forms .warn { color: #b45309; }
 .shinsei-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.modal.busy { text-align: center; padding: 24px 16px; font-weight: 600; }
+.file-list { margin: 6px 0 0; padding-left: 18px; font-size: 14px; }
+.file-list li { margin: 2px 0; overflow-wrap: anywhere; }
+.import-report ul { margin: 0; padding-left: 4px; list-style: none; display: grid; gap: 4px; font-size: 14px; overflow-wrap: anywhere; }
+.import-report ul.warn { color: #92400e; }
+.import-report ul.small { font-size: 12px; }
+.import-report .muted { color: #6b7280; }

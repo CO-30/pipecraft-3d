@@ -3,9 +3,11 @@ import { useState } from 'react';
 export type NewProjectInput = {
   name: string;
   address: string;
-  mode: 'sketch' | 'dims' | 'photo' | 'facade' | 'blank';
+  mode: 'sketch' | 'dims' | 'photo' | 'auto' | 'facade' | 'blank';
   /** 「図面を取り込む」で選んだ図面（PDF・Jw_cad・写真）。作成後に下敷きとして取り込む */
   file?: File;
+  /** 「図面から自動で3Dにする」で選んだ PDF（平面図・基礎伏図・立面図など） */
+  files?: File[];
   width: number; depth: number; floors: number; floorHeight: number; wallThickness: number; slabThickness: number;
 };
 
@@ -18,10 +20,11 @@ const FIELDS: { key: keyof NewProjectInput; label: string; unit: string; min: nu
   { key: 'slabThickness', label: '床の厚さ', unit: 'mm', min: 0, max: 500 },
 ];
 
-const MODES: { id: 'sketch' | 'dims' | 'photo' | 'facade'; icon: string; title: string; desc: string; recommended?: boolean }[] = [
+const MODES: { id: 'sketch' | 'dims' | 'photo' | 'auto' | 'facade'; icon: string; title: string; desc: string; recommended?: boolean }[] = [
   { id: 'sketch', icon: '✏️', title: '指でなぞって描く', desc: '建物の外周を1周なぞると外壁になります。寸法はあとで実測を入れます', recommended: true },
   { id: 'dims', icon: '📐', title: '寸法を入れて作る', desc: '幅と奥行を入れると四角い建物ができます', },
   { id: 'photo', icon: '🗺️', title: '図面を取り込む', desc: '会社から届いた図面（PDF・Jw_cad）や間取り図の写真を下に敷いて、なぞって描きます' },
+  { id: 'auto', icon: '🏠', title: '図面から自動で3Dにする', desc: '会社から届いた PDF（平面図・基礎伏図・立面図）をまとめて選ぶと、壁と基礎を読み取って立体にします' },
   { id: 'facade', icon: '📷', title: '外壁の写真から測る', desc: '外壁を撮った写真を正面に直し、縦管などを指でなぞって長さを出します（3Dの壁にも貼ります）' },
 ];
 
@@ -29,16 +32,17 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
   const [v, setV] = useState<NewProjectInput>({
     name: '', address: '', mode: 'sketch', width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200,
   });
-  const fields = v.mode === 'sketch' || v.mode === 'photo' || v.mode === 'facade' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
+  const files = v.files ?? [];
+  const fields = v.mode === 'auto' ? [] : v.mode === 'sketch' || v.mode === 'photo' || v.mode === 'facade' ? FIELDS.filter((f) => f.key === 'floors' || f.key === 'floorHeight') : FIELDS;
   const invalid = fields.filter((f) => {
     const n = v[f.key] as number;
     return !(Number.isFinite(n) && n >= f.min && n <= f.max && (f.key !== 'floors' || Number.isInteger(n)));
   });
-  const ok = v.name.trim() !== '' && (v.mode === 'blank' || invalid.length === 0);
+  const ok = v.name.trim() !== '' && (v.mode === 'blank' || invalid.length === 0) && (v.mode !== 'auto' || files.length > 0);
 
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="新しい工事">
-      <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim(), file: v.mode === 'photo' ? v.file : undefined }); }}>
+      <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim(), file: v.mode === 'photo' ? v.file : undefined, files: v.mode === 'auto' ? files : undefined }); }}>
         <h2>新しい工事</h2>
         <label className="field">工事名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
         <label className="field">住所（任意）<input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
@@ -69,7 +73,25 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
             <span className="hint">作成するとこの図面が下に敷かれます。あとから選ぶこともできます。</span>
           </label>
         )}
-        {v.mode !== 'blank' && (
+        {v.mode === 'auto' && (
+          <div className="field">図面の PDF（何枚でも。あとから足せます）
+            <input type="file" multiple accept="application/pdf,.pdf" data-testid="np-files" onChange={(e) => {
+              // 別のフォルダの図面も続けて足せるよう、選ぶたびに追加する（同じファイルは 1 回だけ）
+              const add = [...(e.target.files ?? [])].filter((f) => !files.some((x) => x.name === f.name && x.size === f.size));
+              e.target.value = '';
+              setV({ ...v, files: [...files, ...add] });
+            }} />
+            {files.length > 0 && (
+              <ul className="file-list" data-testid="np-file-list">
+                {files.map((f) => (
+                  <li key={`${f.name}:${f.size}`}>{f.name} <button type="button" className="linkish" aria-label={`${f.name} を外す`} onClick={() => setV({ ...v, files: files.filter((x) => x !== f) })}>外す</button></li>
+                ))}
+              </ul>
+            )}
+            <span className="hint">平面図は必須です。基礎伏図があれば基礎の立上りを、立面図があれば高さを読み取ります。CAD から出力した PDF が対象です（紙をスキャンした PDF は「図面を取り込む」で下に敷いてください）。</span>
+          </div>
+        )}
+        {v.mode !== 'blank' && fields.length > 0 && (
           <div className="grid2">
             {fields.map((f) => (
               <label key={f.key} className={`field ${invalid.includes(f) ? 'bad' : ''}`}>{f.label}
