@@ -57,6 +57,9 @@ export function planSheet(opts: { title?: boolean; scaleText?: boolean; labels?:
   if (opts.title !== false) text(s, 3000, -2600, `${opts.floorName ?? '1階'} 平面図`, 10);
   if (opts.scaleText !== false) text(s, 5200, -2600, 'S:1/100', 10);
   text(s, 1000, 3000, '展開図参照', 12);
+  // 部屋の名前と器具の文字（凡例の「立水栓」は建物から離れた所）
+  text(s, 900, 4600, 'WC'); text(s, 2700, 4800, '洗面 床目地'); text(s, 5500, 2500, 'LDK');
+  text(s, W + 700, 1000, '立水栓'); text(s, -9000, 3000, '立水栓'); text(s, 2700, 4300, '洗面化粧台合わせ');
   return page(s);
 }
 

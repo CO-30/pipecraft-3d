@@ -5,12 +5,12 @@
 import type { Building } from '../model/building';
 import { newId } from '../model/id';
 import { MAX_UNDERLAYS_TOTAL, type Underlay } from '../model/underlay';
-import { buildFromSheets, PlanReadError, type ImportReport, type SheetInput } from '../model/planRead/assemble';
+import { buildFromSheets, PlanReadError, type ImportReport, type PlacedCandidate, type SheetInput } from '../model/planRead/assemble';
 import { toWorldX, toWorldY } from '../model/planRead/sheet';
 import { openPdf } from './pdf';
 import { readVectorPages } from './pdfVector';
 
-export type PlanSetImport = { building: Building; designGL?: number; underlays: Record<string, Underlay>; report: ImportReport };
+export type PlanSetImport = { building: Building; designGL?: number; underlays: Record<string, Underlay>; fixtures: PlacedCandidate[]; report: ImportReport };
 /** 一度に読む枚数の上限（ページ数の合計） */
 export const MAX_PLAN_PAGES = 40;
 
@@ -63,5 +63,5 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
       report.check.push(`${inputs[p.index].name} を下に敷けませんでした（壁は読み取れています）`);
     }
   }
-  return { building: r.building, designGL: r.designGL, underlays, report };
+  return { building: r.building, designGL: r.designGL, underlays, fixtures: r.fixtures, report };
 }

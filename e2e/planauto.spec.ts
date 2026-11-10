@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, type PDFPage } from 'pdf-lib';
-import { evidence, show } from './helpers';
+import { evidence, isMobile, show, useTool } from './helpers';
 
 const full = (page: Page) => page.evaluate(() => (window as any).__pc.getState().doc);
 const PT_MM = 25.4 / 72;
@@ -36,6 +36,7 @@ const plan = () => sheet(100, ({ line, wall, text }) => {
   wall(3640, 0, 3640, 910); wall(3640, 1820, 3640, D);
   line(3640, 910, 3640, 1820, 0.1); // ドア
   text(3000, -2600, 'S:1/100', 12);
+  text(900, 4600, 'WC'); text(5500, 2500, 'LDK'); // 部屋の名前 → 器具の候補
 });
 const foundation = () => sheet(50, ({ wall, text }) => {
   wall(0, D, W, D, 150); wall(0, 0, W, 0, 150); wall(0, 0, 0, D, 150); wall(W, 0, W, D, 150);
@@ -107,6 +108,51 @@ test.describe('図面から自動で3Dにする', () => {
     await page.getByText('自動3Dテスト').first().click();
     await expect(page.getByTestId('editor')).toBeVisible();
     expect(Object.keys((await full(page)).building.members)).toHaveLength(6);
+  });
+
+  test('器具の候補を確認して置き、真下に配管を落とす。取り消しで戻せる', async ({ page }) => {
+    await createAuto(page, '器具の候補', [{ name: '1階平面図.pdf', buffer: await plan() }]);
+    await expect(page.getByTestId('import-report')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('ir-found')).toContainText('器具の候補 2 個（トイレ・キッチン）');
+    const rows = page.getByTestId('ir-fixtures').locator('li');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('トイレ');
+    await expect(rows.nth(0)).toContainText('「WC」の部屋');
+    await page.getByTestId('ir-fx-1').uncheck(); // キッチンは置かない
+    await expect(page.getByTestId('ir-ok')).toHaveText('器具 1 個を置いて閉じる');
+    await page.screenshot({ path: evidence('planauto-fixtures') });
+    await page.getByTestId('ir-ok').click();
+    let doc = await full(page);
+    const fx = Object.values(doc.fixtures) as { type: string; x: number; y: number; rotation: number }[];
+    expect(fx.map((f) => f.type)).toEqual(['toilet']);
+    // 「WC」の文字（900, 4600）にいちばん近い北の壁（y = 5460）ぎわ、奥を壁に向ける
+    expect(fx[0].rotation).toBe(0);
+    expect(Math.abs(fx[0].x - 900)).toBeLessThan(40);
+    expect(Math.abs(fx[0].y - (5460 - 60 - 350))).toBeLessThan(40);
+    expect(Object.keys(doc.network.segments)).toHaveLength(0);
+
+    await useTool(page, 'fixture');
+    await page.getByTestId('drop-depth').fill('400');
+    await page.getByTestId('drop-depth').blur();
+    await page.getByTestId('drop-run').click();
+    doc = await full(page);
+    const segs = Object.values(doc.network.segments) as { system: string; a: string; b: string }[];
+    expect(segs.map((s) => s.system).sort()).toEqual(['sewage', 'water']);
+    const low = (Object.values(doc.network.nodes) as { fixtureId?: string; pos: { z: number } }[]).filter((n) => !n.fixtureId);
+    expect(low.map((n) => n.pos.z)).toEqual([-400, -400]);
+    // もう一度押しても増えない
+    await page.getByTestId('drop-run').click();
+    expect(Object.keys((await full(page)).network.segments)).toHaveLength(2);
+    await show(page, '3D');
+    if (!isMobile()) await page.getByRole('button', { name: '設備だけ' }).click(); // スマホは 👁 の中
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: evidence('planauto-drop-3d') });
+    // 取り消し: 配管 → 器具 の順に戻る
+    await page.getByTestId('undo').click();
+    expect(Object.keys((await full(page)).network.segments)).toHaveLength(0);
+    await page.getByTestId('undo').click();
+    expect(Object.keys((await full(page)).fixtures)).toHaveLength(0);
+    expect(Object.keys((await full(page)).building.walls)).toHaveLength(7);
   });
 
   test('平面図だけでも作れる。足りない図面は「確かめてほしいこと」に出る', async ({ page }) => {

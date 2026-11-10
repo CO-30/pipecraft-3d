@@ -10,6 +10,7 @@ import {
   detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc, SiteSettings } from '../model/doc';
+import { dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { deleteFixture, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import * as B from '../model/building';
@@ -160,6 +161,10 @@ type State = {
   setSegmentLength(segId: string, length: number): void;
   /** 立て管: 'up'/'down' = 上/下の階の床高 + 描画高さ、数値 = 絶対高さ(mm) */
   addRiserFromNode(nodeId: string, target: 'up' | 'down' | number): void;
+  /** 図面から読んだ器具の候補をまとめて置く（1 回の取り消しで戻せる）。置けた数を返す */
+  placeFixtureCandidates(list: { floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation }[]): number;
+  /** 器具の真下に配管を落とす（床から depth mm 下。屋外の器具は地中）。作った本数を返す */
+  dropFixturePipes(depth?: number): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -624,6 +629,21 @@ export const useStore = create<State>((set, get) => {
       if (!r) return;
       const net = floorId ? { ...r.net, nodes: { ...r.net.nodes, [r.nodeId]: { ...r.net.nodes[r.nodeId], floorId } } } : r.net;
       commit(withNet(net), { selection: { kind: 'node', id: r.nodeId }, ...(floorId ? { activeFloorId: floorId } : {}) });
+    },
+    placeFixtureCandidates: (list) => {
+      let doc = get().doc, n = 0;
+      for (const c of list) {
+        const r = placeFixture(doc, c.floorId, c.type, { x: c.x, y: c.y }, c.rotation);
+        if (r.fixtureId) { doc = r.doc; n++; }
+      }
+      if (n) commit(doc, { selection: null, notice: `器具を ${n} 個置きました。位置は目安です。下の図面の絵に合わせてドラッグで動かしてください` });
+      return n;
+    },
+    dropFixturePipes: (depth) => {
+      const r = dropPipes(get().doc, depth);
+      if (r.pipes) commit(r.doc, { selection: null, notice: `${r.fixtures} 個の器具から ${r.pipes} 本の配管を真下へ落としました。3D では表示（スマホは 👁）を「配管だけ」「設備だけ」にすると床下が見えます` });
+      else set({ notice: '落とせる配管がありません（器具が無いか、すでに配管がつながっています）' });
+      return r.pipes;
     },
     placeFixtureAt: (p) => {
       const { doc, activeFloorId, fixtureType } = get();

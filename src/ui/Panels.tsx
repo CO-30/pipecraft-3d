@@ -8,6 +8,7 @@ import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '
 import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
+import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN } from '../model/dropPipes';
 import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
@@ -372,12 +373,26 @@ export function PropertyPanel() {
   );
 }
 
+/** 器具の真下に配管を落とす（床下まで。まだ配管のつながっていない給水・給湯・排水の接続口が対象） */
+function DropPipes() {
+  const count = useStore((s) => Object.keys(s.doc.fixtures).length);
+  const [depth, setDepth] = useState(DEFAULT_DROP_DEPTH);
+  if (!count) return null;
+  return (
+    <div className="row drop-pipes" data-testid="drop-pipes">
+      <NumField label="床から下へ" value={depth} min={DROP_MIN} max={DROP_MAX} testId="drop-depth" onCommit={(v) => setDepth(Math.round(v))} />
+      <button className="primary" data-testid="drop-run" title="トイレ・洗面・キッチン・浴槽・洗濯機・水栓の接続口から、床下まで立て管を作ります（屋外の水栓は地中へ）" onClick={() => useStore.getState().dropFixturePipes(depth)}>🔽 器具の真下に配管を落とす</button>
+    </div>
+  );
+}
+
 function FixturePicker() {
   const t = useStore((s) => s.fixtureType);
   const st = useStore.getState();
   return (
     <>
       <div className="howto fixture-howto"><b>① 種類を選ぶ → ② 図面の置きたい所をタップ</b><br />置いた器具の丸（接続口）から配管を描けます。屋上タンクは一番上の階に置くと屋上に載ります</div>
+      <DropPipes />
       <div className="fixture-picker" data-testid="fixture-picker">
       {FIXTURE_GROUPS.map((g) => (
         <div key={g.label} className="fixture-group">

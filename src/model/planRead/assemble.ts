@@ -6,6 +6,8 @@
 import { DEFAULT_FLOOR_HEIGHT, DEFAULT_SLAB, OPENING_DEFAULTS, addFloor, addOpening, addWall, clearHeight, emptyBuilding, wallsOnFloor, type Building, type Vec2 } from '../building';
 import { withMember } from '../members';
 import { heavyWidth, detectStrips, WALL_STRIP, type StripOptions, type WSeg } from './strips';
+import { FIXTURE_CATALOG } from '../fixtures';
+import { guessFixtures, type FixtureCandidate } from './fixtureGuess';
 import { readHeights, type Heights } from './heights';
 import {
   PT_TO_MM, SHEET_LABEL, alignTransform, baseTransform, classifySheet, gridWorld, readGrid, sheetScale, toWorldX, toWorldY,
@@ -24,7 +26,9 @@ export type ImportReport = {
 };
 /** 下敷きにする平面図: sheets の番号と、紙の座標 → 図面座標の変換 */
 export type PlanPlacement = { index: number; floorId: string; toWorld: ToWorld; scale: number };
-export type PlanSetResult = { building: Building; designGL?: number; plans: PlanPlacement[]; report: ImportReport };
+/** 器具の候補（どの階か付き）。使う人が確認してから置く */
+export type PlacedCandidate = FixtureCandidate & { floorId: string };
+export type PlanSetResult = { building: Building; designGL?: number; plans: PlanPlacement[]; fixtures: PlacedCandidate[]; report: ImportReport };
 
 /** 図面から建物を作れないとき（使う人にそのまま見せる文） */
 export class PlanReadError extends Error {
@@ -177,6 +181,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   // 階と壁
   let b = emptyBuilding();
   const placements: PlanPlacement[] = [];
+  const fixtures: PlacedCandidate[] = [];
   const topFloor = floors.at(-1)!;
   for (let n = 1; n <= topFloor; n++) {
     // 軒高までの高さは、立面図の最上階がこの建物の最上階と同じときだけ使う（2 階建てで「1FL」しか無い立面図の値を 1 階分にしない）
@@ -198,6 +203,12 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     const walls = wallsOnFloor(b, f.floorId);
     const total = walls.reduce((s, w) => s + Math.hypot(b.corners[w.b].x - b.corners[w.a].x, b.corners[w.b].y - b.corners[w.a].y), 0);
     placements.push({ index: r.index, floorId: f.floorId, toWorld: t, scale: r.scale!.scale });
+    // 器具の候補（文字から）。凡例・表の文字を除くため、通り芯（無ければ壁）の範囲 + 3m だけを見る
+    const gwF = r.grid ? gridWorld(r.grid, t) : null;
+    const area = gwF ? { x0: Math.min(...gwF.xs.values()) - 3000, x1: Math.max(...gwF.xs.values()) + 3000, y0: Math.min(...gwF.ys.values()) - 3000, y1: Math.max(...gwF.ys.values()) + 3000 } : undefined;
+    const lines = walls.map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], thickness: w.thickness }));
+    const cands = guessFixtures(r.page.texts.map((x) => ({ x: toWorldX(t, x.x), y: toWorldY(t, x.y), s: x.s })), lines, area);
+    fixtures.push(...cands.map((c) => ({ ...c, floorId: f.floorId })));
     note(r, true, walls.length ? `壁 ${walls.length} 本（延べ ${(total / 1000).toFixed(1)}m）・開口部 ${op.count} か所` : '壁の線を見つけられませんでした');
     if (walls.length) found.push(`${n}階の壁 ${walls.length} 本・開口部 ${op.count} か所（1/${r.scale!.scale}${r.grid ? '、通り芯で位置合わせ' : ''}）`);
     else check.push(`${n}階の壁を読み取れませんでした。図面を下に敷いてあるので、なぞって描いてください`);
@@ -206,6 +217,12 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   }
   if (Object.keys(b.walls).length) {
     check.push('外壁・内壁の区別は目安です。開口部は外壁なら窓・内壁ならドアとして標準の高さで入れています（玄関・掃き出し窓は選んで直してください）。斜めの壁・曲がった壁は読み取りません');
+  }
+
+  if (fixtures.length) {
+    const count = new Map<string, number>();
+    for (const c of fixtures) count.set(FIXTURE_CATALOG[c.type].label, (count.get(FIXTURE_CATALOG[c.type].label) ?? 0) + 1);
+    found.push(`器具の候補 ${fixtures.length} 個（${[...count].map(([k, n]) => (n > 1 ? `${k}×${n}` : k)).join('・')}）`);
   }
 
   // 高さの基準と基礎
@@ -243,9 +260,9 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   for (const r of reads) if (r.page.truncated) check.push(`${r.name} は線が多すぎて途中までしか読んでいません。壁が欠けていないか確かめてください`);
   for (const r of reads) {
     if (sheets[r.index].note) continue;
-    if (r.kind === 'site') note(r, false, '配置図（桝・メーターの位置）の読み取りは次の対応で追加します');
-    else if (r.kind === 'detail') note(r, false, '展開図（器具の高さ）の読み取りは次の対応で追加します');
+    if (r.kind === 'site') note(r, false, '配置図（桝・メーターの位置）の読み取りは今後追加します');
+    else if (r.kind === 'detail') note(r, false, '展開図は読み取りません（器具の高さは標準値です）');
     else if (r.kind === 'unknown') note(r, false, '図面の種類が分かりませんでした（図面名の文字が読めない PDF）');
   }
-  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, report: { sheets, found, check } };
+  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures, report: { sheets, found, check } };
 }
