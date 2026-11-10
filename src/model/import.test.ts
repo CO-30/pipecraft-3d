@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { aerialPlan, alignAngle, metersPerPixel, offsetRingInward, parseOverpass, polygonArea, rotatePoint, sortByDistance, toLocalMm, worldPx } from './geo';
 import { applyH, openingToRect, rectToOpening, rectify, solveHomography } from './homography';
-import { initialPlacement, pxToWorld, rescaleByTwoPoints, underlayCorners, worldToPx, type Underlay } from './underlay';
+import { applyPaperScale, detectDrawingScale, initialPlacement, paperMmPerPx, paperScaleOf, pxToWorld, rescaleByTwoPoints, underlayCorners, worldToPx, type Underlay } from './underlay';
 
 const U = (o: Partial<Underlay> = {}): Underlay => ({ id: 'u', floorId: 'f', kind: 'image', label: '', src: 'data:', widthPx: 200, heightPx: 100, center: { x: 0, y: 0 }, mmPerPx: 10, rotation: 0, opacity: 0.5, scaled: false, ...o });
 
@@ -26,6 +26,40 @@ describe('下敷き', () => {
   it('縮尺未確定の初期配置は長辺10m', () => {
     expect(initialPlacement(2000, 1000, { x: 0, y: 0 })).toMatchObject({ mmPerPx: 5, scaled: false });
     expect(initialPlacement(2000, 1000, { x: 0, y: 0 }, 537)).toMatchObject({ mmPerPx: 537, scaled: true });
+  });
+  it('PDF の紙の大きさ: A3 横（1190.55pt）を 2400px にすると 1px = 紙の 0.175mm、1/100 なら 11,830mm は 676px', () => {
+    const paper = paperMmPerPx(1190.55, 2400);
+    expect(paper).toBeCloseTo(0.175, 4);
+    expect(11830 / (paper * 100)).toBeCloseTo(676, 0);
+  });
+  it('図面の文字から縮尺を読む: 「S:1/100」「縮尺 1：50」。勾配の 1/100 は縮尺にしない', () => {
+    expect(detectDrawingScale(['1階 平面図 S:1/100'])).toBe(100);
+    expect(detectDrawingScale(['縮尺　１：５０'])).toBe(50);
+    expect(detectDrawingScale(['S=1/200', 'SCALE 1/200'])).toBe(200);
+    // 違う縮尺が混ざっている図面は決めない（詳細図の縮尺で置かない）
+    expect(detectDrawingScale(['S=1/100', 'S=1/20', 'S=1/20'])).toBeUndefined();
+    // 「S」に区切りが無い・別の文字列にまたがるものは縮尺にしない
+    expect(detectDrawingScale(['75s 1/100'])).toBeUndefined();
+    expect(detectDrawingScale(['VU100', 'S', '1/50'])).toBeUndefined();
+    expect(detectDrawingScale(['L=2.5 S', '1/100'])).toBeUndefined();
+    // 1文字ずつに分かれた PDF
+    expect(detectDrawingScale(['S', ':', '1', '/', '1', '0', '0'])).toBe(100);
+    expect(detectDrawingScale(['勾配 1/100', 'VU100×5.05', 'H=1/50'])).toBeUndefined();
+    // 同じ数だけ違う縮尺があるときは決めない
+    expect(detectDrawingScale(['S=1/100', 'S=1/200'])).toBeUndefined();
+    expect(detectDrawingScale(['S=1/7'])).toBeUndefined();
+  });
+  it('紙の縮尺を選び直す: 中心は動かさず 1px の実寸だけ変える。紙の大きさが分からない下敷きは変えない', () => {
+    const u = applyPaperScale(U({ paperMmPerPx: 0.175, center: { x: 500, y: 700 } }), 50)!;
+    expect(u.mmPerPx).toBeCloseTo(8.75, 6);
+    expect(u.center).toEqual({ x: 500, y: 700 });
+    expect(u.scaled).toBe(true);
+    expect(paperScaleOf(u)).toBe(50);
+    expect(applyPaperScale(U(), 50)).toBeNull();
+    expect(applyPaperScale(U({ paperMmPerPx: 0.175 }), 0)).toBeNull();
+    // 2点で合わせ直して半端な縮尺になったら、どの縮尺でもない
+    expect(paperScaleOf(U({ paperMmPerPx: 0.175, mmPerPx: 16.1 }))).toBeUndefined();
+    expect(paperScaleOf(U())).toBeUndefined();
   });
 });
 

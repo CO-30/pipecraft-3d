@@ -25,7 +25,7 @@ import { applySlope, defaultSlope, downstreamEnd, isDrain, planLength, propagate
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
-import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, rescaleByTwoPoints, type Underlay } from '../model/underlay';
+import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, applyPaperScale, rescaleByTwoPoints, type Underlay } from '../model/underlay';
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
 import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
@@ -181,6 +181,8 @@ type State = {
   setActiveUnderlay(id: string | null): void;
   addUnderlay(u: Omit<Underlay, 'id'>): string;
   updateUnderlay(id: string, patch: Partial<Pick<Underlay, 'label' | 'opacity' | 'rotation' | 'center' | 'mmPerPx'>>): void;
+  /** PDF 図面の縮尺（1/n）を選び直す */
+  setUnderlayPaperScale(id: string, n: number): void;
   deleteUnderlay(id: string): void;
   dragUnderlay(id: string, dx: number, dy: number): void;
   /** スライダー操作中の見た目だけの変更（beginDrag〜endDrag で履歴1件） */
@@ -728,6 +730,13 @@ export const useStore = create<State>((set, get) => {
       if (!(n.mmPerPx > 0) || !(n.opacity >= 0 && n.opacity <= 1) || !Number.isFinite(n.rotation)) return;
       if (Object.keys(patch).every((k) => (patch as Record<string, unknown>)[k] === (u as Record<string, unknown>)[k])) return;
       commit({ ...doc, underlays: { ...doc.underlays, [id]: n } });
+    },
+    setUnderlayPaperScale: (id, n) => {
+      const doc = get().doc;
+      const u = doc.underlays?.[id];
+      const next = u && applyPaperScale(u, n);
+      if (!next || (next.mmPerPx === u.mmPerPx && u.scaled)) return;
+      commit({ ...doc, underlays: { ...doc.underlays, [id]: next } }, { scalePick: null });
     },
     deleteUnderlay: (id) => {
       const doc = get().doc;

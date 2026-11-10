@@ -351,3 +351,11 @@
 - テスト: 単体 519 合格、E2E（shinsei・phase5）23 合格・4 対象外、lint・build 合格。証拠 `test-evidence/label-layout/`
 - 残り: 沖縄市の様式（図の上に桝名）で桝が 10 個以上続くと、区間の文字の引出線が桝名を横切る（文字どうしは重ならない）。部材図（`drawingPdf.ts`）はまだ別の描画系で、この仕組みに載せていない
 - 設計の基準を `CLAUDE.md` の品質に追記（使う人目線・図面の文字は labelLayout で置く）
+
+## 2026-11-10 PDF 図面の下敷きが実寸にならない不具合の修正 — PR 作成（ブランチ `fix/pdf-underlay-scale`）
+- きっかけ: A3・1/100 の平面図 PDF を取り込むと、11,830mm の建物が 1m 目盛で約 2.8m に見える
+- 原因: PDF は「長辺 = 10m」の仮の縮尺で置いていた（A3・1/100 の実寸は長辺 42m → 4.2 倍小さい）。縮尺未確定の注意は下敷きパネルの中だけ
+- 修正: PDF の紙の大きさ × 図面の縮尺で実寸に置く。縮尺は図面の文字（「S:1/100」「縮尺 1：50」）から読む。読めない・違う縮尺が混ざる図面は仮に 1/100 で置き「図面の縮尺」を選んでもらう。選び直し・「2点で縮尺」は従来どおり
+- 変更: `src/model/underlay.ts`（paperMmPerPx・detectDrawingScale・applyPaperScale・paperScaleOf）、`src/import/pdf.ts`、`src/ui/UnderlayPanel.tsx`、store `setUnderlayPaperScale`、schema に任意の `paperMmPerPx`（旧データはそのまま読める）
+- テスト: 単体 552 合格、E2E 141 合格・15 対象外。独立レビュー Critical 0・Important 4（UserUnit の二重計算・仮の 1/100 を確定できない・「S」の誤検出・詳細図の縮尺を採用）→ すべて修正
+- 残り: 修正前に取り込んだ下敷きは紙の大きさを持たないので、取り込み直すか「2点で縮尺」で合わせる。縮小印刷・スキャンの PDF は「2点で縮尺」が必要。取り込みを取り消しても案内文が残る（軽微）

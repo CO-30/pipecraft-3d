@@ -3,9 +3,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
-import { initialPlacement, type Underlay } from '../model/underlay';
+import { DEFAULT_PAPER_SCALE, PAPER_SCALES, initialPlacement, paperScaleOf, type Underlay } from '../model/underlay';
 import { fileToRaster } from '../import/image';
-import type { PdfDoc } from '../import/pdf';
+import type { PdfDoc, PdfRaster } from '../import/pdf';
 import { takePendingUnderlayFile, underlayFileKind } from '../import/pending';
 import { NumField, OptNumField } from './Panels';
 import { SiteImportDialog } from './SiteImportDialog';
@@ -40,6 +40,14 @@ export function UnderlayPanel() {
     // 読み込み中に階を切り替えても、置く階と位置がずれないように今の階を使う
     st.addUnderlay({ floorId: useStore.getState().activeFloorId, kind, label, ...r, ...initialPlacement(r.widthPx, r.heightPx, viewCenter()), opacity: 0.6 });
   };
+  /** PDF は紙の大きさが分かるので、図面の縮尺（読めなければ仮に 1/100）を掛けて実寸で置く */
+  const addPdfPage = ({ paperMmPerPx, scaleHint, ...r }: PdfRaster, label: string) => {
+    const n = scaleHint ?? DEFAULT_PAPER_SCALE;
+    const id = st.addUnderlay({ floorId: useStore.getState().activeFloorId, kind: 'pdf', label, ...r, paperMmPerPx, ...initialPlacement(r.widthPx, r.heightPx, viewCenter(), paperMmPerPx * n), scaled: scaleHint !== undefined, opacity: 0.6 });
+    if (id) setNote(scaleHint !== undefined
+      ? `図面の文字から縮尺 1/${n} を読み取り、実寸で置きました。寸法が合わないときは「図面の縮尺」を選び直すか「2点で縮尺」で合わせてください。`
+      : `図面から縮尺を読み取れなかったので、仮に 1/${n} で置きました。「図面の縮尺」を選んでください（縮小印刷された図面は「2点で縮尺」で合わせます）。`);
+  };
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label); setErr(''); setNote('');
     try { await fn(); } catch (e) { setErr(`${label}できませんでした: ${e instanceof Error ? e.message : String(e)}`); } finally { setBusy(''); }
@@ -50,7 +58,7 @@ export function UnderlayPanel() {
   const addPdf = (f: File) => run('PDFの読み込み', async () => {
     const { openPdf } = await import('../import/pdf');
     const doc = await openPdf(await f.arrayBuffer());
-    if (doc.pages === 1) { add(await doc.render(1), 'pdf', baseName(f)); doc.destroy(); } else setPdf({ doc, name: baseName(f), page: 1 });
+    if (doc.pages === 1) { addPdfPage(await doc.render(1), baseName(f)); doc.destroy(); } else setPdf({ doc, name: baseName(f), page: 1 });
   });
   /** Jw_cad（.jww）: 縮尺は図面から分かるので、縮尺確定済みの線画として置く */
   const addCad = (f: File) => run('Jw_cad図面の読み込み', async () => {
@@ -103,7 +111,7 @@ export function UnderlayPanel() {
         <div className="row" data-testid="pdf-pages">
           <span>{pdf.name}（{pdf.doc.pages}ページ）</span>
           <NumField label="ページ" unit="" value={pdf.page} min={1} max={pdf.doc.pages} onCommit={(v) => setPdf({ ...pdf, page: Math.round(v) })} />
-          <button className="primary" disabled={!!busy} onClick={() => void run('PDFの読み込み', async () => { add(await pdf.doc.render(pdf.page), 'pdf', `${pdf.name} p${pdf.page}`); pdf.doc.destroy(); setPdf(null); })}>このページを取り込む</button>
+          <button className="primary" disabled={!!busy} onClick={() => void run('PDFの読み込み', async () => { addPdfPage(await pdf.doc.render(pdf.page), `${pdf.name} p${pdf.page}`); pdf.doc.destroy(); setPdf(null); })}>このページを取り込む</button>
           <button onClick={() => { pdf.doc.destroy(); setPdf(null); }}>やめる</button>
         </div>
       )}
@@ -123,9 +131,20 @@ export function UnderlayPanel() {
       {active && (
         <>
           <div className="small" data-testid="ul-status">
-            {active.scaled ? `縮尺: 1px = ${Math.round(active.mmPerPx * 10) / 10}mm` : <span className="warn">⚠ 縮尺未確定（寸法は参考。「2点で縮尺」で合わせてください）</span>}
+            {active.scaled ? `縮尺: 1px = ${Math.round(active.mmPerPx * 10) / 10}mm` : active.paperMmPerPx
+              ? <span className="warn">⚠ 縮尺は仮です。下の「図面の縮尺」を図面に書いてある縮尺に合わせてください</span>
+              : <span className="warn">⚠ 縮尺未確定（寸法は参考。「2点で縮尺」で合わせてください）</span>}
             {active.attribution && <span className="muted">　{active.attribution}</span>}
           </div>
+          {active.paperMmPerPx && (
+            <label className="field inline">図面の縮尺
+              {/* 仮の縮尺のうちは「選んでください」を出す（同じ 1/100 を選んでも確定できるように） */}
+              <select data-testid="ul-paper-scale" value={active.scaled ? paperScaleOf(active) ?? '' : ''} onChange={(e) => e.target.value && st.setUnderlayPaperScale(active.id, Number(e.target.value))}>
+                {!active.scaled ? <option value="">選んでください（仮 1/{paperScaleOf(active) ?? '?'}）</option> : paperScaleOf(active) === undefined && <option value="">2点で合わせた縮尺</option>}
+                {PAPER_SCALES.map((n) => <option key={n} value={n}>1/{n}</option>)}
+              </select>
+            </label>
+          )}
           <label className="field inline">濃さ
             {/* 動かしている間は見た目だけ変え、指を離す・フォーカスが外れると履歴1件で確定 */}
             <input type="range" min={0.1} max={1} step={0.05} value={active.opacity} data-testid="ul-opacity"
