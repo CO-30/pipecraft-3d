@@ -6,10 +6,12 @@ import { HelpDialog } from './HelpDialog';
 
 const fmt = (t: number) => new Date(t).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string) => void; onCreate: (input: NewProjectInput) => void; onSample: () => void }) {
+export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string) => void; /** 作れたら true。失敗したら入力（選んだ図面など）を残すためダイアログを開いたままにする */
+  onCreate: (input: NewProjectInput) => Promise<boolean>; onSample: () => void }) {
   const [list, setList] = useState<ProjectSummary[] | null>(null);
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
+  const submitting = useRef(false);
   const [help, setHelp] = useState(false);
   const [msg, setMsg] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -104,7 +106,12 @@ export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string
         </ul>
       )}
       {help && <HelpDialog onClose={() => setHelp(false)} />}
-      {creating && <NewProjectDialog onCancel={() => setCreating(false)} onSubmit={(v) => { setCreating(false); onCreate(v); }} />}
+      {creating && <NewProjectDialog onCancel={() => setCreating(false)} onSubmit={(v) => {
+        // 作成中の二度押しで工事が 2 つできないようにする
+        if (submitting.current) return;
+        submitting.current = true;
+        void onCreate(v).then((ok) => { if (ok) setCreating(false); }).finally(() => { submitting.current = false; });
+      }} />}
     </div>
   );
 }

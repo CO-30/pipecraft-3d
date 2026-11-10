@@ -7,7 +7,8 @@ import { MIN_WALL_MM, floorById, followRooms, isSimplePolygon, moveWall, roomAre
 import { worldToElev, type Elevation, type UV } from './elevation';
 import { newId } from './id';
 
-export type MemberKind = 'beam' | 'eave' | 'balcony' | 'stair';
+/** footing: 基礎の立上り（図面から読み取る。高さは 1 階の床基準で負）*/
+export type MemberKind = 'beam' | 'eave' | 'balcony' | 'stair' | 'footing';
 export type Member = {
   id: string;
   kind: MemberKind;
@@ -24,7 +25,7 @@ export type Member = {
   outward?: Vec2;
 };
 
-export const MEMBER_LABEL: Record<MemberKind, string> = { beam: '梁', eave: '軒・庇', balcony: 'バルコニー', stair: '階段' };
+export const MEMBER_LABEL: Record<MemberKind, string> = { beam: '梁', eave: '軒・庇', balcony: 'バルコニー', stair: '階段', footing: '基礎の立上り' };
 export const BALCONY_SLAB = 150;
 export const BALCONY_RAIL = 1100;
 export const STAIR_RISE = 200;
@@ -78,7 +79,7 @@ const planAt = (el: Elevation, u: number, out: number): Vec2 => add(add(el.origi
 export type FaceRect = { u0: number; u1: number; v0: number; v1: number };
 export type MemberResult = { ok: true; b: Building; ids: string[] } | { ok: false; error: string };
 
-function withMember(b: Building, m: Omit<Member, 'id'>): { b: Building; id: string } {
+export function withMember(b: Building, m: Omit<Member, 'id'>): { b: Building; id: string } {
   const id = newId('m');
   return { b: { ...b, members: { ...(b.members ?? {}), [id]: { ...m, id } } }, id };
 }

@@ -574,7 +574,7 @@ export function PlanView() {
       })}
       {membersOf(building).filter((m) => m.floorId === floorId).map((m) => {
         const cs = memberCorners(m).map(toScreen);
-        const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : '#7c3aed';
+        const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : m.kind === 'footing' ? '#64748b' : '#7c3aed';
         const selected = isSel('member', m.id);
         const steps = m.kind === 'stair' ? stairSteps(m) : 0;
         return (

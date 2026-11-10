@@ -5,6 +5,8 @@ import { MAX_UNDERLAY_PX, detectDrawingScale, paperMmPerPx } from '../model/unde
 import { toRaster, type Raster } from './image';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+/** worker を設定済みの pdf.js（線を読む pdfVector でも同じものを使う） */
+export const pdfjsLib = pdfjs;
 
 /** paperMmPerPx: 画像 1px が紙の何 mm か。scaleHint: 図面の文字から読めた縮尺（1/n の n） */
 export type PdfRaster = Raster & { paperMmPerPx: number; scaleHint?: number };

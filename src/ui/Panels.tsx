@@ -284,7 +284,7 @@ export function PropertyPanel() {
     return (
       <div className="props" data-testid="member-panel">
         <div className="ptitle">{MEMBER_LABEL[m.kind]} 長さ <b>{Math.round(len)}</b>mm{m.kind === 'stair' && <>（{stairSteps(m)}段）</>}</div>
-        <NumField label={m.kind === 'beam' || m.kind === 'stair' ? '幅' : '出幅'} testId="member-width" value={m.width} min={50} max={5000} onCommit={(v) => st.updateMember(m.id, { width: v })} />
+        <NumField label={m.kind === 'beam' || m.kind === 'stair' || m.kind === 'footing' ? '幅' : '出幅'} testId="member-width" value={m.width} min={50} max={5000} onCommit={(v) => st.updateMember(m.id, { width: v })} />
         {m.kind !== 'balcony' && m.kind !== 'stair' && <>
           <NumField label="下端（床から）" value={m.z0} onCommit={(v) => st.updateMember(m.id, { z0: v })} />
           <NumField label="上端（床から）" value={m.z1} onCommit={(v) => st.updateMember(m.id, { z1: v })} />
