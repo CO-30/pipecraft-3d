@@ -14,7 +14,7 @@ import { renderIsoSheet } from '../export/isoSheet';
 import { sheetsToPdf, sheetToSvg } from '../export/sheet';
 import { circled, EMPTY_CONTRACTOR, markChoice, markWord, reiwa, withDefaults, type Contractor } from './types';
 import { FEES, meterDiameter, OKINAWA_FIELDS, OKINAWA_FORMS } from './okinawaCity';
-import { buildWaterApplication, CELLS, SHEET_NAME } from './waterExcel';
+import { BACK_SHEET_NAME, buildWaterApplication, CELLS, IMAGE_BOXES, SHEET_NAME } from './waterExcel';
 import { buildSewerApplication } from './sewerPdf';
 import { productRows, renderProductListSheets } from './productList';
 
@@ -126,6 +126,21 @@ describe('給水装置申込及び工事申請書（Excel）', () => {
     expect(ws2.getCell(CELLS.floors).value ?? null).toBeNull();
     expect(ws2.getCell(CELLS.structure).value ?? null).toBeNull();
     expect(ws2.getCell(CELLS.households).value ?? null).toBeNull();
+  });
+  test('図の画像（PNG）を 表の建物側面図・裏の平面図とアイソメ の欄に貼る', async () => {
+    // 1×1 の PNG
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
+    const bytes = await buildWaterApplication(waterTpl(), { date: '2026-11-10' }, contractor, { sideView: png, plan: png, iso: png });
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(bytes as unknown as ArrayBuffer);
+    const front = wb.getWorksheet(SHEET_NAME)!, back = wb.getWorksheet(BACK_SHEET_NAME)!;
+    expect(front.getImages().length).toBe(1);
+    expect(back.getImages().length).toBe(2);
+    const r = front.getImages()[0].range;
+    expect(r.tl.nativeCol).toBe(IMAGE_BOXES.sideView.tl.col);
+    expect(r.tl.nativeRow).toBe(IMAGE_BOXES.sideView.tl.row);
+    // 画像なしなら貼らない
+    const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load((await buildWaterApplication(waterTpl(), {}, contractor)) as unknown as ArrayBuffer);
+    expect(wb2.getWorksheet(SHEET_NAME)!.getImages().length).toBe(0);
   });
   test('選択肢は全部に印が付く（様式が変わったら気づける）', async () => {
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(waterTpl() as unknown as ArrayBuffer);

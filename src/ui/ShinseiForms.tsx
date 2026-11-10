@@ -7,7 +7,7 @@ import { useStore } from '../state/store';
 import { repo } from '../storage/instance';
 import type { MunicipalityProfile } from '../model/municipality';
 import { EMPTY_CONTRACTOR, todayIso, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
-import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS } from '../forms/formSets';
+import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS, waterSheetFor } from '../forms/formSets';
 
 const CONTRACTOR_FIELDS: { id: keyof Contractor; label: string; hint?: string }[] = [
   { id: 'name', label: '商号又は名称' },
@@ -68,8 +68,20 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
       const base = `${safeName(siteName)}_${dateStamp(new Date())}`;
       const vals = { ...values, date: values.date || todayIso() };
       if (what === 'water') {
-        const [{ buildWaterApplication }, tpl] = await Promise.all([import('../forms/waterExcel'), formBytes('okinawa-city/water-application.xlsx')]);
-        downloadBytes(await buildWaterApplication(tpl, vals, contractor), `${base}_給水装置申込及び工事申請書.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        const [{ buildWaterApplication }, { svgStringToPng, planPng }, { sheetToSvg }, tpl] = await Promise.all([import('../forms/waterExcel'), import('../export/images'), import('../export/sheet'), formBytes('okinawa-city/water-application.xlsx')]);
+        // 図の欄: 建物側面図 ← 給水の立面図、裏の平面図 ← 画面の 2D 平面図（表示中なら）、裏のアイソメ ← 給水の立面図
+        const images: { sideView?: Uint8Array; plan?: Uint8Array; iso?: Uint8Array } = {};
+        const notes: string[] = [];
+        try {
+          const ws = waterSheetFor(doc, profile, siteName, date);
+          if (ws) { const png = await svgStringToPng(sheetToSvg(ws), 1400); images.sideView = png; images.iso = png; }
+          else notes.push('給水の配管が無いため、建物側面図の欄は空欄です');
+          const planEl = document.querySelector<SVGSVGElement>('[data-testid="plan"]');
+          if (planEl) images.plan = await planPng(planEl, 2);
+          else notes.push('裏面の平面図は空欄です（2D 平面図を表示した状態で出すと貼られます）');
+        } catch { notes.push('図の画像を作れなかったため、図の欄は空欄です'); }
+        downloadBytes(await buildWaterApplication(tpl, vals, contractor, images), `${base}_給水装置申込及び工事申請書.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        setMsg(notes.join('。'));
       } else if (what === 'sewer') {
         const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
         const sheets = drainageSheetsFor(doc, profile, siteName, date);

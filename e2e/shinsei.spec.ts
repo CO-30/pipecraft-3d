@@ -164,6 +164,13 @@ test.describe('申請図面', () => {
     await page.screenshot({ path: evidence('shinsei-11-forms') });
     const [xlsx] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-water').click()]);
     expect(xlsx.suggestedFilename()).toContain('給水装置申込及び工事申請書.xlsx');
+    // 図の欄に画像（給水の立面図の PNG）が入っている
+    const xlsxPath = await xlsx.path();
+    const { default: ExcelJS } = await import('exceljs');
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(xlsxPath!);
+    expect(wb.getWorksheet('申請書（表）')!.getImages().length).toBe(1);
+    expect(wb.getWorksheet('申請書（裏）')!.getImages().length).toBeGreaterThanOrEqual(1);
+    if (test.info().project.name === 'pc-chrome') await xlsx.saveAs('test-evidence/pc-chrome-shinsei-11-water-application.xlsx');
     const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-sewer').click()]);
     expect(pdf.suggestedFilename()).toContain('下水道排水設備計画確認申請書.pdf');
     const [list] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-products').click()]);
