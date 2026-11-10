@@ -85,6 +85,48 @@ test.describe('Phase 5 図面読み込み・実用化', () => {
     expect(u.widthPx).toBeGreaterThan(u.heightPx);
   });
 
+  test('PDF図面は紙の大きさと縮尺から実寸で置く（A3・S=1/100 → 長辺 42m）。縮尺を選び直せる', async ({ page }) => {
+    test.skip(isMobile(), 'ファイル選択の操作は PC で確認（スマホでも同じ部品）');
+    const pdf = await PDFDocument.create();
+    const p = pdf.addPage([1190.55, 841.89]);
+    p.drawRectangle({ x: 50, y: 50, width: 1000, height: 700, borderColor: rgb(0, 0, 0), borderWidth: 3 });
+    p.drawText('S=1/100', { x: 900, y: 80, size: 14 });
+    await createProject(page, 'PDF縮尺テスト', { blank: true });
+    await show(page, '2D');
+    await useTool(page, 'underlay');
+    await page.getByTestId('ul-pdf-file').setInputFiles({ name: 'heimenzu.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()) });
+    await expect(page.locator('[data-underlay]')).toHaveCount(1);
+    await expect(page.getByTestId('ul-note')).toContainText('1/100');
+    let u = Object.values((await full(page)).underlays)[0] as any;
+    expect(u.scaled).toBe(true);
+    expect(u.mmPerPx * u.widthPx).toBeCloseTo(42000, -2); // A3 の長辺 420mm × 100
+    await expect(page.getByTestId('ul-paper-scale')).toHaveValue('100');
+    await page.getByTestId('ul-paper-scale').selectOption('50');
+    u = Object.values((await full(page)).underlays)[0] as any;
+    expect(u.mmPerPx * u.widthPx).toBeCloseTo(21000, -2);
+  });
+
+  test('縮尺が書かれていない PDF は仮に 1/100 で置き、縮尺未確定と知らせる', async ({ page }) => {
+    test.skip(isMobile(), 'ファイル選択の操作は PC で確認（スマホでも同じ部品）');
+    const pdf = await PDFDocument.create();
+    pdf.addPage([842, 595]).drawRectangle({ x: 50, y: 50, width: 700, height: 450, borderColor: rgb(0, 0, 0), borderWidth: 3 });
+    await createProject(page, 'PDF縮尺なし', { blank: true });
+    await show(page, '2D');
+    await useTool(page, 'underlay');
+    await page.getByTestId('ul-pdf-file').setInputFiles({ name: 'zumen.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()) });
+    await expect(page.locator('[data-underlay]')).toHaveCount(1);
+    await expect(page.getByTestId('ul-note')).toContainText('仮に 1/100');
+    await expect(page.getByTestId('ul-status')).toContainText('縮尺は仮');
+    const u = Object.values((await full(page)).underlays)[0] as any;
+    expect(u.scaled).toBe(false);
+    expect(u.mmPerPx * u.widthPx).toBeCloseTo(29700, -2); // A4 の長辺 297mm × 100
+    // 仮のうちは「選んでください」。同じ 1/100 を選んで確定できる
+    await expect(page.getByTestId('ul-paper-scale')).toHaveValue('');
+    await page.getByTestId('ul-paper-scale').selectOption('100');
+    expect((Object.values((await full(page)).underlays)[0] as any).scaled).toBe(true);
+    await expect(page.getByTestId('ul-paper-scale')).toHaveValue('100');
+  });
+
   test('住所検索 → 航空写真（地理院）＋建物外形（OSM）を取り込み、外壁4面と出典表示', async ({ page }) => {
     const tile = await makeImage(page, 256, 256, 'image/jpeg');
     const d = 0.0001;

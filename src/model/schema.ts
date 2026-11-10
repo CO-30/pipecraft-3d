@@ -126,6 +126,7 @@ export const underlaySchema = z.object({
   opacity: z.number().min(0).max(1),
   scaled: z.boolean(),
   attribution: z.string().optional(),
+  paperMmPerPx: z.number().finite().positive().optional(),
 });
 
 export const elevationSchema = z.object({

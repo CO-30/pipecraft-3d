@@ -23,7 +23,54 @@ export type Underlay = {
   scaled: boolean;
   /** 出典表示（航空写真など） */
   attribution?: string;
+  /** PDF 図面: 画像 1px が紙の上で何 mm か。これ × 縮尺の分母 = mmPerPx */
+  paperMmPerPx?: number;
 };
+
+/** 選べる図面の縮尺（1/n の n） */
+export const PAPER_SCALES = [10, 20, 30, 50, 60, 100, 150, 200, 250, 300, 500, 600] as const;
+/** 図面から縮尺を読み取れなかったときの仮の縮尺（住宅の平面図で最も多い） */
+export const DEFAULT_PAPER_SCALE = 100;
+
+/** PDF のページ（長辺 longPt ポイント）を長辺 longPx 画素の画像にしたとき、1px が紙の何 mm か */
+export function paperMmPerPx(longPt: number, longPx: number): number {
+  return (longPt * 25.4) / 72 / longPx;
+}
+
+/**
+ * 図面の文字から縮尺（1/n の n）を読む。「S:1/100」「縮尺 1：50」「SCALE 1/200」の形だけを見る
+ * （勾配の「1/100」を縮尺と取り違えないため）。違う縮尺が混ざっている図面（平面図 1/100 と詳細図 1/20 など）は決めない。
+ */
+export function detectDrawingScale(texts: string[]): number | undefined {
+  const scan = (t: string) => {
+    const found: number[] = [];
+    // 単独の「S」は区切り（= :）があるときだけ縮尺とみなす（「75s 1/100」などを拾わない）
+    const re = /(?:(?:SCALE|縮尺)[=:]?|(?<![A-Za-z0-9])S[=:])1[/:](\d{2,4})(?!\d)/gi;
+    for (const m of t.normalize('NFKC').replace(/\s+/g, '').matchAll(re)) {
+      const n = Number(m[1]);
+      if ((PAPER_SCALES as readonly number[]).includes(n)) found.push(n);
+    }
+    return found;
+  };
+  let found = texts.flatMap(scan);
+  // 1文字ずつに分かれている PDF は、1文字の並びだけをつなげて読み直す（別々の文字列どうしはつなげない）
+  if (!found.length) found = scan(texts.map((t) => (t.trim().length === 1 ? t.trim() : '|')).join(''));
+  const kinds = new Set(found);
+  return kinds.size === 1 ? found[0] : undefined;
+}
+
+/** 紙の縮尺（1/n）を選び直す。中心は動かさない。紙の大きさが分からない下敷きは null */
+export function applyPaperScale(u: Underlay, n: number): Underlay | null {
+  if (!u.paperMmPerPx || !(n > 0) || !Number.isFinite(n)) return null;
+  return { ...u, mmPerPx: u.paperMmPerPx * n, scaled: true };
+}
+
+/** 今の縮尺が紙の 1/n ちょうどなら n（2点で合わせ直して半端になっていれば undefined） */
+export function paperScaleOf(u: Pick<Underlay, 'mmPerPx' | 'paperMmPerPx'>): number | undefined {
+  if (!u.paperMmPerPx) return undefined;
+  const r = u.mmPerPx / u.paperMmPerPx;
+  return PAPER_SCALES.find((n) => Math.abs(r - n) / n < 0.002);
+}
 
 /** 下敷き画像の data URL の上限（文字数） */
 export const MAX_UNDERLAY_SRC = 4_000_000;
