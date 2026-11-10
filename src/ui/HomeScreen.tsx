@@ -105,6 +105,7 @@ export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string
           ))}
         </ul>
       )}
+      <div className="muted small build-stamp" data-testid="build-stamp">版: {typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中'}</div>
       {help && <HelpDialog onClose={() => setHelp(false)} />}
       {creating && <NewProjectDialog onCancel={() => setCreating(false)} onSubmit={(v) => {
         // 作成中の二度押しで工事が 2 つできないようにする

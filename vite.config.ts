@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig(({ mode }) => ({
+  // いま動いている版を画面で確かめられるように（更新が届いていないときの切り分け用）
+  define: { __BUILD_STAMP__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
   // GitHub Pages のサブパス（/pipecraft-3d/）でもそのまま動くよう相対パス
   base: './',
   plugins: [
