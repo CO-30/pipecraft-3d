@@ -38,7 +38,7 @@ export function paperMmPerPx(longPt: number, longPx: number): number {
 }
 
 /**
- * 図面の文字から縮尺（1/n の n）を読む。「S:1/100」「縮尺 1：50」「SCALE 1/200」の形だけを見る
+ * 図面の文字から縮尺（1/n の n）を読む。「S:1/100」「縮尺 1：50」「SCALE 1/200」の形と、表題欄の「1/50」だけの文字を見る
  * （勾配の「1/100」を縮尺と取り違えないため）。違う縮尺が混ざっている図面（平面図 1/100 と詳細図 1/20 など）は決めない。
  */
 export function detectDrawingScale(texts: string[]): number | undefined {
@@ -55,6 +55,15 @@ export function detectDrawingScale(texts: string[]): number | undefined {
   let found = texts.flatMap(scan);
   // 1文字ずつに分かれている PDF は、1文字の並びだけをつなげて読み直す（別々の文字列どうしはつなげない）
   if (!found.length) found = scan(texts.map((t) => (t.trim().length === 1 ? t.trim() : '|')).join(''));
+  // 表題欄で「SCALE」「縮尺」の欄と値が別々の文字になっている図面: 欄の見出しがあるときだけ、「1/50」だけの文字を縮尺とみなす
+  // （見出しが無ければ勾配の「1/100」かもしれない。「1/20,100」のように複数の縮尺が書かれた図面は決めない）
+  const hasLabel = texts.some((t) => /^(SCALE|縮尺|尺度)[:=]?$/i.test(t.normalize('NFKC').replace(/\s+/g, '')));
+  if (!found.length && hasLabel) {
+    for (const t of texts) {
+      const m = /^1[/:](\d{2,4})$/.exec(t.normalize('NFKC').replace(/\s+/g, ''));
+      if (m && (PAPER_SCALES as readonly number[]).includes(Number(m[1]))) found.push(Number(m[1]));
+    }
+  }
   const kinds = new Set(found);
   return kinds.size === 1 ? found[0] : undefined;
 }

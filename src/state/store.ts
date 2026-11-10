@@ -653,10 +653,10 @@ export const useStore = create<State>((set, get) => {
     routeDrainsOut: () => {
       const r = routeDrains(get().doc);
       if (!r.pipes) {
-        set({ notice: r.skipped ? '出口を決められませんでした（外壁が無いか、マスの管底より配管が低い）。配管の道具でつないでください' : 'つなぐ排水がありません。先に「器具の真下に配管を落とす」を押してください' });
+        set({ notice: r.skipped ? '出口を決められませんでした（外壁が途切れている・器具が建物の外にある・置いてあるマスの管底が配管より高い、など）。配管の道具でつないでください' : 'つなぐ排水がありません。先に「器具の真下に配管を落とす」を押してください' });
         return 0;
       }
-      const parts = [`排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置・マスどうしの接続・勾配は現場に合わせて直してください'];
+      const parts = [`排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置（敷地境界・他の設備との離れ）・マスどうしの接続・勾配は現場に合わせて直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
     },
