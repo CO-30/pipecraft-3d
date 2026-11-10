@@ -117,9 +117,16 @@ test.describe('図面から自動で3Dにする', () => {
     expect(Object.keys((await full(page)).building.walls)).toHaveLength(7);
   });
 
-  test('平面図が無いときは、工事を作らずに分かる文で知らせる', async ({ page }) => {
+  test('平面図が無いときは、工事を作らずに分かる文で知らせる。選んだ図面は残り、足して作り直せる', async ({ page }) => {
     await createAuto(page, '立面図だけ', [{ name: '立面図.pdf', buffer: await elevation() }]);
     await expect(page.getByRole('alert')).toContainText('平面図が見つかりませんでした');
     await expect(page.getByTestId('editor')).toHaveCount(0);
+    // 入力と選んだ図面は残る → 平面図を足せばそのまま作れる
+    await expect(page.getByTestId('np-name')).toHaveValue('立面図だけ');
+    await expect(page.getByTestId('np-file-list').locator('li')).toHaveCount(1);
+    await page.getByTestId('np-files').setInputFiles({ name: '1階平面図.pdf', mimeType: 'application/pdf', buffer: await plan() });
+    await page.getByTestId('np-create').click();
+    await expect(page.getByTestId('import-report')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('ir-found')).toContainText('GL+550mm');
   });
 });

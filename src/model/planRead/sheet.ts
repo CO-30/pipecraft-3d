@@ -9,7 +9,8 @@ import { PAPER_SCALES, detectDrawingScale } from '../underlay';
 export type PSeg = { x1: number; y1: number; x2: number; y2: number; w: number };
 /** 文字。x, y は文字の中心、h は文字の高さ */
 export type PText = { x: number; y: number; h: number; s: string };
-export type VectorPage = { widthPt: number; heightPt: number; segs: PSeg[]; texts: PText[] };
+/** truncated: 線が多すぎて途中までしか読んでいない */
+export type VectorPage = { widthPt: number; heightPt: number; segs: PSeg[]; texts: PText[]; truncated?: boolean };
 
 export type SheetKind = 'plan' | 'foundation' | 'elevation' | 'site' | 'detail' | 'unknown';
 export const SHEET_LABEL: Record<SheetKind, string> = { plan: '平面図', foundation: '基礎伏図', elevation: '立面図', site: '配置図', detail: '展開図・詳細図', unknown: '種類不明' };
@@ -52,7 +53,8 @@ export function classifySheet(texts: PText[], fileName = ''): { kind: SheetKind;
   }
   if (!best) return { kind: 'unknown', floor: 1, title: '' };
   const all = texts.map((t) => norm(t.s));
-  const m = /(\d)階/.exec(best.title) ?? (best.kind === 'plan' ? all.map((s) => /^(\d)階$/.exec(s)).find(Boolean) ?? null : null);
+  // 「2階平面図」「2F平面図」。図面名に無ければ「2階」「2F」だけの文字（表題欄で分かれている図面）
+  const m = /(\d)(?:階|F)/i.exec(best.title) ?? (best.kind === 'plan' ? all.map((s) => /^(\d)(?:階|F)$/i.exec(s)).find(Boolean) ?? null : null);
   return { kind: best.kind, floor: m ? Number(m[1]) : 1, title: best.title };
 }
 
@@ -94,7 +96,7 @@ function modalPitch(g: GridLine[]): number {
  */
 export function sheetScale(texts: PText[], grid: Grid | null): { scale: number; guessed: boolean } | null {
   const s = detectDrawingScale(texts.map((t) => t.s));
-  if (s) return { scale: s, guessed: false };
+  if (s && !grid) return { scale: s, guessed: false };
   // 表題欄の「1/50」だけの文字（「SCALE」の欄と別の文字列になっている図面）。違う値が混ざるなら採らない
   const lone = new Set(texts.map((t) => /^1[/:](\d{2,3})$/.exec(norm(t.s))).filter(Boolean).map((m) => Number(m![1])));
   const title = lone.size === 1 && (PAPER_SCALES as readonly number[]).includes([...lone][0]) ? [...lone][0] : undefined;
@@ -105,7 +107,14 @@ export function sheetScale(texts: PText[], grid: Grid | null): { scale: number; 
     const err = Math.abs(pitch * n - mod) / mod;
     if (!best || err < best.err) best = { scale: n, err };
   }
-  if (best && best.err < 0.03) return { scale: best.scale, guessed: best.scale !== title };
+  const fromGrid = best && best.err < 0.03 ? best.scale : undefined;
+  if (s) {
+    // 文字の縮尺で通り芯の間隔が半間・1m の倍数にならず、通り芯からは別の縮尺が出るなら、文字は別の図（詳細図など）の縮尺
+    const real = pitch * s;
+    const plausible = [455, 500].some((mod) => Math.abs(real / mod - Math.round(real / mod)) < 0.06 && real >= mod * 0.9);
+    return !plausible && fromGrid && fromGrid !== s ? { scale: fromGrid, guessed: true } : { scale: s, guessed: false };
+  }
+  if (fromGrid) return { scale: fromGrid, guessed: fromGrid !== title };
   return title ? { scale: title, guessed: false } : null;
 }
 

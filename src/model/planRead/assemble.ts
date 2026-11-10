@@ -82,10 +82,13 @@ function alignedWalls(page: VectorPage, grid: Grid, base: GridWorld, ref: WallSp
     const score = overlapLength(specs, ref);
     // 番号どおり（最初の候補）を優先し、ずらした方がはっきり良いときだけ替える
     if (!best || score > best.score * 1.2 + 1000) best = { t, specs, shifted: sx !== 0 || sy !== 0, score };
+    // 番号どおりで半分以上重なっていれば、ずらした候補は試さない
+    if (sx === 0 && sy === 0 && score >= 0.5 * Math.min(totalLength(specs), totalLength(ref)) && score > 0) break;
   }
   return best;
 }
 
+const totalLength = (ws: WallSpec[]) => ws.reduce((s, w) => s + Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y), 0);
 const len = (w: { a: Vec2; b: Vec2 }) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
 const mm = (v: number) => Math.round(v).toLocaleString('ja-JP');
 
@@ -159,13 +162,13 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const SHIFT_NOTE = '通り芯の番号が 1 階平面図と 1 つずれていたので、壁の重なりで位置を合わせました';
 
   // 高さ（立面図）
-  const heights: Heights = { floorToFloor: new Map() };
+  const heights: Heights = { floorToFloor: new Map(), topFloor: 1 };
   for (const r of reads.filter((x) => x.kind === 'elevation')) {
     if (!r.scale) { note(r, false, '縮尺を読み取れませんでした'); continue; }
     const h = readHeights(r.page.texts, PT_TO_MM * r.scale.scale);
     heights.glToFl ??= h.glToFl;
     heights.footingTop ??= h.footingTop;
-    heights.topToEaves ??= h.topToEaves;
+    if (heights.topToEaves === undefined && h.topToEaves !== undefined) { heights.topToEaves = h.topToEaves; heights.topFloor = h.topFloor; }
     for (const [n, v] of h.floorToFloor) if (!heights.floorToFloor.has(n)) heights.floorToFloor.set(n, v);
     const got = [h.glToFl && `GL〜1階の床 ${mm(h.glToFl)}`, h.topToEaves && `床〜軒高 ${mm(h.topToEaves)}`, h.footingTop && `基礎の高さ ${mm(h.footingTop)}`].filter(Boolean);
     note(r, got.length > 0, got.length ? `高さを読みました（${got.join('、')}）` : '高さの文字（GL・1階FL・軒高）が見つかりませんでした');
@@ -176,7 +179,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const placements: PlanPlacement[] = [];
   const topFloor = floors.at(-1)!;
   for (let n = 1; n <= topFloor; n++) {
-    const fromDrawing = n === topFloor ? heights.topToEaves : heights.floorToFloor.get(n);
+    // 軒高までの高さは、立面図の最上階がこの建物の最上階と同じときだけ使う（2 階建てで「1FL」しか無い立面図の値を 1 階分にしない）
+    const fromDrawing = heights.floorToFloor.get(n) ?? (n === topFloor && heights.topFloor === topFloor ? heights.topToEaves : undefined);
     const height = fromDrawing && fromDrawing >= 2000 && fromDrawing <= 6000 ? fromDrawing : DEFAULT_FLOOR_HEIGHT;
     const f = addFloor(b, { height, slabThickness: DEFAULT_SLAB });
     b = f.b;
@@ -201,7 +205,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (!r.grid) check.push(`${n}階平面図に通り芯（X1・Y1…）の文字が無いため、他の図面との位置合わせはしていません`);
   }
   if (Object.keys(b.walls).length) {
-    check.push('外壁・内壁の区別と開口部の高さは目安です。斜めの壁・曲がった壁は読み取りません');
+    check.push('外壁・内壁の区別は目安です。開口部は外壁なら窓・内壁ならドアとして標準の高さで入れています（玄関・掃き出し窓は選んで直してください）。斜めの壁・曲がった壁は読み取りません');
   }
 
   // 高さの基準と基礎
@@ -236,6 +240,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   }
   if (!reads.some((r) => r.kind === 'foundation')) check.push('基礎伏図が無いので、基礎は入っていません');
   if (!reads.some((r) => r.kind === 'elevation')) check.push('立面図が無いので、高さは標準値です');
+  for (const r of reads) if (r.page.truncated) check.push(`${r.name} は線が多すぎて途中までしか読んでいません。壁が欠けていないか確かめてください`);
   for (const r of reads) {
     if (sheets[r.index].note) continue;
     if (r.kind === 'site') note(r, false, '配置図（桝・メーターの位置）の読み取りは次の対応で追加します');

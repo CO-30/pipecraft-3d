@@ -22,6 +22,8 @@ describe('図面の見分け（sheet）', () => {
   it('図面名から種類と階を決める。「展開図参照」の注記は図面名にしない', () => {
     expect(classifySheet([t('展開図参照', 14), t('造作ｶｳﾝﾀｰ展開図参照', 14), t('1階 平面詳細図', 6)])).toMatchObject({ kind: 'plan', floor: 1 });
     expect(classifySheet([t('2階平面図')])).toMatchObject({ kind: 'plan', floor: 2 });
+    expect(classifySheet([t('2F平面図')])).toMatchObject({ kind: 'plan', floor: 2 });
+    expect(classifySheet([t('平面図'), t('３Ｆ')])).toMatchObject({ kind: 'plan', floor: 3 });
     expect(classifySheet([t('基 礎 伏 図 S : 1 / 7 5', 12)]).kind).toBe('foundation');
     expect(classifySheet([t('南側 立面図 S:1/100')]).kind).toBe('elevation');
     expect(classifySheet([t('WC展開図')]).kind).toBe('detail');
@@ -52,6 +54,9 @@ describe('図面の見分け（sheet）', () => {
     expect(sheetScale([t('1/50')], null)).toEqual({ scale: 50, guessed: false });
     expect(sheetScale([t('1/20,100')], null)).toBeNull();
     expect(sheetScale([t('基礎伏図 S : 1 / 7 5')], null)).toEqual({ scale: 75, guessed: false });
+    // 文字の縮尺（詳細図のもの）が通り芯の間隔と合わなければ、通り芯から出した縮尺を採って「推定」と知らせる
+    expect(sheetScale([...noText.texts, t('S:1/30')], readGrid(noText.texts))).toEqual({ scale: 100, guessed: true });
+    expect(sheetScale([...noText.texts, t('S:1/50')], readGrid(noText.texts))).toEqual({ scale: 50, guessed: false }); // 455mm 間隔としてあり得る
   });
   it('別の縮尺の図面を、同じ番号の通り芯で重ねる。番号をずらして合わせることもできる', () => {
     const { gw } = world();
@@ -149,7 +154,9 @@ describe('高さ（heights）', () => {
     expect(h.glToFl).toBe(520);
     expect(h.floorToFloor.get(1)).toBe(2800);
     expect(h.topToEaves).toBe(2680);
-    expect(readHeights([t('GL')], k)).toMatchObject({ glToFl: undefined, topToEaves: undefined });
+    expect(h.topFloor).toBe(2);
+    expect(readHeights([t('GL')], k)).toMatchObject({ glToFl: undefined, topToEaves: undefined, topFloor: 1 });
+    expect(readHeights([at(0, '▽GL'), at(600, '▽1FL')], k).glToFl).toBe(600);
   });
 });
 
@@ -208,6 +215,21 @@ describe('図面一式 → 建物（assemble）', () => {
     expect(Object.keys(r.building.walls).length).toBeGreaterThanOrEqual(5);
     expect(r.report.check.join()).toContain('通り芯');
     expect(membersOf(r.building)).toHaveLength(0);
+  });
+  it('2 階建て: 階ごとの平面図（「2F」表記）を重ね、軒高までの高さを 1 階分に取り違えない', () => {
+    const two = [{ name: 'a', page: planSheet() }, { name: 'a2', page: planSheet({ floorName: '2F' }) }];
+    // 立面図に「1階FL」と「軒高」しか無い → 軒高までは 2 階分なので、どの階の高さにも使わない
+    const r = buildFromSheets([...two, { name: 'c', page: elevationSheet() }]);
+    expect(r.building.floors.map((f) => f.height)).toEqual([2900, 2900]);
+    expect(r.report.check.filter((c) => c.includes('階の高さは立面図から読めなかった'))).toHaveLength(2);
+    expect(validateBuilding(r.building)).toEqual([]);
+    expect(wallsOnFloor(r.building, r.building.floors[1].id)).toHaveLength(7);
+    expect(r.plans.map((p) => p.floorId)).toEqual(r.building.floors.map((f) => f.id));
+    expect(r.report.sheets.every((s) => s.used)).toBe(true);
+  });
+  it('線が多すぎて途中までしか読めなかった図面は知らせる', () => {
+    const r = buildFromSheets([{ name: '平面', page: { ...planSheet(), truncated: true } }]);
+    expect(r.report.check.join()).toContain('途中までしか読んでいません');
   });
   it('重なりの長さ', () => {
     const w = (x1: number, y1: number, x2: number, y2: number) => ({ a: { x: x1, y: y1 }, b: { x: x2, y: y2 }, thickness: 100, kind: 'interior' as const, openings: [] });

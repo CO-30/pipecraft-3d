@@ -39,7 +39,7 @@ export default function App() {
     }
   };
 
-  const create = async (v: NewProjectInput) => {
+  const create = async (v: NewProjectInput): Promise<boolean> => {
     let auto: Awaited<ReturnType<typeof import('./import/planSet').importPlanSet>> | null = null;
     if (v.mode === 'auto') {
       setBusy('図面を読み取っています…');
@@ -47,8 +47,8 @@ export default function App() {
         auto = await (await import('./import/planSet')).importPlanSet(v.files ?? []);
       } catch (e) {
         // PlanReadError は使う人向けの文。それ以外は想定外の失敗
-        setError((e as Error).name === 'PlanReadError' ? (e as Error).message : '図面を読み取れませんでした: ' + (e as Error).message);
-        return;
+        setError((e as Error).name === 'PlanReadError' ? (e as Error).message : '図面を読み取れませんでした。PDF が壊れていないか確かめて、もう一度試してください（詳細: ' + (e as Error).message + '）');
+        return false;
       } finally {
         setBusy('');
       }
@@ -69,9 +69,11 @@ export default function App() {
       setStartFacade(v.mode === 'facade');
       setScreen('editor');
       setReport(auto?.report ?? null);
+      return true;
     } catch (e) {
       setPendingUnderlayFile(null);
       setError('保存できませんでした: ' + (e as Error).message);
+      return false;
     }
   };
 
@@ -97,7 +99,7 @@ export default function App() {
     <>
       {error && <div className="toast" role="alert" onClick={() => setError('')}>{error}（タップで閉じる）</div>}
       {screen === 'home' ? <HomeScreen onOpen={open} onCreate={create} onSample={sample} /> : <Editor save={save} onBack={back} startFacade={startFacade} onFacadeStarted={() => setStartFacade(false)} />}
-      {busy && <div className="modal-back" role="status" aria-live="polite"><div className="modal busy" data-testid="busy">{busy}</div></div>}
+      {busy && <div className="modal-back busy-back" role="status" aria-live="polite" aria-busy="true"><div className="modal busy" data-testid="busy">{busy}</div></div>}
       {report && screen === 'editor' && <ImportReportDialog report={report} onClose={() => setReport(null)} />}
       <UpdatePrompt />
     </>

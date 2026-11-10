@@ -13,6 +13,8 @@ export const WALL_STRIP: StripOptions = { minT: 90, maxT: 260, minLen: 180 };
 
 /** 軸からのずれの許容（長さに対する比） */
 const AXIS_TOL = 0.01;
+/** 組にする線の本数の上限（向きごと。長い線から採る）。ハッチの多い図面で端末が固まらないように */
+export const MAX_LINES = 6000;
 /** 同じ線とみなす直角方向のずれ(mm) / つなげる線のすき間(mm) */
 const SAME_POS = 4, JOIN_GAP = 12;
 
@@ -67,7 +69,7 @@ function mergeLines(lines: Line[]): Line[] {
 }
 
 function pairLines(lines: Line[], dir: 'h' | 'v', o: StripOptions): Strip[] {
-  const sorted = lines.filter((l) => l.hi - l.lo >= o.minLen).sort((a, b) => a.pos - b.pos);
+  const sorted = lines.filter((l) => l.hi - l.lo >= o.minLen).sort((a, b) => b.hi - b.lo - (a.hi - a.lo)).slice(0, MAX_LINES).sort((a, b) => a.pos - b.pos);
   const out: Strip[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const a = sorted[i];

@@ -368,3 +368,4 @@ header .lbl { margin-left: 2px; }
 .import-report ul.warn { color: #92400e; }
 .import-report ul.small { font-size: 12px; }
 .import-report .muted { color: #6b7280; }
+.busy-back { z-index: 60; }

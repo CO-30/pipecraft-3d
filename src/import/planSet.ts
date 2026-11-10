@@ -19,13 +19,14 @@ const baseName = (n: string) => n.replace(/\.[^.]+$/, '');
 export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
   const inputs: SheetInput[] = [];
   const source: { data: ArrayBuffer; page: number }[] = [];
-  const failed: string[] = [];
+  const failed: string[] = [], skipped: string[] = [];
   for (const f of files) {
     try {
       const data = await f.arrayBuffer();
-      const pages = await readVectorPages(data);
+      const room = MAX_PLAN_PAGES - inputs.length;
+      if (room <= 0) { skipped.push(f.name); continue; }
+      const pages = await readVectorPages(data, undefined, room);
       pages.forEach((page, i) => {
-        if (inputs.length >= MAX_PLAN_PAGES) return;
         inputs.push({ name: pages.length > 1 ? `${baseName(f.name)} p${i + 1}` : baseName(f.name), page });
         source.push({ data, page: i + 1 });
       });
@@ -35,7 +36,7 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
   }
   if (!inputs.length) throw new PlanReadError(failed.length ? `PDF を開けませんでした（${failed.join('、')}）。PDF のファイルを選んでください` : '図面の PDF を選んでください');
   const r = buildFromSheets(inputs);
-  const report: ImportReport = { ...r.report, check: [...r.report.check, ...failed.map((n) => `${n} は PDF として開けなかったので使っていません`)] };
+  const report: ImportReport = { ...r.report, check: [...r.report.check, ...failed.map((n) => `${n} は PDF として開けなかったので使っていません`), ...(skipped.length ? [`一度に読めるのは ${MAX_PLAN_PAGES} ページまでです。${skipped.join('、')} は読んでいません`] : [])] };
 
   // 読み取った平面図を下に敷く（読み違いを見比べて直せるように、器具の位置も見えるように）
   const underlays: Record<string, Underlay> = {};

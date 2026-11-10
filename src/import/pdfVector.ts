@@ -85,21 +85,22 @@ export function textItemsToTexts(items: TextItemLike[], viewport: number[]): PTe
 
 type PdfJs = { getDocument(src: { data: Uint8Array }): { promise: Promise<PdfDocLike>; destroy(): unknown }; OPS: Record<string, number> };
 type PdfDocLike = { numPages: number; getPage(n: number): Promise<PdfPageLike> };
-type PdfPageLike = { getViewport(o: { scale: number }): { width: number; height: number; transform: number[] }; getOperatorList(): Promise<OpList>; getTextContent(): Promise<{ items: unknown[] }> };
+type PdfPageLike = { cleanup?(): unknown; getViewport(o: { scale: number }): { width: number; height: number; transform: number[] }; getOperatorList(): Promise<OpList>; getTextContent(): Promise<{ items: unknown[] }> };
 
-/** PDF の全ページを線と文字にする。lib は pdf.js（省略時はブラウザ用を読み込む。テストでは Node 用を渡す） */
-export async function readVectorPages(data: ArrayBuffer, lib?: unknown): Promise<VectorPage[]> {
+/** PDF のページ（先頭から maxPages まで）を線と文字にする。lib は pdf.js（省略時はブラウザ用を読み込む。テストでは Node 用を渡す） */
+export async function readVectorPages(data: ArrayBuffer, lib?: unknown, maxPages = Infinity): Promise<VectorPage[]> {
   const pdfjs = (lib ?? (await import('./pdf')).pdfjsLib) as PdfJs;
   const task = pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) });
   try {
     const doc = await task.promise;
     const pages: VectorPage[] = [];
-    for (let n = 1; n <= doc.numPages; n++) {
+    for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
       const page = await doc.getPage(n);
       const vp = page.getViewport({ scale: 1 });
       const segs = opsToSegments(await page.getOperatorList(), pdfjs.OPS as OpCodes, vp.transform);
       const texts = textItemsToTexts((await page.getTextContent()).items as TextItemLike[], vp.transform);
-      pages.push({ widthPt: vp.width, heightPt: vp.height, segs, texts });
+      pages.push({ widthPt: vp.width, heightPt: vp.height, segs, texts, ...(segs.length >= MAX_PAGE_SEGS ? { truncated: true } : {}) });
+      page.cleanup?.(); // 描画命令の控えを手放す（枚数が多いとメモリを圧迫する）
     }
     return pages;
   } finally {

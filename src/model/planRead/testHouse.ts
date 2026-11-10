@@ -43,7 +43,7 @@ export const W = 8 * PITCH, D = 6 * PITCH;
  * 1 階平面図（1/100）: 7280 × 5460 の四角い家。南の壁に窓（x 1820〜3640、細いサッシ線）、
  * 中央（x = 3640）に間仕切りとドア（y 910〜1820）。図面の右外に表の枠（壁と紛らわしい太い 2 本線）。
  */
-export function planSheet(opts: { title?: boolean; scaleText?: boolean; labels?: boolean; firstY?: number } = {}): VectorPage {
+export function planSheet(opts: { title?: boolean; scaleText?: boolean; labels?: boolean; firstY?: number; floorName?: string } = {}): VectorPage {
   const s = sketch(100);
   if (opts.labels !== false) gridLabels(s, 9, 7, 1, opts.firstY ?? 1);
   wall(s, 0, D, W, D); // 北
@@ -54,7 +54,7 @@ export function planSheet(opts: { title?: boolean; scaleText?: boolean; labels?:
   wall(s, 3640, 0, 3640, 910); wall(s, 3640, 1820, 3640, D); // 間仕切り（ドアの両側）
   line(s, 3640, 910, 3640, 1820, THIN); // ドア
   wall(s, W + 6000, 3000, W + 6800, 3000); // 表の枠（建物の外）
-  if (opts.title !== false) text(s, 3000, -2600, '1階 平面図', 10);
+  if (opts.title !== false) text(s, 3000, -2600, `${opts.floorName ?? '1階'} 平面図`, 10);
   if (opts.scaleText !== false) text(s, 5200, -2600, 'S:1/100', 10);
   text(s, 1000, 3000, '展開図参照', 12);
   return page(s);

@@ -27,6 +27,8 @@ type Rect = ReturnType<typeof rectOf>;
 const hit = (a: Rect, b: Rect) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
 const collinear = (a: Strip, b: Strip) => a.dir === b.dir && Math.abs(a.c - b.c) <= SAME_LINE;
 
+/** 塊を作る帯の本数の上限（住宅の図面 1 枚は数十本） */
+export const MAX_STRIPS = 3000;
 /** これより離れた帯は別の塊（窓の多い壁は細い線で描かれて帯にならないので、少し離れていても同じ建物とみなす） */
 const NEAR = 2000;
 
@@ -34,7 +36,9 @@ const NEAR = 2000;
  * 建物の帯だけを残す: 近い帯どうしを 1 つの塊とし、
  * いちばん長い塊と、その範囲の内側にある塊を採る（図面の外側にある表の枠などを捨てる）。
  */
-export function buildingStrips(strips: Strip[]): Strip[] {
+export function buildingStrips(input: Strip[]): Strip[] {
+  // 総当たりで塊を作るので、多すぎるときは長い帯から採る
+  const strips = input.length > MAX_STRIPS ? [...input].sort((a, b) => b.hi - b.lo - (a.hi - a.lo)).slice(0, MAX_STRIPS) : input;
   const n = strips.length;
   const parent = strips.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
@@ -206,7 +210,12 @@ export type WallReadOptions = { /** 通り芯の位置（x と y）。あれば�
 export function wallsFromStrips(strips: Strip[], segs: WSeg[], o: WallReadOptions = {}): WallSpec[] {
   const lx = snapLines(o.gridX ?? []), ly = snapLines(o.gridY ?? []);
   const snapped = buildingStrips(strips).map((s) => ({ ...s, c: snap(s.c, s.dir === 'h' ? ly : lx) }));
-  const runs = joinEnds(toRuns(snapped, segs)).filter((r) => r.hi - r.lo >= OPEN_MIN);
+  // 建具になりうる線だけ先に選ぶ（軸に平行で、開口部より長くない線）
+  const joinery = segs.filter((s) => {
+    const dx = Math.abs(s.x2 - s.x1), dy = Math.abs(s.y2 - s.y1);
+    return (dx < 1 || dy < 1) && dx + dy > 50 && dx + dy <= OPEN_MAX + PASS * 2;
+  });
+  const runs = joinEnds(toRuns(snapped, joinery)).filter((r) => r.hi - r.lo >= OPEN_MIN);
   const ext = exteriorFlags(runs);
   return runs
     .map((r, i): WallSpec => {

@@ -9,13 +9,15 @@ export type Heights = {
   glToFl?: number;
   /** 階 n（1 から）の床から、その上の階の床まで(mm) */
   floorToFloor: Map<number, number>;
-  /** いちばん上の階の床から軒高まで(mm) */
+  /** いちばん上の階の床から軒高まで(mm)。topFloor: その「いちばん上の階」（立面図に床の高さが書かれていた最上階） */
   topToEaves?: number;
+  topFloor: number;
   /** GL から基礎の天端まで(mm) */
   footingTop?: number;
 };
 
-const norm = (s: string) => s.normalize('NFKC').replace(/\s+/g, '').toUpperCase();
+// 高さの記号（▽ など）は外して読む
+const norm = (s: string) => s.normalize('NFKC').replace(/[\s▽▼△▲]+/g, '').toUpperCase();
 const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor((v.length - 1) / 2)];
 
 type Level = { key: string; x: number; y: number };
@@ -66,7 +68,7 @@ export function readHeights(texts: PText[], k: number): Heights {
     const near = dims.filter((v) => Math.abs(v - raw) <= tol).sort((a, b) => Math.abs(a - raw) - Math.abs(b - raw))[0];
     return near ?? Math.round(raw / 10) * 10;
   };
-  const h: Heights = { floorToFloor: new Map() };
+  const h: Heights = { floorToFloor: new Map(), topFloor: 1 };
   h.glToFl = between('GL', 'FL1');
   h.footingTop = between('GL', 'FOOTING');
   let top = 1;
@@ -77,5 +79,6 @@ export function readHeights(texts: PText[], k: number): Heights {
     top = n + 1;
   }
   h.topToEaves = between(`FL${top}`, 'EAVES');
+  h.topFloor = top;
   return h;
 }
