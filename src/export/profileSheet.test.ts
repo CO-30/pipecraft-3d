@@ -199,6 +199,18 @@ describe('落差桝と下流端の向き', () => {
     const tIn = texts.find((t) => t.s === '0.370')!, tOut = texts.find((t) => t.s === '0.070')!;
     expect(tIn.x).toBeGreaterThan(tOut.x);
   });
+  test('鏡像で桝の行が表にあるとき、端の桝名は表の内側へ寄る', () => {
+    const { model } = dropCase();
+    const p = structuredClone(STANDARD_PROFILE);
+    p.profileTable.downstreamSide = 'left';
+    model.profile = p;
+    const sheet = renderProfileSheet(model, meta);
+    const texts = sheet.ops.filter((o) => o.t === 'text' && o.size === 2.3) as Array<{ s: string; x: number; anchor?: string }>; // 表のマス行
+    const pub = texts.find((t) => t.s.startsWith('公共'))!, first = texts.find((t) => t.s.startsWith('汚水'))!;
+    expect(pub.x).toBeLessThan(first.x);
+    expect(pub.anchor).toBe('start'); // 左端の桝は右へ伸ばす
+    expect(first.anchor).toBe('end'); // 右端の桝は左へ伸ばす
+  });
   test('standard（下流端が右）では公共桝が右', () => {
     const { model } = dropCase();
     model.profile = STANDARD_PROFILE;

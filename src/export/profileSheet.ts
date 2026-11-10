@@ -191,7 +191,8 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
           const first = i === 0, last = i === model.nodes.length - 1;
           const prev = first ? x : X(model.nodes[i - 1].cumDistance), next = last ? x : X(model.nodes[i + 1].cumDistance);
           // 端の点は内側へ寄せて書く（1 点だけなら中央）
-          const anchor = first && !last ? 'start' : last && !first ? 'end' : 'middle';
+          // 端の点は内側へ寄せる。鏡像（下流端が左）なら向きも反転
+          const anchor = first && !last ? (mirror ? 'end' : 'start') : last && !first ? (mirror ? 'start' : 'end') : 'middle';
           const w = Math.max(8, (anchor === 'middle' ? Math.min(Math.abs(x - prev), Math.abs(next - x)) : anchor === 'start' ? Math.abs(next - x) : Math.abs(x - prev)) - 2);
           const tx = anchor === 'start' ? x + 1 : anchor === 'end' ? x - 1 : x;
           sheet.ops.push({ t: 'text', x: tx, y: y + 4, s: fitText(n.manhole.label, 2.3, w), size: 2.3, anchor });

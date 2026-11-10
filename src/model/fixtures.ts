@@ -192,7 +192,7 @@ export function deleteFixture(doc: Doc, id: string): Doc {
   for (const n of portNodes(doc.network, id)) {
     if (segmentsAt(doc.network, n.id).length === 0) delete nodes[n.id];
     else {
-      const { fixedKind: _f, fixtureId: _i, portId: _p, ...rest } = n;
+      const { fixedKind: _f, fixtureId: _i, portId: _p, dropIn: _d, ...rest } = n;
       nodes[n.id] = rest;
     }
   }

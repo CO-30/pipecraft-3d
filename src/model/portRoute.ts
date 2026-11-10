@@ -12,7 +12,7 @@ export type PortCandidate = { nodeId: string; fixtureId: string; label: string; 
 
 /** 接続口の向き: 'out'＝供給側（メーター・タンク・ポンプ・給湯器の出口）、'in'＝受け側の入口、'use'＝器具の給水・排水口など */
 type Role = 'out' | 'in' | 'use';
-const roleOf = (portId: string | undefined): Role => (portId === 'out' ? 'out' : portId === 'in' ? 'in' : 'use');
+const roleOf = (portId: string | undefined): Role => (portId === 'out' || !!portId?.match(/^out\d+$/) ? 'out' : portId === 'in' ? 'in' : 'use');
 
 /** 始点からつながっている点（配管の系統）を全部たどる */
 function reach(net: Network, start: string): Set<string> {

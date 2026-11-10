@@ -91,6 +91,21 @@ export const IMAGE_BOXES = {
   iso: { tl: { col: 0, row: 32 }, br: { col: 10, row: 65 } },
 } as const;
 
+/** 欄の大きさを px で（列幅は文字数×7+5、行高は pt×96/72。Excel の既定） */
+export function boxPx(ws: ExcelJS.Worksheet, box: { tl: { col: number; row: number }; br: { col: number; row: number } }): { width: number; height: number } {
+  let width = 0, height = 0;
+  for (let c = box.tl.col; c < box.br.col; c++) width += Math.round((ws.getColumn(c + 1).width ?? 8.43) * 7 + 5);
+  for (let r = box.tl.row; r < box.br.row; r++) height += Math.round((ws.getRow(r + 1).height ?? 15) * 96 / 72);
+  return { width, height };
+}
+
+/** PNG の縦横（IHDR）。PNG でなければ undefined */
+export function pngSize(png: Uint8Array): { width: number; height: number } | undefined {
+  if (png.length < 24 || png[0] !== 0x89 || png[1] !== 0x50) return undefined;
+  const dv = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  return { width: dv.getUint32(16), height: dv.getUint32(20) };
+}
+
 /** テンプレートのバイト列から、値（と図の画像）を入れた xlsx を作る */
 export async function buildWaterApplication(template: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor, images: WaterImages = {}): Promise<Uint8Array> {
   const wb = new ExcelJS.Workbook();
@@ -104,7 +119,11 @@ export async function buildWaterApplication(template: ArrayBuffer | Uint8Array, 
   const put = (sheet: ExcelJS.Worksheet | undefined, png: Uint8Array | undefined, box: { tl: { col: number; row: number }; br: { col: number; row: number } }) => {
     if (!sheet || !png) return;
     const id = wb.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: 'png' });
-    sheet.addImage(id, { tl: { col: box.tl.col, row: box.tl.row }, br: { col: box.br.col, row: box.br.row }, editAs: 'oneCell' } as unknown as ExcelJS.ImageRange);
+    // 欄の大きさ（px）に、画像の縦横比を保って収める（2 セルアンカーだと引き伸ばされる）
+    const bw = boxPx(sheet, box), dim = pngSize(png);
+    const k = dim ? Math.min(bw.width / dim.width, bw.height / dim.height) : 1;
+    const ext = dim ? { width: Math.floor(dim.width * k), height: Math.floor(dim.height * k) } : bw;
+    sheet.addImage(id, { tl: { col: box.tl.col, row: box.tl.row }, ext });
   };
   put(ws, images.sideView, IMAGE_BOXES.sideView);
   put(back, images.plan, IMAGE_BOXES.plan);

@@ -79,9 +79,9 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
           const planEl = document.querySelector<SVGSVGElement>('[data-testid="plan"]');
           if (planEl) images.plan = await planPng(planEl, 2);
           else notes.push('裏面の平面図は空欄です（2D 平面図を表示した状態で出すと貼られます）');
-        } catch { notes.push('図の画像を作れなかったため、図の欄は空欄です'); }
+        } catch (e) { console.error('図の画像', e); notes.push('図の画像を作れなかったため、図の欄は空欄です'); }
         downloadBytes(await buildWaterApplication(tpl, vals, contractor, images), `${base}_給水装置申込及び工事申請書.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        setMsg(notes.join('。'));
+        if (notes.length) setMsg(notes.join('。'));
       } else if (what === 'sewer') {
         const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
         const sheets = drainageSheetsFor(doc, profile, siteName, date);

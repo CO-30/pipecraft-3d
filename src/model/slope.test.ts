@@ -117,18 +117,56 @@ describe('落差桝（node.dropIn）', () => {
     const r1 = addPolyline(emptyNetwork(), [v(0, 0, -500), v(5000, 0, -900)], { system: 'sewage', diameter: 100 });
     const m = r1.nodeIds[1];
     const r2 = addPolyline(r1.net, [v(5000, 0, -900), v(10000, 0, -1000)], { system: 'sewage', diameter: 100 }, { startNodeId: m });
-    const net: Network = { ...r2.net, nodes: { ...r2.net.nodes, [m]: { ...r2.net.nodes[m], dropIn: 300 } } };
+    const net: Network = { ...r2.net, nodes: { ...r2.net.nodes, [m]: { ...r2.net.nodes[m], fixtureId: 'fx', portId: 'pipe', fixedKind: true, dropIn: 300 } } };
     const up = net.segments[r1.segmentIds[0]], down = net.segments[r2.segmentIds[0]];
     expect(endZ(net, up, up.a === m ? 'a' : 'b')).toBe(-600); // 流入側は -900 + 300
     expect(endZ(net, down, down.a === m ? 'a' : 'b')).toBe(-900);
     expect(actualSlope(net, up)).toBeCloseTo(100 / 5000, 6); // (-500 − -600) / 5000
     expect(actualSlope(net, down)).toBeCloseTo(100 / 5000, 6);
   });
-  test('setSlopeRatio: 下流端が落差桝（器具でない点）なら node.z = 上流 − 勾配×L − dropIn', () => {
+  test('setSlopeRatio: 下流端が落差桝（器具）なら桝は動かず、上流端 = 流入側の管底 + 勾配×L', () => {
     const r1 = addPolyline(emptyNetwork(), [v(0, 0, -500), v(5000, 0, -900)], { system: 'sewage', diameter: 100 });
     const m = r1.nodeIds[1];
-    const net: Network = { ...r1.net, nodes: { ...r1.net.nodes, [m]: { ...r1.net.nodes[m], dropIn: 300 } } };
+    const net: Network = { ...r1.net, nodes: { ...r1.net.nodes, [m]: { ...r1.net.nodes[m], fixtureId: 'fx', portId: 'pipe', fixedKind: true, dropIn: 300 } } };
     const out = setSlopeRatio(net, r1.segmentIds[0], 1 / 50);
-    expect(out.nodes[m].pos.z).toBeCloseTo(-500 - 100 - 300, 1);
+    expect(out.nodes[m].pos.z).toBeCloseTo(-900, 1);
+    expect(out.nodes[r1.nodeIds[0]].pos.z).toBeCloseTo(-600 + 100, 1);
+  });
+});
+
+describe('落差桝: 向きが分かっているときの計算と削除', () => {
+  /** 上流 u → 落差桝 m（器具の接続口）→ 下流 d */
+  function withManhole(zu: number, zm: number, zd: number, drop: number) {
+    const r1 = addPolyline(emptyNetwork(), [v(0, 0, zu), v(5000, 0, zm)], { system: 'sewage', diameter: 100 });
+    const m = r1.nodeIds[1];
+    const r2 = addPolyline(r1.net, [v(5000, 0, zm), v(10000, 0, zd)], { system: 'sewage', diameter: 100 }, { startNodeId: m });
+    const net: Network = { ...r2.net, nodes: { ...r2.net.nodes, [m]: { ...r2.net.nodes[m], fixtureId: 'fx', portId: 'pipe', fixedKind: true, dropIn: drop } } };
+    return { net, m, up: r1.segmentIds[0], down: r2.segmentIds[0], u: r1.nodeIds[0], d: r2.nodeIds[1] };
+  }
+  test('下流端が落差桝で、上流が桝より低い状態から固定勾配を付けても、上流端は 流入側の管底 + 勾配×L に上がる', () => {
+    const { net, up, u, d } = withManhole(-1000, -900, -1000, 300);
+    // 流末 d を教えて向きを決める（高さでは上流のほうが低く見える）
+    const out = setSlopeRatio(net, up, 1 / 100, (id) => id === d);
+    // 桝は器具なので動かず、上流端が (−900 + 300) + 50 = −550 に
+    expect(out.nodes[u].pos.z).toBeCloseTo(-550, 1);
+    expect(out.segments[up].slopeLocked).toBe(true);
+  });
+  test('上流端が落差桝の区間（流出側）は dropIn を足さない: 下流端 = 桝の管底 − 勾配×L', () => {
+    const { net, down, d } = withManhole(-500, -900, -800, 300);
+    const out = setSlopeRatio(net, down, 1 / 100, (id) => id === d);
+    expect(out.nodes[d].pos.z).toBeCloseTo(-900 - 50, 1);
+  });
+  test('合流桝（流入 2 本・流出 1 本）: 流入はどちらも + dropIn、流出は桝の管底', () => {
+    const { net: n0, m } = withManhole(-500, -900, -1000, 300);
+    const r3 = addPolyline(n0, [v(5000, 4000, -600), v(5000, 0, -900)], { system: 'sewage', diameter: 100 }, { endNodeId: m });
+    const net = r3.net;
+    const seg3 = net.segments[r3.segmentIds[0]];
+    expect(endZ(net, seg3, seg3.a === m ? 'a' : 'b')).toBe(-600);
+    expect(actualSlope(net, seg3)).toBeCloseTo(0, 6); // −600 → −600
+  });
+  test('dropIn は器具の接続口でだけ効く（マスを消して残った普通の点では無視）', () => {
+    const { net, up, m } = withManhole(-500, -900, -1000, 300);
+    const plain: Network = { ...net, nodes: { ...net.nodes, [m]: { ...net.nodes[m], fixtureId: undefined, portId: undefined, fixedKind: undefined } } };
+    expect(endZ(plain, plain.segments[up], plain.segments[up].a === m ? 'a' : 'b')).toBe(-900);
   });
 });

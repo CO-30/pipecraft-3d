@@ -169,3 +169,18 @@ describe('マス（排水）', () => {
     expect(p.fixtures[fixtureId!].params).toEqual({ diameter: 350, shape: 'square', invertZ: -900 });
   });
 });
+
+describe('落差桝の削除', () => {
+  it('落差のあるマスを消して配管を残すと、残った点から dropIn も消える', () => {
+    let doc: Doc = { building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {}, site: { designGL: -100 } };
+    const r = placeFixture(doc, doc.building.floors[0].id, 'manholeSewage', { x: 0, y: 0 }); doc = r.doc;
+    doc = moveFixture(doc, r.fixtureId!, { x: 0, y: 0 }, undefined, { drop: 300 });
+    const port = portNodes(doc.network, r.fixtureId!)[0];
+    expect(port.dropIn).toBe(300);
+    doc = { ...doc, network: addPolyline(doc.network, [port.pos, { x: 5000, y: 0, z: port.pos.z - 100 }], { system: 'sewage', diameter: 100 }, { startNodeId: port.id }).net };
+    const after = deleteFixture(doc, r.fixtureId!);
+    expect(after.network.nodes[port.id]).toBeTruthy();
+    expect(after.network.nodes[port.id].dropIn).toBeUndefined();
+    expect(after.network.nodes[port.id].fixtureId).toBeUndefined();
+  });
+});
