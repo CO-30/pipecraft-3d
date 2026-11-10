@@ -11,6 +11,7 @@ import {
 } from '../model/network';
 import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
+import { routeDrainsOut as routeDrains } from '../model/drainRoute';
 import { deleteFixture, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import * as B from '../model/building';
@@ -165,6 +166,8 @@ type State = {
   placeFixtureCandidates(list: { floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation }[]): number;
   /** 器具の真下に配管を落とす（床から depth mm 下。屋外の器具は地中）。作った本数を返す */
   dropFixturePipes(depth?: number): number;
+  /** 床下へ落とした排水を、外壁の外に置いた汚水マスまでつなぐ（案）。つないだ本数を返す */
+  routeDrainsOut(): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -645,6 +648,16 @@ export const useStore = create<State>((set, get) => {
       // withNet: 新しい点にどの階の配管かを付ける（他の配管の操作と同じ）
       if (r.pipes) commit(withNet(r.doc.network), { selection: null, notice: `${r.fixtures} 個の器具から ${r.pipes} 本の配管を真下（床から ${d}mm 下）へ落としました。3D では表示（スマホは 👁）を「配管だけ」「設備だけ」にすると床下が見えます` });
       else set({ notice: '落とせる配管がありません（器具が無いか、すでに配管がつながっています）' });
+      return r.pipes;
+    },
+    routeDrainsOut: () => {
+      const r = routeDrains(get().doc);
+      if (!r.pipes) {
+        set({ notice: r.skipped ? '出口を決められませんでした（外壁が無いか、マスの管底より配管が低い）。配管の道具でつないでください' : 'つなぐ排水がありません。先に「器具の真下に配管を落とす」を押してください' });
+        return 0;
+      }
+      const parts = [`排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置・マスどうしの接続・勾配は現場に合わせて直してください'];
+      commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
     },
     placeFixtureAt: (p) => {
