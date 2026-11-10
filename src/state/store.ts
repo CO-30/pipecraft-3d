@@ -659,7 +659,8 @@ export const useStore = create<State>((set, get) => {
       if (next === doc) { set({ notice: '管底高を変えると配管がつながらなくなります' }); return; }
       // 管底が動いたら、固定勾配の区間の上流端も追従させる
       let network = next.network;
-      for (const n of Object.values(next.network.nodes)) if (n.fixtureId === id && n.pos.z !== doc.network.nodes[n.id]?.pos.z) network = propagateLockedSlopes(doc.network, network, n.id);
+      // 管底（または落差）が変わったら、固定勾配の区間の上流端も追従させる
+      for (const n of Object.values(next.network.nodes)) if (n.fixtureId === id && (n.pos.z !== doc.network.nodes[n.id]?.pos.z || n.dropIn !== doc.network.nodes[n.id]?.dropIn)) network = propagateLockedSlopes(doc.network, network, n.id);
       commit(network === next.network ? next : { ...next, network }, lockedCount(network) < lockedCount(doc.network) ? { notice: UNLOCK_NOTICE } : {});
     },
     setSegmentSlope: (segId, denominator) => {

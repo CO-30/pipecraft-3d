@@ -79,3 +79,17 @@ describe('レビュー対応: 同じ器具・向き', () => {
     expect(c.diameterNote).toBe('φ25→φ13');
   });
 });
+
+describe('ヘッダー工法', () => {
+  it('ヘッダーの出口 out1〜 は供給側: 器具の給水口を候補にし、別の出口やメーター出口は候補にしない', () => {
+    const { doc: d0, meter, toilet } = house();
+    const r = placeFixture(d0, d0.building.floors[0].id, 'waterHeader', { x: 1500, y: 2500 });
+    const doc = r.doc, header = r.fixtureId!;
+    const from = portCandidates(doc, port(doc, header, 'out1').id, 20).map((c) => c.nodeId);
+    expect(from).toContain(port(doc, toilet, 'water').id);
+    expect(from).not.toContain(port(doc, header, 'out2').id);
+    expect(from).not.toContain(port(doc, meter, 'out').id);
+    // ヘッダー入口はメーター出口を候補にする
+    expect(portCandidates(doc, port(doc, header, 'in').id, 20).map((c) => c.nodeId)).toContain(port(doc, meter, 'out').id);
+  });
+});

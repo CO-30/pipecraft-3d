@@ -36,6 +36,8 @@ export type PipeNode = {
   avoid?: 'beam' | 'eave' | 'balcony';
   /** 申請図面: この点の地盤高(mm、絶対)。未指定なら現場の設計GL（将来の拡張。UI なし） */
   groundLevel?: number;
+  /** 落差桝: 流入側の管底が pos.z（流出側の管底）より高い分(mm)。マスの params.drop から同期 */
+  dropIn?: number;
 };
 
 export type SystemType =
@@ -44,6 +46,8 @@ export type SystemType =
 
 export type SegmentAttrs = {
   system: SystemType;
+  /** 既設（申請図面では青で描く。新設・増設は赤） */
+  existing?: boolean;
   /** 口径(mm) またはケーブルサイズ */
   diameter: number;
   material?: string;
@@ -66,6 +70,7 @@ export type Segment = SegmentAttrs & {
   slope?: number;
   /** 勾配固定: 上流端の高さが変わったら下流端を勾配から再計算する（下流端を手で動かすと解除） */
   slopeLocked?: boolean;
+
   /** 支持金具（未指定 = 自動） */
   support?: 'saddle' | 'levelBand' | 'tBracket' | 'none';
   /** 立面（外壁）で描いた配管: その立面の ID（取付の変更を反映するため） */

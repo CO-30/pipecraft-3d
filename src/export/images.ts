@@ -35,3 +35,20 @@ export async function view3dPng(canvas: HTMLCanvasElement): Promise<Uint8Array> 
   ctx.drawImage(canvas, 0, 0);
   return toPngBytes(c);
 }
+
+/** 図面の SVG 文字列（width="297mm" など）を PNG にする。widthPx は出力の横幅 */
+export async function svgStringToPng(svg: string, widthPx = 1400): Promise<Uint8Array> {
+  const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+  const vw = m ? Number(m[1]) : 297, vh = m ? Number(m[2]) : 210;
+  const w = Math.max(1, Math.round(widthPx)), h = Math.max(1, Math.round(widthPx * vh / vw));
+  const sized = svg.replace(/<svg([^>]*)\swidth="[^"]*"\sheight="[^"]*"/, `<svg$1 width="${w}" height="${h}"`);
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sized);
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(img, 0, 0, w, h);
+  return toPngBytes(c);
+}

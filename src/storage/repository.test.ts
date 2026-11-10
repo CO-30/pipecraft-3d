@@ -29,6 +29,32 @@ describe('IndexedDB 保存', () => {
     expect(await r2.list()).toEqual([{ id: 'p1', name: 'テスト現場', address: '那覇市', createdAt: 1, updatedAt: 2 }]);
   });
 
+  it('端末設定（工事店情報）は settings に保存され、現場の書き出し・バックアップには入らない。v2 の DB を v3 で開いても現場は残る', async () => {
+    const name = nextName();
+    // v2 相当の DB（projects・profiles のみ）を先に作る
+    const Dexie = (await import('dexie')).default;
+    const old = new Dexie(name);
+    old.version(2).stores({ projects: 'id, updatedAt, name', profiles: 'id, name' });
+    const p = sample();
+    await old.table('projects').put({ id: p.id, name: p.name, address: p.address, createdAt: p.createdAt, updatedAt: p.updatedAt, json: JSON.stringify(p) });
+    old.close();
+    const r = new DexieProjectRepository(name);
+    expect(await r.load('p1')).toEqual(p);
+    expect(await r.getSetting('contractor')).toBeUndefined();
+    await r.setSetting('contractor', { name: 'テスト設備', tel: '098' });
+    expect(await r.getSetting<{ name: string }>('contractor')).toEqual({ name: 'テスト設備', tel: '098' });
+    const all = await r.exportAll();
+    expect(all.json).not.toContain('テスト設備');
+    expect(JSON.stringify(await r.load('p1'))).not.toContain('テスト設備');
+    r.close();
+  });
+  it('申請書の入力（site.application）は往復で保持され、無い旧データも読める', () => {
+    const p = { ...sample(), site: { designGL: -100, application: { applicantName: '水道 太郎', diameter: '20' } } };
+    const back = parseProject(JSON.stringify(p));
+    expect(back.site?.application).toEqual({ applicantName: '水道 太郎', diameter: '20' });
+    const noApp = parseProject(JSON.stringify({ ...sample(), site: { designGL: -100 } }));
+    expect(noApp.site?.application).toBeUndefined();
+  });
   it('本体データが破損していたら直前のバックアップから復旧', async () => {
     const r = new DexieProjectRepository(nextName());
     const p1 = sample();

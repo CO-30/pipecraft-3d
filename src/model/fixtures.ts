@@ -13,10 +13,11 @@ export type FixtureType =
   | 'toilet' | 'washbasin' | 'kitchen' | 'bathtub' | 'shower' | 'washer' | 'waterHeater'
   | 'waterMeter' | 'pump' | 'panel' | 'outlet' | 'light' | 'aircon'
   | 'faucet' | 'mixFaucet' | 'outdoorFaucet' | 'roofTank'
+  | 'waterHeader' | 'hotWaterHeader'
   | 'manholeSewage' | 'manholeRain' | 'manholeTrap' | 'manholeInvert' | 'publicSewage' | 'publicRain';
 export type Rotation = 0 | 90 | 180 | 270;
 /** マスの個別設定。diameter: 口径(mm、既定 300)、shape: 丸/角、invertZ: 管底高(mm、絶対。既定 GL−600) */
-export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number };
+export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean; /** 落差桝: 流入側の管底が流出側（invertZ）より高い分(mm) */ drop?: number };
 export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation; params?: FixtureParams };
 
 /**
@@ -54,6 +55,9 @@ export const FIXTURE_CATALOG: Record<FixtureType, FixtureDef> = {
   mixFaucet: { label: '混合水栓（壁付）', size: { w: 300, d: 180, h: 120 }, base: 1000, ports: [P('hot', 'hotWater', 13, -100, 90, 60, '給湯'), P('water', 'water', 13, 100, 90, 60, '給水')] },
   roofTank: { label: '屋上タンク（高置水槽）', size: { w: 1500, d: 1000, h: 1200 }, base: 'roof', ports: [P('in', 'water', 20, -600, 0, 1100, '入口', 'threadSocket'), P('out', 'water', 25, 600, 0, 100, '出口', 'threadSocket')] },
   outdoorFaucet: { label: '立水栓（屋外）', size: { w: 100, d: 100, h: 900 }, base: 0, ports: [P('water', 'water', 13, 0, 0, 0, '給水', 'faucetSocket')] },
+  // ヘッダー工法（沖縄市の実例: 給水ヘッダー6P・給湯ヘッダー4P、各器具へ PB13）。出口は使う分だけつなぐ。継手はヘッダー側の袋ナットなので無し
+  waterHeader: { label: '給水ヘッダー', size: { w: 420, d: 80, h: 100 }, base: 300, ports: [P('in', 'water', 20, -210, 0, 50, '入口', null), ...[1, 2, 3, 4, 5, 6].map((k) => P(`out${k}`, 'water', 13, -175 + (k - 1) * 70, 0, 100, `出口${k}`, null))] },
+  hotWaterHeader: { label: '給湯ヘッダー', size: { w: 300, d: 80, h: 100 }, base: 300, ports: [P('in', 'hotWater', 20, -150, 0, 50, '入口', null), ...[1, 2, 3, 4].map((k) => P(`out${k}`, 'hotWater', 13, -105 + (k - 1) * 70, 0, 100, `出口${k}`, null))] },
   // マス（排水）。接続口は中心 1 つ（流入・流出とも同じ管底高）。高さは params.invertZ（既定 GL−600）
   manholeSewage: { label: '汚水マス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'sewage', 100, 0, 0, 0, '管底', null)] },
   manholeRain: { label: '雨水マス', size: { w: 300, d: 300, h: 600 }, base: 0, ports: [P('pipe', 'drain', 100, 0, 0, 0, '管底', null)] },
@@ -64,19 +68,20 @@ export const FIXTURE_CATALOG: Record<FixtureType, FixtureDef> = {
 };
 export const MANHOLE_TYPES: FixtureType[] = ['manholeSewage', 'manholeRain', 'manholeTrap', 'manholeInvert', 'publicSewage', 'publicRain'];
 export const isManhole = (t: FixtureType) => MANHOLE_TYPES.includes(t);
+export const isHeader = (t: FixtureType) => t === 'waterHeader' || t === 'hotWaterHeader';
 /** 2D の略号 */
 export const MANHOLE_SHORT: Partial<Record<FixtureType, string>> = { manholeSewage: '汚', manholeRain: '雨', manholeTrap: 'ト', manholeInvert: 'イ', publicSewage: '公汚', publicRain: '公雨' };
 const MANHOLE_DEFAULT_DEPTH = 600;
 /** 選ぶ画面の並び（水まわり → 水栓 → 設備 → 電気） */
 export const FIXTURE_TYPES: FixtureType[] = [
   'toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet', 'outdoorFaucet',
-  'waterHeater', 'waterMeter', 'roofTank', 'pump', 'panel', 'outlet', 'light', 'aircon',
+  'waterHeater', 'waterMeter', 'roofTank', 'pump', 'waterHeader', 'hotWaterHeader', 'panel', 'outlet', 'light', 'aircon',
   ...MANHOLE_TYPES,
 ];
 
 /** 器具を選ぶ画面の見出し（初心者が探しやすい並び） */
 export const FIXTURE_GROUPS: { label: string; types: FixtureType[] }[] = [
-  { label: 'メーター・タンク', types: ['waterMeter', 'roofTank', 'pump'] },
+  { label: 'メーター・タンク', types: ['waterMeter', 'roofTank', 'pump', 'waterHeader', 'hotWaterHeader'] },
   { label: 'マス（排水）', types: MANHOLE_TYPES },
   { label: '水まわり', types: ['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer'] },
   { label: '水栓', types: ['faucet', 'mixFaucet', 'outdoorFaucet'] },
@@ -149,6 +154,12 @@ function syncPorts(net: Network, b: Building, f: Fixture, site?: SiteSettings): 
     const port = FIXTURE_CATALOG[f.type].ports.find((p) => p.id === n.portId);
     if (!port) continue;
     const pos = portWorldPos(f, floor, port, site, b);
+    // 落差（マスの流入側の管底の高さ）をノードに写す
+    const drop = isManhole(f.type) && f.params?.drop && f.params.drop > 0 ? f.params.drop : undefined;
+    if ((cur.nodes[n.id].dropIn ?? undefined) !== drop) {
+      const { dropIn: _d, ...rest } = cur.nodes[n.id];
+      cur = { ...cur, nodes: { ...cur.nodes, [n.id]: drop ? { ...rest, dropIn: drop } : rest } };
+    }
     if (dist(cur.nodes[n.id].pos, pos) < 1e-9) continue;
     cur = moveNode(cur, n.id, pos);
     if (dist(cur.nodes[n.id].pos, pos) > 1e-6) return null;
@@ -181,7 +192,7 @@ export function deleteFixture(doc: Doc, id: string): Doc {
   for (const n of portNodes(doc.network, id)) {
     if (segmentsAt(doc.network, n.id).length === 0) delete nodes[n.id];
     else {
-      const { fixedKind: _f, fixtureId: _i, portId: _p, ...rest } = n;
+      const { fixedKind: _f, fixtureId: _i, portId: _p, dropIn: _d, ...rest } = n;
       nodes[n.id] = rest;
     }
   }

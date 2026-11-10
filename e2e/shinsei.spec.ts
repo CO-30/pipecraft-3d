@@ -89,7 +89,18 @@ test.describe('申請図面', () => {
     await page.getByTestId('manhole-invert').fill('-1100');
     await page.getByTestId('manhole-invert').press('Enter');
     await expect(page.getByTestId('manhole-depth')).toContainText('深さ 650mm');
+    // 落差桝: 落差 50 → 接続口ノードに dropIn、縦断図の桝名が H600-650（流入側-流出側）に
+    await page.getByTestId('manhole-drop').fill('50');
+    await page.getByTestId('manhole-drop').press('Enter');
+    await expect(page.getByTestId('manhole-drop-note')).toContainText('H600-650');
+    const d3 = await doc(page);
+    expect(d3.network.nodes[port.id].dropIn).toBe(50);
     await page.screenshot({ path: evidence('shinsei-05-manhole') });
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-profile').selectOption('okinawa-city');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('H600-650');
+    await page.screenshot({ path: evidence('shinsei-12-drop-manhole') });
+    await page.getByTestId('close-shinsei').click();
   });
 
   test('自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る', async ({ page }) => {
@@ -102,11 +113,12 @@ test.describe('申請図面', () => {
     await page.getByTestId('pf-name').fill('那覇市（仮）');
     await page.getByTestId('pf-unverified').fill('土被りの最小値');
     await page.getByTestId('pf-save').click();
-    await expect(page.locator('[data-testid^="profile-row-"]')).toHaveCount(2);
+    // 同梱 7 件（standard＋南部 6 自治体）＋複製 1 件
+    await expect(page.locator('[data-testid^="profile-row-"]')).toHaveCount(8);
     await page.screenshot({ path: evidence('shinsei-06-profiles') });
     await page.getByTestId('profile-close').click();
     const sel = page.getByTestId('shinsei-profile');
-    await expect(sel.locator('option')).toHaveCount(2);
+    await expect(sel.locator('option')).toHaveCount(8);
     await sel.selectOption({ label: '那覇市（仮）（要確認あり）' });
     await expect(page.getByTestId('shinsei-preview')).toContainText('要確認: 土被りの最小値');
     // 保存されたプロファイルと現場の選択は再読み込み後も残る
@@ -117,8 +129,60 @@ test.describe('申請図面', () => {
     await page.getByTestId('project-item').first().locator('.pmain').click();
     await expect(page.getByTestId('editor')).toBeVisible();
     await page.getByTestId('open-shinsei').click();
-    await expect(page.getByTestId('shinsei-profile').locator('option')).toHaveCount(2);
+    await expect(page.getByTestId('shinsei-profile').locator('option')).toHaveCount(8);
     await expect(page.getByTestId('shinsei-profile')).toHaveValue(/^mp_/);
+    // 同梱の自治体プロファイルを選ぶと「要確認」が図面に出る
+    await page.getByTestId('shinsei-profile').selectOption('itoman');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('要確認');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('糸満市');
+    await page.screenshot({ path: evidence('shinsei-08-itoman') });
+    // 沖縄市: 公共桝の管底 ±0、桝の名前を図の上に、排水のアイソメ図、給水はアイソメ図
+    await page.getByTestId('shinsei-profile').selectOption('okinawa-city');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('公共桝の管底を ±0');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('NO.1汚水マス');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('新設公共汚水マス');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('受付番号');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('立面図（展開図）');
+    await page.screenshot({ path: evidence('shinsei-09-okinawa-profile'), fullPage: false });
+    await page.getByTestId('shinsei-kind-riser').click();
+    await expect(page.getByTestId('shinsei-preview')).toContainText('NO SCALE');
+    await expect(page.getByTestId('shinsei-preview')).toContainText('HI');
+    await page.screenshot({ path: evidence('shinsei-10-okinawa-iso') });
+    // 申請書タブ: 工事店の情報を保存 → 申請情報を入力 → 給水申請書 (Excel)・下水道申請書 (PDF)・製品一覧表 (PDF) をダウンロード
+    await page.getByTestId('shinsei-kind-forms').click();
+    await expect(page.getByTestId('shinsei-forms')).toBeVisible();
+    await page.getByTestId('forms-contractor-toggle').click();
+    await page.getByTestId('contractor-name').fill('テスト設備');
+    await page.getByTestId('contractor-licenseNo').fill('123');
+    await page.getByTestId('contractor-chiefEngineer').fill('主任 花子');
+    await page.getByTestId('contractor-save').click();
+    await expect(page.getByTestId('forms-msg')).toContainText('保存しました');
+    await page.getByTestId('forms-contractor-toggle').click();
+    await page.getByTestId('app-applicantName').fill('水道 太郎');
+    await page.getByTestId('app-applicantAddress').fill('沖縄市仲宗根町26-1');
+    await expect(page.getByTestId('app-diameter')).toHaveValue('20');
+    await page.screenshot({ path: evidence('shinsei-11-forms') });
+    const [xlsx] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-water').click()]);
+    expect(xlsx.suggestedFilename()).toContain('給水装置申込及び工事申請書.xlsx');
+    // 図の欄に画像（給水の立面図の PNG）が入っている
+    const xlsxPath = await xlsx.path();
+    const { default: ExcelJS } = await import('exceljs');
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(xlsxPath!);
+    expect(wb.getWorksheet('申請書（表）')!.getImages().length).toBe(1);
+    expect(wb.getWorksheet('申請書（裏）')!.getImages().length).toBeGreaterThanOrEqual(1);
+    if (test.info().project.name === 'pc-chrome') await xlsx.saveAs('test-evidence/pc-chrome-shinsei-11-water-application.xlsx');
+    const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-sewer').click()]);
+    expect(pdf.suggestedFilename()).toContain('下水道排水設備計画確認申請書.pdf');
+    const [list] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-products').click()]);
+    expect(list.suggestedFilename()).toContain('給水装置使用製品一覧表.pdf');
+    // 入力は現場に保存される
+    await page.getByTestId('close-shinsei').click();
+    await expect(page.getByTestId('save-state')).toHaveText('保存済み');
+    await page.reload();
+    await page.getByTestId('project-item').first().locator('.pmain').click();
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-kind-forms').click();
+    await expect(page.getByTestId('app-applicantName')).toHaveValue('水道 太郎');
   });
 
   test('後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける', async ({ page }) => {

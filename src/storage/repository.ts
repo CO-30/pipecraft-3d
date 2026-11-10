@@ -35,18 +35,27 @@ export interface ProfileRepository {
   deleteProfile(id: string): Promise<void>;
 }
 
+/** 端末ごとの設定（工事店情報など。現場ファイルやバックアップには入れない） */
+export interface SettingsRepository {
+  getSetting<T>(key: string): Promise<T | undefined>;
+  setSetting<T>(key: string, value: T): Promise<void>;
+}
+
 export const BACKUP_FORMAT = 'pipecraft-backup';
 
 type Row = { id: string; name: string; address?: string; createdAt: number; updatedAt: number; json: string; backupJson?: string };
 type ProfileRow = { id: string; name: string; json: string };
+type SettingRow = { key: string; json: string };
 
 class PipeCraftDB extends Dexie {
   projects!: Table<Row, string>;
   profiles!: Table<ProfileRow, string>;
+  settings!: Table<SettingRow, string>;
   constructor(name: string) {
     super(name);
     this.version(1).stores({ projects: 'id, updatedAt, name' });
     this.version(2).stores({ projects: 'id, updatedAt, name', profiles: 'id, name' });
+    this.version(3).stores({ projects: 'id, updatedAt, name', profiles: 'id, name', settings: 'key' });
   }
 }
 
@@ -75,7 +84,7 @@ export function parseProject(json: string): ProjectData {
   return r.data;
 }
 
-export class DexieProjectRepository implements ProjectRepository, ProfileRepository {
+export class DexieProjectRepository implements ProjectRepository, ProfileRepository, SettingsRepository {
   private db: PipeCraftDB;
   constructor(dbName = 'pipecraft3d') {
     this.db = new PipeCraftDB(dbName);
@@ -190,6 +199,16 @@ export class DexieProjectRepository implements ProjectRepository, ProfileReposit
       } catch { /* skip */ }
     }
     return out;
+  }
+
+  async getSetting<T>(key: string): Promise<T | undefined> {
+    const r = await this.db.settings.get(key);
+    if (!r) return undefined;
+    try { return JSON.parse(r.json) as T; } catch { return undefined; }
+  }
+
+  async setSetting<T>(key: string, value: T): Promise<void> {
+    await this.db.settings.put({ key, json: JSON.stringify(value) });
   }
 
   async saveProfile(p: MunicipalityProfile): Promise<void> {

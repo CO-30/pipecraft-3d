@@ -6,38 +6,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import { FIXTURE_CATALOG, isManhole, MANHOLE_TYPES } from '../model/fixtures';
-import { floorById } from '../model/building';
 import { isDrain } from '../model/slope';
 import { isBuiltinProfile, resolveProfile, type MunicipalityProfile } from '../model/municipality';
 import { branchPoints, buildProfile, extractRoute, trimToManholes, type ProfileModel } from '../model/profileDrawing';
 import { buildRiser, defaultRiserRoot, type RiserModel } from '../model/riser';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderRiserSheet } from '../export/riserSheet';
+import { buildIsometric } from '../model/isometric';
+import { renderIsoSheet } from '../export/isoSheet';
 import { sheetsToSvg, sheetToSvg, type Sheet } from '../export/sheet';
 import { useProfiles } from './useProfiles';
+import { outletCandidates } from '../model/outlets';
+import { ShinseiForms } from './ShinseiForms';
 import { NumField } from './Panels';
 import { ProfileSettingsDialog } from './ProfileSettingsDialog';
 
-type Kind = 'profile' | 'riser';
+type Kind = 'profile' | 'riser' | 'forms';
 const PROFILE_TITLE = '排水設備 縦断図';
 const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
-
-/** 下流端の候補: 公共マス → 他のマス → 排水の端点 */
-function outletCandidates(doc = useStore.getState().doc): { id: string; label: string }[] {
-  const out: { id: string; label: string; rank: number }[] = [];
-  const net = doc.network;
-  for (const n of Object.values(net.nodes)) {
-    const segs = Object.values(net.segments).filter((s) => isDrain(s.system) && (s.a === n.id || s.b === n.id));
-    if (!segs.length) continue;
-    const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
-    const fl = (fx && floorById(doc.building, fx.floorId)) || (n.floorId ? floorById(doc.building, n.floorId) : undefined);
-    const floorName = fl ? `（${fl.name}）` : '';
-    if (fx && isManhole(fx.type)) out.push({ id: n.id, label: `${FIXTURE_CATALOG[fx.type].label}${floorName}`, rank: fx.type.startsWith('public') ? 0 : 1 });
-    else if (!fx && segs.length === 1) out.push({ id: n.id, label: `排水の端点${floorName} 高さ ${Math.round(n.pos.z)}`, rank: 2 });
-  }
-  return out.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, 'ja')).map(({ id, label }) => ({ id, label }));
-}
 
 /** 立面図の起点の候補: メーター出口 → 止水栓 → 給水の端点 */
 function rootCandidates(doc = useStore.getState().doc): { id: string; label: string }[] {
@@ -124,6 +111,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const siteName = meta?.name ?? '現場';
 
   const built: ShinseiBuild = useMemo(() => {
+    if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
     if (kind === 'profile') {
       if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
       const r = extractRoute(doc.network, outletId, pick);
@@ -131,15 +119,34 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       // 分岐の枝は別図。本線の分岐点に「→別図 枝n」と記す
       const notes: Record<string, string> = {};
       r.branches.forEach((b, i) => { notes[b.atNodeId] = [notes[b.atNodeId], `→別図 枝${i + 1}`].filter(Boolean).join(' '); });
-      const models: ProfileModel[] = [buildProfile(doc, trimToManholes(doc, r.route), profile, PROFILE_TITLE, notes)];
-      r.branches.forEach((b, i) => models.push(buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${PROFILE_TITLE}（枝${i + 1}: ${nodeLabel(b.atNodeId)} から）`)));
-      const sheets = models.map((m) => renderProfileSheet(m, { siteName, date }));
+      const main = buildProfile(doc, trimToManholes(doc, r.route), profile, PROFILE_TITLE, notes);
+      const models: ProfileModel[] = [main];
+      // 枝は本線の基準（公共桝の管底）と桝番号の続きを使う
+      let manholeNoStart = main.manholeCount;
+      r.branches.forEach((b, i) => {
+        const bm = buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${PROFILE_TITLE}（枝${i + 1}: ${nodeLabel(b.atNodeId)} から）`, {}, { datumZ: main.datumZ, manholeNoStart });
+        manholeNoStart += bm.manholeCount;
+        models.push(bm);
+      });
+      // 沖縄市の様式: 縦断図の上に排水のアイソメ図（立面図・展開図）
+      const iso = profile.profileTable.drainageIsometric ? buildIsometric(doc, 'drain', profile) : undefined;
+      const sheets = models.map((m, i) => renderProfileSheet(m, { siteName, date }, i === 0 ? iso : undefined));
       const warnings = models.flatMap((m) => m.warnings.map((w) => w.message));
+      if (iso && iso.lines.length === 0) warnings.push('排水の立面図（展開図）を描く配管がないため、縦断図だけを出しています');
       for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）は図に含めていません。別の下流端を選んで別に作図してください`);
       if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
       return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings, error: null, kind };
     }
     if (!rootId) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
+    if (profile.riser.lineStyle === 'isometric') {
+      // アイソメ図（3D を斜めから見た展開図）。沖縄市の様式
+      const iso = buildIsometric(doc, 'water', profile);
+      if (iso.lines.length === 0) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
+      const sheet = renderIsoSheet(iso, profile, { siteName, date, title: '立面図（展開図）' });
+      const warnings: string[] = [];
+      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
+      return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
+    }
     const m: RiserModel = buildRiser(doc, rootId, profile, RISER_TITLE);
     const sheet = renderRiserSheet(m, { siteName, date });
     const warnings = [...m.warnings];
@@ -175,8 +182,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <strong>申請図面</strong>
         <span className="muted small">配管データから縦断図・立面図を自動で作ります</span>
         <span className="grow" />
-        <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
-        <button data-testid="shinsei-svg" disabled={!!busy || !!built.error} onClick={() => download('svg')}>SVG</button>
+        <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms'} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
+        <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms'} onClick={() => download('svg')}>SVG</button>
       </header>
       <div className="shinsei-controls">
         <label className="field inline">自治体プロファイル
@@ -194,8 +201,9 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <div className="seg-btns">
           <button data-testid="shinsei-kind-profile" className={kind === 'profile' ? 'on' : ''} onClick={() => setKind('profile')}>排水縦断図</button>
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
+          <button data-testid="shinsei-kind-forms" className={kind === 'forms' ? 'on' : ''} onClick={() => setKind('forms')}>申請書</button>
         </div>
-        {kind === 'profile' ? (
+        {kind === 'forms' ? null : kind === 'profile' ? (
           <>
             <label className="field inline">下流端（公共マスなど）
               <select data-testid="shinsei-outlet" value={outletId} onChange={(e) => { setOutlet(e.target.value); setChoice({}); }}>
@@ -221,11 +229,11 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
             </select>
           </label>
         )}
-        <div className="seg-btns small">
+        {kind !== 'forms' && <div className="seg-btns small">
           <button onClick={() => setZoom((z) => Math.max(0.25, z / 1.25))} aria-label="縮小">−</button>
           <button onClick={() => setZoom(1)}>等倍</button>
           <button onClick={() => setZoom((z) => Math.min(6, z * 1.25))} aria-label="拡大">＋</button>
-        </div>
+        </div>}
       </div>
       {built.error && <p className="est-provisional" role="alert" data-testid="shinsei-error">{built.error}</p>}
       {err && <p className="est-provisional" role="alert">{err}</p>}
@@ -235,9 +243,9 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           {built.warnings.map((w, i) => <li key={i} className="warn">⚠ {w}</li>)}
         </ul>
       )}
-      <div className="shinsei-preview" data-testid="shinsei-preview">
+      {kind === 'forms' ? <div className="shinsei-preview forms"><ShinseiForms profile={profile} siteName={siteName} date={date} /></div> : <div className="shinsei-preview" data-testid="shinsei-preview">
         <div className="shinsei-pages" style={{ width: `${zoom * 100}%` }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
-      </div>
+      </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
     </div>
   );

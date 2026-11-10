@@ -22,15 +22,43 @@ export type RouteResult = {
 export const OUTER_DIAMETER: Record<number, number> = { 40: 48, 50: 60, 65: 76, 75: 89, 100: 114, 125: 140, 150: 165, 200: 216 };
 export const outerDiameter = (nominal: number) => OUTER_DIAMETER[nominal] ?? Math.round(nominal * 1.1);
 
-export type ProfileWarning = { kind: 'minSlope' | 'reverseSlope' | 'cover' | 'tentativeGL'; segId?: string; nodeId?: string; message: string };
+export type ProfileWarning = { kind: 'minSlope' | 'reverseSlope' | 'cover' | 'tentativeGL' | 'datum'; segId?: string; nodeId?: string; message: string };
 export type ProfileNode = {
   nodeId: string; cumDistance: number; groundLevel: number; invertLevel: number; cover: number;
-  manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string };
+  manhole?: { type: FixtureType; label: string; diameter: number; depth: number; symbol: string; /** 公共マス（±0 の基準。色は新設/既設で決める） */ isPublic: boolean; /** 図に書く名前（manholeLabel above のとき上流から NO.1〜。公共マスは種類名） */ name: string; /** 落差桝: 流入側の深さ(mm) */ depthIn?: number };
+  /** 落差桝: 流入側の管底高（invertLevel は流出側）。上流の区間はここに着く */
+  invertIn?: number;
+  /** 落差桝: 流入側の土被り */
+  coverIn?: number;
+  /** datum publicInvert のとき: 下流端の地盤高との差(mm) */
+  glDiff?: number;
   /** 分岐点の注記（「→別図 枝1」など） */
   note?: string;
+  /** 既設のマス（青で描く） */
+  existing?: boolean;
 };
-export type ProfileSegment = { segId: string; distance: number; slope: number | null; slopeText: string; diameter: number; material: string; pipeSpec: string };
-export type ProfileModel = { nodes: ProfileNode[]; segments: ProfileSegment[]; warnings: ProfileWarning[]; tentativeGL: boolean; profile: MunicipalityProfile; title: string };
+export type ProfileSegment = { segId: string; distance: number; slope: number | null; slopeText: string; diameter: number; material: string; pipeSpec: string; /** 既設（青） */ existing?: boolean };
+export type ProfileModel = {
+  nodes: ProfileNode[]; segments: ProfileSegment[]; warnings: ProfileWarning[]; tentativeGL: boolean; profile: MunicipalityProfile; title: string;
+  /** 高さの基準の注記（datum publicInvert のとき） */
+  datumLabel?: string;
+  /** 基準にした管底高（絶対 mm）。枝の図に同じ基準を渡すため */
+  datumZ?: number;
+  /** この図で振った NO. の数（枝の図は続きから） */
+  manholeCount: number;
+};
+
+export type BuildProfileOpts = {
+  /** 枝の図: 本線の基準（公共桝の管底、絶対 mm） */
+  datumZ?: number;
+  /** 枝の図: NO. をこの数の次から振る */
+  manholeNoStart?: number;
+};
+
+/** 管種口径の表記 */
+export function formatPipeSpec(material: string, diameter: number, format: MunicipalityProfile['profileTable']['pipeSpecFormat']): string {
+  return format === 'diameterFirst' ? `${diameter}${material}` : `${material}φ${diameter}`;
+}
 
 /** ノードにつながる排水系の区間（通気管は縦断図に含めない） */
 function drainSegmentsAt(net: Network, nodeId: string): Segment[] {
@@ -140,7 +168,7 @@ export function trimToManholes(doc: Doc, route: string[]): string[] {
 }
 
 /** 経路（下流→上流）から縦断図のモデルを作る。図は上流を左に描くので nodes は上流→下流で返す */
-export function buildProfile(doc: Doc, route: string[], profile: MunicipalityProfile, title: string, notes: Record<string, string> = {}): ProfileModel {
+export function buildProfile(doc: Doc, route: string[], profile: MunicipalityProfile, title: string, notes: Record<string, string> = {}, opts: BuildProfileOpts = {}): ProfileModel {
   const net = doc.network;
   const ids = route.slice().reverse(); // 上流 → 下流
   const tentativeGL = doc.site?.designGL === undefined;
@@ -158,12 +186,13 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     if (seg) {
       const L = planLength(net, seg);
       cum += L;
-      const up = net.nodes[ids[i - 1]].pos.z, down = n.pos.z;
+      // 落差桝（node.dropIn）: 上流の区間は流入側の管底（z + dropIn）に着く
+      const up = net.nodes[ids[i - 1]].pos.z, down = n.pos.z + (n.dropIn ?? 0);
       const riser = L < 1;
       const slope = riser ? null : (up - down) / L;
       const material = seg.material || 'VU';
       const slopeText = riser ? '立管' : slope! < -1e-9 ? '逆勾配' : formatSlope(slope!, profile.profileTable.slopeFormat);
-      segments.push({ segId: seg.id, distance: L, slope, slopeText, diameter: seg.diameter, material, pipeSpec: `${material}φ${seg.diameter}` });
+      segments.push({ segId: seg.id, distance: L, slope, slopeText, diameter: seg.diameter, material, pipeSpec: formatPipeSpec(material, seg.diameter, profile.profileTable.pipeSpecFormat), ...(seg.existing ? { existing: true } : {}) });
       if (!riser) {
         if (slope! < -1e-9) warnings.push({ kind: 'reverseSlope', segId: seg.id, message: `区間 ${segments.length}: 逆勾配（下流のほうが高い）` });
         else {
@@ -179,11 +208,39 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     const cover = gl - (n.pos.z + od);
     const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
     const fl = fx ? floorById(doc.building, fx.floorId) : undefined;
-    const manhole = fx && fl && isManhole(fx.type)
-      ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle' }
+    const manhole: ProfileNode['manhole'] = fx && fl && isManhole(fx.type)
+      ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle', isPublic: fx.type.startsWith('public'), name: FIXTURE_CATALOG[fx.type].label }
       : undefined;
-    nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole, ...(notes[id] ? { note: notes[id] } : {}) });
-    if (od && cover + 1e-9 < profile.profileTable.minCover) warnings.push({ kind: 'cover', nodeId: id, message: `点 ${nodes.length}: 土被り ${Math.round(cover)}mm が最小 ${profile.profileTable.minCover}mm より少ない` });
+    const drop = i > 0 && manhole && n.dropIn && n.dropIn > 0 ? n.dropIn : 0;
+    if (drop && manhole) manhole.depthIn = manhole.depth - drop;
+    nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole, ...(drop ? { invertIn: n.pos.z + drop, coverIn: gl - (n.pos.z + drop + od) } : {}), ...(notes[id] ? { note: notes[id] } : {}), ...(fx?.params?.existing ? { existing: true } : {}) });
+    const minCover = drop ? Math.min(cover, gl - (n.pos.z + drop + od)) : cover;
+    if (od && minCover + 1e-9 < profile.profileTable.minCover) warnings.push({ kind: 'cover', nodeId: id, message: `点 ${nodes.length}: 土被り ${Math.round(minCover)}mm が最小 ${profile.profileTable.minCover}mm より少ない` });
   }
-  return { nodes, segments, warnings, tentativeGL, profile, title };
+  // 桝の名前: 図の上に書く様式では、上流から NO.1, NO.2 …（公共マスは種類名のまま。枝は本線の続き）
+  let no = opts.manholeNoStart ?? 0;
+  if (profile.profileTable.manholeLabel === 'above') {
+    for (const n of nodes) if (n.manhole) n.manhole.name = n.manhole.isPublic ? `${n.existing ? '既存' : '新設'}${n.manhole.label}` : `NO.${++no}${n.manhole.label}`;
+  }
+  const manholeCount = no - (opts.manholeNoStart ?? 0);
+  // 高さの基準: 下流端（公共桝）の管底を ±0 にする。下流端が公共桝でなければ動かさず警告（枝は本線の基準を使う）
+  let datumLabel: string | undefined, datumZ: number | undefined;
+  if (profile.profileTable.datum === 'publicInvert' && nodes.length) {
+    const last = nodes[nodes.length - 1];
+    const z0 = opts.datumZ ?? (last.manhole?.isPublic ? last.invertLevel : undefined);
+    if (z0 === undefined) {
+      warnings.push({ kind: 'datum', message: '下流端が公共桝ではないため、高さは 1階 FL 基準のままです（公共桝の管底を ±0 にするには公共マスを下流端に選んでください）' });
+    } else {
+      const gl0 = opts.datumZ !== undefined ? undefined : last.groundLevel;
+      for (const n of nodes) {
+        if (gl0 !== undefined) n.glDiff = Math.round(n.groundLevel - gl0);
+        n.invertLevel -= z0;
+        n.groundLevel -= z0;
+        if (n.invertIn !== undefined) n.invertIn -= z0;
+      }
+      datumLabel = '公共桝の管底を ±0 とする';
+      datumZ = z0;
+    }
+  }
+  return { nodes, segments, warnings, tentativeGL, profile, title, manholeCount, ...(datumLabel ? { datumLabel } : {}), ...(datumZ !== undefined ? { datumZ } : {}) };
 }
