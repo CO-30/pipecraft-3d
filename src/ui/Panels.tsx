@@ -604,7 +604,7 @@ function MaterialField({ id, value }: { id: string; value: string }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
   return (
-    <label className="field inline">材質<input value={v} placeholder="例: VP, HIVP, VVF" data-testid="seg-material" onChange={(e) => setV(e.target.value)}
+    <label className="field inline">材質<input value={v} placeholder="例: VP, HIVP, PB, VVF" data-testid="seg-material" onChange={(e) => setV(e.target.value)}
       onBlur={() => { if (v.trim() !== value) useStore.getState().updateSegment(id, { material: v.trim() || undefined }); }}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} /></label>
   );

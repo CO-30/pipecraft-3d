@@ -94,3 +94,29 @@ describe('申請図面の画面', () => {
     expect((await screen.findByTestId('shinsei-error')).textContent).toContain('排水の配管がありません');
   });
 });
+
+describe('ヘッダー工法', () => {
+  afterEach(() => cleanup());
+  it('給水ヘッダーを置いて出口から水栓へ PB13 をつなぐと、給水立面図（沖縄市: アイソメ）に「給水ヘッダー1P」と PB13', async () => {
+    sampleDoc();
+    s().updateSite({ municipalityProfileId: 'okinawa-city' });
+    s().setFixtureType('waterHeader'); s().placeFixtureAt({ x: 2000, y: 3000 });
+    const header = Object.values(s().doc.fixtures).find((f) => f.type === 'waterHeader')!;
+    const hin = Object.values(s().doc.network.nodes).find((n) => n.fixtureId === header.id && n.portId === 'in')!;
+    const hout = Object.values(s().doc.network.nodes).find((n) => n.fixtureId === header.id && n.portId === 'out1')!;
+    const meter = Object.values(s().doc.fixtures).find((f) => f.type === 'waterMeter')!;
+    const mo = Object.values(s().doc.network.nodes).find((n) => n.fixtureId === meter.id && n.portId === 'out')!;
+    s().setDrawAttrs({ system: 'water', diameter: 20, material: 'HI' });
+    s().drawPolyline([mo.pos, { x: hin.pos.x, y: mo.pos.y, z: mo.pos.z }, hin.pos], { startNodeId: mo.id, endNodeId: hin.id });
+    s().setFixtureType('faucet'); s().placeFixtureAt({ x: 5000, y: 4000 });
+    const faucet = Object.values(s().doc.fixtures).filter((f) => f.type === 'faucet').pop()!;
+    const fp = Object.values(s().doc.network.nodes).find((n) => n.fixtureId === faucet.id)!;
+    s().setDrawAttrs({ system: 'water', diameter: 13, material: 'PB' });
+    s().drawPolyline([hout.pos, { x: fp.pos.x, y: hout.pos.y, z: hout.pos.z }, fp.pos], { startNodeId: hout.id, endNodeId: fp.id });
+    render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    fireEvent.click(screen.getByTestId('shinsei-kind-riser'));
+    await waitFor(() => expect(screen.getByTestId('shinsei-preview').innerHTML).toContain('給水ヘッダー1P'));
+    expect(screen.getByTestId('shinsei-preview').innerHTML).toContain('PB13×');
+  });
+});

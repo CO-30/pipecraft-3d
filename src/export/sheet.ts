@@ -184,6 +184,10 @@ export function drawSymbol(sheet: Sheet, id: string, x: number, y: number, r: nu
     case 'faucet':
       ops.push({ t: 'line', x1: x, y1: y, x2: x, y2: y - r * 1.5, color }, { t: 'line', x1: x, y1: y - r * 1.5, x2: x + r * 1.5, y2: y - r * 1.5, color }, { t: 'circle', cx: x, cy: y, r: r * 0.5, stroke: color, fill: color });
       break;
+    case 'header':
+      // ヘッダー: 太い横棒
+      ops.push({ t: 'rect', x: x - r * 2.5, y: y - r * 0.5, w: r * 5, h: r, stroke: color, fill: color, lw: 0.3 });
+      break;
     default:
       ops.push({ t: 'circle', cx: x, cy: y, r, stroke: color, fill: '#ffffff', lw: 0.3 });
   }

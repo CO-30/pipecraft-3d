@@ -70,7 +70,7 @@ export const buildingSchema = z.object({
 export const fixtureSchema = z.object({
   id: z.string().min(1),
   floorId: z.string().min(1),
-  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank',
+  type: z.enum(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'waterHeater', 'waterMeter', 'pump', 'panel', 'outlet', 'light', 'aircon', 'faucet', 'mixFaucet', 'outdoorFaucet', 'roofTank', 'waterHeader', 'hotWaterHeader',
     'manholeSewage', 'manholeRain', 'manholeTrap', 'manholeInvert', 'publicSewage', 'publicRain']),
   x: z.number().finite(),
   y: z.number().finite(),

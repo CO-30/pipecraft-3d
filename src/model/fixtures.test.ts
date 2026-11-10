@@ -18,8 +18,8 @@ function toilet() {
 const port = (d: Doc, fid: string, pid: string) => portNodes(d.network, fid).find((n) => n.portId === pid)!;
 
 describe('設備機器', () => {
-  it('カタログは設計書の13種＋水栓3種＋屋上タンク＋マス6種、接続口は重ならない', () => {
-    expect(FIXTURE_TYPES).toHaveLength(23);
+  it('カタログは設計書の13種＋水栓3種＋屋上タンク＋マス6種＋ヘッダー2種、接続口は重ならない', () => {
+    expect(FIXTURE_TYPES).toHaveLength(25);
     expect(new Set(FIXTURE_TYPES)).toEqual(new Set(Object.keys(FIXTURE_CATALOG)));
     for (const t of FIXTURE_TYPES) {
       const ps = FIXTURE_CATALOG[t].ports;
