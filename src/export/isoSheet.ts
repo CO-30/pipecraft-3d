@@ -8,6 +8,7 @@ import type { MunicipalityProfile } from '../model/municipality';
 import { dateJa } from './report';
 import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
 import type { SheetMeta } from './profileSheet';
+import { alongLine, around, LabelPlacer, type LabelLine } from './labelLayout';
 
 export type IsoMeta = SheetMeta & { title: string };
 export type Box = { x: number; y: number; w: number; h: number };
@@ -23,27 +24,36 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
   const X = (x: number) => ox + (x - bounds.minX) * k, Y = (y: number) => oy + (y - bounds.minY) * k;
   const colors = profile.colors;
   const lineColor = (l: IsoModel['lines'][number]) => (l.existing ? colors.existing : iso.kind === 'water' && l.system === 'hotWater' ? HOT : colors.newWork);
-  for (const l of iso.lines) {
-    const c = lineColor(l);
-    sheet.ops.push({ t: 'line', x1: X(l.x1), y1: Y(l.y1), x2: X(l.x2), y2: Y(l.y2), w: 0.5, color: c });
-    // ラベルは線の中央の少し上
-    const mx = (X(l.x1) + X(l.x2)) / 2, my = (Y(l.y1) + Y(l.y2)) / 2;
-    const vertical = Math.abs(X(l.x2) - X(l.x1)) < 0.5;
-    sheet.ops.push({ t: 'text', x: vertical ? mx + 1.5 : mx, y: vertical ? my : my - 1.2, s: l.label, size: 2.2, anchor: vertical ? 'start' : 'middle', color: c });
+  // 文字は「線・記号を全部描いてから」空いている場所に置く（重なり回避。labelLayout.ts）
+  const placer = new LabelPlacer(sheet, { x1: box.x, y1: box.y, x2: box.x + box.w, y2: box.y + box.h });
+  const lines = iso.lines.map((l) => ({ l, x1: X(l.x1), y1: Y(l.y1), x2: X(l.x2), y2: Y(l.y2), c: lineColor(l) }));
+  for (const q of lines) {
+    sheet.ops.push({ t: 'line', x1: q.x1, y1: q.y1, x2: q.x2, y2: q.y2, w: 0.5, color: q.c });
+    placer.blockSeg(q.x1, q.y1, q.x2, q.y2, q.l.segId);
   }
-  for (const p of iso.points) {
-    const x = X(p.x), y = Y(p.y);
-    const c = p.existing ? colors.existing : colors.newWork;
-    if (p.isManhole) {
-      sheet.ops.push({ t: 'circle', cx: x, cy: y, r: 1.4, stroke: c, fill: '#ffffff', lw: 0.3 });
-      sheet.ops.push({ t: 'text', x: x + 2, y: y + 4, s: p.label, size: 2.2, color: c });
-    } else {
+  const points = iso.points.map((p) => ({ p, x: X(p.x), y: Y(p.y), c: p.existing ? colors.existing : colors.newWork }));
+  for (const { p, x, y, c } of points) {
+    if (p.isManhole) sheet.ops.push({ t: 'circle', cx: x, cy: y, r: 1.4, stroke: c, fill: '#ffffff', lw: 0.3 });
+    else {
       // 記号は器具の種類で選ぶ（ヘッダーは太い横棒）
       const sym = p.type === 'waterHeader' || p.type === 'hotWaterHeader' ? 'header' : (p.type && profile.symbols[p.type]) || 'triangle';
       drawSymbol(sheet, sym, x, y, 1.2, c);
-      sheet.ops.push({ t: 'text', x: x + 2, y: y - 1, s: p.label, size: 2.2, color: INK });
-      if (p.height !== undefined) sheet.ops.push({ t: 'text', x: x + 2, y: y + 2.2, s: p.height, size: 2, color: GRAY });
     }
+    placer.block({ x1: x - 1.7, y1: y - 1.7, x2: x + 1.7, y2: y + 1.7 });
+  }
+  // 器具・マスの名前（高さは名前の下の行）。記号のすぐ横が空いていなければ離して引出線
+  for (const { p, x, y, c } of points) {
+    const label: LabelLine[] = p.isManhole ? [{ s: p.label, size: 2.2, color: c }] : [{ s: p.label, size: 2.2, color: INK }, ...(p.height !== undefined ? [{ s: p.height, size: 2, color: GRAY }] : [])];
+    placer.place(around(x, y, label, { gap: 2, prefer: p.isManhole ? [45, 0, -45] : [0, -45, 45], leaderColor: GRAY }));
+  }
+  // 管種口径×長さ: 長い線から順に、線に沿って書く。文字より短い線は横に出して引出線
+  for (const q of [...lines].sort((a, b) => Math.hypot(b.x2 - b.x1, b.y2 - b.y1) - Math.hypot(a.x2 - a.x1, a.y2 - a.y1))) {
+    const label: LabelLine = { s: q.l.label, size: 2.2, color: q.c };
+    const mx = (q.x1 + q.x2) / 2, my = (q.y1 + q.y2) / 2;
+    placer.place([
+      ...alongLine(q.x1, q.y1, q.x2, q.y2, label),
+      ...around(mx, my, [label], { gap: 2.5, prefer: [-90, 90, -45, 45], leaderAlways: true }).map((c) => ({ ...c, penalty: c.penalty + 100 })),
+    ], { ignoreSeg: q.l.segId });
   }
   return k;
 }

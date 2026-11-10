@@ -12,7 +12,7 @@ export type Op =
   | { t: 'poly'; pts: [number, number][]; w?: number; color?: string; close?: boolean; fill?: string }
   | { t: 'rect'; x: number; y: number; w: number; h: number; stroke?: string; fill?: string; lw?: number }
   | { t: 'circle'; cx: number; cy: number; r: number; stroke?: string; fill?: string; lw?: number }
-  | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; color?: string; rotate?: -90 | 0; bold?: boolean };
+  | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; color?: string; /** 回転（度、時計回り。-90 は下から上へ読む縦書き） */ rotate?: number; bold?: boolean };
 export type Sheet = { width: number; height: number; ops: Op[] };
 
 export const PAPER_MM = { A3: [420, 297], A4: [297, 210] } as const;
@@ -146,8 +146,10 @@ export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box:
           const tw = font.widthOfTextAtSize(str, size);
           const anchor = o.anchor ?? 'start';
           const dx = anchor === 'middle' ? -tw / 2 : anchor === 'end' ? -tw : 0;
-          if (o.rotate === -90) {
-            page.drawText(str, { x: X(o.x), y: Y(o.y) + dx, size, font, color: hex(o.color ?? INK), rotate: degrees(90) });
+          if (o.rotate) {
+            // 用紙は y 下向き・時計回り、PDF は y 上向き・反時計回り
+            const th = (o.rotate * Math.PI) / 180;
+            page.drawText(str, { x: X(o.x) + dx * Math.cos(th), y: Y(o.y) - dx * Math.sin(th), size, font, color: hex(o.color ?? INK), rotate: degrees(-o.rotate) });
           } else {
             page.drawText(str, { x: X(o.x) + dx, y: Y(o.y), size, font, color: hex(o.color ?? INK) });
           }
