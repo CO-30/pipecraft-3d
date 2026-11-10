@@ -124,6 +124,10 @@ describe('沖縄市の実際の申請図面に合わせた項目', () => {
     expect(p.profileTable.vScale).toBe(200);
     expect(p.paper).toMatchObject({ size: 'A4', orientation: 'portrait' });
     expect(p.paper.titleBlockFields).toEqual(['申請地', '申請者', '指定工事店']);
+    expect(p.paper.headerFields).toEqual(['受付番号', '水道番号', '縮尺']);
+    // 最小勾配は日下協テキストの標準値（実例 2 件の 2.0〜5.4/100 と整合）。手引きでの確認は残す
+    expect(p.profileTable.minSlopeByDiameter).toEqual({ 75: 100 / 3, 100: 50, 125: 100 / 1.7, 150: 100 / 1.5 });
+    expect(STANDARD_PROFILE.paper.headerFields).toEqual([]);
     expect(p.source.title).toContain('受理');
     expect(p.unverified.join(' ')).toContain('最小勾配');
     expect(p.unverified.join(' ')).not.toContain('表の行');

@@ -94,6 +94,16 @@ describe('アイソメ図の描画', () => {
     expect(svg).toContain('stroke="#1d4ed8"');
     expect(svg).toContain('既設');
   });
+  test('沖縄市の給水アイソメ: 右上に 受付番号・水道番号・縮尺。公共桝は新設なら赤・既設なら青、凡例に市下水管は出さない', () => {
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    const svg = renderIsoSvg(buildIsometric(waterDoc(), 'water', p), p, { ...meta, title: '立面図（展開図）' });
+    expect(svg).toContain('受付番号');
+    expect(svg).toContain('水道番号');
+    const { doc } = drainDoc();
+    const dsvg = renderIsoSvg(buildIsometric(doc, 'drain', p), p, { ...meta, title: 't' });
+    expect(dsvg).not.toContain('市下水管');
+    expect(dsvg).not.toMatch(/<circle[^>]*stroke="#1f2328"/);
+  });
   test('renderIsoSheet は用紙 1 枚', () => {
     const iso = buildIsometric(waterDoc(), 'water', STANDARD_PROFILE);
     const sheet = renderIsoSheet(iso, STANDARD_PROFILE, { ...meta, title: 't' });

@@ -82,16 +82,19 @@ describe('排水縦断図の描画', () => {
     expect(svg).toContain('viewBox="0 0 420 594"');
     expect(svg.match(/排水設備 縦断図/g)?.length).toBe(4); // 見出し＋表題欄 × 2 ページ
   });
-  test('色分け: 新設の管とマスは赤、公共マスは黒、既設の区間は青。凡例あり', () => {
+  test('色分け: 新設の管とマスは赤（公共桝も新設なら赤）、既設の区間は青。凡例あり', () => {
     const m = caseA();
     const svg = renderProfileSvg(m, meta);
     expect(svg).toContain('凡例');
     expect(svg).toContain('stroke="#d91e18"'); // 新設の管・汚水マス
-    // 公共マスの記号（◎の点）は黒
-    expect(svg).toMatch(/<circle[^>]*fill="#1f2328"[^>]*stroke="#1f2328"/);
+    // 公共桝も新設なら赤（沖縄市の実例 2 件: 「新設公共桝」は赤、「既存公共汚水桝」は青。黒は市下水管だけ）
+    expect(svg).not.toMatch(/<circle[^>]*stroke="#1f2328"/);
+    const mp = caseA();
+    mp.nodes[mp.nodes.length - 1].existing = true;
+    expect(renderProfileSvg(mp, meta)).toMatch(/<circle[^>]*fill="#1d4ed8"[^>]*stroke="#1d4ed8"/);
     const m2 = caseA();
     m2.segments[0].existing = true;
-    m2.nodes[0].existing = true;
+    for (const n of m2.nodes) n.existing = true;
     const svg2 = renderProfileSvg(m2, meta);
     expect(svg2).toContain('stroke="#1d4ed8"');
     expect(svg2).not.toContain('stroke="#d91e18"'); // 既設だけなら赤は無い
@@ -139,8 +142,17 @@ describe('排水縦断図の描画', () => {
     const svg = renderProfileSvg(model, meta);
     expect(svg).toContain('NO.1汚水マス');
     expect(svg).toContain('φ300 H600 (±0)');
-    expect(svg).toContain('公共汚水マス');
+    expect(svg).toContain('新設公共汚水マス');
     expect(svg).toContain('φ300 H700 (±0)');
+    // 右上の 受付番号・水道番号・縮尺 の欄
+    expect(svg).toContain('受付番号');
+    expect(svg).toContain('水道番号');
+    expect(svg).toContain('NO SCALE');
+    // 公共桝が既設なら「既存公共汚水マス」
+    const pub = Object.values(doc.fixtures).find((f) => f.type === 'publicSewage')!;
+    const d2 = { ...doc, fixtures: { ...doc.fixtures, [pub.id]: { ...pub, params: { ...pub.params, existing: true } } } };
+    const m2 = buildProfile(d2, 'route' in rt ? rt.route : [], p, '排水設備 縦断図');
+    expect(renderProfileSvg(m2, meta)).toContain('既存公共汚水マス');
     expect(svg).toContain('10.00'); // 長さ 2 桁
     expect(svg).toContain('1.0/100');
     expect(svg).toContain('100VU');

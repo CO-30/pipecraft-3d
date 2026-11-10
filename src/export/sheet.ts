@@ -3,7 +3,7 @@
  * プレビューは SVG に、出力は pdf-lib で PDF に変換する（同じ命令から作るので見た目が一致する）。
  * 座標: 原点は用紙の左上、x 右向き、y 下向き、単位 mm。
  */
-import { degrees, PDFDocument, rgb, type RGB } from 'pdf-lib';
+import { degrees, PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { MunicipalityProfile } from '../model/municipality';
 
@@ -85,13 +85,44 @@ const hex = (h: string): RGB => {
 };
 
 /** 1 Sheet = 1 ページの PDF */
-export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | ArrayBuffer): Promise<Uint8Array> {
+/** 同梱フォント（JIS 範囲）に無い字の置き換え。無ければ 〓 */
+const SUBST: Record<string, string> = { '髙': '高', '﨑': '崎', '德': '徳', '栁': '柳', '瀨': '瀬', '濵': '濱', '𠮷': '吉', '塚': '塚', '曻': '昇', '隆': '隆' };
+const charSets = new WeakMap<PDFFont, Set<number>>();
+/** フォントに無い文字を置き換える（pdf-lib は未対応の字で例外を投げる）。missing に元の字を集める */
+export function fontSafe(font: PDFFont, s: string, missing?: Set<string>): string {
+  let cs = charSets.get(font);
+  if (!cs) { cs = new Set(font.getCharacterSet()); charSets.set(font, cs); }
+  let out = '';
+  for (const ch of s) {
+    const cp = ch.codePointAt(0)!;
+    if (cs.has(cp)) { out += ch; continue; }
+    const r = SUBST[ch];
+    const rr = r && cs.has(r.codePointAt(0)!) ? r : '〓';
+    missing?.add(ch);
+    out += rr;
+  }
+  return out;
+}
+
+export type PdfOpts = { /** フォントに無かった文字（呼び出し側で警告に使う） */ missing?: Set<string> };
+
+export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | ArrayBuffer, opts: PdfOpts = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(fontBytes, { subset: false });
   for (const sheet of sheets) {
     const page = pdf.addPage([sheet.width * PT_PER_MM, sheet.height * PT_PER_MM]);
-    const X = (x: number) => x * PT_PER_MM, Y = (y: number) => (sheet.height - y) * PT_PER_MM, W = (w: number) => w * PT_PER_MM;
+    drawSheetOnPage(page, font, sheet, { x: 0, top: 0, w: sheet.width * PT_PER_MM, h: sheet.height * PT_PER_MM }, opts);
+  }
+  return pdf.save();
+}
+
+/** 既存のページの枠 box（pt、top は上端からの距離）に Sheet を縮小して描く。様式 PDF の図面欄に載せるときに使う（用紙の向きは枠に合わせておくこと。A4 縦の枠に A3 横を入れると約 0.4 倍になる） */
+export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box: { x: number; top: number; w: number; h: number }, opts: PdfOpts = {}): void {
+  const k = Math.min(box.w / (sheet.width * PT_PER_MM), box.h / (sheet.height * PT_PER_MM));
+  const pageH = page.getHeight();
+  const X = (x: number) => box.x + x * PT_PER_MM * k, Y = (y: number) => pageH - (box.top + y * PT_PER_MM * k), W = (w: number) => w * PT_PER_MM * k;
+  {
     for (const o of sheet.ops) {
       switch (o.t) {
         case 'line':
@@ -111,20 +142,20 @@ export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | Array
           break;
         case 'text': {
           const size = W(o.size);
-          const tw = font.widthOfTextAtSize(o.s, size);
+          const str = fontSafe(font, o.s, opts.missing);
+          const tw = font.widthOfTextAtSize(str, size);
           const anchor = o.anchor ?? 'start';
           const dx = anchor === 'middle' ? -tw / 2 : anchor === 'end' ? -tw : 0;
           if (o.rotate === -90) {
-            page.drawText(o.s, { x: X(o.x), y: Y(o.y) + dx, size, font, color: hex(o.color ?? INK), rotate: degrees(90) });
+            page.drawText(str, { x: X(o.x), y: Y(o.y) + dx, size, font, color: hex(o.color ?? INK), rotate: degrees(90) });
           } else {
-            page.drawText(o.s, { x: X(o.x) + dx, y: Y(o.y), size, font, color: hex(o.color ?? INK) });
+            page.drawText(str, { x: X(o.x) + dx, y: Y(o.y), size, font, color: hex(o.color ?? INK) });
           }
           break;
         }
       }
     }
   }
-  return pdf.save();
 }
 
 /** 図面記号。r は半径(mm) */
@@ -191,4 +222,21 @@ export function fitText(s: string, size: number, w: number): string {
   let t = s;
   while (t.length > 1 && width(t + '…') > w) t = t.slice(0, -1);
   return t + '…';
+}
+
+/** 右上の受付欄（「受付番号 | — | 水道番号 | — | 縮尺 | NO SCALE」）。fields が空なら何も描かない。戻り値は欄の下端 y */
+export function drawHeaderBlock(sheet: Sheet, fields: string[], values: Record<string, string>, top = 12): number {
+  if (!fields.length) return top;
+  const labelW = 16, valueW = 22, h = 7;
+  const w = fields.length * (labelW + valueW);
+  const x0 = sheet.width - 10 - w;
+  sheet.ops.push({ t: 'rect', x: x0, y: top, w, h, stroke: INK, lw: 0.4 });
+  fields.forEach((f, i) => {
+    const x = x0 + i * (labelW + valueW);
+    if (i > 0) sheet.ops.push({ t: 'line', x1: x, y1: top, x2: x, y2: top + h, color: INK, w: 0.4 });
+    sheet.ops.push({ t: 'line', x1: x + labelW, y1: top, x2: x + labelW, y2: top + h, color: INK, w: 0.25 });
+    sheet.ops.push({ t: 'text', x: x + labelW / 2, y: top + h / 2 + 1, s: fitText(f, 2.6, labelW - 1), size: 2.6, anchor: 'middle' });
+    sheet.ops.push({ t: 'text', x: x + labelW + valueW / 2, y: top + h / 2 + 1, s: fitText(values[f] ?? '—', 2.6, valueW - 1), size: 2.6, anchor: 'middle' });
+  });
+  return top + h;
 }

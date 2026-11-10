@@ -7,7 +7,7 @@ import type { IsoModel } from '../model/isometric';
 import { drawIsoLegend, drawIsometric } from './isoSheet';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
-import { drawFrame, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
+import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
 
 export type SheetMeta = { siteName: string; date: Date };
 
@@ -43,14 +43,15 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   const tableTop = sheet.height - 10 - M - tableH - Math.max(titleH, 0) - 4;
   // 桝の名前を図の上に縦書きするときは、その分の高さ（ABOVE_H）を空ける
   const withIso = !!iso && pt.drainageIsometric && iso.lines.length > 0;
-  const headTop = 10 + M + 12;
+  const headerBottom = drawHeaderBlock(sheet, profile.paper.headerFields, { '縮尺': 'NO SCALE' }, 10 + M - 2);
+  const headTop = Math.max(10 + M + 12, headerBottom + 3);
   const graphBottom = tableTop - 8;
   // 上半分に排水のアイソメ図（沖縄市の「立面図（展開図）」）: 縦断図の領域の 40% を使い、桝名の高さと重ねない
   let graphTop = headTop + (above ? ABOVE_H : 0);
   if (withIso) {
     const isoTop = headTop - 4;
     const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45));
-    sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
+    sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: profile.paper.headerFields.length ? headerBottom + 4 : 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
     drawIsometric(sheet, iso!, profile, { x: 10 + M, y: isoTop, w: sheet.width - 20 - 2 * M, h: isoH });
     graphTop = isoTop + isoH + 4 + (above ? ABOVE_H : 0);
   }
@@ -91,7 +92,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   };
   const nodeColor = (i: number) => {
     const n = model.nodes[i];
-    return warnNode.has(n.nodeId) ? WARN : n.manhole?.isPublic ? colors.public : nodeExisting(i) ? colors.existing : colors.newWork;
+    return warnNode.has(n.nodeId) ? WARN : nodeExisting(i) ? colors.existing : colors.newWork;
   };
 
   // GL 線
