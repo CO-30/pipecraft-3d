@@ -376,12 +376,21 @@ export function PropertyPanel() {
 /** 器具の真下に配管を落とす（床下まで。まだ配管のつながっていない給水・給湯・排水の接続口が対象） */
 function DropPipes() {
   const count = useStore((s) => Object.keys(s.doc.fixtures).length);
-  const [depth, setDepth] = useState(DEFAULT_DROP_DEPTH);
+  // 入力した値をそのまま持つ（数字を打ってすぐボタンを押しても、打った深さで落とす）
+  const [text, setText] = useState(String(DEFAULT_DROP_DEPTH));
   if (!count) return null;
+  const v = Number(text);
+  const ok = text.trim() !== '' && Number.isFinite(v) && v >= DROP_MIN && v <= DROP_MAX;
   return (
-    <div className="row drop-pipes" data-testid="drop-pipes">
-      <NumField label="床から下へ" value={depth} min={DROP_MIN} max={DROP_MAX} testId="drop-depth" onCommit={(v) => setDepth(Math.round(v))} />
-      <button className="primary" data-testid="drop-run" title="トイレ・洗面・キッチン・浴槽・洗濯機・水栓の接続口から、床下まで立て管を作ります（屋外の水栓は地中へ）" onClick={() => useStore.getState().dropFixturePipes(depth)}>🔽 器具の真下に配管を落とす</button>
+    <div className="drop-pipes" data-testid="drop-pipes">
+      <div className="row">
+        <label className="field inline">床から下へ
+          <span className="unit-input"><input type="number" inputMode="numeric" data-testid="drop-depth" value={text} min={DROP_MIN} max={DROP_MAX} onChange={(e) => setText(e.target.value)} /><span>mm</span></span>
+        </label>
+        <button className="primary" data-testid="drop-run" disabled={!ok} title="トイレ・洗面・キッチン・浴槽・洗濯機・水栓の接続口から、床下まで立て管を作ります（屋外の水栓は地中へ）" onClick={() => useStore.getState().dropFixturePipes(v)}>🔽 器具の真下に配管を落とす</button>
+      </div>
+      {!ok && <div className="err small">{DROP_MIN}〜{DROP_MAX}mm で入力してください</div>}
+      <div className="muted small">すべての階の器具が対象です。配管がつながっている接続口には足しません。</div>
     </div>
   );
 }

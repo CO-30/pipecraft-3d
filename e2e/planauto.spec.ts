@@ -132,8 +132,7 @@ test.describe('図面から自動で3Dにする', () => {
     expect(Object.keys(doc.network.segments)).toHaveLength(0);
 
     await useTool(page, 'fixture');
-    await page.getByTestId('drop-depth').fill('400');
-    await page.getByTestId('drop-depth').blur();
+    await page.getByTestId('drop-depth').fill('400'); // 打ってすぐ押しても、打った深さで落ちる
     await page.getByTestId('drop-run').click();
     doc = await full(page);
     const segs = Object.values(doc.network.segments) as { system: string; a: string; b: string }[];

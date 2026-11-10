@@ -11,7 +11,8 @@ import { addRiser, segmentsAt, type SystemType } from './network';
 export const DEFAULT_DROP_DEPTH = 300;
 /** 屋外の器具を地中へ落とす深さ（GL からの mm） */
 export const OUTDOOR_DROP_DEPTH = 300;
-export const DROP_MIN = 50, DROP_MAX = 3000;
+/** 上限は 1000: それより下は「その階の配管」として扱われない（下の階の配管になる） */
+export const DROP_MIN = 50, DROP_MAX = 1000;
 
 /** 真下に落とす器具（機器どうしを横につなぐ給湯器・メーター・ヘッダー・マスなどは対象外） */
 const DROP_TYPES = new Set<FixtureType>(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet', 'outdoorFaucet']);
@@ -21,7 +22,8 @@ const DROP_SYSTEMS = new Set<SystemType>(['water', 'hotWater', 'drain', 'sewage'
 export type DropResult = { doc: Doc; pipes: number; fixtures: number };
 
 /** depth: 床から下へ何 mm。fixtureIds: 省略時はすべての器具 */
-export function dropFixturePipes(doc: Doc, depth = DEFAULT_DROP_DEPTH, fixtureIds?: string[]): DropResult {
+export function dropFixturePipes(doc: Doc, depthIn = DEFAULT_DROP_DEPTH, fixtureIds?: string[]): DropResult {
+  const depth = Math.max(DROP_MIN, Math.min(DROP_MAX, Number.isFinite(depthIn) ? depthIn : DEFAULT_DROP_DEPTH));
   let net = doc.network;
   let pipes = 0;
   const done = new Set<string>();

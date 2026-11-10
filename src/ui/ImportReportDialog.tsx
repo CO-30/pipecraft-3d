@@ -22,7 +22,9 @@ export function ImportReportDialog({ report, fixtures, floorNames, onClose }: { 
         )}
         {fixtures.length > 0 && (
           <>
-            <div className="field-label">器具の候補（置くものにチェック）</div>
+            <div className="field-label">器具の候補（置くものにチェック）
+              {fixtures.length > 3 && <> <button type="button" className="linkish" data-testid="ir-all" onClick={() => setOn(on.map(() => true))}>すべて選ぶ</button> <button type="button" className="linkish" data-testid="ir-none" onClick={() => setOn(on.map(() => false))}>すべて外す</button></>}
+            </div>
             <ul className="cands" data-testid="ir-fixtures">
               {fixtures.map((f, i) => (
                 <li key={i}>

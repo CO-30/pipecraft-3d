@@ -245,15 +245,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1089,
+                  "duration": 958,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:26:44.060Z",
+                  "startTime": "2026-11-10T09:00:27.657Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -278,15 +278,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "skipped",
-                  "duration": 121,
+                  "duration": 153,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:10.487Z",
+                  "startTime": "2026-11-10T09:02:49.516Z",
                   "annotations": [
                     {
                       "type": "skip",
@@ -321,15 +321,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "skipped",
-                  "duration": 165,
+                  "duration": 161,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:14.434Z",
+                  "startTime": "2026-11-10T09:04:51.169Z",
                   "annotations": [
                     {
                       "type": "skip",
@@ -376,12 +376,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 19335,
+                      "duration": 17715,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:12.915Z",
+                      "startTime": "2026-11-10T09:00:04.319Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -396,15 +396,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6660,
+                      "duration": 6049,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:58.931Z",
+                      "startTime": "2026-11-10T09:02:38.521Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -419,15 +419,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7631,
+                      "duration": 6057,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:02.014Z",
+                      "startTime": "2026-11-10T09:04:40.215Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -456,12 +456,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1554,
+                      "duration": 1336,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:32.455Z",
+                      "startTime": "2026-11-10T09:00:22.220Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -476,15 +476,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1015,
+                      "duration": 964,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:05.765Z",
+                      "startTime": "2026-11-10T09:02:44.762Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -499,15 +499,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 900,
+                      "duration": 985,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:09.825Z",
+                      "startTime": "2026-11-10T09:04:46.431Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -536,12 +536,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1452,
+                      "duration": 1456,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:34.020Z",
+                      "startTime": "2026-11-10T09:00:23.564Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -556,15 +556,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1021,
+                      "duration": 1011,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:06.792Z",
+                      "startTime": "2026-11-10T09:02:45.738Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -579,15 +579,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 949,
+                      "duration": 1013,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:10.750Z",
+                      "startTime": "2026-11-10T09:04:47.426Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -610,7 +610,7 @@
           "specs": [
             {
               "title": "3Dだけの表示でもガイドのボタンで図面の見える表示に戻る・建物の道具の行は Esc / 外のタップ / 道具の変更で閉じる",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -623,53 +623,18 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 6427,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('plan')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" getByTestId('plan') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('plan')\u001b[22m\n\u001b[2m    13 × locator resolved to <svg class=\"plan\" data-testid=\"plan\">…</svg>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('plan')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" getByTestId('plan') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('plan')\u001b[22m\n\u001b[2m    13 × locator resolved to <svg class=\"plan\" data-testid=\"plan\">…</svg>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n\n    at /home/claude/pipecraft-3d/e2e/beginner.spec.ts:219:44",
-                        "location": {
-                          "file": "/home/claude/pipecraft-3d/e2e/beginner.spec.ts",
-                          "column": 44,
-                          "line": 219
-                        },
-                        "snippet": " \u001b[90m 217 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByTestId(\u001b[32m'plan'\u001b[39m))\u001b[33m.\u001b[39mtoHaveCount(\u001b[35m0\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 218 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByTestId(\u001b[32m'guide-do'\u001b[39m)\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 219 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByTestId(\u001b[32m'plan'\u001b[39m))\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                            \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 220 |\u001b[39m\n \u001b[90m 221 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mgetByTestId(\u001b[32m'tool-building'\u001b[39m)\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 222 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page\u001b[33m.\u001b[39mgetByTestId(\u001b[32m'building-tools'\u001b[39m))\u001b[33m.\u001b[39mtoBeVisible()\u001b[33m;\u001b[39m"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/home/claude/pipecraft-3d/e2e/beginner.spec.ts",
-                            "column": 44,
-                            "line": 219
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('plan')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" getByTestId('plan') with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('plan')\u001b[22m\n\u001b[2m    13 × locator resolved to <svg class=\"plan\" data-testid=\"plan\">…</svg>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n\n\n  217 |     await expect(page.getByTestId('plan')).toHaveCount(0);\n  218 |     await page.getByTestId('guide-do').click();\n> 219 |     await expect(page.getByTestId('plan')).toBeVisible();\n      |                                            ^\n  220 |\n  221 |     await page.getByTestId('tool-building').click();\n  222 |     await expect(page.getByTestId('building-tools')).toBeVisible();\n    at /home/claude/pipecraft-3d/e2e/beginner.spec.ts:219:44"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 1441,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:35.502Z",
+                      "startTime": "2026-11-10T09:00:25.028Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "screenshot",
-                          "contentType": "image/png",
-                          "path": "/home/claude/pipecraft-3d/test-results/beginner-レビュー対応-3Dだけの表示でもガ-be3d4-物の道具の行は-Esc-外のタップ-道具の変更で閉じる-pc-chrome/test-failed-1.png"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/home/claude/pipecraft-3d/test-results/beginner-レビュー対応-3Dだけの表示でもガ-be3d4-物の道具の行は-Esc-外のタップ-道具の変更で閉じる-pc-chrome/error-context.md"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/home/claude/pipecraft-3d/e2e/beginner.spec.ts",
-                        "column": 44,
-                        "line": 219
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 },
                 {
                   "timeout": 30000,
@@ -679,15 +644,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 927,
+                      "duration": 1003,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:07.827Z",
+                      "startTime": "2026-11-10T09:02:46.757Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -702,15 +667,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1038,
+                      "duration": 995,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:11.725Z",
+                      "startTime": "2026-11-10T09:04:48.447Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -746,15 +711,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 703,
+                      "duration": 565,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:42.489Z",
+                      "startTime": "2026-11-10T09:00:26.493Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -779,15 +744,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 860,
+                      "duration": 833,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:08.762Z",
+                      "startTime": "2026-11-10T09:02:47.783Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -802,15 +767,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 849,
+                      "duration": 842,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:12.791Z",
+                      "startTime": "2026-11-10T09:04:49.457Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -846,15 +811,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 621,
+                      "duration": 569,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:43.401Z",
+                      "startTime": "2026-11-10T09:00:27.076Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -879,15 +844,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 827,
+                      "duration": 876,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:09.635Z",
+                      "startTime": "2026-11-10T09:02:48.629Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -902,15 +867,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 762,
+                      "duration": 848,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:13.651Z",
+                      "startTime": "2026-11-10T09:04:50.312Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -953,15 +918,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1380,
+                      "duration": 1177,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:45.211Z",
+                      "startTime": "2026-11-10T09:00:28.648Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -976,15 +941,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1318,
+                      "duration": 1159,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:10.634Z",
+                      "startTime": "2026-11-10T09:02:49.696Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -999,15 +964,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1152,
+                      "duration": 1165,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:14.619Z",
+                      "startTime": "2026-11-10T09:04:51.351Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1033,15 +998,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1417,
+                      "duration": 1255,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:46.601Z",
+                      "startTime": "2026-11-10T09:00:29.847Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1056,15 +1021,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1199,
+                      "duration": 1073,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:11.960Z",
+                      "startTime": "2026-11-10T09:02:50.861Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1079,15 +1044,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 993,
+                      "duration": 1057,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:15.779Z",
+                      "startTime": "2026-11-10T09:04:52.530Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1113,15 +1078,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1101,
+                      "duration": 984,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:26:48.045Z",
+                      "startTime": "2026-11-10T09:00:31.117Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1136,15 +1101,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1105,
+                      "duration": 800,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:13.192Z",
+                      "startTime": "2026-11-10T09:02:51.963Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1159,15 +1124,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 917,
+                      "duration": 903,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:16.793Z",
+                      "startTime": "2026-11-10T09:04:53.607Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1203,15 +1168,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1196,
+                  "duration": 1146,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:26:49.179Z",
+                  "startTime": "2026-11-10T09:00:32.113Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1226,15 +1191,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1345,
+                  "duration": 1116,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:14.333Z",
+                  "startTime": "2026-11-10T09:02:52.788Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1249,15 +1214,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1030,
+                  "duration": 1094,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:17.738Z",
+                  "startTime": "2026-11-10T09:04:54.538Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1291,15 +1256,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2213,
+                  "duration": 2152,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:26:50.398Z",
+                  "startTime": "2026-11-10T09:00:33.281Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1314,15 +1279,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2813,
+                  "duration": 2226,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:15.689Z",
+                  "startTime": "2026-11-10T09:02:53.918Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1337,15 +1302,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2254,
+                  "duration": 2255,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:18.788Z",
+                  "startTime": "2026-11-10T09:04:55.655Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1371,15 +1336,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1242,
+                  "duration": 1317,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:26:52.619Z",
+                  "startTime": "2026-11-10T09:00:35.441Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1394,15 +1359,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1498,
+                  "duration": 1322,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:18.509Z",
+                  "startTime": "2026-11-10T09:02:56.149Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1417,15 +1382,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1285,
+                  "duration": 1300,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:21.048Z",
+                  "startTime": "2026-11-10T09:04:57.932Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1459,15 +1424,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 7596,
+                  "duration": 6893,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:26:53.884Z",
+                  "startTime": "2026-11-10T09:00:36.799Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1482,15 +1447,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 5567,
+                  "duration": 5163,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:20.034Z",
+                  "startTime": "2026-11-10T09:02:57.492Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1505,15 +1470,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 5793,
+                  "duration": 5656,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:22.367Z",
+                  "startTime": "2026-11-10T09:04:59.258Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1547,15 +1512,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1954,
+                  "duration": 1845,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:27:01.501Z",
+                  "startTime": "2026-11-10T09:00:43.702Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1570,15 +1535,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2063,
+                  "duration": 1956,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:25.620Z",
+                  "startTime": "2026-11-10T09:03:02.669Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1593,15 +1558,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 2037,
+                  "duration": 1969,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:28.176Z",
+                  "startTime": "2026-11-10T09:05:04.958Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1635,15 +1600,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6454,
+                  "duration": 6262,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:27:03.467Z",
+                  "startTime": "2026-11-10T09:00:45.560Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1658,15 +1623,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6640,
+                  "duration": 6480,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:27.696Z",
+                  "startTime": "2026-11-10T09:03:04.636Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1681,15 +1646,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 7148,
+                  "duration": 6850,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:30.225Z",
+                  "startTime": "2026-11-10T09:05:06.941Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1723,15 +1688,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4278,
+                  "duration": 3987,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:27:09.937Z",
+                  "startTime": "2026-11-10T09:00:51.865Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1746,15 +1711,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4661,
+                  "duration": 4313,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:29:34.350Z",
+                  "startTime": "2026-11-10T09:03:11.147Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1769,15 +1734,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4882,
+                  "duration": 4746,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:37.393Z",
+                  "startTime": "2026-11-10T09:05:13.801Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -1818,15 +1783,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5050,
+                      "duration": 4496,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:14.232Z",
+                      "startTime": "2026-11-10T09:00:55.879Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1841,15 +1806,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4041,
+                      "duration": 4103,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:39.022Z",
+                      "startTime": "2026-11-10T09:03:15.502Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1864,15 +1829,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4546,
+                      "duration": 3959,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:42.306Z",
+                      "startTime": "2026-11-10T09:05:18.559Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1898,15 +1863,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1472,
+                      "duration": 1259,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:19.305Z",
+                      "startTime": "2026-11-10T09:01:00.390Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1921,15 +1886,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1598,
+                      "duration": 1461,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:43.070Z",
+                      "startTime": "2026-11-10T09:03:19.619Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1944,15 +1909,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1645,
+                      "duration": 1478,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:46.870Z",
+                      "startTime": "2026-11-10T09:05:22.524Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1978,15 +1943,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1120,
+                      "duration": 1091,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:20.787Z",
+                      "startTime": "2026-11-10T09:01:01.660Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2011,15 +1976,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 646,
+                      "duration": 565,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:44.685Z",
+                      "startTime": "2026-11-10T09:03:21.090Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -2054,15 +2019,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 669,
+                      "duration": 540,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:48.545Z",
+                      "startTime": "2026-11-10T09:05:24.010Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -2115,15 +2080,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1359,
+                      "duration": 1253,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:21.928Z",
+                      "startTime": "2026-11-10T09:01:02.763Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2138,15 +2103,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1479,
+                      "duration": 1304,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:45.344Z",
+                      "startTime": "2026-11-10T09:03:21.677Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2161,15 +2126,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1239,
+                      "duration": 1256,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:49.233Z",
+                      "startTime": "2026-11-10T09:05:24.563Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2195,15 +2160,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5907,
+                      "duration": 5417,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:23.297Z",
+                      "startTime": "2026-11-10T09:01:04.027Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2218,15 +2183,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7225,
+                      "duration": 7166,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:46.830Z",
+                      "startTime": "2026-11-10T09:03:22.989Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2241,15 +2206,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9176,
+                      "duration": 8685,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:50.480Z",
+                      "startTime": "2026-11-10T09:05:25.825Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2275,15 +2240,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3372,
+                      "duration": 2903,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:29.213Z",
+                      "startTime": "2026-11-10T09:01:09.489Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2298,15 +2263,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3171,
+                      "duration": 2993,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:54.075Z",
+                      "startTime": "2026-11-10T09:03:30.160Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2321,15 +2286,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3605,
+                      "duration": 3609,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:31:59.671Z",
+                      "startTime": "2026-11-10T09:05:34.519Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2363,15 +2328,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5000,
+                      "duration": 4491,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:32.621Z",
+                      "startTime": "2026-11-10T09:01:12.407Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2386,15 +2351,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5864,
+                      "duration": 5600,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:29:57.262Z",
+                      "startTime": "2026-11-10T09:03:33.160Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2409,15 +2374,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8241,
+                      "duration": 8100,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:03.314Z",
+                      "startTime": "2026-11-10T09:05:38.143Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2460,15 +2425,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1984,
+                      "duration": 1816,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:37.650Z",
+                      "startTime": "2026-11-10T09:01:16.935Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2483,15 +2448,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2270,
+                      "duration": 2048,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:03.143Z",
+                      "startTime": "2026-11-10T09:03:38.812Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2506,15 +2471,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2156,
+                      "duration": 1979,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:11.580Z",
+                      "startTime": "2026-11-10T09:05:46.263Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2540,15 +2505,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1601,
+                      "duration": 1544,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:39.643Z",
+                      "startTime": "2026-11-10T09:01:18.759Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2563,15 +2528,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1752,
+                      "duration": 1743,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:05.425Z",
+                      "startTime": "2026-11-10T09:03:40.868Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2586,15 +2551,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1780,
+                      "duration": 1617,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:13.745Z",
+                      "startTime": "2026-11-10T09:05:48.249Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2620,15 +2585,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1409,
+                      "duration": 1463,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:41.254Z",
+                      "startTime": "2026-11-10T09:01:20.313Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2643,15 +2608,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1561,
+                      "duration": 1544,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:07.186Z",
+                      "startTime": "2026-11-10T09:03:42.617Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2666,15 +2631,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1562,
+                      "duration": 1511,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:15.543Z",
+                      "startTime": "2026-11-10T09:05:49.885Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2700,15 +2665,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1451,
+                      "duration": 1486,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:42.696Z",
+                      "startTime": "2026-11-10T09:01:21.782Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2723,15 +2688,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1557,
+                      "duration": 1612,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:08.757Z",
+                      "startTime": "2026-11-10T09:03:44.181Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2746,15 +2711,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1525,
+                      "duration": 1610,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:17.117Z",
+                      "startTime": "2026-11-10T09:05:51.405Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2780,15 +2745,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1387,
+                      "duration": 1389,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:44.155Z",
+                      "startTime": "2026-11-10T09:01:23.298Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2803,15 +2768,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1434,
+                      "duration": 1476,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:10.325Z",
+                      "startTime": "2026-11-10T09:03:45.820Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2826,15 +2791,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1455,
+                      "duration": 1439,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:18.660Z",
+                      "startTime": "2026-11-10T09:05:53.021Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2860,15 +2825,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3322,
+                      "duration": 3291,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:45.549Z",
+                      "startTime": "2026-11-10T09:01:24.697Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2883,15 +2848,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3821,
+                      "duration": 3572,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:11.766Z",
+                      "startTime": "2026-11-10T09:03:47.320Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2906,15 +2871,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3734,
+                      "duration": 3813,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:20.130Z",
+                      "startTime": "2026-11-10T09:05:54.468Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2940,15 +2905,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1674,
+                      "duration": 1586,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:48.896Z",
+                      "startTime": "2026-11-10T09:01:28.007Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2963,15 +2928,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1834,
+                      "duration": 1655,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:15.595Z",
+                      "startTime": "2026-11-10T09:03:50.897Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -2986,15 +2951,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1901,
+                      "duration": 1690,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:23.872Z",
+                      "startTime": "2026-11-10T09:05:58.290Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3020,15 +2985,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1612,
+                      "duration": 1384,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:50.577Z",
+                      "startTime": "2026-11-10T09:01:29.599Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3043,15 +3008,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1637,
+                      "duration": 1522,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:17.435Z",
+                      "startTime": "2026-11-10T09:03:52.577Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3066,15 +3031,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1638,
+                      "duration": 1483,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:25.780Z",
+                      "startTime": "2026-11-10T09:05:59.991Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3117,15 +3082,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2553,
+                      "duration": 2427,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:52.205Z",
+                      "startTime": "2026-11-10T09:01:31.031Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3140,15 +3105,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2829,
+                      "duration": 2559,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:19.104Z",
+                      "startTime": "2026-11-10T09:03:54.110Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3163,15 +3128,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2324,
+                      "duration": 2468,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:27.446Z",
+                      "startTime": "2026-11-10T09:06:01.490Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3197,15 +3162,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1440,
+                      "duration": 1189,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:54.768Z",
+                      "startTime": "2026-11-10T09:01:33.464Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3220,15 +3185,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1371,
+                      "duration": 1204,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:21.943Z",
+                      "startTime": "2026-11-10T09:03:56.679Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3243,15 +3208,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1148,
+                      "duration": 1164,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:29.776Z",
+                      "startTime": "2026-11-10T09:06:03.967Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3277,15 +3242,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2975,
+                      "duration": 2683,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:56.216Z",
+                      "startTime": "2026-11-10T09:01:34.664Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3300,15 +3265,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2613,
+                      "duration": 2563,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:23.326Z",
+                      "startTime": "2026-11-10T09:03:57.888Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3323,15 +3288,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2364,
+                      "duration": 2331,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:30.932Z",
+                      "startTime": "2026-11-10T09:06:05.143Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3374,15 +3339,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1475,
+                      "duration": 1231,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:27:59.342Z",
+                      "startTime": "2026-11-10T09:01:37.468Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3397,15 +3362,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1499,
+                      "duration": 1538,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:26.056Z",
+                      "startTime": "2026-11-10T09:04:00.565Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3420,15 +3385,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1404,
+                      "duration": 1465,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:33.424Z",
+                      "startTime": "2026-11-10T09:06:07.586Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3454,15 +3419,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1394,
+                      "duration": 1283,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:00.828Z",
+                      "startTime": "2026-11-10T09:01:38.706Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3487,15 +3452,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 716,
+                      "duration": 597,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:27.562Z",
+                      "startTime": "2026-11-10T09:04:02.116Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -3530,15 +3495,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 523,
+                      "duration": 554,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:34.833Z",
+                      "startTime": "2026-11-10T09:06:09.067Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -3574,15 +3539,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1257,
+                      "duration": 1134,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:02.229Z",
+                      "startTime": "2026-11-10T09:01:40.001Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3607,15 +3572,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 710,
+                      "duration": 573,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:28.285Z",
+                      "startTime": "2026-11-10T09:04:02.721Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -3650,15 +3615,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 522,
+                      "duration": 570,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:35.362Z",
+                      "startTime": "2026-11-10T09:06:09.633Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -3694,15 +3659,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1289,
+                      "duration": 1133,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:03.495Z",
+                      "startTime": "2026-11-10T09:01:41.142Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3727,15 +3692,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 751,
+                      "duration": 527,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:29.003Z",
+                      "startTime": "2026-11-10T09:04:03.300Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -3770,15 +3735,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 578,
+                      "duration": 534,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:35.893Z",
+                      "startTime": "2026-11-10T09:06:10.210Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -3814,15 +3779,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1399,
+                      "duration": 1135,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:04.794Z",
+                      "startTime": "2026-11-10T09:01:42.305Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3837,15 +3802,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1316,
+                      "duration": 1162,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:29.769Z",
+                      "startTime": "2026-11-10T09:04:03.847Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3860,15 +3825,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1281,
+                      "duration": 1222,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:36.477Z",
+                      "startTime": "2026-11-10T09:06:10.763Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3894,15 +3859,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1363,
+                      "duration": 1226,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:06.203Z",
+                      "startTime": "2026-11-10T09:01:43.461Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3917,15 +3882,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1286,
+                      "duration": 1407,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:31.098Z",
+                      "startTime": "2026-11-10T09:04:05.017Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3940,15 +3905,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1327,
+                      "duration": 1413,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:37.768Z",
+                      "startTime": "2026-11-10T09:06:11.996Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -3974,15 +3939,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 975,
+                      "duration": 868,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:07.588Z",
+                      "startTime": "2026-11-10T09:01:44.698Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4007,15 +3972,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 568,
+                      "duration": 611,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:32.389Z",
+                      "startTime": "2026-11-10T09:04:06.440Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -4050,15 +4015,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 540,
+                      "duration": 701,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:39.106Z",
+                      "startTime": "2026-11-10T09:06:13.417Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -4111,15 +4076,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1668,
+                      "duration": 1662,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:08.578Z",
+                      "startTime": "2026-11-10T09:01:45.579Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4134,15 +4099,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1752,
+                      "duration": 1779,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:32.976Z",
+                      "startTime": "2026-11-10T09:04:07.065Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4157,15 +4122,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1736,
+                      "duration": 1816,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:39.660Z",
+                      "startTime": "2026-11-10T09:06:14.132Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4191,15 +4156,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2635,
+                      "duration": 2608,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:10.252Z",
+                      "startTime": "2026-11-10T09:01:47.251Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4214,15 +4179,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3511,
+                      "duration": 3561,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:34.737Z",
+                      "startTime": "2026-11-10T09:04:08.850Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4237,15 +4202,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3796,
+                      "duration": 3724,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:41.406Z",
+                      "startTime": "2026-11-10T09:06:15.961Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4281,15 +4246,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "skipped",
-                      "duration": 808,
+                      "duration": 792,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:12.902Z",
+                      "startTime": "2026-11-10T09:01:49.874Z",
                       "annotations": [
                         {
                           "type": "skip",
@@ -4314,15 +4279,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1052,
+                      "duration": 1008,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:38.258Z",
+                      "startTime": "2026-11-10T09:04:12.426Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4337,15 +4302,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1059,
+                      "duration": 1010,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:45.230Z",
+                      "startTime": "2026-11-10T09:06:19.690Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4372,7 +4337,7 @@
         {
           "title": "図面から自動で3Dにする",
           "file": "planauto.spec.ts",
-          "line": 61,
+          "line": 62,
           "column": 6,
           "specs": [
             {
@@ -4388,15 +4353,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4051,
+                      "duration": 3738,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:13.736Z",
+                      "startTime": "2026-11-10T09:01:50.707Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4411,15 +4376,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3433,
+                      "duration": 3421,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:39.329Z",
+                      "startTime": "2026-11-10T09:04:13.449Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4434,15 +4399,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3865,
+                      "duration": 3773,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:46.316Z",
+                      "startTime": "2026-11-10T09:06:20.729Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4452,7 +4417,87 @@
               ],
               "id": "05efdc734f30ff52f51d-5c00b5ceb1fda51b345a",
               "file": "planauto.spec.ts",
-              "line": 66,
+              "line": 67,
+              "column": 3
+            },
+            {
+              "title": "器具の候補を確認して置き、真下に配管を落とす。取り消しで戻せる",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5730,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-10T09:01:54.461Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3975,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-10T09:04:16.883Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4633,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-10T09:06:24.508Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "05efdc734f30ff52f51d-c0465f77f41d1e507a13",
+              "file": "planauto.spec.ts",
+              "line": 113,
               "column": 3
             },
             {
@@ -4468,15 +4513,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1821,
+                      "duration": 1727,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:17.797Z",
+                      "startTime": "2026-11-10T09:02:00.227Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4491,15 +4536,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1476,
+                      "duration": 1458,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:42.774Z",
+                      "startTime": "2026-11-10T09:04:20.879Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4514,15 +4559,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1482,
+                      "duration": 1524,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:50.207Z",
+                      "startTime": "2026-11-10T09:06:29.179Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4532,7 +4577,7 @@
               ],
               "id": "05efdc734f30ff52f51d-a01160217fd75dbe3b79",
               "file": "planauto.spec.ts",
-              "line": 112,
+              "line": 157,
               "column": 3
             },
             {
@@ -4548,15 +4593,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2058,
+                      "duration": 1971,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:19.634Z",
+                      "startTime": "2026-11-10T09:02:01.969Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4571,15 +4616,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1823,
+                      "duration": 1766,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:44.276Z",
+                      "startTime": "2026-11-10T09:04:22.371Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4594,15 +4639,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1708,
+                      "duration": 1793,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:51.699Z",
+                      "startTime": "2026-11-10T09:06:30.709Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4612,7 +4657,7 @@
               ],
               "id": "05efdc734f30ff52f51d-3f2bb04fc80698fa345b",
               "file": "planauto.spec.ts",
-              "line": 120,
+              "line": 165,
               "column": 3
             }
           ]
@@ -4645,15 +4690,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7594,
+                      "duration": 6218,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:21.716Z",
+                      "startTime": "2026-11-10T09:02:03.962Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4668,15 +4713,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1272,
+                      "duration": 1313,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:46.121Z",
+                      "startTime": "2026-11-10T09:04:24.181Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4691,15 +4736,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1172,
+                      "duration": 1222,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:53.429Z",
+                      "startTime": "2026-11-10T09:06:32.546Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4725,15 +4770,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4186,
+                      "duration": 4046,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:29.321Z",
+                      "startTime": "2026-11-10T09:02:10.187Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4748,15 +4793,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1415,
+                      "duration": 1412,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:47.401Z",
+                      "startTime": "2026-11-10T09:04:25.504Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4771,15 +4816,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1281,
+                      "duration": 1287,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:54.607Z",
+                      "startTime": "2026-11-10T09:06:33.784Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4805,15 +4850,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 17550,
+                      "duration": 16269,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:33.522Z",
+                      "startTime": "2026-11-10T09:02:14.257Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4828,15 +4873,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5143,
+                      "duration": 5025,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:48.826Z",
+                      "startTime": "2026-11-10T09:04:26.924Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4851,15 +4896,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4982,
+                      "duration": 4698,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:32:55.896Z",
+                      "startTime": "2026-11-10T09:06:35.085Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4885,15 +4930,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1103,
+                      "duration": 1173,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:51.084Z",
+                      "startTime": "2026-11-10T09:02:30.532Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4908,15 +4953,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 955,
+                      "duration": 921,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:53.976Z",
+                      "startTime": "2026-11-10T09:04:31.960Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4931,15 +4976,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 864,
+                      "duration": 884,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:33:00.902Z",
+                      "startTime": "2026-11-10T09:06:39.790Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -4982,15 +5027,15 @@
                   "projectName": "pc-chrome",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3415,
+                      "duration": 3492,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:28:52.207Z",
+                      "startTime": "2026-11-10T09:02:31.728Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -5005,15 +5050,15 @@
                   "projectName": "mobile-iphone-emu",
                   "results": [
                     {
-                      "workerIndex": 2,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3612,
+                      "duration": 3784,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:30:54.964Z",
+                      "startTime": "2026-11-10T09:04:32.896Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -5028,15 +5073,15 @@
                   "projectName": "mobile-android-emu",
                   "results": [
                     {
-                      "workerIndex": 3,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3904,
+                      "duration": 3946,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-10T08:33:01.799Z",
+                      "startTime": "2026-11-10T09:06:40.689Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -5072,15 +5117,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1456,
+                  "duration": 1498,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:28:55.638Z",
+                  "startTime": "2026-11-10T09:02:35.235Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -5095,15 +5140,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1550,
+                  "duration": 1629,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:30:58.618Z",
+                  "startTime": "2026-11-10T09:04:36.699Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -5118,15 +5163,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1573,
+                  "duration": 1630,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:33:05.716Z",
+                  "startTime": "2026-11-10T09:06:44.646Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -5160,15 +5205,15 @@
               "projectName": "pc-chrome",
               "results": [
                 {
-                  "workerIndex": 1,
+                  "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1366,
+                  "duration": 1318,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:28:57.119Z",
+                  "startTime": "2026-11-10T09:02:36.742Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -5183,15 +5228,15 @@
               "projectName": "mobile-iphone-emu",
               "results": [
                 {
-                  "workerIndex": 2,
+                  "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1391,
+                  "duration": 1390,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:31:00.186Z",
+                  "startTime": "2026-11-10T09:04:38.343Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -5206,15 +5251,15 @@
               "projectName": "mobile-android-emu",
               "results": [
                 {
-                  "workerIndex": 3,
+                  "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 1329,
+                  "duration": 1373,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-10T08:33:07.360Z",
+                  "startTime": "2026-11-10T09:06:46.290Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -5232,11 +5277,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-10T08:26:07.228Z",
-    "duration": 421639.01300000004,
-    "expected": 149,
+    "startTime": "2026-11-10T08:59:59.911Z",
+    "duration": 407922.4,
+    "expected": 153,
     "skipped": 15,
-    "unexpected": 1,
+    "unexpected": 0,
     "flaky": 0
   }
 }

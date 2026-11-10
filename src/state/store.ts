@@ -10,7 +10,7 @@ import {
   detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc, SiteSettings } from '../model/doc';
-import { dropFixturePipes as dropPipes } from '../model/dropPipes';
+import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { deleteFixture, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import * as B from '../model/building';
@@ -640,8 +640,10 @@ export const useStore = create<State>((set, get) => {
       return n;
     },
     dropFixturePipes: (depth) => {
-      const r = dropPipes(get().doc, depth);
-      if (r.pipes) commit(r.doc, { selection: null, notice: `${r.fixtures} 個の器具から ${r.pipes} 本の配管を真下へ落としました。3D では表示（スマホは 👁）を「配管だけ」「設備だけ」にすると床下が見えます` });
+      const d = Math.max(DROP_MIN, Math.min(DROP_MAX, Math.round(depth ?? DEFAULT_DROP_DEPTH)));
+      const r = dropPipes(get().doc, d);
+      // withNet: 新しい点にどの階の配管かを付ける（他の配管の操作と同じ）
+      if (r.pipes) commit(withNet(r.doc.network), { selection: null, notice: `${r.fixtures} 個の器具から ${r.pipes} 本の配管を真下（床から ${d}mm 下）へ落としました。3D では表示（スマホは 👁）を「配管だけ」「設備だけ」にすると床下が見えます` });
       else set({ notice: '落とせる配管がありません（器具が無いか、すでに配管がつながっています）' });
       return r.pipes;
     },

@@ -208,7 +208,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     const area = gwF ? { x0: Math.min(...gwF.xs.values()) - 3000, x1: Math.max(...gwF.xs.values()) + 3000, y0: Math.min(...gwF.ys.values()) - 3000, y1: Math.max(...gwF.ys.values()) + 3000 } : undefined;
     const lines = walls.map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], thickness: w.thickness }));
     const cands = guessFixtures(r.page.texts.map((x) => ({ x: toWorldX(t, x.x), y: toWorldY(t, x.y), s: x.s })), lines, area);
-    fixtures.push(...cands.map((c) => ({ ...c, floorId: f.floorId })));
+    // 屋外の器具（立水栓・給湯器）は 1 階の図面から出たものだけ（上の階の図面にも同じ文字が写っていることがある）
+    fixtures.push(...cands.filter((c) => n === floors[0] || (c.type !== 'outdoorFaucet' && c.type !== 'waterHeater')).map((c) => ({ ...c, floorId: f.floorId })));
     note(r, true, walls.length ? `壁 ${walls.length} 本（延べ ${(total / 1000).toFixed(1)}m）・開口部 ${op.count} か所` : '壁の線を見つけられませんでした');
     if (walls.length) found.push(`${n}階の壁 ${walls.length} 本・開口部 ${op.count} か所（1/${r.scale!.scale}${r.grid ? '、通り芯で位置合わせ' : ''}）`);
     else check.push(`${n}階の壁を読み取れませんでした。図面を下に敷いてあるので、なぞって描いてください`);
