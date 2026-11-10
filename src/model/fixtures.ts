@@ -16,7 +16,7 @@ export type FixtureType =
   | 'manholeSewage' | 'manholeRain' | 'manholeTrap' | 'manholeInvert' | 'publicSewage' | 'publicRain';
 export type Rotation = 0 | 90 | 180 | 270;
 /** マスの個別設定。diameter: 口径(mm、既定 300)、shape: 丸/角、invertZ: 管底高(mm、絶対。既定 GL−600) */
-export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean };
+export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean; /** 落差桝: 流入側の管底が流出側（invertZ）より高い分(mm) */ drop?: number };
 export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation; params?: FixtureParams };
 
 /**
@@ -149,6 +149,12 @@ function syncPorts(net: Network, b: Building, f: Fixture, site?: SiteSettings): 
     const port = FIXTURE_CATALOG[f.type].ports.find((p) => p.id === n.portId);
     if (!port) continue;
     const pos = portWorldPos(f, floor, port, site, b);
+    // 落差（マスの流入側の管底の高さ）をノードに写す
+    const drop = isManhole(f.type) && f.params?.drop && f.params.drop > 0 ? f.params.drop : undefined;
+    if ((cur.nodes[n.id].dropIn ?? undefined) !== drop) {
+      const { dropIn: _d, ...rest } = cur.nodes[n.id];
+      cur = { ...cur, nodes: { ...cur.nodes, [n.id]: drop ? { ...rest, dropIn: drop } : rest } };
+    }
     if (dist(cur.nodes[n.id].pos, pos) < 1e-9) continue;
     cur = moveNode(cur, n.id, pos);
     if (dist(cur.nodes[n.id].pos, pos) > 1e-6) return null;

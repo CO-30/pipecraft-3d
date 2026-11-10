@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { addPolyline, emptyNetwork, moveNode, type Network } from './network';
-import { downstreamEnd, propagateLockedSlopes, setSlopeRatio } from './slope';
+import { actualSlope, downstreamEnd, endZ, propagateLockedSlopes, setSlopeRatio } from './slope';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 
@@ -108,5 +108,27 @@ describe('勾配固定: 合流点', () => {
     expect(out.nodes[d].pos.z).toBeCloseTo(430, 5);
     expect(out.nodes[u2].pos.z).toBe(zu2); // 触っていない枝は動かない
     expect(out.segments[s3].slopeLocked).toBe(false); // 勾配が保てないので固定を外す
+  });
+});
+
+describe('落差桝（node.dropIn）', () => {
+  test('流入側の区間は管底 + dropIn を端の高さとして勾配を計算する。流出側は node.z のまま', () => {
+    // 上流 u(0,0,-500) → 落差桝 m(5000,0,-900, dropIn 300) → 下流 d(10000,0,-1000)
+    const r1 = addPolyline(emptyNetwork(), [v(0, 0, -500), v(5000, 0, -900)], { system: 'sewage', diameter: 100 });
+    const m = r1.nodeIds[1];
+    const r2 = addPolyline(r1.net, [v(5000, 0, -900), v(10000, 0, -1000)], { system: 'sewage', diameter: 100 }, { startNodeId: m });
+    const net: Network = { ...r2.net, nodes: { ...r2.net.nodes, [m]: { ...r2.net.nodes[m], dropIn: 300 } } };
+    const up = net.segments[r1.segmentIds[0]], down = net.segments[r2.segmentIds[0]];
+    expect(endZ(net, up, up.a === m ? 'a' : 'b')).toBe(-600); // 流入側は -900 + 300
+    expect(endZ(net, down, down.a === m ? 'a' : 'b')).toBe(-900);
+    expect(actualSlope(net, up)).toBeCloseTo(100 / 5000, 6); // (-500 − -600) / 5000
+    expect(actualSlope(net, down)).toBeCloseTo(100 / 5000, 6);
+  });
+  test('setSlopeRatio: 下流端が落差桝（器具でない点）なら node.z = 上流 − 勾配×L − dropIn', () => {
+    const r1 = addPolyline(emptyNetwork(), [v(0, 0, -500), v(5000, 0, -900)], { system: 'sewage', diameter: 100 });
+    const m = r1.nodeIds[1];
+    const net: Network = { ...r1.net, nodes: { ...r1.net.nodes, [m]: { ...r1.net.nodes[m], dropIn: 300 } } };
+    const out = setSlopeRatio(net, r1.segmentIds[0], 1 / 50);
+    expect(out.nodes[m].pos.z).toBeCloseTo(-500 - 100 - 300, 1);
   });
 });

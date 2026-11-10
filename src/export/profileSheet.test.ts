@@ -6,7 +6,7 @@ import { placeFixture, portNodes, type FixtureType } from '../model/fixtures';
 import { BUILTIN_PROFILES, STANDARD_PROFILE } from '../model/municipality';
 import { buildProfile, extractRoute } from '../model/profileDrawing';
 import { renderProfileSheet, renderProfileSvg } from './profileSheet';
-import { sheetsToSvg } from './sheet';
+import { sheetsToSvg, sheetToSvg } from './sheet';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 const base = (designGL?: number): Doc => ({ building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {}, site: designGL === undefined ? {} : { designGL } });
@@ -165,5 +165,46 @@ describe('排水縦断図の描画', () => {
     const m = caseA();
     m.profile = { ...m.profile, unverified: ['土被りの最小値'] };
     expect(renderProfileSvg(m, meta)).toContain('要確認: 土被りの最小値');
+  });
+});
+
+describe('落差桝と下流端の向き', () => {
+  function dropCase() {
+    const p = BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!;
+    let d = base(-100);
+    const a = manhole(d, 'manholeSewage', 0, 0, -400); d = a.doc;
+    const m = manhole(d, 'manholeSewage', 5000, 0, -930); d = m.doc;
+    const b = manhole(d, 'publicSewage', 10000, 0, -1000); d = b.doc;
+    const mid = Object.values(d.fixtures).find((f) => f.type === 'manholeSewage' && f.x === 5000)!;
+    d = { ...d, fixtures: { ...d.fixtures, [mid.id]: { ...mid, params: { ...mid.params, drop: 300 } } } };
+    d = { ...d, network: { ...d.network, nodes: { ...d.network.nodes, [m.port]: { ...d.network.nodes[m.port], dropIn: 300 } } } };
+    let r = addPolyline(d.network, [v(0, 0, -400), v(5000, 0, -930)], { system: 'sewage', diameter: 100, material: 'VU' }, { startNodeId: a.port, endNodeId: m.port }); d = { ...d, network: r.net };
+    r = addPolyline(d.network, [v(5000, 0, -930), v(10000, 0, -1000)], { system: 'sewage', diameter: 100, material: 'VU' }, { startNodeId: m.port, endNodeId: b.port }); d = { ...d, network: r.net };
+    const rt = extractRoute(d.network, b.port);
+    return { p, model: buildProfile(d, 'route' in rt ? rt.route : [], p, '排水設備 縦断図') };
+  }
+  test('沖縄市: 落差桝は名前が H530-830、表に 2 列（流入側・流出側）。下流端（公共桝）が左', () => {
+    const { model } = dropCase();
+    const sheet = renderProfileSheet(model, meta);
+    const svg = sheetToSvg(sheet);
+    expect(svg).toContain('H530-830');
+    const texts = sheet.ops.filter((o) => o.t === 'text') as Array<{ s: string; x: number; rotate?: number }>;
+    // 管底高の行に 0.070（流出側）と 0.370（流入側）
+    expect(texts.some((t) => t.s === '0.070')).toBe(true);
+    expect(texts.some((t) => t.s === '0.370')).toBe(true);
+    // 下流端が左: 公共桝の名前の x は NO.1 より小さい
+    const pub = texts.find((t) => t.s.startsWith('新設公共'))!, no1 = texts.find((t) => t.s.startsWith('NO.1'))!;
+    expect(pub.x).toBeLessThan(no1.x);
+    // 流入側の列は上流側（右）
+    const tIn = texts.find((t) => t.s === '0.370')!, tOut = texts.find((t) => t.s === '0.070')!;
+    expect(tIn.x).toBeGreaterThan(tOut.x);
+  });
+  test('standard（下流端が右）では公共桝が右', () => {
+    const { model } = dropCase();
+    model.profile = STANDARD_PROFILE;
+    const sheet = renderProfileSheet(model, meta);
+    const texts = sheet.ops.filter((o) => o.t === 'text') as Array<{ s: string; x: number }>;
+    const pub = texts.find((t) => t.s === '公共汚水マス')!, first = texts.find((t) => t.s === '汚水マス')!;
+    expect(pub.x).toBeGreaterThan(first.x);
   });
 });

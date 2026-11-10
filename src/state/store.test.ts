@@ -709,3 +709,29 @@ describe('勾配固定が保てないとき', () => {
     void a;
   });
 });
+
+describe('落差桝', () => {
+  it('マスに落差を入れると接続口ノードに dropIn が付き、固定勾配の上流端が落差分だけ上がる。0 に戻すと消える', () => {
+    const s = () => useStore.getState();
+    s().newDoc(emptyDoc(), { id: 'p', name: 't', createdAt: 1 });
+    s().updateSite({ designGL: -100 });
+    const place = (type: 'manholeSewage' | 'publicSewage', x: number) => { s().setFixtureType(type); s().placeFixtureAt({ x, y: 0 }); return Object.values(s().doc.fixtures).filter((f) => f.type === type).pop()!.id; };
+    const port = (fid: string) => Object.values(s().doc.network.nodes).find((n) => n.fixtureId === fid)!;
+    const m1 = place('manholeSewage', 0); s().updateFixtureParams(m1, { invertZ: -700 });
+    const m2 = place('publicSewage', 5000); s().updateFixtureParams(m2, { invertZ: -900 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([port(m1).pos, { x: 2500, y: 0, z: -800 }, port(m2).pos], { startNodeId: port(m1).id, endNodeId: port(m2).id });
+    const seg = Object.values(s().doc.network.segments).find((g) => g.a === port(m2).id || g.b === port(m2).id)!;
+    s().setSegmentSlope(seg.id, 50); // 1/50 で固定: 中間点が公共桝の管底 −900 + 50 = −850
+    const mid = s().doc.network.nodes[seg.a === port(m2).id ? seg.b : seg.a];
+    expect(mid.pos.z).toBeCloseTo(-850, 1);
+    s().updateFixtureParams(m2, { drop: 300 });
+    expect(port(m2).dropIn).toBe(300);
+    expect(s().doc.fixtures[m2].params?.drop).toBe(300);
+    // 流入側の管底は −600 → 固定勾配の上流端は −550
+    expect(s().doc.network.nodes[mid.id].pos.z).toBeCloseTo(-550, 1);
+    s().updateFixtureParams(m2, { drop: undefined });
+    expect(port(m2).dropIn).toBeUndefined();
+    expect(s().doc.network.nodes[mid.id].pos.z).toBeCloseTo(-850, 1);
+  });
+});
