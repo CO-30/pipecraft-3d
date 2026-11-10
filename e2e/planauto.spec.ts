@@ -110,7 +110,7 @@ test.describe('図面から自動で3Dにする', () => {
     expect(Object.keys((await full(page)).building.members)).toHaveLength(6);
   });
 
-  test('器具の候補を確認して置き、真下に配管を落とす。取り消しで戻せる', async ({ page }) => {
+  test('器具の候補を確認して置き、真下に配管を落とし、排水を外の桝までつなぐ。取り消しで戻せる', async ({ page }) => {
     await createAuto(page, '器具の候補', [{ name: '1階平面図.pdf', buffer: await plan() }]);
     await expect(page.getByTestId('import-report')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('ir-found')).toContainText('器具の候補 2 個（トイレ・キッチン）');
@@ -142,11 +142,26 @@ test.describe('図面から自動で3Dにする', () => {
     // もう一度押しても増えない
     await page.getByTestId('drop-run').click();
     expect(Object.keys((await full(page)).network.segments)).toHaveLength(2);
+    // 排水を外の桝までつなぐ（案）: 北の外壁の外に汚水マスが置かれ、床下を水平に出て立ち下げる
+    await page.getByTestId('drain-route').click();
+    await expect(page.locator('.toast.notice')).toContainText('排水 1 本を外の汚水マス（新しく 1 個）へつなぎました');
+    doc = await full(page);
+    const mh = (Object.values(doc.fixtures) as { type: string; x: number; y: number }[]).filter((f) => f.type === 'manholeSewage');
+    expect(mh).toHaveLength(1);
+    expect(mh[0].y).toBe(5460 + 60 + 700);
+    expect(Math.abs(mh[0].x - 900)).toBeLessThan(200);
+    expect(Object.keys(doc.network.segments)).toHaveLength(4);
+    await page.getByTestId('drain-route').click(); // もう一度押しても増えない
+    expect(Object.keys((await full(page)).network.segments)).toHaveLength(4);
     await show(page, '3D');
     if (!isMobile()) await page.getByRole('button', { name: '設備だけ' }).click(); // スマホは 👁 の中
     await page.waitForTimeout(600);
     await page.screenshot({ path: evidence('planauto-drop-3d') });
-    // 取り消し: 配管 → 器具 の順に戻る
+    // 取り消し: つなぎ案 → 落とした配管 → 器具 の順に戻る
+    await page.getByTestId('undo').click();
+    doc = await full(page);
+    expect(Object.keys(doc.network.segments)).toHaveLength(2);
+    expect(Object.keys(doc.fixtures)).toHaveLength(1);
     await page.getByTestId('undo').click();
     expect(Object.keys((await full(page)).network.segments)).toHaveLength(0);
     await page.getByTestId('undo').click();

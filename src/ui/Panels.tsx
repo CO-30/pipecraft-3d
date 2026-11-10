@@ -391,6 +391,10 @@ function DropPipes() {
       </div>
       {!ok && <div className="err small">{DROP_MIN}〜{DROP_MAX}mm で入力してください</div>}
       <div className="muted small">すべての階の器具が対象です。配管がつながっている接続口には足しません。</div>
+      <div className="row">
+        <button data-testid="drain-route" title="床下へ落とした排水・汚水を、いちばん出しやすい外壁の外に汚水マスを置いてつなぎます。基礎の立上りの貫通が少ない向きを選びます" onClick={() => useStore.getState().routeDrainsOut()}>🚽 排水を外の桝までつなぐ（案）</button>
+      </div>
+      <div className="muted small">1 階の床下の排水が対象です。給水・給湯はつなぎません。3D で確かめて、合わない所は直してください。</div>
     </div>
   );
 }

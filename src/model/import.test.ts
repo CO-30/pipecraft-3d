@@ -48,6 +48,14 @@ describe('下敷き', () => {
     // 同じ数だけ違う縮尺があるときは決めない
     expect(detectDrawingScale(['S=1/100', 'S=1/200'])).toBeUndefined();
     expect(detectDrawingScale(['S=1/7'])).toBeUndefined();
+    // 表題欄で見出し（SCALE・縮尺）と値が別々の文字になっている図面
+    expect(detectDrawingScale(['DRAWING TITLE', '1階 平面詳細図', 'SCALE', '1/50', 'DATE'])).toBe(50);
+    expect(detectDrawingScale(['縮 尺', '１／７５'])).toBe(75);
+    expect(detectDrawingScale(['基 礎 伏 図 S : 1 / 7 5', 'SCALE', '1/75'])).toBe(75);
+    // 見出しが無い「1/100」だけの文字は勾配かもしれないので縮尺にしない。複数の縮尺が書かれた欄も決めない
+    expect(detectDrawingScale(['VU100', '1/100'])).toBeUndefined();
+    expect(detectDrawingScale(['SCALE', '1/20,100'])).toBeUndefined();
+    expect(detectDrawingScale(['SCALE', '1/50', '1/100'])).toBeUndefined();
   });
   it('紙の縮尺を選び直す: 中心は動かさず 1px の実寸だけ変える。紙の大きさが分からない下敷きは変えない', () => {
     const u = applyPaperScale(U({ paperMmPerPx: 0.175, center: { x: 500, y: 700 } }), 50)!;
