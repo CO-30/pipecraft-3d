@@ -39,6 +39,8 @@ export type NodeFitting = {
   confirmed: boolean;
   /** 確定後に接続が変わって無効になった */
   stale: boolean;
+  /** PB の曲げ配管（継手なし）にできる曲がり: 最小曲げ半径(mm) */
+  bendR?: number;
   /** 口径表記（例: "20"、"20×13"） */
   size: string;
   /** 主となる区間（系統・材質の代表） */
@@ -196,6 +198,7 @@ export function analyzeFittings(net: Network, fixtures?: Record<string, Fixture>
       size: a.size,
       main: a.main,
       reason: stale ? '確定後に接続が変わりました。部品を確認してください' : a.reason,
+      ...(a.pbBend ? { bendR: a.pbBend.r } : {}),
     });
   }
   return out;

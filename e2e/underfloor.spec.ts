@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { createProject, evidence, freshApp, planToScreen, show, strokeMm, tap, touchSession } from './helpers';
+import { createProject, evidence, freshApp, isMobile, planToScreen, show, strokeMm, tap, touchSession } from './helpers';
 
 const tapMm = async (page: Page, x: number, y: number, touch: Awaited<ReturnType<typeof touchSession>>) => tap(page, await planToScreen(page, x, y), touch);
 const doc = (page: Page) => page.evaluate(() => (window as any).__pc.getState().doc);
@@ -76,4 +76,35 @@ test('床下: 給水ヘッダーを床下に置ける（出口が床から −30
   await page.getByRole('button', { name: '床上（標準）' }).click();
   d = await doc(page);
   expect(Object.values(d.network.nodes as Record<string, any>).find((n) => n.fixtureId === f.id && n.portId === 'out1')!.pos.z).toBe(400);
+});
+
+test('床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。きつい所だけエルボ', async ({ page }) => {
+  await freshApp(page);
+  await createProject(page, '曲げ配管');
+  await show(page, isMobile() ? '2D' : '2D+3D');
+  const touch = await touchSession(page);
+  await page.getByTestId('underfloor-chip').click();
+  await page.getByTestId('tool-pipe').click();
+  await page.getByTestId('draw-system').selectOption('water');
+  // 屋内の給水（自動 = PB）を L 字・クランク形に
+  await strokeMm(page, [[1000, 1000], [5000, 1000], [5000, 4500], [6500, 4500]], touch);
+  const d = await doc(page);
+  expect(Object.values(d.network.segments as Record<string, any>).every((s) => s.material === 'PB保温5mm')).toBe(true);
+  await expect(page.locator('path[data-bend]')).toHaveCount(2);
+  await expect(page.locator('circle[data-bend="1"]')).toHaveCount(2);
+  await page.getByTestId('open-estimate').click();
+  await page.getByTestId('tab-parts').click();
+  await expect(page.getByText('90°エルボ')).toHaveCount(0);
+  await page.getByTestId('close-estimate').click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: evidence('uf-03-bends') });
+  if (!isMobile()) {
+    await page.getByRole('button', { name: '配管だけ' }).click();
+    await page.evaluate(() => (window as any).__pc.getState().select(null));
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: evidence('uf-04-bends-3d') });
+    // 3D: 曲がりは管の曲線（TubeGeometry）2 本、角の玉は出さない
+    const tubes = await page.evaluate(() => (window as any).__pc3d.countGeometry('TubeGeometry'));
+    expect(tubes).toBe(2);
+  }
 });
