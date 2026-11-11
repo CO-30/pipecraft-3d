@@ -1,7 +1,8 @@
 /**
  * 排水のつなぎ案: 床下へ落とした排水・汚水の配管（器具から真下へ落とした立て管の、空いている下の端）を、
  * 基礎の中を通していちばん出しやすい外壁の外へ出し、そこに汚水マスを置いてつなぐ。純粋関数。
- *  - 出口は「壁へ直角に出た先が建物の外（マスの周りと、その先に壁も基礎も無い）」の中から、距離と基礎の貫通の少なさで選ぶ
+ *  - 出口は「壁へ直角に出た先が建物の外（マスの周りと、その先に壁も基礎も無い）」の中から選ぶ
+ *  - 床下は縦横に配管し、内部の立上りは人通口などの切れ目を通って避ける（floorRoute）。外周の立上りは出口で直角に 1 回だけ貫通する
  *  - 近い出口どうしは 1 つのマスにまとめる（先につないだ配管に合流させる）。外壁の外に置いてあるマスが近ければそれを使う
  *  - 配管は 床下を水平に → マスの真上 → 立ち下げてマスへ。勾配と桝どうしの接続は使う人が決める（案なので）
  */
@@ -11,6 +12,7 @@ import type { Doc } from './doc';
 import { isManhole, moveFixture, placeFixture, portNodes } from './fixtures';
 import { membersOf } from './members';
 import { addPolyline, connectNodeToSegment, segmentsAt, splitSegment, type PipeNode, type Segment, type Vec3 } from './network';
+import { findFloorRoute, ROUTE_STEP, type RouteGoal, type RouteResult } from './floorRoute';
 
 /** 外壁の芯からマスの中心までの距離の初期値(mm) */
 export const MANHOLE_OFFSET = 700;
@@ -22,6 +24,18 @@ const CLEAR = 200;
 const INVERT_BELOW = 300;
 /** 基礎の立上りを 1 か所余分に貫通することを、配管何 mm 分の遠回りと同じとみるか */
 const SLEEVE_COST = 2500;
+/** 調べる出口の数（直線で近い順） */
+const MAX_EXITS = 4;
+/** 外周の壁・立上りの芯から、配管を通す所までの離れ（壁厚の半分に足す）(mm) */
+const WALL_GAP = 80;
+/** 外壁を貫通する手前の点（壁厚の半分に足す）(mm) */
+const INSET = 150;
+/** 内部の立上りと配管の離れ（立上りの幅の半分に足す）(mm) */
+const PIPE_GAP = 60;
+/** マスを 1 つ増やすことを、配管何 mm 分の遠回りと同じとみるか（近くのマスへ合流する方を選ぶ） */
+const MANHOLE_COST = 3000;
+/** 先の排水管から離す距離(mm) */
+const BUSY_GAP = 40;
 const FAR = 100_000;
 
 export type DrainRouteResult = { doc: Doc; pipes: number; manholes: number; sleeves: number; skipped: number };
@@ -87,15 +101,16 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET): DrainRouteRes
     return blockers.every((k) => segSeg(start, beyond, k.a, k.b) >= k.t / 2 + CLEAR);
   };
 
-  /** 出口: wall の外の m へ、向き n（壁に直角・外向き）。foot は壁芯の上の点 */
+  /** 出口: wall の外の m へ、向き n（壁に直角・外向き）。foot は壁芯の上の点。cost は直線で出たときの目安（近い順） */
   type Exit = { wall: Line; foot: Vec2; m: Vec2; n: Vec2; cost: number };
-  const exitFor = (p: Vec3): Exit | null => {
-    if (!inside(p)) return null;
-    let best: Exit | null = null;
+  const exitsFor = (p: Vec3): Exit[] => {
+    if (!inside(p)) return [];
+    const out: Exit[] = [];
     for (const w of walls) {
       const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
       if (L < 1) continue;
       const u = { x: (w.b.x - w.a.x) / L, y: (w.b.y - w.a.y) / L };
+      if (Math.abs(u.x) > 1e-6 && Math.abs(u.y) > 1e-6) continue; // 斜めの壁からは出さない（床下は縦横に配管する）
       const s = (p.x - w.a.x) * u.x + (p.y - w.a.y) * u.y;
       if (s < 0 || s > L) continue; // 壁へ直角に出られる位置だけ
       const foot = { x: w.a.x + u.x * s, y: w.a.y + u.y * s };
@@ -106,11 +121,21 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET): DrainRouteRes
       if (!clearAt(m, n)) continue;
       // 途中で別の外壁を横切る道（凹んだ所をまたいで外を通る）は採らない
       if (walls.some((k) => k !== w && k.exterior && crosses(p, foot, k.a, k.b))) continue;
-      const cost = d + SLEEVE_COST * Math.max(0, sleevesOn(p, m, p.z) - 1);
-      if (!best || cost < best.cost) best = { wall: w, foot, m, n, cost };
+      out.push({ wall: w, foot, m, n, cost: d + SLEEVE_COST * Math.max(0, sleevesOn(p, m, p.z) - 1) });
     }
-    return best;
+    return out.sort((a, b) => a.cost - b.cost);
   };
+
+  // --- 床下のルート探し（内部の立上りは人通口などの切れ目を通る） ---
+  const extWalls = walls.filter((w) => w.exterior);
+  const nearExt = (f: Line) => extWalls.some((w) => pointSeg({ x: (f.a.x + f.b.x) / 2, y: (f.a.y + f.b.y) / 2 }, w.a, w.b) < Math.max(w.t, f.t) / 2 + 250);
+  const extFoot = footLines.filter(nearExt), inFoot = footLines.filter((f) => !nearExt(f));
+  const xs = walls.flatMap((w) => [w.a.x, w.b.x]), ys = walls.flatMap((w) => [w.a.y, w.b.y]);
+  const bounds = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+  /** 外周の壁・立上りから離れた建物の中 */
+  const roomy = (q: Vec2) => inside(q) && extWalls.every((w) => pointSeg(q, w.a, w.b) >= w.t / 2 + WALL_GAP) && extFoot.every((f) => pointSeg(q, f.a, f.b) >= f.t / 2 + WALL_GAP);
+  const footAt = (z: number) => (q: Vec2) => inFoot.some((f) => z > f.z0 && z < f.z1 && pointSeg(q, f.a, f.b) < f.t / 2 + PIPE_GAP);
+  const dirOf = (n: Vec2): 0 | 1 | 2 | 3 => (Math.abs(n.x) > 0.5 ? (n.x > 0 ? 0 : 2) : n.y > 0 ? 1 : 3);
 
   let cur: Doc = doc;
   let pipes = 0, manholes = 0, sleeves = 0, skipped = 0;
@@ -122,89 +147,147 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET): DrainRouteRes
     .map((h) => ({ h, out: (h.x - e.foot.x) * e.n.x + (h.y - e.foot.y) * e.n.y, d: Math.hypot(h.x - e.m.x, h.y - e.m.y) }))
     .filter((c) => c.d <= MERGE_MM && c.out >= e.wall.t / 2 + CLEAR && clearAt({ x: c.h.x, y: c.h.y }, e.n))
     .sort((p, q) => p.d - q.d)[0]?.h;
+  /** マスへつながっている床下の水平な配管（高さ z）。合流先の候補 */
+  const trunkOf = (net: Doc['network'], holeId: string, z: number): { segs: Segment[]; otherDepth: boolean } => {
+    const port = portNodes(net, holeId)[0];
+    if (!port) return { segs: [], otherDepth: false };
+    const seen = new Set<string>([port.id]), stack = [port.id], segs: Segment[] = [];
+    let otherDepth = false;
+    while (stack.length) {
+      const id = stack.pop()!;
+      for (const sg of segmentsAt(net, id)) {
+        if (sg.system !== 'drain' && sg.system !== 'sewage') continue;
+        const a = net.nodes[sg.a].pos, b = net.nodes[sg.b].pos;
+        if (Math.abs(a.z - b.z) < 1) { if (Math.abs(a.z - z) < 1) segs.push(sg); else otherDepth = true; }
+        const o = sg.a === id ? sg.b : sg.a;
+        if (!seen.has(o) && !net.nodes[o].fixtureId) { seen.add(o); stack.push(o); }
+      }
+    }
+    return { segs: [...new Map(segs.map((x) => [x.id, x])).values()], otherDepth: otherDepth && !segs.length };
+  };
+
+  type Plan = { exit: Exit; hole?: Hole; hp: Vec2; eIn: Vec2; route: RouteResult; trunk: Segment[]; kind: 'eIn' | 'node' | 'seg'; seg?: Segment };
+  type GoalInfo = Omit<Plan, 'route'>;
+  /** 出口の候補すべての終点をまとめて 1 回で探す（いちばん安い出口・合流先を選ぶ） */
+  const planFor = (p: Vec3, net: Doc['network']): Plan | null => {
+    const goals: RouteGoal[] = [], info: GoalInfo[] = [];
+    const add = (g: Omit<RouteGoal, 'tag'>, gi: GoalInfo) => { goals.push({ ...g, tag: info.length }); info.push(gi); };
+    for (const exit of exitsFor(p).slice(0, MAX_EXITS)) {
+      const hole = holeFor(exit);
+      const hp = hole ? { x: hole.x, y: hole.y } : { x: Math.round(exit.m.x), y: Math.round(exit.m.y) };
+      const u = { x: -exit.n.y, y: exit.n.x };
+      const along = (hp.x - exit.foot.x) * u.x + (hp.y - exit.foot.y) * u.y;
+      const inset = exit.wall.t / 2 + INSET;
+      const eIn = { x: exit.foot.x + u.x * along - exit.n.x * inset, y: exit.foot.y + u.y * along - exit.n.y * inset };
+      const tr = hole ? trunkOf(net, hole.id, p.z) : { segs: [], otherDepth: false };
+      if (tr.otherDepth) continue; // 落とした深さが違う配管どうしは自動ではまとめない
+      const base = { exit, hole, hp, eIn, trunk: tr.segs };
+      const side = (a: Vec3, b: Vec3) => (Math.abs(a.y - b.y) < 1 ? [1, 3] as const : Math.abs(a.x - b.x) < 1 ? [0, 2] as const : [] as const);
+      // 先の配管があれば、その途中へ横から、または点へ（重ならない向きで）合流
+      let joins = 0;
+      for (const sg of tr.segs) {
+        const a = net.nodes[sg.a].pos, b = net.nodes[sg.b].pos;
+        for (const d of side(a, b)) {
+          if (roomy(a) || roomy(b)) { add({ a, b, dir: d }, { ...base, kind: 'seg', seg: sg }); joins++; } // 外へ出たあとの区間には合流しない
+          // 点への合流は、外周の壁ぎわ（建物の中）の点でもよい
+          for (const [id, v] of [[sg.a, a], [sg.b, b]] as const) if (inside(v) && !net.nodes[id].fixtureId) { add({ a: v, b: v, dir: d }, { ...base, kind: 'node' }); joins++; }
+        }
+        // 先の配管の空いている端へは、まっすぐ続けて着いてもよい（重ならない）
+        for (const [id, v, w] of [[sg.a, a, b], [sg.b, b, a]] as const) {
+          if (!inside(v) || net.nodes[id].fixtureId || segmentsAt(net, id).length !== 1) continue;
+          const L = Math.hypot(w.x - v.x, w.y - v.y);
+          if (L < 1) continue;
+          add({ a: v, b: v, dir: dirOf({ x: (w.x - v.x) / L, y: (w.y - v.y) / L }) }, { ...base, kind: 'node' }); joins++;
+        }
+      }
+      // 合流できる所が無ければ外周の内側の点へ外向きに（その先は外壁を直角に貫通してマスへ。先の配管があればマスの真上で合流）
+      if (!joins) add({ a: eIn, b: eIn, dir: dirOf(exit.n), extra: Math.hypot(hp.x - eIn.x, hp.y - eIn.y) + (hole ? 0 : MANHOLE_COST) }, { ...base, kind: 'eIn' });
+    }
+    if (!goals.length) return null;
+    // 先にある同じ高さの排水管の上は通らない・横切らない（重ねない）
+    const busy = Object.values(net.segments).filter((sg) => (sg.system === 'drain' || sg.system === 'sewage') && Math.abs(net.nodes[sg.a].pos.z - p.z) < 1 && Math.abs(net.nodes[sg.b].pos.z - p.z) < 1);
+    const nearStart = (q: Vec2) => Math.hypot(q.x - p.x, q.y - p.y) < 2 * ROUTE_STEP;
+    const edgeOk = (q: Vec2, r: Vec2) => nearStart(q) || busy.every((sg) => {
+      const a = net.nodes[sg.a].pos, b = net.nodes[sg.b].pos;
+      // 合流先の配管には着いてよい（終点の手前まで離れていればよい）
+      return segSeg(q, r, a, b) >= BUSY_GAP || pointSeg(r, a, b) < 1;
+    });
+    const route = findFloorRoute({ start: p, allowed: (q) => nearStart(q) || roomy(q), footing: footAt(p.z), edgeOk, goals, bounds });
+    if (!route) return null;
+    return { ...info[route.goal.tag], route };
+  };
 
   // 壁に近い端から順に（まとめるマスの位置が、いちばん素直に出せる器具で決まるように）
-  const plan = ends.map((e) => ({ ...e, exit: exitFor(e.node.pos) })).sort((p, q) => (p.exit?.cost ?? Infinity) - (q.exit?.cost ?? Infinity));
-  for (const e of plan) {
-    const exit = e.exit;
-    if (!exit) { skipped++; continue; }
-    const p = e.node.pos, n = exit.n;
+  const order = ends.map((e) => ({ ...e, near: exitsFor(e.node.pos)[0]?.cost ?? Infinity })).sort((p, q) => p.near - q.near);
+  for (const e of order) {
+    const p = e.node.pos;
+    const plan = planFor(p, cur.network);
+    if (!plan) { skipped++; continue; }
     const attrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
-    let hole = holeFor(exit);
+    let hole = plan.hole;
     // マスを置いても配管をつなげなければ、マスごと取りやめる（next を採用しない）
     let next = cur, placed = false;
     if (!hole) {
-      const r = placeFixture(cur, base.id, 'manholeSewage', { x: Math.round(exit.m.x), y: Math.round(exit.m.y) });
+      const r = placeFixture(cur, base.id, 'manholeSewage', plan.hp);
       if (!r.fixtureId) { skipped++; continue; }
       next = r.doc;
-      hole = { id: r.fixtureId, x: Math.round(exit.m.x), y: Math.round(exit.m.y) };
+      hole = { id: r.fixtureId, ...plan.hp };
       placed = true;
       // 標準の管底（GL−600）が床下の配管より浅ければ、配管より下げる
       const z0 = portNodes(next.network, hole.id)[0]?.pos.z;
-      if (z0 !== undefined && p.z - z0 < 100) next = moveFixture(next, hole.id, { x: hole.x, y: hole.y }, undefined, { invertZ: Math.round(p.z - INVERT_BELOW) });
+      if (z0 !== undefined && p.z - z0 < 100) next = moveFixture(next, hole.id, plan.hp, undefined, { invertZ: Math.round(p.z - INVERT_BELOW) });
     }
     const port = portNodes(next.network, hole.id)[0];
     if (!port || p.z - port.pos.z < 10) { skipped++; continue; } // 置いてあるマスの管底が、床下の配管より高い
-    const top = { x: hole.x, y: hole.y, z: p.z };
-    // 壁に平行にマスの線（マスを通って壁に直角な線）まで寄った点
-    const along = (hole.x - p.x) * -n.y + (hole.y - p.y) * n.x;
-    const q: Vec3 = { x: p.x + -n.y * along, y: p.y + n.x * along, z: p.z };
-    const shifted = Math.abs(along) > 1;
-    const flat = shifted ? [p, q] : [p];
-    // そのマスへ先につないだ配管があれば合流する（同じ所に配管を重ねない）
-    let net = next.network, endId = port.id, pts: Vec3[] = [...flat, top, port.pos];
-    const trunk = segmentsAt(net, port.id).map((s) => net.nodes[s.a === port.id ? s.b : s.a]).find((t) => Math.hypot(t.pos.x - top.x, t.pos.y - top.y) < 1 && t.pos.z > port.pos.z);
+    const top: Vec3 = { x: hole.x, y: hole.y, z: p.z };
+    const at = (q: Vec2): Vec3 => ({ x: Math.round(q.x), y: Math.round(q.y), z: p.z });
+    let net = next.network;
+    let pts: Vec3[] = plan.route.points.map(at);
+    let endId: string | undefined = port.id;
     let joined = false;
-    if (trunk) {
-      if (Math.abs(trunk.pos.z - p.z) > 1) { skipped++; continue; } // 落とした深さが違う配管どうしは自動ではまとめない
-      const depth = (v: Vec3) => (v.x - top.x) * n.x + (v.y - top.y) * n.y; // マスの真上から外向きを正（建物の奥ほど小さい）
-      const flatAt = (v: Vec3) => Math.abs(v.z - p.z) < 1;
-      // 先の配管を、マスの真上から建物の奥へたどる（マスの線の上の水平な区間だけ）
-      const line: PipeNode[] = [trunk];
-      for (;;) {
-        const at = line[line.length - 1];
-        const nx = segmentsAt(net, at.id).map((sg) => net.nodes[sg.a === at.id ? sg.b : sg.a])
-          .find((t) => flatAt(t.pos) && Math.abs((t.pos.x - top.x) * -n.y + (t.pos.y - top.y) * n.x) < 1 && depth(t.pos) < depth(at.pos) - 1);
-        if (!nx) break;
-        line.push(nx);
-      }
-      const hit = line.find((t) => Math.hypot(t.pos.x - q.x, t.pos.y - q.y) < 1);
-      const k = line.findIndex((t) => depth(t.pos) < depth(q));
-      if (hit) {
-        // q が先の配管の点の上: その点へ
-        if (!shifted) { skipped++; continue; }
-        endId = hit.id; pts = [p, hit.pos];
-      } else if (k > 0) {
-        // q が先の配管の途中: その区間へ合流（チーズ）
-        const sg = segmentsAt(net, line[k].id).find((x) => x.a === line[k - 1].id || x.b === line[k - 1].id)!;
-        if (shifted) {
-          const sp = splitSegment(net, sg.id, q);
-          net = sp.net; endId = sp.nodeId; pts = [p, q];
-        } else {
-          // 落とした端が先の配管の真上にある: 端をその区間につなぐ
-          const merged = connectNodeToSegment(net, e.node.id, sg.id);
-          if (merged === net) { skipped++; continue; }
-          net = merged; joined = true;
-        }
+    const nodeAt = (q: Vec3) => Object.values(net.nodes).find((x) => !x.fixtureId && Math.hypot(x.pos.x - q.x, x.pos.y - q.y) < 1 && Math.abs(x.pos.z - q.z) < 1);
+    if (plan.kind === 'node') {
+      // 先の配管の点へ合流
+      const hitNode = nodeAt(pts[pts.length - 1]);
+      if (!hitNode) { skipped++; continue; }
+      endId = hitNode.id;
+    } else if (plan.kind === 'eIn') {
+      // 外周の内側の点まで来たら、外壁を直角に貫通してマスの真上 → 立ち下げ。先の配管があればそこへ合流
+      const eNode = nodeAt(pts[pts.length - 1]);
+      const topNode = nodeAt(top);
+      if (eNode) endId = eNode.id;
+      else if (topNode) { endId = topNode.id; pts = [...pts, top]; }
+      else pts = [...pts, top, port.pos];
+    } else {
+      const sg = plan.seg!;
+      if (pts.length === 1) {
+        // 落とした端が先の配管の真上: 端をその区間につなぐ
+        const merged = connectNodeToSegment(net, e.node.id, sg.id);
+        if (merged === net) { skipped++; continue; }
+        net = merged; joined = true;
       } else {
-        // q が先の配管より奥: いちばん奥の端へつなぐ
-        const inner = line[line.length - 1];
-        endId = inner.id; pts = [...flat, inner.pos];
+        const sp = splitSegment(net, sg.id, pts[pts.length - 1]);
+        net = sp.net; endId = sp.nodeId;
       }
     }
-    let drawn: Vec3[] = [];
+    // 一直線に並んだ途中の点は除く（継ぎ目の無い 1 本の配管にする）
+    pts = pts.filter((q, i) => {
+      if (i === 0 || i === pts.length - 1) return true;
+      const a = pts[i - 1], b = pts[i + 1];
+      const cx = (q.y - a.y) * (b.z - a.z) - (q.z - a.z) * (b.y - a.y), cy = (q.z - a.z) * (b.x - a.x) - (q.x - a.x) * (b.z - a.z), cz = (q.x - a.x) * (b.y - a.y) - (q.y - a.y) * (b.x - a.x);
+      return Math.hypot(cx, cy, cz) > 1e-3 || (q.x - a.x) * (b.x - q.x) + (q.y - a.y) * (b.y - q.y) + (q.z - a.z) * (b.z - q.z) < 0;
+    });
     if (joined) cur = { ...next, network: net };
     else {
       const r = addPolyline(net, pts, attrs, { startNodeId: e.node.id, endNodeId: endId });
       if (!r.segmentIds.length) { skipped++; continue; }
       cur = { ...next, network: r.net };
-      // 新しく引いた水平の区間（マスへ立ち下げる縦の区間は除く）
-      drawn = trunk ? pts : pts.slice(0, -1);
     }
     if (placed) { holes.push(hole); manholes++; }
     pipes++;
-    // 貫通の数: この配管で新しく引いた水平の区間が横切る立上り（合流した先の区間は、先の配管で数えている）
-    for (let i = 1; i < drawn.length; i++) sleeves += sleevesOn(drawn[i - 1], drawn[i], p.z);
+    // 貫通の数: この配管で新しく引いた水平の区間が横切る立上り（外周の立上りを含む）
+    const flat = pts.filter((q) => Math.abs(q.z - p.z) < 1);
+    for (let i = 1; i < flat.length; i++) sleeves += sleevesOn(flat[i - 1], flat[i], p.z);
   }
   return pipes ? { doc: cur, pipes, manholes, sleeves, skipped } : { ...none, skipped };
 }

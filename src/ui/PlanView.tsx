@@ -636,7 +636,7 @@ export function PlanView() {
           );
         }
         return (
-          <g key={f.id} data-fixture={f.id} data-type={f.type} opacity={dim}>
+          <g key={f.id} data-fixture={f.id} data-type={f.type} data-under={(f.params?.mountZ ?? 0) < 0 ? '1' : undefined} opacity={(f.params?.mountZ ?? 0) < 0 ? 1 : dim} strokeDasharray={(f.params?.mountZ ?? 0) < 0 && !underFloor ? '5 3' : undefined}>
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
             <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize={11} fill="#0e7490" pointerEvents="none">{FIXTURE_CATALOG[f.type].label}</text>
           </g>

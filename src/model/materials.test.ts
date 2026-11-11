@@ -76,10 +76,29 @@ describe('管種の自動（屋内 PB・屋外 HIVP/HTVP）', () => {
 });
 
 describe('プッシュマスターの継手', () => {
+  it('曲げに要る直線（接線長 = 曲げ半径 × tan(角度/2)）が両側に取れなければエルボ。短い区間の両端の曲げは足し合わせる', () => {
+    // 13J（R170）: 90° は 170mm ずつ。間の区間 300mm に曲げが 2 つ（170 + 170 = 340 > 300）→ 片方は曲げ、片方はエルボ
+    const z = draw([[0, 0, 0], [1000, 0, 0], [1000, 300, 0], [2000, 300, 0]], { system: 'water', diameter: 13, material: 'PB' });
+    const fz = analyzeFittings(z.net);
+    expect([fz.find((x) => x.nodeId === z.nodeIds[1])?.auto, fz.find((x) => x.nodeId === z.nodeIds[2])?.auto].sort()).toEqual(['elbow90', 'none']);
+    // 間が 150mm なら 1 つ分（170）も取れないので両方エルボ
+    const zz = draw([[0, 0, 0], [1000, 0, 0], [1000, 150, 0], [2000, 150, 0]], { system: 'water', diameter: 13, material: 'PB' });
+    const fzz = analyzeFittings(zz.net);
+    expect([fzz.find((x) => x.nodeId === zz.nodeIds[1])?.auto, fzz.find((x) => x.nodeId === zz.nodeIds[2])?.auto]).toEqual(['elbow90', 'elbow90']);
+    // 間が 400mm なら両方曲げられる
+    const w = draw([[0, 0, 0], [1000, 0, 0], [1000, 400, 0], [2000, 400, 0]], { system: 'water', diameter: 13, material: 'PB' });
+    const fw = analyzeFittings(w.net);
+    expect([fw.find((x) => x.nodeId === w.nodeIds[1])?.auto, fw.find((x) => x.nodeId === w.nodeIds[2])?.auto]).toEqual(['none', 'none']);
+    // 45° は 170 × tan(22.5°) ≒ 70mm で足りる
+    const d = draw([[0, 0, 0], [100, 0, 0], [180, 80, 0]], { system: 'water', diameter: 13, material: 'PB' });
+    expect(analyzeFittings(d.net).find((x) => x.nodeId === d.nodeIds[1])?.auto).toBe('none');
+  });
+
   it('PB の曲がりは曲げ配管（継手なし）、異径の曲がり・分岐は継手', () => {
     const r = draw([[0, 0, 0], [1000, 0, 0], [1000, 1000, 0]], { system: 'water', diameter: 13, material: 'PB保温5mm' });
     const f = analyzeFittings(r.net).find((x) => x.nodeId === r.nodeIds[1])!;
-    expect(f).toMatchObject({ auto: 'none', needsConfirm: false, reason: PB_BEND_REASON });
+    expect(f).toMatchObject({ auto: 'none', needsConfirm: false });
+    expect(f.reason).toContain(PB_BEND_REASON);
     // 角に 3 本目をつなぐとチーズ（PB でも分岐は継手）
     const tee = addPolyline(r.net, [{ x: 1000, y: 0, z: 0 }, { x: 1800, y: 0, z: 0 }], { system: 'water', diameter: 13, material: 'PB' }, { startNodeId: r.nodeIds[1] });
     expect(analyzeFittings(tee.net).find((x) => x.nodeId === r.nodeIds[1])).toMatchObject({ auto: 'tee' });
@@ -87,9 +106,11 @@ describe('プッシュマスターの継手', () => {
     const red = draw([[0, 0, 0], [1000, 0, 0]], { system: 'water', diameter: 20, material: 'PB' });
     const red2 = addPolyline(red.net, [{ x: 1000, y: 0, z: 0 }, { x: 1000, y: 900, z: 0 }], { system: 'water', diameter: 13, material: 'PB' }, { startNodeId: red.nodeIds[1] });
     expect(analyzeFittings(red2.net).find((x) => x.nodeId === red.nodeIds[1])).toMatchObject({ auto: 'elbow90', size: '20×13' });
-    // 25J は最小曲げ半径 680mm のためエルボ
+    // 25J は最小曲げ半径 680mm: 直線が 1000mm あれば曲げ、600mm しかなければエルボ
     const big = draw([[0, 0, 0], [1000, 0, 0], [1000, 1000, 0]], { system: 'water', diameter: 25, material: 'PB' });
-    expect(analyzeFittings(big.net).find((x) => x.nodeId === big.nodeIds[1])).toMatchObject({ auto: 'elbow90' });
+    expect(analyzeFittings(big.net).find((x) => x.nodeId === big.nodeIds[1])).toMatchObject({ auto: 'none' });
+    const tight = draw([[0, 0, 0], [600, 0, 0], [600, 1000, 0]], { system: 'water', diameter: 25, material: 'PB' });
+    expect(analyzeFittings(tight.net).find((x) => x.nodeId === tight.nodeIds[1])).toMatchObject({ auto: 'elbow90' });
   });
 
   it('PB の継手・管の参考価格（2024年10月改定カタログ）', () => {

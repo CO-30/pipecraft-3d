@@ -12,7 +12,7 @@ import {
 import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { routeDrainsOut as routeDrains } from '../model/drainRoute';
-import { deleteFixture, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
+import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import { assignAutoMaterials } from '../model/materials';
 import * as B from '../model/building';
@@ -38,6 +38,8 @@ import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineL
 
 /** 床下に描く高さの初期値（床から mm） */
 export const UNDER_FLOOR_HEIGHT = -300;
+/** ヘッダーの出口の、設置面からの高さ(mm)（カタログの接続口 dz） */
+const HEADER_PORT_DZ = 100;
 
 export type { Doc };
 export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
@@ -389,6 +391,13 @@ export const useStore = create<State>((set, get) => {
         attrs = na.attrs;
       }
     }
+    // 器具の接続口（または接続口から下ろした立て管の端）から描くときは、接続口の口径のまま続ける（径違いを作らない）
+    const portDia = opts?.startNodeId ? fixturePipeDiameter(doc, opts.startNodeId) : undefined;
+    // 給水・給湯だけ（排水は下流で太くするのが普通なので、選んだ口径のまま）
+    if (portDia && (attrs.system === 'water' || attrs.system === 'hotWater') && canJoin(attrs.system, nodeAttrs(doc.network, doc.fixtures, opts!.startNodeId!).systems[0] ?? attrs.system) && portDia !== attrs.diameter) {
+      notice = [notice, `接続口に合わせて φ${portDia} で描きました`].filter(Boolean).join('。');
+      attrs = { ...attrs, diameter: portDia };
+    }
     const end = checkEnd(attrs.system, opts?.endNodeId, opts?.endSegId);
     const r = addPolyline(doc.network, points, { ...attrs, ...extra } as SegmentAttrs, { startNodeId: opts?.startNodeId, endNodeId: end.endNodeId });
     const last = r.segmentIds.at(-1);
@@ -709,8 +718,11 @@ export const useStore = create<State>((set, get) => {
     },
     placeFixtureAt: (p) => {
       const { doc, activeFloorId, fixtureType } = get();
-      const r = placeFixture(doc, activeFloorId, fixtureType, p);
-      if (r.fixtureId) commit(r.doc, { selection: { kind: 'fixture', id: r.fixtureId } });
+      // 床下ではヘッダーを床下に置く（出口が描く高さに来るように）。他の器具は床の上に置く
+      const under = isUnderFloor(get());
+      const mount = under && isHeader(fixtureType) ? Math.max(-1000, get().drawHeight - HEADER_PORT_DZ) : undefined;
+      const r = placeFixture(doc, activeFloorId, fixtureType, p, 0, mount !== undefined ? { mountZ: mount } : undefined);
+      if (r.fixtureId) commit(r.doc, { selection: { kind: 'fixture', id: r.fixtureId }, ...(under && mount === undefined ? { notice: `${FIXTURE_CATALOG[fixtureType].label}は床の上に置きました（床下に置けるのはヘッダーです）` } : {}) });
     },
     rotateFixture: (id) => {
       const f = get().doc.fixtures[id];
@@ -740,7 +752,7 @@ export const useStore = create<State>((set, get) => {
       if (!f) return;
       if (patch.diameter !== undefined && !(patch.diameter > 0)) return;
       const next = moveFixture(doc, id, f, undefined, patch);
-      if (next === doc) { set({ notice: '管底高を変えると配管がつながらなくなります' }); return; }
+      if (next === doc) { set({ notice: patch.mountZ !== undefined || 'mountZ' in patch ? 'この高さにすると配管の長さが 0 になるため変えられません' : '管底高を変えると配管がつながらなくなります' }); return; }
       // 管底が動いたら、固定勾配の区間の上流端も追従させる
       let network = next.network;
       // 管底（または落差）が変わったら、固定勾配の区間の上流端も追従させる
@@ -1262,6 +1274,18 @@ const midpoint = (net: Network, a: string, b: string): Vec3 => {
   const p = net.nodes[a].pos, q = net.nodes[b].pos;
   return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 };
 };
+
+/** 器具の接続口、または接続口から真下へ下ろしただけの立て管の端なら、その口径 */
+function fixturePipeDiameter(doc: Doc, nodeId: string): number | undefined {
+  const net = doc.network, n = net.nodes[nodeId];
+  if (!n) return undefined;
+  const segs = Object.values(net.segments).filter((sg) => sg.a === nodeId || sg.b === nodeId);
+  if (n.fixtureId) return segs.length ? undefined : nodeAttrs(net, doc.fixtures, nodeId).attrs?.diameter;
+  if (segs.length !== 1) return undefined;
+  const o = net.nodes[segs[0].a === nodeId ? segs[0].b : segs[0].a];
+  const dropped = Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 && o.pos.z > n.pos.z;
+  return o.fixtureId && dropped ? segs[0].diameter : undefined;
+}
 
 /** 床下を表示中か（床下の階 = いちばん下の階を表示しているときだけ） */
 export const isUnderFloor = (st: { underFloor: boolean; activeFloorId: string; doc: Doc }) =>

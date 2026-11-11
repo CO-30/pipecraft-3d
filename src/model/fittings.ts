@@ -5,7 +5,7 @@
  */
 import { FIXTURE_CATALOG, type Fixture } from './fixtures';
 import { isPB, materialFamily } from './materials';
-import { adjacency, type Network, type PipeNode, type Segment, type SystemType, type Vec3 } from './network';
+import { adjacency, segmentLength, type Network, type PipeNode, type Segment, type SystemType, type Vec3 } from './network';
 
 export type FittingType =
   | 'elbow90' | 'elbow45' | 'elbow' | 'socket' | 'reducer' | 'tee' | 'wye' | 'cross'
@@ -49,8 +49,9 @@ export type NodeFitting = {
 const ANGLE_TOL = 10;
 /** PB の曲がりは曲げ配管（最小曲げ半径: 13J 170mm・16J 220mm・20J 270mm・25J 680mm） */
 export const PB_BEND_REASON = 'ポリブテン管は曲げて配管（継手なし）';
-/** 曲げて配管する口径の上限（25J は最小曲げ半径 680mm のためエルボ） */
-const PB_BEND_MAX = 20;
+/** PB の最小曲げ半径(mm)。プッシュマスター カタログ（13〜20J は外径の 10 倍、25J は 680mm） */
+export const PB_MIN_BEND_R: Record<number, number> = { 10: 130, 13: 170, 16: 220, 20: 270, 25: 680 };
+const pbBendR = (d: number) => PB_MIN_BEND_R[d] ?? d * 13;
 
 const sub = (p: Vec3, q: Vec3): Vec3 => ({ x: p.x - q.x, y: p.y - q.y, z: p.z - q.z });
 const unit = (v: Vec3): Vec3 => {
@@ -76,7 +77,11 @@ function sizeOf(main: Segment[], branch: Segment[] = []): string {
 
 const largest = (segs: Segment[]) => segs.reduce((a, b) => (b.diameter > a.diameter ? b : a));
 
-type Auto = { auto: FittingChoice; needsConfirm: boolean; size: string; main: Segment; reason?: string };
+type Auto = {
+  auto: FittingChoice; needsConfirm: boolean; size: string; main: Segment; reason?: string;
+  /** PB の曲げ配管の候補: 曲げに要る直線の長さ（接線長 = R × tan(曲がり角/2)）と、曲げられないときの部品 */
+  pbBend?: { tangent: number; r: number; fallback: Auto };
+};
 
 function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<string, Fixture>): Auto | null {
   if (segs.length === 0) return null;
@@ -116,11 +121,15 @@ function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<str
     }
     if (mixed) return { ...base, auto: 'other', needsConfirm: true, reason: '種類または材質の違う配管の接続です（異種管継手など）' };
     if (bend < 1) return { ...base, auto: diaDiff ? 'reducer' : 'none', needsConfirm: false };
-    // PB は曲げて配管する（継手なし）。曲げられない所はエルボに確定し直せる
-    if (!diaDiff && segs[0].diameter <= PB_BEND_MAX && isPB(segs[0].material) && isPB(segs[1].material)) return { ...base, auto: 'none', needsConfirm: false, reason: PB_BEND_REASON };
-    if (near(bend, 90)) return { ...base, auto: 'elbow90', needsConfirm: false };
-    if (near(bend, 45)) return { ...base, auto: 'elbow45', needsConfirm: false };
-    return { ...base, auto: 'elbow', needsConfirm: true, reason: `曲がり角 ${Math.round(bend)}° の部品を確定してください` };
+    const elbow: Auto = near(bend, 90) ? { ...base, auto: 'elbow90', needsConfirm: false }
+      : near(bend, 45) ? { ...base, auto: 'elbow45', needsConfirm: false }
+      : { ...base, auto: 'elbow', needsConfirm: true, reason: `曲がり角 ${Math.round(bend)}° の部品を確定してください` };
+    // PB は曲げて配管する（継手なし）。両側の直線が曲げ半径に足りるかは analyzeFittings で確かめる
+    if (!diaDiff && isPB(segs[0].material) && isPB(segs[1].material) && bend < 170) {
+      const r = pbBendR(segs[0].diameter);
+      return { ...base, auto: 'none', needsConfirm: false, reason: `${PB_BEND_REASON}・曲げ半径 ${r}mm`, pbBend: { tangent: r * Math.tan((bend * Math.PI) / 360), r, fallback: elbow } };
+    }
+    return elbow;
   }
 
   // 一直線の組を探す
@@ -151,9 +160,28 @@ function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<str
 export function analyzeFittings(net: Network, fixtures?: Record<string, Fixture>): NodeFitting[] {
   const adj = adjacency(net);
   const out: NodeFitting[] = [];
+  const judged = new Map<string, Auto>();
+  for (const n of Object.values(net.nodes)) {
+    const a = judge(net, n, adj.get(n.id) ?? [], fixtures);
+    if (a) judged.set(n.id, a);
+  }
+  // PB の曲げ: 両側の区間に「この曲げの接線長 + 向こう端の曲げの接線長」が取れなければ、エルボを使う
+  // 曲げの大きい（接線長の長い）所から順に決める。順番を決めておけば、結果が点の並び順で変わらない
+  const tangentAt = (id: string) => judged.get(id)?.pbBend?.tangent ?? 0;
+  const bends = [...judged].filter(([, a]) => a.pbBend).map(([id]) => net.nodes[id])
+    .sort((p, q) => tangentAt(q.id) - tangentAt(p.id) || (p.id < q.id ? -1 : 1));
+  for (const n of bends) {
+    const a = judged.get(n.id);
+    if (!a?.pbBend) continue;
+    const short = (adj.get(n.id) ?? []).some((sg) => {
+      const other = sg.a === n.id ? sg.b : sg.a;
+      return segmentLength(net, sg.id) + 1e-6 < a.pbBend!.tangent + tangentAt(other);
+    });
+    if (short) judged.set(n.id, { ...a.pbBend.fallback, reason: a.pbBend.fallback.reason ?? `曲げ半径 ${a.pbBend.r}mm の直線が取れないため継手` });
+  }
   for (const n of Object.values(net.nodes)) {
     const segs = adj.get(n.id) ?? [];
-    const a = judge(net, n, segs, fixtures);
+    const a = judged.get(n.id);
     if (!a) continue;
     const ov = n.fitting;
     const valid = !!ov && ov.degree === segs.length && (ov.type === 'none' || (FITTING_TYPES as string[]).includes(ov.type));

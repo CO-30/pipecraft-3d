@@ -55,3 +55,25 @@ test('床下: 接続口は給水=青・給湯=赤・排水=茶。床下を選ん
   await expect(page.getByTestId('underfloor-chip')).not.toHaveClass(/on/);
   expect(await page.evaluate(() => (window as any).__pc.getState().drawHeight)).toBe(100);
 });
+
+test('床下: 給水ヘッダーを床下に置ける（出口が床から −300）。パネルで床上に戻せる', async ({ page }) => {
+  await freshApp(page);
+  await createProject(page, 'ヘッダー床下');
+  await show(page, '2D');
+  const touch = await touchSession(page);
+  await page.getByTestId('underfloor-chip').click();
+  await page.getByTestId('tool-fixture').click();
+  await page.getByTestId('fixture-waterHeader').click();
+  await tapMm(page, 3000, 3000, touch);
+  let d = await doc(page);
+  const f = Object.values(d.fixtures as Record<string, any>)[0];
+  expect(f.params?.mountZ).toBe(-400);
+  const out1 = Object.values(d.network.nodes as Record<string, any>).find((n) => n.fixtureId === f.id && n.portId === 'out1')!;
+  expect(out1.pos.z).toBe(-300);
+  await expect(page.locator(`[data-fixture="${f.id}"]`)).toHaveAttribute('data-under', '1');
+  await expect(page.getByTestId('header-mount')).toBeVisible();
+  await page.screenshot({ path: evidence('uf-02-header') });
+  await page.getByRole('button', { name: '床上（標準）' }).click();
+  d = await doc(page);
+  expect(Object.values(d.network.nodes as Record<string, any>).find((n) => n.fixtureId === f.id && n.portId === 'out1')!.pos.z).toBe(400);
+});

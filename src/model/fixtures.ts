@@ -17,7 +17,8 @@ export type FixtureType =
   | 'manholeSewage' | 'manholeRain' | 'manholeTrap' | 'manholeInvert' | 'publicSewage' | 'publicRain';
 export type Rotation = 0 | 90 | 180 | 270;
 /** マスの個別設定。diameter: 口径(mm、既定 300)、shape: 丸/角、invertZ: 管底高(mm、絶対。既定 GL−600) */
-export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean; /** 落差桝: 流入側の管底が流出側（invertZ）より高い分(mm) */ drop?: number };
+export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean; /** 落差桝: 流入側の管底が流出側（invertZ）より高い分(mm) */ drop?: number;
+  /** 設置面の床からの高さ(mm、負は床下)。ヘッダーなどを床下に置くとき。未設定はカタログの高さ */ mountZ?: number };
 export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation; params?: FixtureParams };
 
 /**
@@ -109,6 +110,7 @@ export function fixtureSize(f: Fixture, b?: Pick<Building, 'floors'>, site?: Sit
 export function fixtureBaseZ(f: Fixture, floor: Floor): number {
   const def = FIXTURE_CATALOG[f.type];
   if (def.base === 'roof') return floor.elevation + floor.height;
+  if (f.params?.mountZ !== undefined && typeof def.base === 'number') return floor.elevation + f.params.mountZ;
   return floor.elevation + (def.base === 'ceiling' ? floor.height - floor.slabThickness - def.size.h : def.base);
 }
 
@@ -133,10 +135,10 @@ export function fixtureCorners(f: Fixture): { x: number; y: number }[] {
 
 export const portNodes = (net: Network, fixtureId: string) => Object.values(net.nodes).filter((n) => n.fixtureId === fixtureId);
 
-export function placeFixture(doc: Doc, floorId: string, type: FixtureType, p: { x: number; y: number }, rotation: Rotation = 0): { doc: Doc; fixtureId: string | null } {
+export function placeFixture(doc: Doc, floorId: string, type: FixtureType, p: { x: number; y: number }, rotation: Rotation = 0, params?: FixtureParams): { doc: Doc; fixtureId: string | null } {
   const floor = floorById(doc.building, floorId);
   if (!floor || !FIXTURE_CATALOG[type]) return { doc, fixtureId: null };
-  const f: Fixture = { id: newId('f'), floorId, type, x: p.x, y: p.y, rotation };
+  const f: Fixture = { id: newId('f'), floorId, type, x: p.x, y: p.y, rotation, ...(params ? { params } : {}) };
   const nodes = { ...doc.network.nodes };
   for (const port of FIXTURE_CATALOG[type].ports) {
     const id = newId('n');

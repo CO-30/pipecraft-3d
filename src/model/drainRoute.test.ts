@@ -6,6 +6,7 @@ import { MANHOLE_OFFSET, openDrainEnds, routeDrainsOut } from './drainRoute';
 import { placeFixture, portNodes, validateFixtures } from './fixtures';
 import { addPolyline, segmentsAt, validateNetwork } from './network';
 import { addFloor, addWall, emptyBuilding } from './building';
+import { membersOf, withMember } from './members';
 import { buildFromSheets } from './planRead/assemble';
 import { D, foundationSheet, planSheet } from './planRead/testHouse';
 
@@ -156,5 +157,47 @@ describe('排水のつなぎ案（drainRoute）', () => {
       if (!outEnd) expect(inL((a.x + c.x) / 2, (a.y + c.y) / 2)).toBe(true);
       else expect(Math.hypot(a.x - c.x, a.y - c.y)).toBeLessThan(4200); // 外へ出る区間は 1 つの壁を越えるだけ
     }
+  });
+  it('内部の立上りは人通口を通って避ける（貫通は外周の 1 か所だけ）', () => {
+    // 中央に立上りで囲まれた区画（x 2000〜5280・y 1000〜4460）。西の辺だけ y 2500〜3100 が人通口
+    let doc = house([]);
+    const f1 = doc.building.floors[0].id;
+    const ft = membersOf(doc.building).find((m) => m.kind === 'footing')!;
+    let b = doc.building;
+    const add = (ax: number, ay: number, bx: number, by: number) => { b = withMember(b, { kind: 'footing', floorId: f1, a: { x: ax, y: ay }, b: { x: bx, y: by }, width: 150, z0: ft.z0, z1: ft.z1 }).b; };
+    add(2000, 1000, 5280, 1000); add(2000, 4460, 5280, 4460); add(5280, 1000, 5280, 4460);
+    add(2000, 1000, 2000, 2500); add(2000, 3100, 2000, 4460);
+    doc = { ...doc, building: b };
+    doc = dropFixturePipes(placeFixture(doc, f1, 'washer', { x: 4000, y: 1500 }).doc).doc;
+    const r = routeDrainsOut(doc);
+    expect(r).toMatchObject({ pipes: 1, manholes: 1, skipped: 0, sleeves: 1 });
+    expect(validateNetwork(r.doc.network)).toEqual([]);
+    // 床下の水平な配管は、外周の立上りより内側では、どの内部の立上りも横切らない
+    const net = r.doc.network;
+    const inner = membersOf(r.doc.building).filter((m) => m.kind === 'footing' && m.a.x > 100 && m.a.x < 7180 && m.b.x > 100 && m.b.x < 7180 && m.a.y > 100 && m.a.y < D - 100 && m.b.y > 100 && m.b.y < D - 100);
+    const cross = (p: { x: number; y: number }, q: { x: number; y: number }, a: { x: number; y: number }, c: { x: number; y: number }) => {
+      const d = (q.x - p.x) * (c.y - a.y) - (q.y - p.y) * (c.x - a.x);
+      if (Math.abs(d) < 1e-9) return false;
+      const t = ((a.x - p.x) * (c.y - a.y) - (a.y - p.y) * (c.x - a.x)) / d, u = ((a.x - p.x) * (q.y - p.y) - (a.y - p.y) * (q.x - p.x)) / d;
+      return t > 0 && t < 1 && u > 0 && u < 1;
+    };
+    const flat = Object.values(net.segments).filter((s) => s.system === 'drain' && Math.abs(net.nodes[s.a].pos.z - net.nodes[s.b].pos.z) < 1);
+    expect(flat.length).toBeGreaterThan(1);
+    for (const s of flat) for (const m of inner) expect(cross(net.nodes[s.a].pos, net.nodes[s.b].pos, m.a, m.b)).toBe(false);
+  });
+  it('先の配管が外周の壁ぎわから出ていても、その点へ合流する（飛ばさない・重ねない）', () => {
+    let doc = house([['toilet', 1000, 4200]]);
+    const f1 = doc.building.floors[0].id;
+    const r0 = placeFixture(doc, f1, 'manholeSewage', { x: 1600, y: D + 760 });
+    doc = r0.doc;
+    const port = portNodes(doc.network, r0.fixtureId!)[0];
+    // 壁ぎわ（壁芯から 60mm）から外のマスへ出る先の配管
+    doc = { ...doc, network: addPolyline(doc.network, [{ x: 1600, y: D - 60, z: -300 }, { x: 1600, y: D + 760, z: -300 }, port.pos], { system: 'sewage', diameter: 75 }, { endNodeId: port.id }).net };
+    const r = routeDrainsOut(doc);
+    expect(r).toMatchObject({ pipes: 1, manholes: 0, skipped: 0 });
+    expect(validateNetwork(r.doc.network)).toEqual([]);
+    const net = r.doc.network;
+    const joint = Object.values(net.nodes).find((n) => Math.abs(n.pos.x - 1600) < 1 && Math.abs(n.pos.y - (D - 60)) < 1)!;
+    expect(segmentsAt(net, joint.id)).toHaveLength(2);
   });
 });
