@@ -25,15 +25,58 @@ const LEGEND: Record<string, 'publicSewer' | 'sewer' | 'rain' | 'meter' | 'level
   // 凡例の行として除くだけ（記号は数えない）
   立水栓: 'other', 散水栓: 'other', 浸透槽: 'other', 浸透桝: 'other', 玄関位置: 'other', 給湯器: 'other',
 };
-/** 円（短い線の集まり）が四角のすぐ横にあるか: 立水栓（□○）。雨水桝と見分ける */
-function circleBeside(segs: PSeg[], b: { cx: number; cy: number; size: number }): boolean {
-  const r = b.size * 1.7;
-  const short = segs.filter((s) => len(s) < 0.6 && Math.hypot((s.x1 + s.x2) / 2 - b.cx, (s.y1 + s.y2) / 2 - b.cy) < r
-    && (Math.abs((s.x1 + s.x2) / 2 - b.cx) > b.size / 2 + 0.1 || Math.abs((s.y1 + s.y2) / 2 - b.cy) > b.size / 2 + 0.1));
-  return short.length >= 12;
+/** 四角の横の円・円弧（短い線の集まり）の中心と半径（最小二乗の円の当てはめ。半分しか描かれていない円でもよい）。円らしくなければ null */
+function circleNear(segs: PSeg[], b: { cx: number; cy: number; size: number }, reach: number): { c: Vec2; r: number } | null {
+  const pts = segs.filter((s) => len(s) < 0.8).flatMap((s) => [{ x: s.x1, y: s.y1 }, { x: s.x2, y: s.y2 }])
+    .filter((m) => Math.hypot(m.x - b.cx, m.y - b.cy) < reach && (Math.abs(m.x - b.cx) > b.size / 2 + 0.1 || Math.abs(m.y - b.cy) > b.size / 2 + 0.1));
+  // 当てはめて、円から外れた点（近くの破線など）を除いてもう一度
+  const first = fitCircle(pts);
+  if (!first) return null;
+  const on = pts.filter((p) => Math.abs(Math.hypot(p.x - first.c.x, p.y - first.c.y) - first.r) < 0.4);
+  const fit = on.length >= 12 ? fitCircle(on) : null;
+  return fit && fit.r > 0.3 && fit.sd < fit.r * 0.15 ? { c: fit.c, r: fit.r } : null;
+}
+
+/** 最小二乗の円（x² + y² + D·x + E·y + F = 0 を 3×3 の連立方程式で解く） */
+function fitCircle(pts: Vec2[]): { c: Vec2; r: number; sd: number } | null {
+  if (pts.length < 12) return null;
+  const m = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], v = [0, 0, 0];
+  for (const p of pts) {
+    const row = [p.x, p.y, 1], z = -(p.x * p.x + p.y * p.y);
+    for (let i = 0; i < 3; i++) { v[i] += row[i] * z; for (let j = 0; j < 3; j++) m[i][j] += row[i] * row[j]; }
+  }
+  const det = (a: number[][]) => a[0][0] * (a[1][1] * a[2][2] - a[1][2] * a[2][1]) - a[0][1] * (a[1][0] * a[2][2] - a[1][2] * a[2][0]) + a[0][2] * (a[1][0] * a[2][1] - a[1][1] * a[2][0]);
+  const d0 = det(m);
+  if (Math.abs(d0) < 1e-9) return null;
+  const col = (k: number) => m.map((r, i) => r.map((x, j) => (j === k ? v[i] : x)));
+  const [D, E, F] = [0, 1, 2].map((k) => det(col(k)) / d0);
+  const c = { x: -D / 2, y: -E / 2 };
+  const r2 = c.x * c.x + c.y * c.y - F;
+  if (!(r2 > 0)) return null;
+  const r = Math.sqrt(r2);
+  const sd = Math.sqrt(pts.reduce((t, p) => t + (Math.hypot(p.x - c.x, p.y - c.y) - r) ** 2, 0) / pts.length);
+  return { c, r, sd };
 }
 
 type Box = { cx: number; cy: number; size: number; cross: boolean };
+
+/**
+ * 凡例の立水栓（□○）と同じ形か: 四角の上下左右、凡例と同じ離れの所に、凡例と同じ半径の円（半分以上描かれていればよい）がある。
+ * 雨どいの丸（大きさ・離れが違う）や近くの別の円弧と見分ける
+ */
+function isFaucet(segs: PSeg[], b: Box, f: { r: number; off: number }): boolean {
+  const pts = segs.filter((s) => len(s) < 0.8).flatMap((s) => [{ x: s.x1, y: s.y1 }, { x: s.x2, y: s.y2 }])
+    .filter((p) => Math.hypot(p.x - b.cx, p.y - b.cy) < f.off + f.r * 1.5);
+  for (const [ux, uy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const c = { x: b.cx + ux * f.off, y: b.cy + uy * f.off };
+    const on = pts.filter((p) => Math.abs(Math.hypot(p.x - c.x, p.y - c.y) - f.r) < Math.max(0.3, f.r * 0.15));
+    // 円の回り 12 区分のうち半分以上に点がある
+    const bins = new Set(on.map((p) => Math.floor(((Math.atan2(p.y - c.y, p.x - c.x) + Math.PI) / (2 * Math.PI)) * 12) % 12));
+    if (bins.size >= 6) return true;
+  }
+  return false;
+}
+
 
 /** 軸に平行な四角（上下の辺がそろっている）を探す。sizes の大きさ（±15%）だけ */
 function findBoxes(segs: PSeg[], sizes: number[]): Box[] {
@@ -45,10 +88,14 @@ function findBoxes(segs: PSeg[], sizes: number[]): Box[] {
     if (!other) continue;
     const cx = (x0 + x1) / 2, cy = h.y1 + L / 2;
     if (out.some((b) => Math.hypot(b.cx - cx, b.cy - cy) < 0.3 && Math.abs(b.size - L) < 0.3)) continue;
-    const near = (p: Vec2, q: Vec2) => Math.hypot(p.x - q.x, p.y - q.y) < 0.7;
-    const diag = (a: Vec2, b: Vec2) => segs.some((s) => (near({ x: s.x1, y: s.y1 }, a) && near({ x: s.x2, y: s.y2 }, b)) || (near({ x: s.x1, y: s.y1 }, b) && near({ x: s.x2, y: s.y2 }, a)));
-    const h2 = L / 2;
-    const cross = diag({ x: cx - h2, y: cy - h2 }, { x: cx + h2, y: cy + h2 }) && diag({ x: cx - h2, y: cy + h2 }, { x: cx + h2, y: cy - h2 });
+    // 縦の辺もある（同じ間隔の平行線・ハッチを四角と取り違えない）
+    const side = (x: number) => segs.some((s) => Math.abs(s.x1 - s.x2) < 0.05 && Math.abs(s.x1 - x) < 0.4 && Math.min(s.y1, s.y2) <= h.y1 + 0.4 + L * 0.2 && Math.max(s.y1, s.y2) >= h.y1 + L * 0.8 - 0.4);
+    if (!side(x0) || !side(x1)) continue;
+    // ×: 四角の中で、中心近くを通る右上がり・右下がりの斜めの線（角まで届かなくてもよい）
+    const inside = (s: PSeg) => [s.x1, s.x2].every((x) => x >= x0 - 0.3 && x <= x1 + 0.3) && [s.y1, s.y2].every((y) => y >= h.y1 - 0.3 && y <= h.y1 + L + 0.3);
+    const through = (s: PSeg) => { const d = Math.abs((s.x2 - s.x1) * (s.y1 - cy) - (s.x1 - cx) * (s.y2 - s.y1)) / Math.max(len(s), 1e-6); return d < L * 0.12; };
+    const diags = segs.filter((s) => inside(s) && len(s) >= L * 0.5 && Math.abs(s.x1 - s.x2) > 0.1 && Math.abs(s.y1 - s.y2) > 0.1 && through(s));
+    const cross = diags.some((s) => (s.x2 - s.x1) * (s.y2 - s.y1) > 0) && diags.some((s) => (s.x2 - s.x1) * (s.y2 - s.y1) < 0);
     out.push({ cx, cy, size: L, cross });
   }
   return out;
@@ -56,7 +103,9 @@ function findBoxes(segs: PSeg[], sizes: number[]): Box[] {
 
 export function readSite(page: VectorPage): SiteRead {
   // 凡例: ラベルの左の同じ行にある記号の大きさ
-  const labels = page.texts.map((t) => ({ t, k: LEGEND[norm(t.s)] })).filter((x) => x.k);
+  const all = page.texts.map((t) => ({ t, k: LEGEND[norm(t.s)] })).filter((x) => x.k);
+  // 凡例: 縦に並んだ 3 つ以上のラベル（図の中の説明の「水道メーター」などは凡例にしない）
+  const labels = all.filter(({ t }) => all.filter((o) => Math.abs(o.t.x - t.x) < 40 && Math.abs(o.t.y - t.y) < 120).length >= 3);
   const rows = labels.map(({ t }) => ({ y: t.y, x0: t.x - 110, x1: t.x + 5 }));
   const inLegend = (p: Vec2) => rows.some((r) => Math.abs(p.y - r.y) < 4 && p.x >= r.x0 && p.x <= r.x1);
   const sizeOf = (t: PText) => {
@@ -68,11 +117,21 @@ export function readSite(page: VectorPage): SiteRead {
   const legend: NonNullable<SiteRead['legend']> = {};
   for (const { t, k } of labels) if (k === 'publicSewer' || k === 'sewer' || k === 'rain') legend[k] ??= sizeOf(t);
   const has = Object.values(legend).some((v) => v !== undefined);
+  // 立水栓の凡例（□ と横の ○）: 円の半径と、四角の中心から円の中心までの距離
+  const faucetLabel = labels.find(({ k, t }) => k === 'other' && /立水栓/.test(norm(t.s)));
+  let faucet: { r: number; off: number } | null = null;
+  if (faucetLabel && legend.rain) {
+    const fb = findBoxes(page.segs, [legend.rain]).find((b) => Math.abs(b.cy - faucetLabel.t.y) < 3.5 && b.cx > faucetLabel.t.x - 110 && b.cx < faucetLabel.t.x);
+    const c = fb && circleNear(page.segs, fb, fb.size * 2);
+    if (fb && c) faucet = { r: c.r, off: Math.hypot(c.c.x - fb.cx, c.c.y - fb.cy) };
+  }
+  // 四角の中に文字がある（「WM」の枠・番号の札）ものは ます にしない
+  const hasText = (b: Box) => page.texts.some((t) => Math.abs(t.x - b.cx) < b.size / 2 && Math.abs(t.y - b.cy) < b.size / 2);
 
   const items: SiteItem[] = [];
   if (has) {
     const sizes = [legend.publicSewer, legend.sewer, legend.rain].filter((v): v is number => v !== undefined);
-    const boxes = findBoxes(page.segs, sizes).filter((b) => !inLegend({ x: b.cx, y: b.cy }));
+    const boxes = findBoxes(page.segs, sizes).filter((b) => !inLegend({ x: b.cx, y: b.cy }) && !hasText(b));
     const is = (b: Box, z?: number) => z !== undefined && Math.abs(b.size - z) <= z * 0.15;
     const used = new Set<Box>();
     // 公共桝: 大きな四角の中に ☒（凡例の大きさが汚水桝と区別できるときだけ）
@@ -87,7 +146,7 @@ export function readSite(page: VectorPage): SiteRead {
     for (const b of boxes) {
       if (used.has(b)) continue;
       if (b.cross && is(b, legend.sewer)) items.push({ type: 'manholeSewage', p: { x: b.cx, y: b.cy } });
-      else if (!b.cross && circleBeside(page.segs, b)) items.push({ type: 'outdoorFaucet', p: { x: b.cx, y: b.cy } });
+      else if (!b.cross && faucet && isFaucet(page.segs, b, faucet)) items.push({ type: 'outdoorFaucet', p: { x: b.cx, y: b.cy } });
       else if (!b.cross && is(b, legend.rain) && !is(b, legend.publicSewer)) items.push({ type: 'manholeRain', p: { x: b.cx, y: b.cy } });
     }
   }
@@ -115,7 +174,7 @@ const NEAR = 30;
 
 /**
  * 配置図（縮尺 k mm/pt、回転なし）を平面図の外壁に合わせる。外壁の芯・外面・内面と配置図の縦横の線のずれを数え、
- * 重なる長さがいちばん長いずれを採る。外壁の長さの半分以上重ならなければ null（合わせられない）
+ * 重なる長さがいちばん長いずれを採る。外壁の長さの 7 割以上、かつ縦・横それぞれ向かい合う外壁に重ならなければ null（合わせられない）
  */
 export function alignSite(page: VectorPage, k: number, ref: RefWall[]): ToWorld | null {
   const site: AxisLine[] = page.segs.filter((s) => len(s) * k >= MIN_LINE && (Math.abs(s.x1 - s.x2) < 0.05 || Math.abs(s.y1 - s.y2) < 0.05)).map((s) => {
@@ -153,7 +212,21 @@ export function alignSite(page: VectorPage, k: number, ref: RefWall[]): ToWorld 
     const s = score(dx, dy);
     if (!best || s > best.s) best = { dx, dy, s };
   }
-  if (!best || best.s < 0.5 * perimeter) return null;
+  if (!best) return null;
+  // 外壁の長さの 7 割以上、かつ縦・横それぞれ向かい合う 2 か所以上の外壁に重なる（軒の線の 2 辺だけで合わせない）
+  const b0 = best;
+  /** 外壁 1 本に重なる線の長さ（途切れた線は足す） */
+  const covered = (w: (typeof walls)[number]) => site.reduce((sum, s) => {
+    if (s.v !== w.v) return sum;
+    const c = s.c + (w.v ? b0.dx : b0.dy), lo = s.lo + (w.v ? b0.dy : b0.dx), hi = s.hi + (w.v ? b0.dy : b0.dx);
+    if (![-w.t / 2, 0, w.t / 2].some((o) => Math.abs(c - (w.c + o)) <= NEAR)) return sum;
+    return sum + Math.max(0, Math.min(hi, w.hi) - Math.max(lo, w.lo));
+  }, 0);
+  const hit = (v: boolean) => {
+    const cs = walls.filter((w) => w.v === v && covered(w) > (w.hi - w.lo) * 0.5).map((w) => w.c);
+    return cs.length >= 2 && Math.max(...cs) - Math.min(...cs) > 1000;
+  };
+  if (best.s < 0.7 * perimeter || !hit(true) || !hit(false)) return null;
   // world x = px·k + dx = (px − ox)·k、world y = −py·k + dy = (oy − py)·k
   return { ox: -best.dx / k, oy: best.dy / k, k };
 }

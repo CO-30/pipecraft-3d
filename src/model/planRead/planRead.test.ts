@@ -289,13 +289,13 @@ describe('配置図（assemble）', () => {
     const r = buildFromSheets([{ name: '1階平面図', page: planSheet() }, { name: '配置図', page: siteSheet() }, { name: '立面図', page: elevationSheet() }]);
     expect(r.site).toBeDefined();
     const pub = r.site!.items.find((x) => x.type === 'publicSewage')!;
-    expect(Math.abs(pub.x - -1500)).toBeLessThan(60);
-    expect(Math.abs(pub.y - (D + 600))).toBeLessThan(60);
-    expect(r.site!.items.filter((x) => x.type === 'manholeSewage')).toHaveLength(3);
+    expect(Math.abs(pub.x - -1500)).toBeLessThan(10);
+    expect(Math.abs(pub.y - (D + 600))).toBeLessThan(10);
+    expect(r.site!.items.filter((x) => x.type === 'manholeSewage')).toHaveLength(4);
     // 1 階の床（GL+550）より高い GL+300 は使う（床より低い）
     expect(r.site!.levels.map((l) => l.gl).sort((a, b) => a - b)).toEqual([-950, -500, 0, 300]);
     expect(r.plans.some((p) => p.site)).toBe(true);
-    expect(r.report.found.join()).toContain('配置図: 汚水公共ます 1・汚水ます 3・雨水ます 1・水道メーター 1');
+    expect(r.report.found.join()).toContain('配置図: 汚水公共ます 1・汚水ます 4・雨水ます 2・立水栓 1・水道メーター 1');
     expect(r.report.found.join()).toContain('BM は GL−550');
   });
   it('家の外形と重ならなければ合わせない（読まない）と知らせる', () => {
