@@ -526,6 +526,8 @@ export const useStore = create<State>((set, get) => {
       const cur = get().drawAttrs;
       const next = { ...cur, ...a };
       if (a.system && a.system !== cur.system && !('material' in a)) delete next.material;
+      // 排水に切り替えたとき、給水の細い口径のままにしない（器具につながれば管径は自動で決まる）
+      if (a.system && a.system !== cur.system && a.diameter === undefined && (a.system === 'drain' || a.system === 'sewage') && next.diameter < 40) next.diameter = a.system === 'sewage' ? 100 : 50;
       set({ drawAttrs: next });
     },
     setDrawHeight: (drawHeight) => set({ drawHeight }),
@@ -873,7 +875,9 @@ export const useStore = create<State>((set, get) => {
       const net = get().doc.network;
       const s = net.segments[segId];
       if (!s || (patch.diameter !== undefined && !(patch.diameter > 0))) return;
-      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch } } }));
+      // 排水の管径を手で決めたら固定（📌。自動で変えない）
+      const pin = patch.diameter !== undefined && patch.diameter !== s.diameter && (s.system === 'drain' || s.system === 'sewage') ? { diameterPin: true } : {};
+      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch, ...pin } } }));
     },
     activeUnderlayId: null,
     showUnderlays: true,
