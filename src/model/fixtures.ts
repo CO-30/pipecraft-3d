@@ -6,6 +6,7 @@
 import type { Building, Floor } from './building';
 import { floorById } from './building';
 import type { Doc, SiteSettings } from './doc';
+import { groundAt } from './ground';
 import { newId } from './id';
 import { dist, moveNode, normalize, segmentsAt, type Network, type SystemType, type Vec3 } from './network';
 
@@ -102,10 +103,12 @@ export function groundZ(b: Pick<Building, 'floors'> & Partial<Pick<Building, 'me
   return feet.length ? Math.min(...feet) : base;
 }
 
-/** マスの管底高（絶対 mm） */
-export const manholeInvertZ = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => f.params?.invertZ ?? groundZ(b, site) - MANHOLE_DEFAULT_DEPTH;
-/** マスの深さ ＝ GL − 管底高 */
-export const manholeDepth = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => groundZ(b, site) - manholeInvertZ(f, b, site);
+/** その場所の地面の高さ（絶対 mm）＝ 設計 GL ＋ 配置図の敷地の高さ */
+export const groundZAt = (b: Pick<Building, 'floors'> & Partial<Pick<Building, 'members'>>, site: SiteSettings | undefined, p: { x: number; y: number }) => groundZ(b, site) + groundAt(site, p);
+/** マスの管底高（絶対 mm）。既定はその場所の地面から 600 下 */
+export const manholeInvertZ = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => f.params?.invertZ ?? groundZAt(b, site, f) - MANHOLE_DEFAULT_DEPTH;
+/** マスの深さ ＝ その場所の地面 − 管底高 */
+export const manholeDepth = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => groundZAt(b, site, f) - manholeInvertZ(f, b, site);
 
 /** 器具の寸法。マスは口径（既定 300）と深さ、他はカタログ */
 export function fixtureSize(f: Fixture, b?: Pick<Building, 'floors'>, site?: SiteSettings): { w: number; d: number; h: number } {

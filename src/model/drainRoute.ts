@@ -9,7 +9,7 @@
 import type { Vec2 } from './building';
 import { wallsOnFloor } from './building';
 import type { Doc } from './doc';
-import { groundZ, isManhole, moveFixture, placeFixture, portNodes } from './fixtures';
+import { groundZ, groundZAt, isManhole, moveFixture, placeFixture, portNodes } from './fixtures';
 import { membersOf } from './members';
 import { addPolyline, connectNodeToSegment, moveNode, segmentsAt, splitSegment, type PipeNode, type Segment, type Vec3 } from './network';
 import { applySlope } from './slope';
@@ -268,7 +268,9 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     // 外では管頂の土かぶりを守り、最小勾配でマスへ下る（出口から外へ出るときだけ）
     const drop = plan.kind === 'eIn' ? dropOf(plan) : null;
     const slope = slopeOf(e.seg.diameter);
-    const buriedTop = gl - cover - outerDiameter(e.seg.diameter);
+    // 土かぶりは、地中へ下ろす所とマスの所の低い方の地面から（配置図の敷地の高さがあればその場所の地面）
+    const glHere = drop ? Math.min(groundZAt(b, doc.site, drop.x), groundZAt(b, doc.site, plan.hp)) : gl;
+    const buriedTop = glHere - cover - outerDiameter(e.seg.diameter);
     let hole = plan.hole;
     // マスを置いても配管をつなげなければ、マスごと取りやめる（next を採用しない）
     let next = cur, placed = false;

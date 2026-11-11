@@ -182,6 +182,18 @@ describe('排水のつなぎ案（drainRoute）', () => {
     expect(a.pos.z).toBe(-1289);
     expect(port.pos.z).toBe(-1307);
   });
+  it('配置図の敷地の高さで地面が下がっている所は、その地面から土かぶりを取る', () => {
+    const doc0 = house([['toilet', 1000, 4500]]);
+    // 基礎のすぐ外（地中へ下ろす所）の地面が GL−1200（絶対 −1800）。マスの所は GL±0
+    const doc = { ...doc0, site: { ...doc0.site, groundPoints: [{ x: 1000, y: D + 175, gl: -1200 }, { x: 1000, y: D + 760, gl: 0 }] } };
+    const r = routeDrainsOut(doc);
+    const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
+    const [last] = segmentsAt(net, port.id);
+    const a = net.nodes[last.a === port.id ? last.b : last.a];
+    // 管頂は低い方の地面（−1800）から 200 以上下。マスはそれに合わせて深くする
+    expect(-1800 - (a.pos.z + 89)).toBeGreaterThanOrEqual(200);
+    expect(port.pos.z).toBeLessThan(a.pos.z);
+  });
   it('置いてあるマスが浅く土かぶりが取れないときはつながない', () => {
     let doc = house([['toilet', 1000, 4500]]);
     doc = placeFixture(doc, doc.building.floors[0].id, 'manholeSewage', { x: 1000, y: D + 60 + MANHOLE_OFFSET }).doc;

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addFloor, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork, segmentsAt, validateNetwork } from './network';
-import { deleteFixture, fixtureConnected, fixtureSize, groundZ, isManhole, manholeDepth, MANHOLE_TYPES, moveFixture, placeFixture, portNodes, validateFixtures, FIXTURE_CATALOG, FIXTURE_GROUPS, FIXTURE_TYPES } from './fixtures';
+import { deleteFixture, fixtureConnected, fixtureSize, groundZ, isManhole, manholeDepth, manholeInvertZ, MANHOLE_TYPES, moveFixture, placeFixture, portNodes, validateFixtures, FIXTURE_CATALOG, FIXTURE_GROUPS, FIXTURE_TYPES } from './fixtures';
 import { parseProject } from '../storage/repository';
 import { SCHEMA_VERSION } from './schema';
 
@@ -182,5 +182,16 @@ describe('落差桝の削除', () => {
     expect(after.network.nodes[port.id]).toBeTruthy();
     expect(after.network.nodes[port.id].dropIn).toBeUndefined();
     expect(after.network.nodes[port.id].fixtureId).toBeUndefined();
+  });
+});
+
+describe('マスの深さは配置図の敷地の高さ（その場所の地面）から', () => {
+  it('地面が GL−500 の所のマスは、標準の管底がその 600 下', async () => {
+    const { createBuildingFromDims } = await import('./building');
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    const f = { id: 'm', floorId: b.floors[0].id, type: 'manholeSewage' as const, x: 0, y: 0, rotation: 0 as const };
+    const site = { designGL: -600, groundPoints: [{ x: 0, y: 0, gl: -500 }] };
+    expect(manholeInvertZ(f, b, site)).toBe(-600 - 500 - 600);
+    expect(manholeDepth(f, b, site)).toBe(600);
   });
 });

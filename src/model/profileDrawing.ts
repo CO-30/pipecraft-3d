@@ -4,6 +4,7 @@
  * - buildProfile: 経路の各点の累加距離・地盤高・管底高・土被り、各区間の距離・勾配・管種口径と警告。
  * 単位は mm。表示のための丸め・単位変換は描画側で行う。
  */
+import { groundAt } from './ground';
 import type { Doc } from './doc';
 import { floorById } from './building';
 import { FIXTURE_CATALOG, groundZ, isManhole, manholeDepth, type FixtureType } from './fixtures';
@@ -175,7 +176,8 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
   const warnings: ProfileWarning[] = [];
   if (tentativeGL) warnings.push({ kind: 'tentativeGL', message: '設計GL が未入力のため、仮の地盤高（1階の床と同じ高さ）で描いています' });
   const gl0 = groundZ(doc.building, doc.site);
-  const glOf = (nodeId: string) => net.nodes[nodeId].groundLevel ?? gl0;
+  // 地盤高: 点に入れた値、無ければその場所の地面（配置図の敷地の高さ。無ければ設計 GL）
+  const glOf = (nodeId: string) => net.nodes[nodeId].groundLevel ?? gl0 + groundAt(doc.site, net.nodes[nodeId].pos);
   const nodes: ProfileNode[] = [];
   const segments: ProfileSegment[] = [];
   let cum = 0;

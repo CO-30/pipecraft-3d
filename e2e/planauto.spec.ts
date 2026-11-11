@@ -56,6 +56,26 @@ const elevation = () => sheet(100, ({ line, text }) => {
   text(3000, -2600, 'S:1/100', 12);
 }, false);
 
+/** 配置図（1/100、通り芯なし）: 家の外形（外壁の外面）、凡例、北の汚水桝 3・公共桝、東の雨水桝、WM、敷地の高さ */
+const sitePlan = () => sheet(100, ({ line, text }) => {
+  const box = (cx: number, cy: number, z: number, cross: boolean) => {
+    const h = z / 2;
+    line(cx - h, cy - h, cx + h, cy - h, 0.24); line(cx + h, cy - h, cx + h, cy + h, 0.24); line(cx + h, cy + h, cx - h, cy + h, 0.24); line(cx - h, cy + h, cx - h, cy - h, 0.24);
+    if (cross) { line(cx - h, cy - h, cx + h, cy + h, 0.24); line(cx - h, cy + h, cx + h, cy - h, 0.24); }
+  };
+  for (const [x1, y1, x2, y2] of [[-60, -60, W + 60, -60], [W + 60, -60, W + 60, D + 60], [W + 60, D + 60, -60, D + 60], [-60, D + 60, -60, -60]]) line(x1, y1, x2, y2, 0.38);
+  const lx = -6000; // 紙の中（左の余白）
+  box(lx, 9000, 200, false); box(lx, 9000, 150, true); text(lx + 2500, 9000, '汚水 公共桝');
+  box(lx, 8500, 150, true); text(lx + 2500, 8500, '汚水桝');
+  box(lx, 8000, 150, false); text(lx + 2500, 8000, '雨水桝');
+  for (const x of [1000, 3000, 5000]) box(x, D + 600, 150, true);
+  box(-1500, D + 600, 200, false); box(-1500, D + 600, 150, true);
+  box(W + 600, 1000, 150, false);
+  text(-800, -800, 'WM');
+  text(W / 2, D + 900, 'GL±0'); text(-1000, D + 900, 'GL-500'); text(-2500, D + 900, 'GL-950');
+  text(3000, -2600, 'S:1/100', 12);
+}, false);
+
 async function createAuto(page: Page, name: string, files: { name: string; buffer: Buffer }[]) {
   await page.getByTestId('new-project').click();
   await page.getByTestId('np-name').fill(name);
@@ -192,6 +212,28 @@ test.describe('図面から自動で3Dにする', () => {
     await page.getByTestId('undo').click();
     expect(Object.keys((await full(page)).fixtures)).toHaveLength(0);
     expect(Object.keys((await full(page)).building.walls)).toHaveLength(7);
+  });
+
+  test('配置図も選ぶと、家の外形で位置を合わせて ます・水道メーター・敷地の高さが入る', async ({ page }) => {
+    await createAuto(page, '配置図テスト', [
+      { name: '1階平面図.pdf', buffer: await plan() },
+      { name: '配置図.pdf', buffer: await sitePlan() },
+      { name: '立面図.pdf', buffer: await elevation() },
+    ]);
+    await expect(page.getByTestId('import-report')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('ir-found')).toContainText('配置図: 汚水公共ます 1・汚水ます 3・雨水ます 1・水道メーター 1');
+    await page.screenshot({ path: evidence('planauto-site-report') });
+    await page.getByTestId('ir-ok').click();
+    const doc = await full(page);
+    const fx = Object.values(doc.fixtures) as { type: string; x: number; y: number }[];
+    const pub = fx.find((f) => f.type === 'publicSewage')!;
+    expect(Math.abs(pub.x - -1500)).toBeLessThan(80);
+    expect(Math.abs(pub.y - (D + 600))).toBeLessThan(80);
+    expect(fx.filter((f) => f.type === 'manholeSewage')).toHaveLength(3);
+    expect(fx.filter((f) => f.type === 'waterMeter')).toHaveLength(1);
+    expect(doc.site.groundPoints.map((g: { gl: number }) => g.gl).sort((a: number, b: number) => a - b)).toEqual([-950, -500, 0]);
+    await show(page, '2D');
+    await page.screenshot({ path: evidence('planauto-site-2d') });
   });
 
   test('平面図だけでも作れる。足りない図面は「確かめてほしいこと」に出る', async ({ page }) => {

@@ -16,7 +16,7 @@ import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { analyzeFittings } from '../model/fittings';
 import { arcPoints, pbBendArcs, trimmedEnds, type BendArc } from '../model/pbBends';
-import { portSystem, fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
+import { portSystem, fixtureBaseZ, fixtureSize, groundZAt, isManhole, type Fixture } from '../model/fixtures';
 import { photoPlane } from '../model/facadePhoto';
 import { OUTSIDE_RGB } from '../model/homography';
 import type { Elevation } from '../model/elevation';
@@ -79,7 +79,7 @@ function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; s
   const manhole = isManhole(f.type);
   const { w, d, h } = fixtureSize(f, building, site);
   // マスは地面（GL）から下へ埋まる
-  const z = manhole ? groundZ(building, site) - h / 2 : fixtureBaseZ(f, floor) + h / 2;
+  const z = manhole ? groundZAt(building, site, f) - h / 2 : fixtureBaseZ(f, floor) + h / 2;
   const ghost = mode === 'ghost';
   return (
     <mesh name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} renderOrder={1}
