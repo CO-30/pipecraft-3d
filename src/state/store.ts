@@ -174,7 +174,8 @@ type State = {
   /** 立て管: 'up'/'down' = 上/下の階の床高 + 描画高さ、数値 = 絶対高さ(mm) */
   addRiserFromNode(nodeId: string, target: 'up' | 'down' | number): void;
   /** 図面から読んだ器具の候補をまとめて置く（1 回の取り消しで戻せる）。置けた数を返す */
-  placeFixtureCandidates(list: { floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation }[]): number;
+  /** 図面の器具の候補を置く。置いた器具の id を候補の順に返す（置けなかったものは null） */
+  placeFixtureCandidates(list: { floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation }[]): (string | null)[];
   /** 器具の真下に配管を落とす（床から depth mm 下。屋外の器具は地中）。作った本数を返す */
   dropFixturePipes(depth?: number): number;
   /** 床下へ落とした排水を、外壁の外に置いた汚水マスまでつなぐ（案）。つないだ本数を返す */
@@ -691,12 +692,14 @@ export const useStore = create<State>((set, get) => {
     },
     placeFixtureCandidates: (list) => {
       let doc = get().doc, n = 0;
+      const ids: (string | null)[] = [];
       for (const c of list) {
         const r = placeFixture(doc, c.floorId, c.type, { x: c.x, y: c.y }, c.rotation);
         if (r.fixtureId) { doc = r.doc; n++; }
+        ids.push(r.fixtureId ?? null);
       }
       if (n) commit(doc, { selection: null, notice: `器具を ${n} 個置きました。位置は目安です。下の図面の絵に合わせてドラッグで動かしてください` });
-      return n;
+      return ids;
     },
     dropFixturePipes: (depth) => {
       const d = Math.max(DROP_MIN, Math.min(DROP_MAX, Math.round(depth ?? DEFAULT_DROP_DEPTH)));

@@ -1,6 +1,6 @@
 import { setPendingUnderlayFile } from './import/pending';
 import { defaultEstimate } from './model/estimate';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { HomeScreen } from './ui/HomeScreen';
 import { Editor } from './ui/Editor';
 import type { NewProjectInput } from './ui/NewProjectDialog';
@@ -15,6 +15,9 @@ import { UpdatePrompt } from './ui/UpdatePrompt';
 import { buildSample, SAMPLE_NAME } from './sample/sample';
 import { ImportReportDialog } from './ui/ImportReportDialog';
 import type { ImportReport, PlacedCandidate } from './model/planRead/assemble';
+import { applyLearned } from './learn/fixtureLearning';
+import { learnStore, startFixtureLearning } from './learn/learnStore';
+import type { LearnedCandidate } from './ui/ImportReportDialog';
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
@@ -23,7 +26,10 @@ export default function App() {
   const [startFacade, setStartFacade] = useState(false);
   /** 「図面から自動で3Dにする」の読み取り中の表示と、読み取り結果 */
   const [busy, setBusy] = useState('');
-  const [report, setReport] = useState<{ report: ImportReport; fixtures: PlacedCandidate[] } | null>(null);
+  /** fixtures: 直し方の記録に合わせた候補、raw: 合わせる前（「覚えた直し方を消す」で戻す） */
+  const [report, setReport] = useState<{ report: ImportReport; fixtures: LearnedCandidate[]; raw: PlacedCandidate[] } | null>(null);
+  // 図面から置いた器具を使う人が直したら、この端末に覚える
+  useEffect(() => startFixtureLearning(useStore), []);
   const save = useSaveState();
 
   const open = async (id: string) => {
@@ -68,7 +74,7 @@ export default function App() {
       await repo.save(st.toProjectData()!);
       setStartFacade(v.mode === 'facade');
       setScreen('editor');
-      setReport(auto ? { report: auto.report, fixtures: auto.fixtures } : null);
+      setReport(auto ? { report: auto.report, fixtures: applyLearned(auto.fixtures, learnStore.loadSamples()), raw: auto.fixtures } : null);
       return true;
     } catch (e) {
       setPendingUnderlayFile(null);
@@ -103,7 +109,17 @@ export default function App() {
       {report && screen === 'editor' && (
         <ImportReportDialog report={report.report} fixtures={report.fixtures}
           floorNames={Object.fromEntries(useStore.getState().doc.building.floors.map((f) => [f.id, f.name]))}
-          onClose={(place) => { if (place.length) useStore.getState().placeFixtureCandidates(place); setReport(null); }} />
+          learnedCount={learnStore.sampleCount()}
+          onForget={() => { learnStore.clearSamples(); setReport({ ...report, fixtures: report.raw }); }}
+          onClose={(place) => {
+            if (place.length) {
+              const st = useStore.getState();
+              const ids = st.placeFixtureCandidates(place);
+              const meta = st.meta;
+              if (meta) learnStore.watchPlaced(meta.id, place.flatMap((c, i) => (ids[i] && c.room ? [{ id: ids[i]!, type: c.type, room: c.room, x: c.x, y: c.y, rotation: c.rotation }] : [])));
+            }
+            setReport(null);
+          }} />
       )}
       <UpdatePrompt />
     </>

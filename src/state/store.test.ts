@@ -831,3 +831,13 @@ describe('共通ストア: 床下のヘッダー・接続口の口径', () => {
     expect(s().notice).toContain('φ13');
   });
 });
+
+describe('図面の器具の候補を置く（placeFixtureCandidates）', () => {
+  beforeEach(() => s().newDoc({ building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} }, { id: 'p', name: 'テスト', createdAt: 1 }));
+  it('置いた器具の id を候補の順に返す（直し方を覚える見張りに使う）', () => {
+    const floorId = s().doc.building.floors[0].id;
+    const ids = s().placeFixtureCandidates([{ floorId, type: 'toilet', x: 1000, y: 1000, rotation: 0 }, { floorId, type: 'bathtub', x: 3000, y: 2000, rotation: 90 }]);
+    expect(ids).toHaveLength(2);
+    expect(ids.map((id) => s().doc.fixtures[id!].type)).toEqual(['toilet', 'bathtub']);
+  });
+});
