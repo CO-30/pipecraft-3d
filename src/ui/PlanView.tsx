@@ -2,7 +2,9 @@
  * 2D平面図。共通ストアの Doc（建物＋配管）から描画し、編集結果も共通ストアへ書き込む。
  * 1本指: ツールに応じた作図・選択・移動 / 2本指: 拡大縮小・移動（編集と干渉しない）。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { analyzeFittings } from '../model/fittings';
+import { arcPoints, pbBendArcs, trimmedEnds } from '../model/pbBends';
 import { activeFloorElevation, isUnderFloor, useStore } from '../state/store';
 import { hitTestPlan, orthoSnap, simplify, type HitFilter, type Vec2 } from '../model/geometry';
 import { hitTestBuilding } from '../model/buildingHit';
@@ -89,6 +91,7 @@ export function PlanView() {
   const scalePick = useStore((s) => s.scalePick);
   const fixtures = useStore((s) => s.doc.fixtures);
   useColors((c) => c.overrides);
+  const bendArcs = useMemo(() => pbBendArcs(net, analyzeFittings(net, fixtures)), [net, fixtures]);
   const [dropHit, setDropHit] = useState<ReturnType<typeof hitTestPlan>>(null);
   const pointers = useRef(new Map<number, Vec2>());
   const gesture = useRef<Gesture | null>(null);
@@ -643,7 +646,8 @@ export function PlanView() {
         );
       })}
       {Object.values(net.segments).map((s) => {
-        const na = net.nodes[s.a].pos, nb = net.nodes[s.b].pos;
+        // PB の曲げ配管の角は、曲がりの始まりまで縮めて曲線でつなぐ
+        const [na, nb] = trimmedEnds(net, bendArcs, s.id);
         const here = segHere(s.id);
         const a = toScreen(na), b = toScreen(nb);
         const selected = isSel('segment', s.id);
@@ -657,6 +661,15 @@ export function PlanView() {
               <text data-testid="seg-label" x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 12} textAnchor="middle" fontSize={12} fill="#b45309" fontWeight="bold">{Math.round(segmentLength(net, s.id))}mm</text>
             )}
           </g>
+        );
+      })}
+      {[...bendArcs.values()].map((arc) => {
+        const s = net.segments[arc.segs[0]];
+        const pts = arcPoints(arc).map(toScreen);
+        const selected = arc.segs.some((id) => isSel('segment', id));
+        return (
+          <path key={'bend' + arc.nodeId} data-bend={arc.nodeId} d={pts.map((q, i) => `${i ? 'L' : 'M'}${q.x},${q.y}`).join(' ')} fill="none" pointerEvents="none"
+            opacity={segHere(arc.segs[0]) ? 1 : 0.2} stroke={selected ? SELECT_COLOR : systemColor(s.system)} strokeWidth={Math.max(3, s.diameter * vw.scale * 3)} strokeLinecap="round" />
         );
       })}
       {Object.keys(net.segments).filter((id) => isVertical(net, id)).map((id) => {
@@ -676,6 +689,10 @@ export function PlanView() {
         const p = toScreen(n.pos);
         const big = n.kind === 'tee' || n.kind === 'cross';
         const drop = dropHit?.type === 'node' && dropHit.id === n.id;
+        // 継手なしで曲げる角は、曲線の邪魔をしない小さな点（選ぶ・動かすことはできる）
+        if (bendArcs.has(n.id) && !isSel('node', n.id) && !(dropHit?.type === 'node' && dropHit.id === n.id)) {
+          return <circle key={n.id} data-node={n.id} data-kind={n.kind} data-bend="1" cx={p.x} cy={p.y} r={3} opacity={onThisFloor(n.pos.z) ? 0.8 : 0.2} fill="#fff" stroke="#64748b" strokeWidth={1} />;
+        }
         const portSys = portSystem(fixtures, n);
         const port = !!n.fixtureId;
         // 器具の接続口は種類の色（給水=青・給湯=赤・排水=茶…）。床下では床上の接続口も始点にできるので少し濃く

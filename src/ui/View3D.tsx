@@ -13,6 +13,8 @@ import { buildingBoxes, type Box } from '../model/building3d';
 import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
+import { analyzeFittings } from '../model/fittings';
+import { pbBendArcs, trimmedEnds, type BendArc } from '../model/pbBends';
 import { portSystem, fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
 import { photoPlane } from '../model/facadePhoto';
 import { OUTSIDE_RGB } from '../model/homography';
@@ -114,6 +116,20 @@ function Pipe({ a, b, radius, color, selected, mode, onSelect, clip }: { a: Vec3
   );
 }
 
+/** PB の曲げ配管の曲線（2 次ベジェに沿った管） */
+function BendTube({ arc, radius, color, selected, mode, onSelect, clip }: { arc: BendArc; radius: number; color: string; selected: boolean; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
+  const curve = useMemo(() => new THREE.QuadraticBezierCurve3(toThree(arc.from), toThree(arc.corner), toThree(arc.to)), [arc]);
+  if (mode === 'hide') return null;
+  const r = selected ? radius * 1.6 : radius;
+  return (
+    <mesh onClick={(e) => { e.stopPropagation(); onSelect(); }} renderOrder={2}>
+      <tubeGeometry args={[curve, 16, r, 12, false]} />
+      <meshStandardMaterial color={selected ? SELECT_COLOR : color} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.5 : 0}
+        transparent={mode === 'ghost'} opacity={mode === 'ghost' ? 0.3 : 1} clippingPlanes={clip} />
+    </mesh>
+  );
+}
+
 const BoxMesh = memo(function BoxMesh({ box, mode, selected, onSelect, onGrab, clip }: { box: Box; mode: VisMode; selected: boolean; onSelect?: () => void; onGrab?: (e: ThreeEvent<PointerEvent>) => void; clip: THREE.Plane[] }) {
   if (mode === 'hide') return null;
   const ghost = mode === 'ghost';
@@ -149,6 +165,8 @@ function TestHook() {
         });
         return out;
       },
+      /** 種類ごとの形の数（例: TubeGeometry = PB の曲げ配管） */
+      countGeometry: (type: string) => { let n = 0; scene.traverse((o) => { if ((o as THREE.Mesh).geometry?.type === type) n++; }); return n; },
       project: (nodeId: string) => {
         const n = useStore.getState().doc.network.nodes[nodeId];
         const v = toThree(n.pos).project(camera);
@@ -175,6 +193,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const floorFilter = useStore((s) => s.floorFilter);
   const activeFloorId = useStore((s) => s.activeFloorId);
   const fixtures = useStore((s) => s.doc.fixtures);
+  const bendArcs = useMemo(() => pbBendArcs(net, analyzeFittings(net, fixtures)), [net, fixtures]);
   const elevations = useStore((s) => s.doc.elevations);
   useColors((c) => c.overrides);
   const allBoxes = useMemo(() => buildingBoxes(building), [building]);
@@ -345,14 +364,21 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
         });
       })()}
       {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => (
-        <Pipe clip={clip} key={s.id} a={net.nodes[s.a].pos} b={net.nodes[s.b].pos} radius={Math.max(0.025, s.diameter / 1500)}
+        <Pipe clip={clip} key={s.id} {...(([a, b]) => ({ a, b }))(trimmedEnds(net, bendArcs, s.id))} radius={Math.max(0.025, s.diameter / 1500)}
           color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} mode={pipeMode}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: s.id })} />
       ))}
       {Object.values(fixtures).filter((f) => floorFilter === 'all' || shownFloorIds.has(f.floorId)).map((f) => (
         <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={modeFor('fixtures', f.id)} />
       ))}
-      {pipeMode !== 'hide' && Object.values(net.nodes).filter((n) => zIn(n.pos.z)).map((n) => (
+      {[...bendArcs.values()].filter((arc) => zIn(arc.corner.z)).map((arc) => {
+        const sg = net.segments[arc.segs[0]];
+        const selected = sel?.kind === 'segment' && arc.segs.includes(sel.id);
+        return <BendTube key={'bend' + arc.nodeId} arc={arc} clip={clip} mode={pipeMode} selected={selected} color={systemColor(sg.system)} radius={Math.max(0.025, sg.diameter / 1500)}
+          onSelect={() => useStore.getState().select({ kind: 'segment', id: arc.segs[0] })} />;
+      })}
+      {/* 継手なしで曲げる角には玉を出さない（選んでいるときだけ出す） */}
+      {pipeMode !== 'hide' && Object.values(net.nodes).filter((n) => zIn(n.pos.z) && (!bendArcs.has(n.id) || (sel?.kind === 'node' && sel.id === n.id))).map((n) => (
         <mesh key={n.id} position={toThree(n.pos)} onPointerDown={n.fixtureId ? undefined : (e) => startDrag(e, n.id)}
           onClick={n.fixtureId ? (e) => { e.stopPropagation(); useStore.getState().select({ kind: 'node', id: n.id }); } : undefined} renderOrder={3}>
           <sphereGeometry args={[n.kind === 'tee' || n.kind === 'cross' ? 0.07 : n.fixtureId ? 0.045 : 0.05, 16, 16]} />
