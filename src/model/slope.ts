@@ -118,7 +118,7 @@ export function applySlope(
   let out = net, moved = 0;
   for (const [id, zz] of z) {
     const n = out.nodes[id];
-    if (id === outletId || n.fixtureId || Math.abs(n.pos.z - zz) < 0.05) continue;
+    if (id === outletId || n.fixtureId || n.zPin || Math.abs(n.pos.z - zz) < 0.05) continue;
     const next = moveNode(out, id, { ...n.pos, z: Math.round(zz * 10) / 10 });
     if (next === out) return null;
     out = next;
