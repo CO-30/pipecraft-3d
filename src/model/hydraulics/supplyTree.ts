@@ -23,6 +23,8 @@ export type SupplyTree = {
   outlets: SupplyOutlet[];
   service: { length: number; diameter: number; drawn: boolean };
   warnings: string[];
+  /** 直結直圧の 1 引込でない（ポンプ・高置水槽・メーター 2 個以上）。判定は参考 */
+  outOfScope: string | null;
 };
 
 const usedLength = (net: Network, s: Segment) => s.measuredLength ?? segmentLength(net, s.id);
@@ -37,8 +39,9 @@ export function buildSupplyTree(doc: Doc): SupplyTree | { error: string } {
   const warnings: string[] = [];
   const meters = Object.values(doc.fixtures).filter((f) => f.type === 'waterMeter');
   if (!meters.length) return { error: '水道メーターがありません。器具の「水道メーター」を置き、給水の配管をつないでください' };
-  if (meters.length > 1) warnings.push('水道メーターが 2 個以上あります。複数の引込は対象外のため、1 個目のメーターから計算しています');
-  if (Object.values(doc.fixtures).some((f) => f.type === 'pump' || f.type === 'roofTank')) warnings.push('ポンプ・高置水槽があります。増圧・受水槽の方式は対象外のため、直結直圧として計算しています');
+  const scope: string[] = [];
+  if (meters.length > 1) { warnings.push('水道メーターが 2 個以上あります。複数の引込は対象外のため、1 個目のメーターから計算しています'); scope.push('メーターが 2 個以上'); }
+  if (Object.values(doc.fixtures).some((f) => f.type === 'pump' || f.type === 'roofTank')) { warnings.push('ポンプ・高置水槽があります。増圧・受水槽の方式は対象外のため、直結直圧として計算しています'); scope.push('ポンプ・高置水槽がある'); }
   const meter = meters[0];
   const nodes = Object.values(net.nodes);
   const portOf = (fid: string, pid: string): PipeNode | undefined => nodes.find((n) => n.fixtureId === fid && n.portId === pid);
@@ -62,7 +65,8 @@ export function buildSupplyTree(doc: Doc): SupplyTree | { error: string } {
     const links: Link[] = [];
     if (fx && id !== out.id) {
       if (fx.type === 'waterHeader' && n.portId === 'in') {
-        for (const p of nodes) if (p.fixtureId === fx.id && p.portId?.startsWith('out') && !seen.has(p.id)) { seen.add(p.id); links.push({ to: p.id }); }
+        // 管がつながっている出口だけ（使っていない出口を長さ 0 の枝にしない）
+        for (const p of nodes) if (p.fixtureId === fx.id && p.portId?.startsWith('out') && !seen.has(p.id) && waterAt(net, p.id).length) { seen.add(p.id); links.push({ to: p.id }); }
       } else if (fx.type === 'waterMeter') {
         return; // 別のメーター（または同じメーターの入口）には入らない
       } else if (!(fx.type === 'waterHeader' && n.portId?.startsWith('out'))) {
@@ -132,5 +136,5 @@ export function buildSupplyTree(doc: Doc): SupplyTree | { error: string } {
     }
   }
 
-  return { rootNodeId: out.id, meterId: meter.id, meterDia, meterZ: out.pos.z, edges, parentEdge, valves, outlets, service, warnings };
+  return { rootNodeId: out.id, meterId: meter.id, meterDia, meterZ: out.pos.z, edges, parentEdge, valves, outlets, service, warnings, outOfScope: scope.length ? scope.join('・') : null };
 }

@@ -11,9 +11,9 @@ const tree = (t: ReturnType<typeof buildSupplyTree>): SupplyTree => {
 
 describe('設定（site.application の suiri.*）', () => {
   test('書いて読むと戻る。他のキーは残る', () => {
-    const app = writeSuiriSettings({ x: '1' }, { pressure: 0.2, use: ['a', 'b'], flows: { f1: 24 } });
-    expect(app).toEqual({ x: '1', 'suiri.pressure': '0.2', 'suiri.use': 'a,b', 'suiri.flow.f1': '24' });
-    expect(readSuiriSettings(app)).toEqual({ pressure: 0.2, use: ['a', 'b'], flows: { f1: 24 } });
+    const app = writeSuiriSettings({ x: '1' }, { pressure: 0.2, meterDia: 20, use: ['a', 'b'], flows: { f1: 24 } });
+    expect(app).toEqual({ x: '1', 'suiri.pressure': '0.2', 'suiri.meterDia': '20', 'suiri.use': 'a,b', 'suiri.flow.f1': '24' });
+    expect(readSuiriSettings(app)).toEqual({ pressure: 0.2, meterDia: 20, use: ['a', 'b'], flows: { f1: 24 } });
   });
   test('空にしたキーは消える', () => {
     const app = writeSuiriSettings({ 'suiri.use': 'a', 'suiri.pressure': '0.2', 'suiri.flow.f1': '24' }, { use: [], pressure: undefined, flows: {} });
@@ -66,6 +66,14 @@ describe('給水の木', () => {
     net = route(net, port(net, header, 'out1').id, port(net, faucet, 'water').id, 13).net;
     const t = tree(buildSupplyTree({ ...doc, network: net }));
     expect(t.outlets.map((o) => o.fixtureId)).toEqual([faucet]);
+    // 使っていない出口は枝にしない（長さ 0 の偽の枝を図に出さない）
+    expect(t.edges.every((e) => e.segIds.length > 0)).toBe(true);
+  });
+  test('ポンプ・高置水槽・メーター 2 個は対象外として理由を持つ', () => {
+    const k = kawasakiLike();
+    expect(tree(buildSupplyTree(k.doc)).outOfScope).toBeNull();
+    const doc = put(k.doc, k.floorId, 'pump', -3000, 3000).doc;
+    expect(tree(buildSupplyTree(doc)).outOfScope).toMatch(/ポンプ/);
   });
   test('メーターが無ければ理由を返す', () => {
     const { doc } = newDoc();

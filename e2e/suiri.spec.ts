@@ -13,7 +13,8 @@ test.describe('水理計算書', () => {
 
   test('判定 → 設計水圧を下げると不適当 → 口径の提案で適当 → PDF → 1 回戻すと口径が戻る', async ({ page }) => {
     await createProject(page, '水理テスト');
-    const house = kawasakiLike().doc;
+    const k = kawasakiLike();
+    const house = k.doc;
     await page.evaluate((d) => { const s = (window as any).__pc.getState(); s.newDoc(d, s.meta); }, house);
     const before = await diameters(page);
 
@@ -26,6 +27,24 @@ test.describe('水理計算書', () => {
     await page.getByTestId('suiri-conditions-open').click();
     await expect(page.getByTestId('suiri-pressure-auto')).toBeVisible();
     await page.screenshot({ path: evidence('suiri-01-ok') });
+
+    // 那覇市: 設計水圧は未確認 → 水道局に確かめたら「確認済み」で要確認を消せる
+    await page.getByTestId('shinsei-profile').selectOption('naha');
+    await expect(page.getByTestId('suiri-pressure-auto')).toContainText('要確認');
+    await expect(page.getByTestId('shinsei-warnings')).toContainText('要確認');
+    await page.getByTestId('suiri-pressure-confirm').click();
+    await expect(page.getByTestId('suiri-pressure-clear')).toBeVisible();
+    await expect(page.getByTestId('shinsei-warnings')).not.toContainText('要確認');
+
+    // 器具ごとの使用水量（給湯器 24 号）
+    const heater = k.ids.heater;
+    await page.getByTestId(`suiri-flow-${heater}`).fill('24');
+    await page.getByTestId(`suiri-flow-${heater}`).press('Enter');
+    await expect.poll(async () => (await page.evaluate(() => (window as any).__pc.getState().doc.site.application)) ?? {}).toMatchObject({ [`suiri.flow.${heater}`]: '24' });
+    await expect(page.getByTestId('shinsei-preview')).toContainText('36.0 L/min');
+    // 自動に戻す（メーター 25 のままでは 36 L/min を 0.07MPa で送れないため）
+    await page.getByTestId(`suiri-flow-${heater}-clear`).click();
+    await expect(page.getByTestId('shinsei-preview')).toContainText('32.0 L/min');
 
     await page.getByTestId('suiri-pressure').fill('0.07');
     await page.getByTestId('suiri-pressure').press('Enter');

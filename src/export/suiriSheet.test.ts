@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { calcSupply, type SupplyCalc } from '../model/hydraulics/calc';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
-import { crowdedSupply, kawasakiLike } from '../model/hydraulics/testSupply';
+import { crowdedSupply, kawasakiLike, put } from '../model/hydraulics/testSupply';
 import { findTextOverlaps } from './labelLayout';
 import { WARN, type Sheet } from './sheet';
 import { renderSuiriSheets } from './suiriSheet';
@@ -29,6 +29,17 @@ describe('水理計算書', () => {
     for (const o of c.outlets) expect(all).toContain(o.letter);
     for (const r of c.rows) expect(all).toContain(r.label);
     expect(all).toContain('適当');
+  });
+  test('使う人が選んだ数が表の値と違えば、両方書く', () => {
+    const k = kawasakiLike();
+    const all = texts(renderSuiriSheets(calc(k.doc, undefined, { use: [k.ids.kitchen, k.ids.heater, k.ids.toilet], flows: {} } as never), meta)).join('\n');
+    expect(all).toContain('同時に使う給水用具数: 3 栓（表の値 2 栓）');
+  });
+  test('対象外の方式は判定を「対象外（参考）」と書く', () => {
+    const k = kawasakiLike();
+    const all = texts(renderSuiriSheets(calc(put(k.doc, k.floorId, 'pump', -3000, 3000).doc), meta)).join('\n');
+    expect(all).toContain('対象外（参考）');
+    expect(all).not.toContain('判定: 適当');
   });
   test('不適当も書く', () => {
     const all = texts(renderSuiriSheets(calc(undefined, undefined, { pressure: 0.05, flows: {} } as never), meta)).join('\n');

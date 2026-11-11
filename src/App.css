@@ -340,6 +340,9 @@ header .lbl { margin-left: 2px; }
 .suiri-verdict { flex-basis: 100%; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
 .suiri-verdict.ok { background: #dcfce7; color: #14532d; }
 .suiri-verdict.ng { background: #fee2e2; color: #7f1d1d; }
+.suiri-verdict.na { background: #fef3c7; color: #78350f; }
+.suiri-outlet { display: inline-flex; align-items: center; gap: 4px; }
+.suiri-flow input { width: 4.5em; }
 .suiri-verdict strong { font-size: 15px; margin-right: 6px; }
 .suiri-conditions { flex-basis: 100%; }
 .suiri-conditions summary { cursor: pointer; color: #1d4ed8; padding: 4px 0; }

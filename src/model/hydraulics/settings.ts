@@ -11,13 +11,15 @@ export type SuiriSettings = {
   serviceLen?: number;
   /** 配水管とメーターの高低差 m */
   drop?: number;
+  /** 水道メーターの口径 mm（空なら図面から） */
+  meterDia?: number;
   /** 同時に使う器具（器具 id）。空なら自動で選ぶ */
   use?: string[];
   /** 器具ごとの使用水量 L/min */
   flows: Record<string, number>;
 };
 
-const NUM_KEYS = { pressure: 'suiri.pressure', margin: 'suiri.margin', serviceLen: 'suiri.serviceLen', drop: 'suiri.drop' } as const;
+const NUM_KEYS = { pressure: 'suiri.pressure', margin: 'suiri.margin', serviceLen: 'suiri.serviceLen', drop: 'suiri.drop', meterDia: 'suiri.meterDia' } as const;
 const USE = 'suiri.use';
 const FLOW = 'suiri.flow.';
 

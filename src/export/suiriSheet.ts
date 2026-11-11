@@ -78,11 +78,12 @@ export function renderSuiriSheets(calc: SupplyCalc, meta: SheetMeta): Sheet[] {
   // 1) 条件
   heading('1. 計算の条件');
   const pressureUnverified = calc.unverified.some((u) => u.startsWith('設計水圧'));
+  const usedCount = calc.outlets.filter((o) => o.used).length;
   const lines: { s: string; tail?: string }[] = [
     { s: '給水方式: 直結直圧式    計算方法: 給水装置工事技術指針の方式（ウエストン公式、同時使用率を考慮した給水用具数）' },
     { s: `設計水圧: ${calc.pressure}MPa（${f2(calc.available)}m）`, ...(pressureUnverified ? { tail: '（要確認）' } : {}) },
     { s: `余裕水頭: ${f2(calc.margin)}m    配水管の高さ: メーターの ${f2(calc.rows.find((r) => r.label.startsWith('引込管'))?.rise ?? 0)}m 下    管の延長: 実長 × ${calc.rules.lengthFactor.v}（ソケット等の損失を含む）` },
-    { s: `給水用具数: ${calc.totalOutlets} 栓 → 同時に使う給水用具数: ${calc.simultaneous} 栓    計画使用水量: ${f1(calc.plannedFlow)} L/min` },
+    { s: `給水用具数: ${calc.totalOutlets} 栓 → 同時に使う給水用具数: ${usedCount === calc.simultaneous ? `${usedCount} 栓` : `${usedCount} 栓（表の値 ${calc.simultaneous} 栓）`}    計画使用水量: ${f1(calc.plannedFlow)} L/min` },
     { s: '使用水量・同時使用の数・直管換算長: 給水装置工事技術指針と各市の計算例の一般的な値' },
   ];
   for (const l of lines) {
@@ -124,8 +125,9 @@ export function renderSuiriSheets(calc: SupplyCalc, meta: SheetMeta): Sheet[] {
   ];
   for (const s of results) { need(5); text(L + 2, y + 3.2, s, 2.8, { maxW: R - L - 4 }); y += 4.8; }
   need(9);
-  const verdict = calc.ok ? '判定: 適当（この口径で給水できる）' : `判定: 不適当（${[!okP ? '水圧が足りない' : '', over ? '流速が上限を超える' : ''].filter(Boolean).join('・')}）`;
-  text(L + 2, y + 5, verdict, 4, { bold: true, color: calc.ok ? INK : RED, maxW: R - L - 4 });
+  const verdict = calc.outOfScope ? `判定: 対象外（参考）（${calc.outOfScope}。直結直圧として計算した参考の値）`
+    : calc.ok ? '判定: 適当（この口径で給水できる）' : `判定: 不適当（${[!okP ? '水圧が足りない' : '', over ? '流速が上限を超える' : ''].filter(Boolean).join('・')}）`;
+  text(L + 2, y + 5, verdict, 4, { bold: true, color: calc.outOfScope ? WARN : calc.ok ? INK : RED, maxW: R - L - 4 });
   y += 9;
 
   // 6) 注記

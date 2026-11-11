@@ -8,14 +8,17 @@ import type { Doc } from '../doc';
 import { calcSupply, type CalcRow, type SupplyCalc } from './calc';
 import type { SuiriSettings } from './settings';
 import type { SupplyRules } from './supplyRules';
+import { buildSupplyTree } from './supplyTree';
 
 export type DiameterChange = { segId: string; from: number; to: number };
 const STEPS = [13, 20, 25, 30, 40, 50];
-const nextSize = (d: number) => STEPS.find((x) => x > d);
-const GIVE_UP = '口径を 50 まで太くしても足りません。メーターの口径を上げるか、増圧方式を検討してください';
+/** 次の段（家の管はメーターの口径より太くしない） */
+const nextSize = (d: number, cap: number) => STEPS.find((x) => x > d && x <= cap);
+const GIVE_UP = '家の中の管をメーターの口径まで太くしても足りません。メーターの口径を上げるか、増圧方式を検討してください';
 
 function pick(c: SupplyCalc): CalcRow | undefined {
-  const bumpable = (r: CalcRow) => r.kind === 'pipe' && r.edge !== undefined && nextSize(r.diameter) !== undefined;
+  // 長さ 0 の区間（ヘッダーの出口など）は太くしても何も変わらないので選ばない
+  const bumpable = (r: CalcRow) => r.kind === 'pipe' && r.edge !== undefined && c.tree.edges[r.edge].segIds.length > 0 && nextSize(r.diameter, c.meterDia) !== undefined;
   const over = c.rows.filter((r) => r.over && bumpable(r)).sort((a, b) => b.velocity - a.velocity);
   if (over.length) return over[0];
   const crit = c.rows.filter((r) => r.critical && bumpable(r)).sort((a, b) => b.loss - a.loss);
@@ -24,6 +27,11 @@ function pick(c: SupplyCalc): CalcRow | undefined {
 
 export function suggestDiameters(doc: Doc, rules: SupplyRules, settings: SuiriSettings): { changes: DiameterChange[]; ok: boolean; message?: string } {
   const orig = new Map(Object.values(doc.network.segments).map((s) => [s.id, s.diameter]));
+  const t0 = buildSupplyTree(doc);
+  if ('error' in t0) return { changes: [], ok: false, message: t0.error };
+  // メーター（と描いていない引込）の口径は、太くした管から決め直さないように固定する
+  const fixed: SuiriSettings = { ...settings, meterDia: settings.meterDia ?? t0.meterDia };
+  settings = fixed;
   let cur = doc;
   const diff = (): DiameterChange[] => Object.values(cur.network.segments).filter((s) => orig.get(s.id) !== s.diameter).map((s) => ({ segId: s.id, from: orig.get(s.id)!, to: s.diameter }));
   for (let iter = 0; iter < 60; iter++) {
@@ -33,7 +41,7 @@ export function suggestDiameters(doc: Doc, rules: SupplyRules, settings: SuiriSe
     const row = pick(c);
     if (!row) return { changes: diff(), ok: false, message: c.rows.some((r) => r.over && r.edge === undefined) ? `引込の流速が上限を超えています。${GIVE_UP}` : GIVE_UP };
     const t = c.tree;
-    const to = nextSize(row.diameter)!;
+    const to = nextSize(row.diameter, c.meterDia)!;
     const segments = { ...cur.network.segments };
     const widen = (i: number) => { for (const id of t.edges[i].segIds) if (segments[id].diameter < to) segments[id] = { ...segments[id], diameter: to }; };
     widen(row.edge!);

@@ -44,6 +44,8 @@ export type SupplyCalc = {
   available: number;
   pressure: number;
   margin: number;
+  /** 計算に使ったメーターの口径 */
+  meterDia: number;
   plannedFlow: number;
   totalOutlets: number;
   simultaneous: number;
@@ -52,6 +54,8 @@ export type SupplyCalc = {
   /** 点の記号（nodeId → 記号。配水管の分岐は '__main__'） */
   letters: Record<string, string>;
   criticalFixtureId: string;
+  /** 対象外の方式の理由（判定は参考） */
+  outOfScope: string | null;
   warnings: string[];
   unverified: string[];
   tree: SupplyTree;
@@ -71,6 +75,7 @@ export function calcSupply(doc: Doc, rules: SupplyRules, settings: SuiriSettings
   const factor = rules.lengthFactor.v;
   const vmax = rules.maxVelocity.v;
   const drop = settings.drop ?? rules.mainDrop.v;
+  const meterDia = settings.meterDia ?? t.meterDia;
   const zOf = (id: string) => doc.network.nodes[id].pos.z;
   const flowOf = (o: SupplyOutlet) => settings.flows[o.fixtureId] ?? defaultFlow(o.type, o.dia);
 
@@ -125,16 +130,19 @@ export function calcSupply(doc: Doc, rules: SupplyRules, settings: SuiriSettings
   // 同時に使う器具
   const totalOutlets = t.outlets.length;
   const simultaneous = simultaneousCount(totalOutlets);
-  const chosen = (settings.use ?? []).map((id) => t.outlets.find((o) => o.fixtureId === id)).filter((o): o is SupplyOutlet => !!o);
+  const picked = (settings.use ?? []).map((id) => t.outlets.find((o) => o.fixtureId === id));
+  const chosen = picked.filter((o): o is SupplyOutlet => !!o);
+  // 1 つでも見つからなければ自動で選び直す（少ない器具で甘く計算しない）
+  const stale = chosen.length < picked.length;
   let used: SupplyOutlet[];
-  if (chosen.length) used = chosen;
+  if (chosen.length && !stale) used = chosen;
   else {
     const solo = new Map(t.outlets.map((o) => [o.nodeId, headOf(pathRows(o, edgeFlows([o])))]));
     const crit = t.outlets.reduce((a, b) => (solo.get(b.nodeId)! > solo.get(a.nodeId)! ? b : a));
     const rest = t.outlets.filter((o) => o !== crit).sort((a, b) => flowOf(b) - flowOf(a) || solo.get(b.nodeId)! - solo.get(a.nodeId)!);
     used = [crit, ...rest.slice(0, simultaneous - 1)];
   }
-  if (settings.use?.length && chosen.length < settings.use.length) warnings.push('選んだ器具の一部が見つからないため、見つかった器具で計算しています');
+  if (stale) warnings.push('同時に使う器具として選んだ器具が見つからないため、自動で選び直しました');
   const plannedFlow = used.reduce((a, o) => a + flowOf(o), 0);
   const flows = edgeFlows(used);
 
@@ -143,11 +151,11 @@ export function calcSupply(doc: Doc, rules: SupplyRules, settings: SuiriSettings
   const critical = used.reduce((a, b) => (headOf(perOutlet.get(b.nodeId)!) > headOf(perOutlet.get(a.nodeId)!) ? b : a));
 
   // 引込（配水管〜メーター）。配水管の側から: 分水栓・止水栓・(引込管)・メーター・逆止弁
-  const s = t.service;
+  const s = t.service.drawn ? t.service : { ...t.service, diameter: meterDia };
   const svcLenM = s.drawn ? s.length / 1000 : settings.serviceLen ?? rules.serviceLength.v;
   if (!s.drawn && settings.serviceLen === undefined) warnings.push(`引込（配水管〜メーター）の管が描かれていないため、延長 ${rules.serviceLength.v.toFixed(1)}m・口径 ${s.diameter} として計算しています`);
   const svcItem = (item: EquivItem) => {
-    const dia = item === 'meter' ? t.meterDia : s.diameter;
+    const dia = item === 'meter' ? meterDia : s.diameter;
     const label = item === 'tap' ? `${EQUIV_LABEL.tap} ${letters[MAIN_POINT]}` : EQUIV_LABEL[item];
     return row('item', label, plannedFlow, dia, 0, equivLength(item, dia), 0);
   };
@@ -184,8 +192,8 @@ export function calcSupply(doc: Doc, rules: SupplyRules, settings: SuiriSettings
   const usedIds = new Set(used.map((o) => o.nodeId));
   return {
     ok: required <= available + 1e-9 && overRows.length === 0,
-    total, required, available, pressure, margin, plannedFlow, totalOutlets, simultaneous,
+    total, required, available, pressure, margin, meterDia, plannedFlow, totalOutlets, simultaneous,
     outlets: t.outlets.map((o) => ({ fixtureId: o.fixtureId, letter: letters[o.nodeId], label: FIXTURE_CATALOG[o.type].label, dia: o.dia, flow: flowOf(o), used: usedIds.has(o.nodeId), pathHead: pathHeads.get(o.nodeId) ?? 0 })),
-    rows, letters, criticalFixtureId: critical.fixtureId, warnings, unverified, tree: t, rules,
+    rows, letters, criticalFixtureId: critical.fixtureId, outOfScope: t.outOfScope, warnings, unverified, tree: t, rules,
   };
 }

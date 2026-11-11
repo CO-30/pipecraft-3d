@@ -67,6 +67,20 @@ describe('条件を変える', () => {
     const c = run({ use: ['f_gone'], flows: {} }, STD, k.doc);
     expect(c.outlets.filter((o) => o.used)).toHaveLength(2);
   });
+  test('一部だけ消えた選び方も、自動で選び直す（少ない器具で甘く計算しない）', () => {
+    const c = run({ use: [k.ids.kitchen, 'f_gone'], flows: {} }, STD, k.doc);
+    expect(c.plannedFlow).toBe(32);
+    expect(c.warnings.join()).toMatch(/自動で選び直し/);
+  });
+  test('メーターの口径を指定できる（メーターと引込の行に効く）', () => {
+    const c = run({ meterDia: 20, flows: {} }, STD, k.doc);
+    expect(c.meterDia).toBe(20);
+    expect(c.rows.find((r) => r.label === '水道メーター')!.diameter).toBe(20);
+    expect(c.rows.find((r) => r.label.startsWith('引込管'))!.diameter).toBe(20);
+  });
+  test('対象外の方式は理由を返す（判定は参考）', () => {
+    expect(run({ flows: {} }, STD, k.doc).outOfScope).toBeNull();
+  });
   test('器具の水量を上書きできる', () => expect(run({ flows: { [k.ids.heater]: 24 } }, STD, k.doc).plannedFlow).toBe(36));
   test('13mm の管に 40 L/min は流速超過で不適当', () => {
     const c = run({ flows: { [k.ids.kitchen]: 40 } }, STD, k.doc);
