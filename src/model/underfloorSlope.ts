@@ -11,7 +11,7 @@ import { wallsOnFloor, type Vec2 } from './building';
 import type { Doc } from './doc';
 import { isManhole } from './fixtures';
 import { membersOf } from './members';
-import { segmentsAt, type Network, type Segment } from './network';
+import { normalize, segmentsAt, type Network, type Segment } from './network';
 import { applySlope, defaultSlope, isRiserLike, isSlopePinned, outerDiameter, planLength } from './slope';
 
 /** 床下の排水の標準の勾配（2/100） */
@@ -83,6 +83,8 @@ export function isUnderfloorDrain(net: Network, s: Segment, lv: UnderfloorLevels
   const za = net.nodes[s.a]?.pos.z, zb = net.nodes[s.b]?.pos.z;
   if (za === undefined || zb === undefined) return false;
   // 外の浅い排水管（床下と同じ高さでも外壁の外だけを通る管）は除く。外壁をまたぐ区間は床下に含める
+  // 器具・マスの接続口につながる区間は床下の横管ではない（マスは床下に無い）
+  if (net.nodes[s.a].fixtureId || net.nodes[s.b].fixtureId) return false;
   return inUnderfloor(lv, za) && inUnderfloor(lv, zb) && planLength(net, s) >= 1
     && (insideBuilding(lv, net.nodes[s.a].pos) || insideBuilding(lv, net.nodes[s.b].pos));
 }
@@ -187,7 +189,7 @@ export function slopeUnderfloor(doc: Doc, rules: UnderfloorRules = {}, onlyNodes
       nodes[id] = { ...n, pos: { ...n.pos, z: zz } };
       if (id === ex.id) movedExit = true;
     }
-    const start: Network = { ...net, nodes };
+    const start: Network = normalize({ ...net, nodes });
     const run = (low: boolean) => applySlope(start, ex.id, (s) => (isSlopePinned(s) && s.slope !== undefined ? s.slope : underfloorRatio(s.diameter, rules, low)), { include: (s) => comp.segs.has(s.id), allowMid: true });
     /** 配管の上（管頂）が上限を超える点があるか */
     const tooHigh = (n2: Network) => [...comp.segs].some((id) => {

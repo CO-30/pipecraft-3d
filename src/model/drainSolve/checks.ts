@@ -81,7 +81,7 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
       const L = planLength(net, s);
       if (L < 1) continue;
       const pf = fxOf(p);
-      const downZ = net.nodes[p].pos.z + (pf && isManhole(pf.type) && !isPublicType(pf.type) ? net.nodes[p].dropIn ?? 0 : 0);
+      const downZ = net.nodes[p].pos.z + (pf && isManhole(pf.type) ? net.nodes[p].dropIn ?? 0 : 0);
       const slope = (net.nodes[n].pos.z - downZ) / L;
       const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos;
       const uf = !!lv && isUnderfloorDrain(net, s, lv);

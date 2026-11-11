@@ -18,7 +18,8 @@ export type DrainTree = {
   public: boolean;
 };
 
-export const isDrainSeg = (s: Segment) => s.system === 'drain' || s.system === 'sewage';
+/** 自動計算する排水の区間（立面に描いた管 = 雨どいの竪樋などは使う人の高さのまま） */
+export const isDrainSeg = (s: Segment) => (s.system === 'drain' || s.system === 'sewage') && !s.face;
 const isPublic = (t: string) => t === 'publicSewage' || t === 'publicRain';
 
 export function buildDrainTrees(doc: Doc): DrainTree[] {

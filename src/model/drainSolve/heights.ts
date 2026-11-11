@@ -9,7 +9,7 @@
 import type { Doc } from '../doc';
 import type { DrainRuleSet } from '../drainRules';
 import { isManhole } from '../fixtures';
-import { validateNetwork, type Network, type Segment } from '../network';
+import { normalize, validateNetwork, type Network, type Segment } from '../network';
 import { defaultSlope as indoorMinSlope, isSlopePinned, planLength } from '../slope';
 import { insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels } from '../underfloorSlope';
 import { buildDrainTrees, type DrainTree } from './tree';
@@ -39,8 +39,9 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
   /** マス（公共ます以外）の流入側の落差 */
   const dropOf = (id: string) => {
     const f = fxOf(id);
-    if (!f || !isManhole(f.type) || isPublicType(f.type)) return 0;
-    return Math.max(f.params?.drop ?? 0, rules.drop);
+    if (!f || !isManhole(f.type)) return 0;
+    // 公共ますは管底を食い違わせない（使う人が落差を入れたときだけ）
+    return isPublicType(f.type) ? f.params?.drop ?? 0 : Math.max(f.params?.drop ?? 0, rules.drop);
   };
   const ufSegs = new Set(lv ? Object.values(net0.segments).filter((s) => isUnderfloorDrain(net0, s, lv)).map((s) => s.id) : []);
   const ufNodes = new Set([...ufSegs].flatMap((id) => [net0.segments[id].a, net0.segments[id].b]));
@@ -124,8 +125,8 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
       let next = n;
       if (Math.abs(n.pos.z - zz) >= 0.05) next = { ...next, pos: { ...next.pos, z: zz } };
       const f = fxOf(id);
-      if (f && isManhole(f.type) && !isPublicType(f.type)) {
-        const d = (childrenOf.get(id) ?? 0) > 0 ? dropOf(id) : 0;
+      if (f && isManhole(f.type)) {
+        const d = (childrenOf.get(id) ?? 0) > 0 || isPublicType(f.type) ? dropOf(id) : 0;
         if ((next.dropIn ?? 0) !== d) { const { dropIn: _d, ...rest } = next; next = d ? { ...rest, dropIn: d } : rest; }
         fixtureIds.set(f.id, zz);
       }
@@ -151,6 +152,8 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
     for (const sw of sweeps) sw();
     net = apply(net);
   }
+  // 高さが変わると継手の種類（直線の継ぎ目・曲がり）が変わることがあるので付け直す
+  net = normalize(net);
   if (validateNetwork(net).length) return { doc, segSlopes, trees, underfloor, failed: true };
   let fixtures = doc.fixtures;
   for (const [fid, zz] of fixtureIds) {
