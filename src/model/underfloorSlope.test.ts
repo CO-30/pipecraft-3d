@@ -128,3 +128,25 @@ describe('床下の排水の自動勾配（slopeUnderfloor）', () => {
     expect(sup.marks.every((m) => m.kind === 'levelBand' && m.height !== undefined)).toBe(true);
   });
 });
+
+describe('床下の排水の自動勾配: 建物の外の管', () => {
+  /** 8000 × 6000 の外壁で囲んだ家 */
+  function boxed(): Doc {
+    const f = addFloor(emptyBuilding(), { height: 2900 });
+    let b: Building = { ...f.b, foundation: { slabTop: -550 } };
+    const P = [{ x: 0, y: 0 }, { x: 8000, y: 0 }, { x: 8000, y: 6000 }, { x: 0, y: 6000 }];
+    for (let i = 0; i < 4; i++) b = addWall(b, f.floorId, P[i], P[(i + 1) % 4], { kind: 'exterior' }).b;
+    return { ...emptyDoc(), building: b };
+  }
+  it('外だけを通る浅い管は床下とみなさず動かさない。外壁をまたいだ所が起点で、外の管より上に置いて知らせる', () => {
+    let doc = boxed();
+    const out = addPolyline(doc.network, [v(-8000, 3000, -500), v(-1000, 3000, -500)], D100);
+    const inn = addPolyline(out.net, [v(-1000, 3000, -500), v(4000, 3000, -500)], D100, { startNodeId: out.nodeIds[1] });
+    doc = { ...doc, network: inn.net };
+    const r = slopeUnderfloor(doc);
+    expect(r).toMatchObject({ systems: 1, raised: 1 });
+    expect(r.net.nodes[out.nodeIds[0]].pos.z).toBe(-500); // 外の端はそのまま
+    expect(r.net.nodes[out.nodeIds[1]].pos.z).toBe(-450); // 起点 = 外の管 + 50
+    expect(r.net.nodes[inn.nodeIds[1]].pos.z).toBeCloseTo(-450 + 5000 * 0.02, 1); // 家の中の端が上流
+  });
+});

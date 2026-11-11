@@ -517,6 +517,7 @@
 ## 2026-11-12 床下の排水の自動勾配（土間を起点）・レベルバンド — PR 作成（ブランチ `feat/underfloor-slope`）
 - 依頼: 排水線を描くと、床下から出る所の土間を 0 起点に、各器具へ 1.5〜2%（自治体の指定があればそれ）で自動で勾配。レベルバンドで支持
 - 実装: `underfloorSlope.ts`（起点 = 外のマス・地中へ下がる点、無ければ外壁に近い端。管底を土間へ、2/100、床下が低ければ 1.5/100、自治体・管径の最小勾配が急ならそれ。描いた直後の段差もそろえ直す）。描いたとき・「排水を外の桝までつなぐ（案）」で自動、区間のパネルの「土間から勾配をつけ直す」、配管の道具で切り替え。床下の排水の横管は自動でレベルバンド、集計に「土間から管底 最大 ○mm」
-- テスト: 単体 702 合格（underfloorSlope 8・ストア 3 を追加、drainRoute の期待値を 2/100・土間に更新）、E2E（underfloor・planauto・supports・pipes）合格、lint 警告数は main と同じ
+- 独立レビュー（Sonnet）: Critical 0 / Important 1（外だけを通る浅い管を床下とみなして逆勾配にする）→ 外壁が 1 周つながっていれば外壁の外の管を除き、外の管へ続く点を起点に（外の管より上）。テスト追加
+- テスト: 単体 703 合格（underfloorSlope 9・ストア 3 を追加、drainRoute の期待値を 2/100・土間に更新）、E2E（underfloor・planauto・supports・pipes）合格、lint 警告数は main と同じ
 - 続き: 指示「排水勾配の自動計算」「自治体基準_排水チェック条件」→ 設計 `docs/superpowers/specs/2026-11-12-drain-auto-slope-design.md`、計画 `docs/superpowers/plans/2026-11-12-drain-solver-core.md`（solveDrain の核＋自治体の排水ルール）。未着手
 - 気づき: 配管の道具で排水を選んでも口径が φ20 のまま（口径の自動決定で直す）

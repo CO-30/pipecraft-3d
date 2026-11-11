@@ -40,7 +40,7 @@ export const underfloorRatio = (d: number, rules: UnderfloorRules = {}, low = fa
   Math.max(low ? rules.low ?? UF_SLOPE_LOW : rules.target ?? UF_SLOPE, rules.slopeFor?.(d) ?? 0, defaultSlope(d));
 
 /** 床下の高さ（絶対 mm）: floor = 1 階の床、slab = 土間、top = 配管の上（管頂）の上限。slabKnown: 図面・設定の土間がある */
-export type UnderfloorLevels = { floorId: string; floor: number; slab: number; top: number; slabKnown: boolean };
+export type UnderfloorLevels = { floorId: string; floor: number; slab: number; top: number; slabKnown: boolean; /** 1 階の外壁（1 周つながっているときだけ。建物の内外の判定。無ければ全部を内とみる） */ outline: (readonly [Vec2, Vec2])[] };
 
 export function underfloorLevels(doc: Pick<Doc, 'building'>): UnderfloorLevels | null {
   const b = doc.building;
@@ -50,13 +50,30 @@ export function underfloorLevels(doc: Pick<Doc, 'building'>): UnderfloorLevels |
   const slab = base.elevation + (b.foundation?.slabTop ?? -DEFAULT_SLAB_DEPTH);
   const tops = membersOf(b).filter((m) => m.kind === 'footing' && m.floorId === base.id).map((m) => base.elevation + m.z1);
   const top = tops.length ? Math.min(Math.max(...tops), base.elevation - 1) : base.elevation - FLOOR_FRAME;
-  return { floorId: base.id, floor: base.elevation, slab, top, slabKnown };
+  const ext = wallsOnFloor(b, base.id).filter((w) => w.kind === 'exterior');
+  // 外壁が 1 周つながっているときだけ内外を判定する（描きかけの外壁で全部が「外」にならないように）
+  const deg = new Map<string, number>();
+  for (const w of ext) for (const c of [w.a, w.b]) deg.set(c, (deg.get(c) ?? 0) + 1);
+  const closed = ext.length >= 3 && [...deg.values()].every((n) => n % 2 === 0);
+  const outline = closed ? ext.map((w) => [b.corners[w.a], b.corners[w.b]] as const) : [];
+  return { floorId: base.id, floor: base.elevation, slab, top, slabKnown, outline };
 }
 
 const isDrainLine = (s: Segment) => s.system === 'drain' || s.system === 'sewage';
 
 /** 高さ z（絶対 mm）が床下（1 階の床より下・土間より上）か */
 export const inUnderfloor = (lv: UnderfloorLevels, z: number) => z < lv.floor - 1 && z > lv.slab - ZONE_TOL;
+
+/** 平面の点が建物（1 階の外壁の内側）にあるか。外壁が無ければ true。外壁の線上は内 */
+export function insideBuilding(lv: Pick<UnderfloorLevels, 'outline'>, p: Vec2): boolean {
+  if (!lv.outline.length) return true;
+  if (lv.outline.some(([a, b]) => pointSeg(p, a, b) < 1)) return true;
+  let inside = false;
+  for (const [a, b] of lv.outline) {
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < a.x + ((p.y - a.y) * (b.x - a.x)) / (b.y - a.y)) inside = !inside;
+  }
+  return inside;
+}
 
 /**
  * 床下の排水の横管か（両端が床下にあり、平面で長さがある。勾配の急・緩は問わない: 描いた・つないだ直後の段差も含めて付け直す）
@@ -65,7 +82,9 @@ export function isUnderfloorDrain(net: Network, s: Segment, lv: UnderfloorLevels
   if (!isDrainLine(s)) return false;
   const za = net.nodes[s.a]?.pos.z, zb = net.nodes[s.b]?.pos.z;
   if (za === undefined || zb === undefined) return false;
-  return inUnderfloor(lv, za) && inUnderfloor(lv, zb) && planLength(net, s) >= 1;
+  // 外の浅い排水管（床下と同じ高さでも外壁の外だけを通る管）は除く。外壁をまたぐ区間は床下に含める
+  return inUnderfloor(lv, za) && inUnderfloor(lv, zb) && planLength(net, s) >= 1
+    && (insideBuilding(lv, net.nodes[s.a].pos) || insideBuilding(lv, net.nodes[s.b].pos));
 }
 
 /** 支持金具: 床下の排水の横管（勾配のついた・ゆるい横管。立て管のような急な管は除く） */
@@ -121,7 +140,8 @@ function exitOf(doc: Doc, comp: { segs: Set<string>; nodes: Set<string> }, lv: U
       const o = net.nodes[t.a === id ? t.b : t.a];
       const fx = o.fixtureId ? doc.fixtures[o.fixtureId] : undefined;
       if (o.pos.z > n.pos.z + 1 && !(fx && isManhole(fx.type))) goesUp = true;
-      else if (o.pos.z < n.pos.z - 1 || (fx && isManhole(fx.type))) dz = Math.max(dz ?? -Infinity, o.pos.z + (o.dropIn ?? 0));
+      // 下がっていく管・マス・建物の外の管（外の浅い管）へ続く点が起点。外の管より上に起点を置く
+      else if (o.pos.z < n.pos.z - 1 || (fx && isManhole(fx.type)) || !insideBuilding(lv, o.pos)) dz = Math.max(dz ?? -Infinity, o.pos.z + (o.dropIn ?? 0));
     }
     if (dz !== undefined) down.push({ id, z: n.pos.z, downZ: dz });
     else if (deg === 1 && !goesUp && !n.fixtureId) ends.push(id);
@@ -131,7 +151,7 @@ function exitOf(doc: Doc, comp: { segs: Set<string>; nodes: Set<string> }, lv: U
     return { id: d.id, downZ: d.downZ };
   }
   if (!ends.length) return null;
-  const ext = wallsOnFloor(doc.building, lv.floorId).filter((w) => w.kind === 'exterior').map((w) => [doc.building.corners[w.a], doc.building.corners[w.b]] as const);
+  const ext = lv.outline.length ? lv.outline : wallsOnFloor(doc.building, lv.floorId).filter((w) => w.kind === 'exterior').map((w) => [doc.building.corners[w.a], doc.building.corners[w.b]] as const);
   const score = (id: string) => {
     const p = net.nodes[id].pos;
     return ext.length ? Math.min(...ext.map(([a, b]) => pointSeg(p, a, b))) : p.z;
