@@ -108,3 +108,45 @@ test('床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。�
     expect(tubes).toBe(2);
   }
 });
+
+test('床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配がつき、レベルバンドで支持する', async ({ page }) => {
+  await freshApp(page);
+  await createProject(page, '床下排水テスト'); // 8000 × 6000 の家（基礎伏図なし → 土間は床から 500 下とみなす）
+  await show(page, '2D');
+  const touch = await touchSession(page);
+  await page.getByTestId('tool-fixture').click();
+  await page.getByTestId('fixture-washbasin').click();
+  await tapMm(page, 4000, 3000, touch);
+  await page.evaluate(() => (window as any).__pc.getState().select(null));
+  await page.getByTestId('underfloor-chip').click();
+  await page.getByTestId('tool-pipe').click();
+  await page.getByTestId('draw-system').selectOption('drain');
+  await expect(page.getByTestId('auto-underfloor-slope')).toBeChecked();
+
+  let d = await doc(page);
+  const port = Object.values(d.network.nodes as Record<string, any>).find((n) => n.portId === 'drain')!;
+  await strokeMm(page, [[port.pos.x, port.pos.y], [port.pos.x, 1000], [300, 1000]], touch);
+  await expect(page.getByTestId('notice')).toContainText('土間');
+  d = await doc(page);
+  const nodes = Object.values(d.network.nodes as Record<string, any>).filter((n) => !n.fixtureId);
+  const exit = nodes.find((n) => Math.abs(n.pos.x - 300) < 1)!;
+  expect(exit.pos.z).toBe(-500);
+  // 器具の下の端は起点から 2/100 で上がる（平面の長さ = 曲がりまで 2000 + 横 3700 前後）
+  const under = nodes.find((n) => Math.abs(n.pos.x - port.pos.x) < 1 && Math.abs(n.pos.y - port.pos.y) < 1)!;
+  const L = Math.abs(under.pos.y - 1000) + Math.abs(port.pos.x - 300);
+  expect(under.pos.z).toBeCloseTo(-500 + L * 0.02, 0);
+  await page.screenshot({ path: evidence('uf-04-drain-slope') });
+
+  // 区間を選ぶと土間からの高さと「付け直す」
+  const seg = Object.values(d.network.segments as Record<string, any>).find((s) => s.a === exit.id || s.b === exit.id)!;
+  await page.evaluate((id) => (window as any).__pc.getState().select({ kind: 'segment', id }), seg.id);
+  await expect(page.getByTestId('seg-underfloor')).toContainText('土間から管底 0〜');
+  await expect(page.getByTestId('seg-support')).toContainText('自動（レベルバンド）');
+  await page.getByTestId('underfloor-slope').click();
+  await expect(page.getByTestId('notice')).toContainText('土間');
+
+  await page.getByTestId('open-estimate').click();
+  await page.getByTestId('tab-parts').click();
+  await expect(page.getByTestId('supports-table')).toContainText('土間から管底 最大');
+  await page.getByTestId('close-estimate').click();
+});

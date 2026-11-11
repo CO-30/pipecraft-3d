@@ -12,6 +12,7 @@ import {
 import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
+import { slopeUnderfloor, type UnderfloorRules, type UnderfloorSlopeResult } from '../model/underfloorSlope';
 import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import { assignAutoMaterials } from '../model/materials';
@@ -39,6 +40,23 @@ import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineL
 
 /** 床下に描く高さの初期値（床から mm） */
 export const UNDER_FLOOR_HEIGHT = -300;
+
+/** 床下の排水の勾配の決まり（自治体の最小勾配）。画面側（申請図面の自治体プロファイル）から渡す */
+let underfloorRulesOf: (doc: Doc) => UnderfloorRules = () => ({});
+export function setUnderfloorRulesSource(fn: (doc: Doc) => UnderfloorRules) { underfloorRulesOf = fn; }
+
+const pct = (r: number) => `${Math.round(r * 1000) / 10}/100`;
+/** 床下の自動勾配の知らせ */
+function underfloorNotice(u: UnderfloorSlopeResult, manual: boolean): string {
+  const lv = u.levels;
+  const parts = [`床下の排水に勾配: 土間（床下から出る所）から器具へ ${pct(0.02)}・レベルバンド支持`];
+  if (lv && !lv.slabKnown) parts.push('土間は床−500 の仮の高さ（基礎伏図を読むと正しくなります）');
+  if (u.low) parts.push(`${u.low} 系統は床下が低いため ${pct(0.015)}`);
+  if (u.over) parts.push(`⚠ ${u.over} 系統は基礎天端を超えます（ルートを短く・出口を増やす）`);
+  if (u.raised) parts.push(`${u.raised} 系統は下流が浅いため起点を上げました`);
+  if (u.failed && manual) parts.push(`${u.failed} 系統は起点を決められませんでした`);
+  return parts.join('。');
+}
 /** ヘッダーの出口の、設置面からの高さ(mm)（カタログの接続口 dz） */
 const HEADER_PORT_DZ = 100;
 
@@ -108,6 +126,11 @@ type State = {
   /** 床下（1 階の床の下・基礎の中）を表示・作図中 */
   underFloor: boolean;
   setUnderFloor(on: boolean): void;
+  /** 床下の排水を描いたら、床下から出る所（土間）を起点に器具へ自動で勾配をつける */
+  autoUnderfloorSlope: boolean;
+  setAutoUnderfloorSlope(on: boolean): void;
+  /** 床下の排水に、土間を起点に勾配をつけ直す。nodeId を渡すとその点のまとまりだけ。勾配をつけた系統の数 */
+  slopeUnderfloorDrains(nodeId?: string): number;
   /** 床下で器具の接続口から描き始めた: 接続口から床下まで立て管を下ろし、そこから points を描く（履歴は 1 件） */
   drawFromPortDown(portNodeId: string, points: Vec3[], opts?: { endNodeId?: string; endSegId?: string }): void;
   orthoSnap: boolean;
@@ -408,7 +431,16 @@ export const useStore = create<State>((set, get) => {
     // 「自動」の給水・給湯は、建物の内（床下を含む）を PB・外を HIVP/HTVP に（外周をまたぐ所で分ける）
     // 立面（外壁の面）に描く配管は外周の線の上にあるため自動にしない（未設定 = HIVP/HTVP 扱い）
     const joined = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
-    const net = extra.face ? joined : autoMat(joined, doc0.network);
+    let net = extra.face ? joined : autoMat(joined, doc0.network);
+    // 床下の排水: 床下から出る所（土間）を起点に、器具の方へ勾配をつける（描いた配管を含むまとまりだけ）
+    if (get().autoUnderfloorSlope && !extra.face && (attrs.system === 'drain' || attrs.system === 'sewage')) {
+      const touched = [...r.nodeIds, ...(opts?.startNodeId ? [opts.startNodeId] : [])].filter((id) => net.nodes[id]);
+      const u = slopeUnderfloor({ ...doc0, network: net }, underfloorRulesOf(doc0), touched);
+      if (u.systems) {
+        net = u.net;
+        notice = [notice, underfloorNotice(u, false)].filter(Boolean).join('。');
+      }
+    }
     // 外周で分けたときは、描き終わりの側の区間を選ぶ
     const endNode = r.nodeIds.at(-1);
     const selId = net.segments[last] ? last : Object.values(net.segments).find((s) => !doc0.network.segments[s.id] && (s.a === endNode || s.b === endNode))?.id;
@@ -448,6 +480,7 @@ export const useStore = create<State>((set, get) => {
     drawHeight: 100,
     underFloor: false,
     orthoSnap: true,
+    autoUnderfloorSlope: true,
     dimWizard: null,
     elevDraw: 'pipe',
     fixtureType: 'toilet',
@@ -497,6 +530,17 @@ export const useStore = create<State>((set, get) => {
     },
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
+    setAutoUnderfloorSlope: (autoUnderfloorSlope) => set({ autoUnderfloorSlope }),
+    slopeUnderfloorDrains: (nodeId) => {
+      const doc = get().doc;
+      const r = slopeUnderfloor(doc, underfloorRulesOf(doc), nodeId ? [nodeId] : undefined);
+      if (!r.systems) {
+        set({ notice: r.failed ? '床下の排水の起点（床下から出る所）を決められませんでした。外のマス・配管へつなぐか、外壁の近くまで描いてください' : '床下（1 階の床と土間の間）の排水がありません' });
+        return 0;
+      }
+      commit(withNet(r.net), { notice: underfloorNotice(r, true) });
+      return r.systems;
+    },
     select: (selection) => set({ selection }),
     setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null, underFloor: false, ...(get().underFloor && get().drawHeight < 0 ? { drawHeight: 100 } : {}), ...(get().dimWizard?.floorId !== activeFloorId ? { dimWizard: null } : {}) }),
     setUnderFloor: (on) => {

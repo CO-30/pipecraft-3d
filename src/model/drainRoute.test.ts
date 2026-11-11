@@ -40,13 +40,14 @@ describe('排水のつなぎ案（drainRoute）', () => {
     expect([last.system, last.diameter]).toEqual(['sewage', 75]);
     const drop = segmentsAt(net, a.id).find((x) => x.id !== last.id)!;
     const x = net.nodes[drop.a === a.id ? drop.b : drop.a];
-    // 起点（基礎を出る点）から器具へ 1/100 で上がる: 器具の下の端（便器の排水口 y=4550）は −300 のまま、起点は 1085 × 1/100 下
+    // 起点（基礎を出る点）の管底を土間（スラブ天端 −550）に置き、器具へ 2/100 で上がる: 器具の下の端（便器の排水口 y=4550）は 1085 × 2/100 上
     expect([x.pos.x, x.pos.y]).toEqual([1000, D + 175]);
-    expect(x.pos.z).toBeCloseTo(-310.9, 1);
+    expect(x.pos.z).toBe(-550);
     const flat = segmentsAt(net, x.id).find((t) => t.id !== drop.id)!;
     const up = net.nodes[flat.a === x.id ? flat.b : flat.a];
-    expect([up.pos.x, up.pos.y, up.pos.z]).toEqual([1000, 4550, -300]);
-    expect(flat.slope).toBe(1 / 100);
+    expect([up.pos.x, up.pos.y]).toEqual([1000, 4550]);
+    expect(up.pos.z).toBeCloseTo(-550 + 1085 * 0.02, 1);
+    expect(flat.slope).toBe(0.02);
     // 地中の配管の上（管頂）は GL から 200 以上下（宅地内の土かぶり）
     expect(-600 - (a.pos.z + 89)).toBeGreaterThanOrEqual(200);
     expect(openDrainEnds(r.doc)).toHaveLength(0);
