@@ -393,7 +393,8 @@ export const useStore = create<State>((set, get) => {
     }
     // 器具の接続口（または接続口から下ろした立て管の端）から描くときは、接続口の口径のまま続ける（径違いを作らない）
     const portDia = opts?.startNodeId ? fixturePipeDiameter(doc, opts.startNodeId) : undefined;
-    if (portDia && canJoin(attrs.system, nodeAttrs(doc.network, doc.fixtures, opts!.startNodeId!).systems[0] ?? attrs.system) && portDia !== attrs.diameter) {
+    // 給水・給湯だけ（排水は下流で太くするのが普通なので、選んだ口径のまま）
+    if (portDia && (attrs.system === 'water' || attrs.system === 'hotWater') && canJoin(attrs.system, nodeAttrs(doc.network, doc.fixtures, opts!.startNodeId!).systems[0] ?? attrs.system) && portDia !== attrs.diameter) {
       notice = [notice, `接続口に合わせて φ${portDia} で描きました`].filter(Boolean).join('。');
       attrs = { ...attrs, diameter: portDia };
     }
@@ -751,7 +752,7 @@ export const useStore = create<State>((set, get) => {
       if (!f) return;
       if (patch.diameter !== undefined && !(patch.diameter > 0)) return;
       const next = moveFixture(doc, id, f, undefined, patch);
-      if (next === doc) { set({ notice: '管底高を変えると配管がつながらなくなります' }); return; }
+      if (next === doc) { set({ notice: patch.mountZ !== undefined || 'mountZ' in patch ? 'この高さにすると配管の長さが 0 になるため変えられません' : '管底高を変えると配管がつながらなくなります' }); return; }
       // 管底が動いたら、固定勾配の区間の上流端も追従させる
       let network = next.network;
       // 管底（または落差）が変わったら、固定勾配の区間の上流端も追従させる
@@ -1282,8 +1283,8 @@ function fixturePipeDiameter(doc: Doc, nodeId: string): number | undefined {
   if (n.fixtureId) return segs.length ? undefined : nodeAttrs(net, doc.fixtures, nodeId).attrs?.diameter;
   if (segs.length !== 1) return undefined;
   const o = net.nodes[segs[0].a === nodeId ? segs[0].b : segs[0].a];
-  const vertical = Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1;
-  return o.fixtureId && vertical ? segs[0].diameter : undefined;
+  const dropped = Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 && o.pos.z > n.pos.z;
+  return o.fixtureId && dropped ? segs[0].diameter : undefined;
 }
 
 /** 床下を表示中か（床下の階 = いちばん下の階を表示しているときだけ） */

@@ -234,7 +234,7 @@ export function PropertyPanel() {
         )}
         {isHeader(f.type) && fl && (
           <div className="row" data-testid="header-mount">
-            <NumField label="設置の高さ（床から）" value={f.params?.mountZ ?? (def.base as number)} min={-1000} max={5000} testId="header-mount-z" onCommit={(v) => st.updateFixtureParams(f.id, { mountZ: Math.round(v) })} />
+            <NumField label="設置の高さ（床から）" value={f.params?.mountZ ?? (def.base as number)} min={doc.building.floors[0]?.id === f.floorId ? -1000 : 0} max={Math.max(0, fl.height - fl.slabThickness - def.size.h)} testId="header-mount-z" onCommit={(v) => st.updateFixtureParams(f.id, { mountZ: Math.round(v) })} />
             <button data-testid="header-under" onClick={() => st.updateFixtureParams(f.id, { mountZ: -400 })}>床下（出口 −300）</button>
             <button onClick={() => st.updateFixtureParams(f.id, { mountZ: undefined })}>床上（標準）</button>
           </div>

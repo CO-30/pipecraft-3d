@@ -166,8 +166,11 @@ export function analyzeFittings(net: Network, fixtures?: Record<string, Fixture>
     if (a) judged.set(n.id, a);
   }
   // PB の曲げ: 両側の区間に「この曲げの接線長 + 向こう端の曲げの接線長」が取れなければ、エルボを使う
+  // 曲げの大きい（接線長の長い）所から順に決める。順番を決めておけば、結果が点の並び順で変わらない
   const tangentAt = (id: string) => judged.get(id)?.pbBend?.tangent ?? 0;
-  for (const n of Object.values(net.nodes)) {
+  const bends = [...judged].filter(([, a]) => a.pbBend).map(([id]) => net.nodes[id])
+    .sort((p, q) => tangentAt(q.id) - tangentAt(p.id) || (p.id < q.id ? -1 : 1));
+  for (const n of bends) {
     const a = judged.get(n.id);
     if (!a?.pbBend) continue;
     const short = (adj.get(n.id) ?? []).some((sg) => {

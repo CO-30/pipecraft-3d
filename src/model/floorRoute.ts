@@ -5,14 +5,16 @@
  */
 type Vec2 = { x: number; y: number };
 
-/** 終点: 線分 a→b（点なら a = b）へ、向き dir（0:+x 1:+y 2:−x 3:−y）で着く */
-export type RouteGoal = { a: Vec2; b: Vec2; dir: 0 | 1 | 2 | 3; tag: number };
+/** 終点: 線分 a→b（点なら a = b）へ、向き dir（0:+x 1:+y 2:−x 3:−y）で着く。extra はその終点を選ぶときに足す費用 */
+export type RouteGoal = { a: Vec2; b: Vec2; dir: 0 | 1 | 2 | 3; tag: number; extra?: number };
 export type RouteInput = {
   start: Vec2;
   /** 通ってよい所（建物の中で、外周の立上りから離れた所） */
   allowed: (p: Vec2) => boolean;
   /** 内部の立上りの上（貫通になる所） */
   footing: (p: Vec2) => boolean;
+  /** 方眼の点から点へ進んでよいか（点と点の間にある障害物＝先の配管などを見落とさないため） */
+  edgeOk?: (p: Vec2, q: Vec2) => boolean;
   goals: RouteGoal[];
   bounds: { x0: number; y0: number; x1: number; y1: number };
   step?: number;
@@ -24,6 +26,8 @@ export const ROUTE_STEP = 100;
 export const BEND_COST = 400;
 /** 立上りの貫通 1 か所を、何 mm の遠回りとみなすか（人通口を通る方を選ぶ） */
 export const CROSS_COST = 8000;
+/** 線分の途中へ合流するとき、端点から離す距離(mm) */
+const END_GAP = 50;
 const DIRS: Vec2[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }];
 
 class Heap {
@@ -59,7 +63,7 @@ function reach(c: Vec2, d: number, g: RouteGoal, step: number): { p: Vec2; fwd: 
     // 点: 横のずれは方眼の半分まで（あとで最後の 1 本を合わせる）、前へ 0〜1 目
     const fwd = (ga.x - c.x) * v.x + (ga.y - c.y) * v.y;
     const side = Math.abs((ga.x - c.x) * -v.y + (ga.y - c.y) * v.x);
-    return fwd >= -1e-6 && fwd <= step + 1e-6 && side <= step / 2 + 1e-6 ? { p: ga, fwd } : null;
+    return fwd >= -1e-6 && fwd <= 2 * step + 1e-6 && side <= step / 2 + 1e-6 ? { p: ga, fwd } : null;
   }
   // 線分: 進む向きに直交していること。c から前へ伸ばした線との交点
   const u = { x: (gb.x - ga.x) / len, y: (gb.y - ga.y) / len };
@@ -67,7 +71,7 @@ function reach(c: Vec2, d: number, g: RouteGoal, step: number): { p: Vec2; fwd: 
   const fwd = (ga.x - c.x) * v.x + (ga.y - c.y) * v.y;
   if (fwd < -1e-6 || fwd > step + 1e-6) return null;
   const s = (c.x - ga.x) * u.x + (c.y - ga.y) * u.y;
-  if (s < 1 || s > len - 1) return null; // 端点ちょうどは継手が重なるので避ける
+  if (s < END_GAP || s > len - END_GAP) return null; // 端点のすぐ近くは継手が重なるので避ける（点への合流は別の終点）
   return { p: { x: ga.x + u.x * s, y: ga.y + u.y * s }, fwd };
 }
 
@@ -101,17 +105,21 @@ export function findFloorRoute(inp: RouteInput): RouteResult | null {
   let best: { k: number; cost: number; goal: RouteGoal; p: Vec2 } | null = null;
   for (let e = heap.pop(); e; e = heap.pop()) {
     const [c, k] = e;
-    if (c > dist[k] || (best && c >= best.cost)) continue;
+    if (c > dist[k]) continue;
+    if (best && c >= best.cost) break; // これより先は高くなるだけ
     const d = k % 4, ci = Math.floor(k / 4), i = (ci % W) + i0, j = Math.floor(ci / W) + j0;
     const here = at(i, j);
     for (const g of inp.goals) {
       const r = reach(here, d, g, step);
-      if (r && (!best || c + r.fwd < best.cost)) best = { k, cost: c + r.fwd, goal: g, p: r.p };
+      if (!r || (inp.edgeOk && !inp.edgeOk(here, r.p))) continue;
+      const total = c + r.fwd + (g.extra ?? 0);
+      if (!best || total < best.cost) best = { k, cost: total, goal: g, p: r.p };
     }
     for (let nd = 0; nd < 4; nd++) {
       if (nd === (d + 2) % 4) continue; // 引き返さない
       const ni = i + DIRS[nd].x, nj = j + DIRS[nd].y;
       if (ni < i0 || ni > i1 || nj < j0 || nj > j1 || !ok(ni, nj)) continue;
+      if (inp.edgeOk && !inp.edgeOk(here, at(ni, nj))) continue;
       const enter = onFoot(ni, nj) && !onFoot(i, j);
       const along = onFoot(ni, nj) && onFoot(i, j);
       const isStart = i === 0 && j === 0;

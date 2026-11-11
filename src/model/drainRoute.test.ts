@@ -185,4 +185,19 @@ describe('排水のつなぎ案（drainRoute）', () => {
     expect(flat.length).toBeGreaterThan(1);
     for (const s of flat) for (const m of inner) expect(cross(net.nodes[s.a].pos, net.nodes[s.b].pos, m.a, m.b)).toBe(false);
   });
+  it('先の配管が外周の壁ぎわから出ていても、その点へ合流する（飛ばさない・重ねない）', () => {
+    let doc = house([['toilet', 1000, 4200]]);
+    const f1 = doc.building.floors[0].id;
+    const r0 = placeFixture(doc, f1, 'manholeSewage', { x: 1600, y: D + 760 });
+    doc = r0.doc;
+    const port = portNodes(doc.network, r0.fixtureId!)[0];
+    // 壁ぎわ（壁芯から 60mm）から外のマスへ出る先の配管
+    doc = { ...doc, network: addPolyline(doc.network, [{ x: 1600, y: D - 60, z: -300 }, { x: 1600, y: D + 760, z: -300 }, port.pos], { system: 'sewage', diameter: 75 }, { endNodeId: port.id }).net };
+    const r = routeDrainsOut(doc);
+    expect(r).toMatchObject({ pipes: 1, manholes: 0, skipped: 0 });
+    expect(validateNetwork(r.doc.network)).toEqual([]);
+    const net = r.doc.network;
+    const joint = Object.values(net.nodes).find((n) => Math.abs(n.pos.x - 1600) < 1 && Math.abs(n.pos.y - (D - 60)) < 1)!;
+    expect(segmentsAt(net, joint.id)).toHaveLength(2);
+  });
 });
