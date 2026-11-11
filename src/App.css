@@ -334,6 +334,18 @@ header .lbl { margin-left: 2px; }
 .shinsei > header .grow { flex: 1; }
 .shinsei-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
 .shinsei-controls .badge.warn { background: #fef3c7; color: #92400e; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+.shinsei-controls .badge.ok { background: #dcfce7; color: #166534; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+/* 水理計算書: 判定と条件 */
+.suiri-panel { display: contents; }
+.suiri-verdict { flex-basis: 100%; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
+.suiri-verdict.ok { background: #dcfce7; color: #14532d; }
+.suiri-verdict.ng { background: #fee2e2; color: #7f1d1d; }
+.suiri-verdict strong { font-size: 15px; margin-right: 6px; }
+.suiri-conditions { flex-basis: 100%; }
+.suiri-conditions summary { cursor: pointer; color: #1d4ed8; padding: 4px 0; }
+.suiri-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 6px 0; }
+.suiri-use { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; flex-basis: 100%; }
+.suiri-use label { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
 .shinsei-warnings { margin: 0; padding: 6px 10px 6px 28px; background: #fff7ed; border-bottom: 1px solid #fed7aa; }
 .shinsei-preview { overflow: auto; background: #e5e7eb; padding: 12px; touch-action: pan-x pan-y pinch-zoom; -webkit-overflow-scrolling: touch; }
 .shinsei-pages { min-width: 320px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
@@ -343,7 +355,7 @@ header .lbl { margin-left: 2px; }
 .symbol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
 .modal h3 { margin: 8px 0 0; font-size: 14px; }
 @media (max-width: 700px) {
-  .shinsei-controls { font-size: 12px; }
+  .shinsei-controls { font-size: 12px; max-height: 55vh; overflow-y: auto; }
   .shinsei-preview { padding: 4px; }
   .app.narrow .est-open .lbl { display: none; }
 }
