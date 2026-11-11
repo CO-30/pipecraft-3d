@@ -64,6 +64,35 @@ describe('排水のつなぎ案（drainRoute）', () => {
       expect(Math.abs(a.z - b.z) / L).toBeGreaterThanOrEqual(1 / 100 - 1e-3);
     }
   });
+  it('器具を足してもう一度押すと、勾配のついた先の配管へ合流する（重ねない・地中へ下ろすのは 1 本）', () => {
+    let doc = routeDrainsOut(house([['toilet', 1000, 4700]])).doc;
+    doc = dropFixturePipes(placeFixture(doc, doc.building.floors[0].id, 'washbasin', { x: 1700, y: 5000 }).doc).doc;
+    const r = routeDrainsOut(doc);
+    expect(r).toMatchObject({ pipes: 1, manholes: 0, skipped: 0 });
+    expect(validateNetwork(r.doc.network)).toEqual([]);
+    const net = r.doc.network;
+    const [m] = manholes(r.doc);
+    expect(segmentsAt(net, portNodes(net, m.id)[0].id)).toHaveLength(1);
+    // 起点から上流は勾配がつき、器具の下の端がいちばん高い（合流点もつながった勾配）
+    for (const sg of Object.values(net.segments)) {
+      const a = net.nodes[sg.a].pos, b = net.nodes[sg.b].pos, L = Math.hypot(a.x - b.x, a.y - b.y);
+      if (sg.system === 'water' || L < 1 || Math.abs(a.z - b.z) > L || a.z < -600) continue;
+      expect(Math.abs(a.z - b.z) / L).toBeGreaterThanOrEqual(1 / 100 - 1e-3);
+    }
+  });
+  it('深く落とした配管でも、起点は地中の点より上・落とした高さより下（逆に上がらない）', () => {
+    const r0 = buildFromSheets([{ name: 'a', page: planSheet() }, { name: 'b', page: foundationSheet() }]);
+    let doc: Doc = { ...emptyDoc(), building: r0.building, site: { designGL: -600 } };
+    doc = dropFixturePipes(placeFixture(doc, r0.building.floors[0].id, 'toilet', { x: 1000, y: 1000 }).doc, 1000).doc;
+    const r = routeDrainsOut(doc);
+    const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
+    const [last] = segmentsAt(net, port.id);
+    const under = net.nodes[last.a === port.id ? last.b : last.a];
+    const drop = segmentsAt(net, under.id).find((t) => t.id !== last.id)!;
+    const x = net.nodes[drop.a === under.id ? drop.b : drop.a];
+    expect(x.pos.z).toBeGreaterThan(under.pos.z + 40);
+    expect(x.pos.z).toBeLessThanOrEqual(-1000);
+  });
   it('もう一度押しても増えない。排水が無ければ何もしない', () => {
     const once = routeDrainsOut(house([['toilet', 1000, 4500]]));
     const again = routeDrainsOut(once.doc);
