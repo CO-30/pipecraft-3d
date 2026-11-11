@@ -37,7 +37,29 @@ export function route(net: Network, fromId: string, to: Vec3 | string, dia: numb
   return { net: r.net, endId: r.nodeIds.at(-1)!, segIds: r.segmentIds };
 }
 
-export function kawasakiLike(): { doc: Doc; floorId: string; ids: { meter: string; kitchen: string; washbasin: string; toilet: string; heater: string; F: string; E: string } } {
+/** 器具が近くに固まった現場（文字の重なりの確認用）: メーター → 幹線から 300mm おきに 11 本の枝 → 水栓・洗面台など ＋ 給湯器 */
+export function crowdedSupply(): Doc {
+  let { doc, floorId } = newDoc();
+  let r = put(doc, floorId, 'waterMeter', 0, 0); doc = r.doc; const meter = r.id;
+  const types: FixtureType[] = ['faucet', 'washbasin', 'toilet', 'kitchen', 'washer', 'shower', 'mixFaucet', 'faucet', 'outdoorFaucet', 'washbasin', 'toilet'];
+  const ids: string[] = [];
+  types.forEach((ty, i) => { r = put(doc, floorId, ty, 1500 + i * 300 + 2000 * Math.floor(i / 6), 1500 + (i % 3) * 400); doc = r.doc; ids.push(r.id); });
+  r = put(doc, floorId, 'waterHeater', 1150, -1200); doc = r.doc; const heater = r.id;
+  let net = doc.network;
+  const out = port(net, meter, 'out');
+  let prev = out.id;
+  const taps: string[] = [];
+  for (let i = 0; i < types.length; i++) {
+    const wp = port(net, ids[i], 'water');
+    const t = route(net, prev, { x: wp.pos.x, y: 0, z: out.pos.z }, i < 6 ? 25 : 20);
+    net = t.net; prev = t.endId; taps.push(t.endId);
+  }
+  types.forEach((_, i) => { net = route(net, taps[i], port(net, ids[i], 'water').id, 13).net; });
+  net = route(net, out.id, port(net, heater, 'in').id, 20).net;
+  return { ...doc, network: net };
+}
+
+export function kawasakiLike():{ doc: Doc; floorId: string; ids: { meter: string; kitchen: string; washbasin: string; toilet: string; heater: string; F: string; E: string } } {
   let { doc, floorId } = newDoc();
   let r = put(doc, floorId, 'waterMeter', 0, 0); doc = r.doc; const meter = r.id;
   r = put(doc, floorId, 'kitchen', 9000, 3500); doc = r.doc; const kitchen = r.id;

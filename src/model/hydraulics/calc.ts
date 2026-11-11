@@ -106,7 +106,7 @@ export function calcSupply(doc: Doc, rules: SupplyRules, settings: SuiriSettings
   };
   const edgeRow = (i: number, flow: number) => {
     const e = t.edges[i];
-    return row('pipe', `${letters[e.to]}–${letters[e.from]}`, flow, e.diameter, (e.length / 1000) * factor, 0, (zOf(e.to) - zOf(e.from)) / 1000, i);
+    return row('pipe', `${letters[e.to]}-${letters[e.from]}`, flow, e.diameter, (e.length / 1000) * factor, 0, (zOf(e.to) - zOf(e.from)) / 1000, i);
   };
   const faucetRow = (o: SupplyOutlet) => row('item', `${EQUIV_LABEL.faucet} ${letters[o.nodeId]}`, flowOf(o), o.dia, 0, equivLength('faucet', o.dia), 0);
   const valveRow = (node: string, flow: number, dia: number) => row('item', `${EQUIV_LABEL.valve} ${letters[node]}`, flow, dia, 0, equivLength('valve', dia), 0);
@@ -154,10 +154,10 @@ export function calcSupply(doc: Doc, rules: SupplyRules, settings: SuiriSettings
   const fromMeter = [...rules.serviceItems].reverse();
   const serviceRows: CalcRow[] = [];
   for (const item of fromMeter) {
-    if (item === 'tap') serviceRows.push(row('pipe', `引込管 ${letters[t.rootNodeId]}–${letters[MAIN_POINT]}`, plannedFlow, s.diameter, svcLenM * factor, 0, drop));
+    if (item === 'tap') serviceRows.push(row('pipe', `引込管 ${letters[t.rootNodeId]}-${letters[MAIN_POINT]}`, plannedFlow, s.diameter, svcLenM * factor, 0, drop));
     serviceRows.push(svcItem(item));
   }
-  if (!fromMeter.includes('tap')) serviceRows.push(row('pipe', `引込管 ${letters[t.rootNodeId]}–${letters[MAIN_POINT]}`, plannedFlow, s.diameter, svcLenM * factor, 0, drop));
+  if (!fromMeter.includes('tap')) serviceRows.push(row('pipe', `引込管 ${letters[t.rootNodeId]}-${letters[MAIN_POINT]}`, plannedFlow, s.diameter, svcLenM * factor, 0, drop));
 
   // 行の順: いちばん条件の悪い末端から。2 本目からは合流するまで
   const order = [critical, ...used.filter((o) => o !== critical)];

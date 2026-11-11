@@ -15,6 +15,10 @@ import { renderIsoSheet } from './isoSheet';
 import { renderProfileSheet } from './profileSheet';
 import { renderRiserSheet } from './riserSheet';
 import { findTextOverlaps } from './labelLayout';
+import { renderSuiriSheets } from './suiriSheet';
+import { calcSupply } from '../model/hydraulics/calc';
+import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
+import { crowdedSupply } from '../model/hydraulics/testSupply';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 const meta = { siteName: 'テスト工事', date: new Date(2026, 10, 10) };
@@ -127,6 +131,16 @@ describe('全ての申請図面で文字が重ならない', () => {
     test(`給水立面図（${profile.name}）`, () => {
       const { doc, out } = crowdedWater();
       expect(findTextOverlaps(renderRiserSheet(buildRiser(doc, out, profile, '給水装置 立面図'), meta))).toEqual([]);
+    });
+  }
+});
+
+describe('水理計算書でも文字が重ならない', () => {
+  for (const address of ['', '沖縄県宜野湾市大山1-1']) {
+    test(`器具が固まった現場（${address || '標準'}）`, () => {
+      const c = calcSupply(crowdedSupply(), resolveSupplyRules({ address }), { flows: {} });
+      if ('error' in c) throw new Error(c.error);
+      for (const sh of renderSuiriSheets(c, meta)) expect(findTextOverlaps(sh)).toEqual([]);
     });
   }
 });
