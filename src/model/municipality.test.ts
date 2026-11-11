@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { BUILTIN_PROFILES, DEFAULT_COLORS, duplicateProfile, formatSlope, isBuiltinProfile, minSlopeFor, municipalityProfileSchema, parseProfileJson, resolveProfile, STANDARD_PROFILE } from './municipality';
+import { BUILTIN_PROFILES, profileForAddress, DEFAULT_COLORS, duplicateProfile, formatSlope, isBuiltinProfile, minSlopeFor, municipalityProfileSchema, parseProfileJson, resolveProfile, STANDARD_PROFILE } from './municipality';
 
 describe('自治体プロファイル', () => {
   test('STANDARD_PROFILE は schema を通り、同梱として扱われる', () => {
@@ -136,5 +136,23 @@ describe('沖縄市の実際の申請図面に合わせた項目', () => {
   test('新しい項目は省略できる（既定: absolute / materialFirst / 3 桁 / table）', () => {
     const r = municipalityProfileSchema.safeParse(STANDARD_PROFILE);
     expect(r.success && r.data.profileTable).toMatchObject({ datum: 'absolute', pipeSpecFormat: 'materialFirst', lengthDecimals: 3, manholeLabel: 'table' });
+  });
+});
+
+describe('住所から自治体プロファイルを選ぶ（profileForAddress）', () => {
+  test('住所に入っている市町村のプロファイルを選ぶ。県名・全角・空白があってもよい', () => {
+    expect(profileForAddress('沖縄県豊見城市字高安 123', BUILTIN_PROFILES)).toMatchObject({ city: '豊見城市', profile: { id: 'tomigusuku' } });
+    expect(profileForAddress('那覇市おもろまち１－１', BUILTIN_PROFILES).profile?.id).toBe('naha');
+    expect(profileForAddress('沖縄県 沖縄市 美里5丁目28-2', BUILTIN_PROFILES).profile?.id).toBe('okinawa-city');
+    expect(profileForAddress('島尻郡南風原町字兼城', BUILTIN_PROFILES)).toMatchObject({ city: '南風原町', profile: { id: 'haebaru' } });
+  });
+  test('「沖縄県」を沖縄市と取り違えない。プロファイルの無い市町村は市町村名だけ返す', () => {
+    expect(profileForAddress('沖縄県宜野湾市大山', BUILTIN_PROFILES)).toEqual({ city: '宜野湾市' });
+    expect(profileForAddress('千葉県市原市五井', BUILTIN_PROFILES)).toEqual({ city: '市原市' });
+    expect(profileForAddress('', BUILTIN_PROFILES)).toEqual({});
+  });
+  test('この端末で作ったプロファイル（名前に市町村名）も選べる。名前の長い方を優先', () => {
+    const mine = { ...duplicateProfile(STANDARD_PROFILE, '市原市（自作）'), id: 'u1' };
+    expect(profileForAddress('千葉県市原市五井', [...BUILTIN_PROFILES, mine]).profile?.id).toBe('u1');
   });
 });

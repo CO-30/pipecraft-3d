@@ -224,3 +224,22 @@ export function minSlopeFor(profile: MunicipalityProfile, diameter: number): num
   for (const k of keys) if (k <= diameter) pick = k;
   return pick === undefined ? undefined : 1 / table[String(pick)];
 }
+
+/** 住所・プロファイル名から市町村名（「豊見城市」「南風原町」）を取り出す。都道府県と郡は外す */
+export function cityOf(text: string): string | undefined {
+  let s = text.normalize('NFKC').replace(/\s+/g, '');
+  s = s.replace(/^(東京都|北海道|京都府|大阪府|[^都道府県]{2,3}県)/, '');
+  s = s.replace(/^[^市区町村郡]+郡/, '');
+  return /^(.+?[市区町村])/.exec(s)?.[1];
+}
+
+/**
+ * 新しい工事の住所から、申請書類・決まり（土かぶり・勾配・図面の様式）の自治体プロファイルを選ぶ。
+ * city: 住所の市町村名、profile: その市町村のプロファイル（同じ市町村が複数あれば名前の長い方＝自作を優先）。標準は選ばない
+ */
+export function profileForAddress(address: string, profiles: MunicipalityProfile[]): { city?: string; profile?: MunicipalityProfile } {
+  const city = cityOf(address);
+  if (!city) return {};
+  const hit = profiles.filter((p) => p.id !== STANDARD_PROFILE.id && cityOf(p.name) === city).sort((a, b) => b.name.length - a.name.length)[0];
+  return hit ? { city, profile: hit } : { city };
+}
