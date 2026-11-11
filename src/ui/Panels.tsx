@@ -9,7 +9,7 @@ import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN } from '../model/dropPipes';
-import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
+import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
@@ -230,6 +230,13 @@ export function PropertyPanel() {
             <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, doc.building, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}1階FL{groundZ(doc.building, doc.site) >= 0 ? '+' : ''}{Math.round(groundZ(doc.building, doc.site))}）</span>
             <NumField label="落差（流入側の管底が高い分）" value={f.params?.drop ?? 0} testId="manhole-drop" onCommit={(v) => st.updateFixtureParams(f.id, { drop: v > 0 ? Math.round(v) : undefined })} />
             {(f.params?.drop ?? 0) > 0 && <span className="small muted" data-testid="manhole-drop-note">落差桝: 上流からの管は管底 +{Math.round(f.params!.drop!)} に着きます（縦断図は H{Math.round(manholeDepth(f, doc.building, doc.site) - f.params!.drop!)}-{Math.round(manholeDepth(f, doc.building, doc.site))}）</span>}
+          </div>
+        )}
+        {isHeader(f.type) && fl && (
+          <div className="row" data-testid="header-mount">
+            <NumField label="設置の高さ（床から）" value={f.params?.mountZ ?? (def.base as number)} min={-1000} max={5000} testId="header-mount-z" onCommit={(v) => st.updateFixtureParams(f.id, { mountZ: Math.round(v) })} />
+            <button data-testid="header-under" onClick={() => st.updateFixtureParams(f.id, { mountZ: -400 })}>床下（出口 −300）</button>
+            <button onClick={() => st.updateFixtureParams(f.id, { mountZ: undefined })}>床上（標準）</button>
           </div>
         )}
         <div className="subhead">接続口（押すと選択して立て管などを追加できます。✓=配管あり）</div>
@@ -629,7 +636,7 @@ function FittingField({ nodeId }: { nodeId: string }) {
         </select></label>
       <span className="small muted">{f.size.split('×').map((d) => `φ${d}`).join('×')}</span>
       {f.needsConfirm && <div className="warn small" data-testid="fitting-confirm">⚠ {f.reason ?? '部品を確定してください'}</div>}
-      {!f.needsConfirm && f.reason && <div className="muted small" data-testid="fitting-note">{f.reason}。曲げられない所は部品を選んでください</div>}
+      {!f.needsConfirm && f.reason && <div className="muted small" data-testid="fitting-note">{f.reason}{f.auto === 'none' ? '。曲げられない所は部品を選んでください' : ''}</div>}
     </>
   );
 }

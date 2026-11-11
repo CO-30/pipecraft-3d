@@ -797,3 +797,37 @@ describe('共通ストア: 床下・管種の細部', () => {
     expect(s().drawHeight).toBe(-300);
   });
 });
+
+describe('共通ストア: 床下のヘッダー・接続口の口径', () => {
+  const house = () => s().newDoc({ ...emptyDoc(), building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 120, slabThickness: 200 }) }, { id: 'h', name: '家', createdAt: 1 });
+
+  it('床下で置いたヘッダーは床下に付き、出口が描く高さ（−300）に来る。床上に戻せる', () => {
+    house();
+    s().setUnderFloor(true);
+    s().setFixtureType('waterHeader');
+    s().placeFixtureAt({ x: 2000, y: 2000 });
+    const f = Object.values(s().doc.fixtures)[0];
+    expect(f.params?.mountZ).toBe(-400);
+    const ports = Object.values(net().nodes).filter((n) => n.fixtureId === f.id);
+    expect(ports.find((n) => n.portId === 'out1')!.pos.z).toBe(-300);
+    expect(ports.find((n) => n.portId === 'in')!.pos.z).toBe(-350);
+    s().updateFixtureParams(f.id, { mountZ: undefined });
+    expect(Object.values(net().nodes).find((n) => n.fixtureId === f.id && n.portId === 'out1')!.pos.z).toBe(400);
+    // 床下でトイレを置くと床の上（知らせる）
+    s().setFixtureType('toilet');
+    s().placeFixtureAt({ x: 5000, y: 2000 });
+    expect(s().notice).toContain('床の上');
+  });
+
+  it('接続口・接続口から下ろした立て管の端から描くと、接続口の口径のまま（径違いを作らない）', () => {
+    house();
+    s().setFixtureType('washbasin');
+    s().placeFixtureAt({ x: 2000, y: 3000 });
+    s().setUnderFloor(true);
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    const port = Object.values(net().nodes).find((n) => n.fixtureId && n.portId === 'water')!;
+    s().drawFromPortDown(port.id, [v(port.pos.x, port.pos.y, -300), v(port.pos.x + 1500, port.pos.y, -300)]);
+    expect(Object.values(net().segments).map((x) => x.diameter)).toEqual([13, 13]);
+    expect(s().notice).toContain('φ13');
+  });
+});
