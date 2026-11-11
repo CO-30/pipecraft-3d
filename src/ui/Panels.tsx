@@ -22,7 +22,7 @@ import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from
 import { defaultEstimate, measureSegment } from '../model/estimate';
 import { findConnectCandidate } from '../model/connect';
 import { SYSTEM_NAME } from '../model/systems';
-import { actualSlope, defaultSlope, isDrain, maxSlope, slopeEnough, slopeLabel } from '../model/slope';
+import { actualSlope, defaultSlope, isDrain, isSlopePinned, maxSlope, slopeEnough, slopeLabel } from '../model/slope';
 import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
 import { PB_MATERIAL_LABEL, PB_MATERIALS, WATER_MATERIAL_OPTIONS } from '../model/materials';
@@ -565,7 +565,7 @@ function SegmentSlopeInput({ segId }: { segId: string }) {
         <input data-testid="seg-slope-input" inputMode="numeric" size={5} value={text} placeholder={String(Math.round(1 / defaultSlope(seg.diameter)))}
           onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); } }} />
       </label>
-      <label className="small inline"><input type="checkbox" data-testid="seg-slope-lock" checked={!!seg.slopeLocked} onChange={(e) => st.setSegmentSlopeLocked(segId, e.target.checked)} /> 勾配を固定</label>
+      <label className="small inline"><input type="checkbox" data-testid="seg-slope-lock" checked={isSlopePinned(seg)} onChange={(e) => st.setSegmentSlopeLocked(segId, e.target.checked)} /> 勾配を固定</label>
       <label className="small inline" title="申請図面では既設を青、新設・増設を赤で描きます"><input type="checkbox" data-testid="seg-existing" checked={!!seg.existing} onChange={(e) => st.updateSegment(segId, { existing: e.target.checked || undefined })} /> 既設</label>
       <span className="muted small">固定すると、上流の高さを変えても下流端がこの勾配で動きます</span>
     </div>
@@ -604,7 +604,7 @@ function SupportFields({ segId }: { segId: string }) {
     <>
       {slope !== null && (
         <div className={`small ${!slopeEnough(doc.network, seg, need) || slope > maxSlope(seg.diameter) ? 'warn' : ''}`} data-testid="seg-slope">
-          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}${seg.slopeLocked ? ' 🔒' : ''}）` : ''}
+          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}${isSlopePinned(seg) ? ' 📌' : ''}）` : ''}
           {!slopeEnough(doc.network, seg, need) && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
           {slope > maxSlope(seg.diameter) && `　⚠ 急すぎる勾配（φ${seg.diameter} は ${slopeLabel(maxSlope(seg.diameter))} まで。流速が標準の 1.5m/秒を超え、水だけ流れて汚物が残ります。高さを下げる所は立て管やドロップますで）`}
         </div>

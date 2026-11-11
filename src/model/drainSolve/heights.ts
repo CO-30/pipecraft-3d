@@ -10,7 +10,7 @@ import type { Doc } from '../doc';
 import type { DrainRuleSet } from '../drainRules';
 import { isManhole } from '../fixtures';
 import { normalize, validateNetwork, type Network, type Segment } from '../network';
-import { defaultSlope as indoorMinSlope, isSlopePinned, planLength } from '../slope';
+import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, planLength } from '../slope';
 import { insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels } from '../underfloorSlope';
 import { buildDrainTrees, type DrainTree } from './tree';
 
@@ -45,7 +45,8 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
   };
   const ufSegs = new Set(lv ? Object.values(net0.segments).filter((s) => isUnderfloorDrain(net0, s, lv)).map((s) => s.id) : []);
   const ufNodes = new Set([...ufSegs].flatMap((id) => [net0.segments[id].a, net0.segments[id].b]));
-  const vertical = (s: Segment) => planLength(net0, s) < 1;
+  /** 立て管（少し斜めでも、高さの差が平面の長さより大きい管は立て管として今の高さのまま） */
+  const vertical = (s: Segment) => isRiserLike(net0, s);
   const defaultFor = (s: Segment) => {
     const a = net0.nodes[s.a].pos, b = net0.nodes[s.b].pos;
     // 床より上の建物の中（床上排水・上の階）は屋内の最小勾配、それ以外（屋外・地中）は自治体の既定
@@ -68,7 +69,8 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
       const n = net0.nodes[id];
       if (n.zPin) return true;
       const f = fxOf(id);
-      return !!f && isManhole(f.type) && !!f.params?.invertPin;
+      // 公共ますの管底は現地で決まっている値なので、いつも固定点
+      return !!f && isManhole(f.type) && (!!f.params?.invertPin || isPublicType(f.type));
     };
     const down = (id: string) => { const sid = t.parent.get(id)!; const s = net0.segments[sid]; return { s, p: s.a === id ? s.b : s.a }; };
     const slopeOverride = new Map<string, number>();
@@ -152,6 +154,11 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
     for (const sw of sweeps) sw();
     net = apply(net);
   }
+  const fixturesChanged = [...fixtureIds].some(([fid, zz]) => !doc.fixtures[fid].params?.invertPin && doc.fixtures[fid].params?.invertZ !== zz);
+  // 何も変わらなければ同じ doc（履歴を増やさない・描き直しを起こさない）
+  const same = (a: Network) => Object.values(a.nodes).every((n) => { const o = net0.nodes[n.id]; return o && o.pos.z === n.pos.z && o.dropIn === n.dropIn; })
+    && Object.values(a.segments).every((x) => net0.segments[x.id]?.slope === x.slope);
+  if (!fixturesChanged && same(net)) return { doc, segSlopes, trees, underfloor, failed: false };
   // 高さが変わると継手の種類（直線の継ぎ目・曲がり）が変わることがあるので付け直す
   net = normalize(net);
   if (validateNetwork(net).length) return { doc, segSlopes, trees, underfloor, failed: true };

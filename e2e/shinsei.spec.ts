@@ -74,7 +74,7 @@ test.describe('申請図面', () => {
     await page.getByTestId('seg-slope-input').fill('50');
     await page.getByTestId('seg-slope-input').press('Enter');
     await expect(page.getByTestId('seg-slope')).toContainText('1/50');
-    await expect(page.getByTestId('seg-slope')).toContainText('🔒');
+    await expect(page.getByTestId('seg-slope')).toContainText('📌');
     await expect(page.getByTestId('seg-slope-lock')).toBeChecked();
     // 公共マスの管底高は固定なので、上流（汚水マス側）の端が上がる
     const d2 = await doc(page);

@@ -521,3 +521,14 @@
 - テスト: 単体 703 合格（underfloorSlope 9・ストア 3 を追加、drainRoute の期待値を 2/100・土間に更新）、E2E（underfloor・planauto・supports・pipes）合格、lint 警告数は main と同じ
 - 続き: 指示「排水勾配の自動計算」「自治体基準_排水チェック条件」→ 設計 `docs/superpowers/specs/2026-11-12-drain-auto-slope-design.md`、計画 `docs/superpowers/plans/2026-11-12-drain-solver-core.md`（solveDrain の核＋自治体の排水ルール）。未着手
 - 気づき: 配管の道具で排水を選んでも口径が φ20 のまま（口径の自動決定で直す）
+
+## 2026-11-12 排水の高さを毎回計算（solveDrain）・自治体の排水ルール — PR 作成（ブランチ `feat/drain-solver`、`feat/underfloor-slope` の上）
+- 設計 `docs/superpowers/specs/2026-11-12-drain-auto-slope-design.md` の分割 2・4。計画 `docs/superpowers/plans/2026-11-12-drain-solver-core.md`
+- 正は「平面ルート＋区間の勾配・管径＋ピン（zPin・slopePin/slopeLocked・invertPin）」。pos.z・マスの invertZ は計算結果の写し（保存はするが使わない。開くたびに計算し直す）
+- `src/model/drainSolve/`: tree（根 = 公共ます → 低いマス → 低い端。同じ高さなら家から遠い外の端）、heights（公共ますから上流へ。屋外は最小勾配 + 0.2/100、マスの流入に落差 2cm、公共ますは固定点で落差なし、固定点の間は勾配を割り振る、立て管は今の高さ、床下は土間から 2/100）、checks（最小・最大・逆勾配、土かぶり、管径の逆転、輪、公共ます無し、未確認の決まり。直し方の候補つき）
+- `src/model/drainRules.ts`: 値ごとに状態（原文確認／一般値／未確認）と出典。那覇市は施行規程の値、宜野湾市（新規）・豊見城市は未確認＋問い合わせ先
+- ストア: commit・ドラッグ・開く・取り消しのたびに計算。勾配を手で決めると 📌、点の高さを手で決める・上下にドラッグすると 📌、管底を入れたマスは 📌。後から勾配を決めると上流の固定は外す
+- 床下の自動勾配のスイッチ・付け直すボタンは不要になったので外した。縦断図は 30mm 以下のます内の段差を落差ますとして描かない
+- 独立レビュー（Opus）: Critical 1（少し斜めの立て管を横管とみて上の階の管が落ちる）・Important 6 → すべて再現テストを書いて修正。Minor 3 は見送り
+- テスト: 単体 742、E2E 174 合格（15 対象外）、ビルド OK、lint 警告数は main と同じ
+- 次: ③ 管径の自動決定、⑤ マスの自動配置（基礎の貫通の検査・「マスを足す」もここで）、⑥ 画面（📌・直し方のボタン・区間の勾配/管底/土かぶりの表示）、⑦ 縦断図の仕上げ

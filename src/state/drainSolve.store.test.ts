@@ -72,3 +72,37 @@ describe('排水の自動計算（読み込み）', () => {
     expect(hi).toBeCloseTo(-550 + 3700 * 0.02, 1);
   });
 });
+
+describe('最終レビューの指摘（ストア）', () => {
+  beforeEach(() => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+  });
+  it('取り消し・やり直しで検査も計算し直す', () => {
+    s().drawPolyline([v(-500, 3000, -900), v(-5000, 3000, -900)]);
+    expect(s().drainIssues.length).toBeGreaterThan(0);
+    s().undo();
+    expect(s().drainIssues).toEqual([]);
+    s().redo();
+    expect(s().drainIssues.length).toBeGreaterThan(0);
+  });
+  it('「勾配を固定」を外すと slopePin も外れる', () => {
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const seg = Object.values(s().doc.network.segments)[0];
+    useStore.setState({ doc: { ...s().doc, network: { ...s().doc.network, segments: { ...s().doc.network.segments, [seg.id]: { ...seg, slope: 0.03, slopePin: true } } } } });
+    s().setSegmentSlopeLocked(seg.id, false);
+    expect(s().doc.network.segments[seg.id].slopePin).toBeUndefined();
+  });
+  it('排水の点を上下にドラッグすると、その高さで固定（📌）。動かさずに離すと履歴は増えない', () => {
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const n = Object.values(s().doc.network.nodes).find((x) => Math.abs(x.pos.x - 4000) < 1)!;
+    const before = s().past.length;
+    s().beginDrag(); s().dragNode(n.id, n.pos); s().endDrag();
+    expect(s().past.length).toBe(before);
+    s().beginDrag(); s().dragNode(n.id, { ...n.pos, z: -200 }); s().endDrag();
+    expect(s().doc.network.nodes[n.id]).toMatchObject({ zPin: true, pos: { z: -200 } });
+    expect(s().past.length).toBe(before + 1);
+  });
+});

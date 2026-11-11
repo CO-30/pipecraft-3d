@@ -6,7 +6,7 @@ import type { Doc } from '../doc';
 import type { DrainRuleSet } from '../drainRules';
 import { groundZAt, isManhole } from '../fixtures';
 import type { Segment } from '../network';
-import { defaultSlope as indoorMinSlope, isSlopePinned, outerDiameter, planLength } from '../slope';
+import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, outerDiameter, planLength } from '../slope';
 import { insideBuilding, isUnderfloorDrain, underfloorLevels } from '../underfloorSlope';
 import type { DrainTree } from './tree';
 
@@ -26,20 +26,23 @@ const isPublicType = (t: string) => t === 'publicSewage' || t === 'publicRain';
 /** 区間の勾配を固定する */
 const pinSlope = (segIds: string[], r: (s: Segment) => number) => (doc: Doc): Doc => {
   const segments = { ...doc.network.segments };
-  for (const id of segIds) { const s = segments[id]; if (s) { const { slopeLocked: _l, ...rest } = s; segments[id] = { ...rest, slope: r(s), slopePin: true }; } }
-  return { ...doc, network: { ...doc.network, segments } };
+  let hit = false;
+  for (const id of segIds) { const s = segments[id]; if (s) { hit = true; const { slopeLocked: _l, ...rest } = s; segments[id] = { ...rest, slope: r(s), slopePin: true }; } }
+  return hit ? { ...doc, network: { ...doc.network, segments } } : doc;
 };
 /** 区間の勾配の固定を外す（自動に戻す） */
 export const unpinSlope = (segIds: string[]) => (doc: Doc): Doc => {
   const segments = { ...doc.network.segments };
-  for (const id of segIds) { const s = segments[id]; if (s) { const { slopePin: _p, slopeLocked: _l, ...rest } = s; segments[id] = rest; } }
-  return { ...doc, network: { ...doc.network, segments } };
+  let hit = false;
+  for (const id of segIds) { const s = segments[id]; if (s && (s.slopePin || s.slopeLocked)) { hit = true; const { slopePin: _p, slopeLocked: _l, ...rest } = s; segments[id] = rest; } }
+  return hit ? { ...doc, network: { ...doc.network, segments } } : doc;
 };
 /** 点・マスの高さの固定を外す */
 export const unpinNode = (nodeId: string) => (doc: Doc): Doc => {
   const n = doc.network.nodes[nodeId];
   if (!n) return doc;
   const f = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
+  if (!n.zPin && !f?.params?.invertPin) return doc;
   const { zPin: _z, ...rest } = n;
   const network = { ...doc.network, nodes: { ...doc.network.nodes, [nodeId]: rest } };
   if (f?.params?.invertPin) { const { invertPin: _i, ...params } = f.params; return { ...doc, network, fixtures: { ...doc.fixtures, [f.id]: { ...f, params } } }; }
@@ -67,19 +70,24 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
       }
       return { segs, pin };
     };
-    /** 区間の上流側の端から、上流へ向かって最初の固定点 */
-    const pinAbove = (segId: string): string | undefined => {
-      const s = net.segments[segId];
-      const up = t.parent.get(s.a) === segId ? s.a : s.b;
-      if (anchorOf(up)) return up;
-      for (const id of t.order) if (anchorOf(id) && pathDown(id).segs.includes(segId)) return id;
-      return undefined;
-    };
+    /** 区間 → その上流の最初の固定点（固定点から下流へ、次の固定点・根までをたどって一度で作る） */
+    const anchorAbove = new Map<string, string>();
+    for (const id of t.order) {
+      if (id === t.root || !anchorOf(id)) continue;
+      for (const sid of pathDown(id).segs) if (!anchorAbove.has(sid)) anchorAbove.set(sid, id);
+    }
+    const pinAbove = (segId: string) => anchorAbove.get(segId);
+    /** 点 → 木の区間 */
+    const nodeSegs = new Map<string, Segment[]>();
+    for (const [k, sid] of t.parent) {
+      const sg = net.segments[sid];
+      for (const id of new Set([k, sg.a, sg.b])) nodeSegs.set(id, [...(nodeSegs.get(id) ?? []), sg]);
+    }
     for (const [n, sid] of t.parent) {
       const s = net.segments[sid];
       const p = s.a === n ? s.b : s.a;
       const L = planLength(net, s);
-      if (L < 1) continue;
+      if (L < 1 || isRiserLike(net, s)) continue;
       const pf = fxOf(p);
       const downZ = net.nodes[p].pos.z + (pf && isManhole(pf.type) ? net.nodes[p].dropIn ?? 0 : 0);
       const slope = (net.nodes[n].pos.z - downZ) / L;
@@ -103,7 +111,7 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
         if (pf && isManhole(pf.type) && !isPublicType(pf.type)) {
           const want = rules.defaultSlope(s.diameter);
           const drop = Math.round(net.nodes[n].pos.z - net.nodes[p].pos.z - want * L);
-          fixes.unshift({ label: `下流のマスを落差ます（落差 ${drop}mm）にする`, apply: (d) => ({ ...d, fixtures: { ...d.fixtures, [pf.id]: { ...d.fixtures[pf.id], params: { ...(d.fixtures[pf.id].params ?? {}), drop } } } }) });
+          fixes.unshift({ label: `下流のマスを落差ます（落差 ${drop}mm）にする`, apply: (d) => (d.fixtures[pf.id] ? { ...d, fixtures: { ...d.fixtures, [pf.id]: { ...d.fixtures[pf.id], params: { ...(d.fixtures[pf.id].params ?? {}), drop } } } } : d) });
         }
         issues.push({ kind: 'maxSlope', level: 'error', target: { kind: 'segment', id: sid }, message: `勾配 ${pct(slope)} は φ${s.diameter} の最大勾配 ${pct(max)} 以上（急すぎると水だけ流れて汚物が残ります）`, fixes });
       }
@@ -111,14 +119,14 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
       const ds = t.parent.get(p) ? net.segments[t.parent.get(p)!] : undefined;
       if (ds && ds.diameter < s.diameter) {
         issues.push({ kind: 'diameterReverse', level: 'error', target: { kind: 'segment', id: ds.id }, message: `下流の φ${ds.diameter} が上流の φ${s.diameter} より細い`,
-          fixes: [{ label: `管径を φ${s.diameter} に上げる`, apply: (d) => ({ ...d, network: { ...d.network, segments: { ...d.network.segments, [ds.id]: { ...d.network.segments[ds.id], diameter: s.diameter } } } }) }] });
+          fixes: [{ label: `管径を φ${s.diameter} に上げる`, apply: (d) => (d.network.segments[ds.id] ? { ...d, network: { ...d.network, segments: { ...d.network.segments, [ds.id]: { ...d.network.segments[ds.id], diameter: s.diameter } } } } : d) }] });
       }
     }
     // 土かぶり・ますの深さ（建物の外の点）
     for (const id of t.order) {
       const n = net.nodes[id];
       if (lv && insideBuilding(lv, n.pos)) continue;
-      const segs = [...t.parent.entries()].filter(([k, sid]) => k === id || [net.segments[sid].a, net.segments[sid].b].includes(id)).map(([, sid]) => net.segments[sid]);
+      const segs = nodeSegs.get(id) ?? [];
       if (!segs.length || segs.every((s) => planLength(net, s) < 1)) continue;
       const od = Math.max(...segs.map((s) => outerDiameter(s.diameter)));
       const gz = groundZAt(doc.building, doc.site, n.pos);
@@ -129,11 +137,11 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
         if (rules.maxDepth !== undefined && depth > rules.maxDepth) issues.push({ kind: 'depthMax', level: 'warn', target: { kind: 'fixture', id: f.id }, message: `マスの深さ ${Math.round(depth)}mm が上限 ${rules.maxDepth}mm を超える`, fixes: [] });
       }
       if (cover + 0.5 < rules.cover) {
-        const { segs: path } = pathDown(id);
-        const loosen = path.filter((sid) => planLength(net, net.segments[sid]) >= 1 && !(lv && isUnderfloorDrain(net, net.segments[sid], lv)));
+        // 直し方の対象（下流の横の区間）は、当てるときに求める（検査のたびに全部たどらない）
+        const loosen = () => pathDown(id).segs.filter((sid) => planLength(net, net.segments[sid]) >= 1 && !(lv && isUnderfloorDrain(net, net.segments[sid], lv)));
         const kind = f && isManhole(f.type) ? 'depthMin' : 'cover';
         issues.push({ kind, level: 'error', target: f && isManhole(f.type) ? { kind: 'fixture', id: f.id } : { kind: 'node', id }, message: `土かぶり ${Math.round(cover)}mm（${rules.cover}mm 以上必要）`,
-          fixes: loosen.length ? [{ label: '下流の勾配を最小勾配まで緩める', apply: pinSlope(loosen, (s) => rules.minSlope(s.diameter)) }] : [] });
+          fixes: t.parent.has(id) ? [{ label: '下流の勾配を最小勾配まで緩める', apply: (d) => pinSlope(loosen(), (sg) => rules.minSlope(sg.diameter))(d) }] : [] });
       }
     }
     for (const sid of t.loops) issues.push({ kind: 'loop', level: 'warn', target: { kind: 'segment', id: sid }, message: '配管が輪になっています（この区間は勾配を計算していません）', fixes: [] });

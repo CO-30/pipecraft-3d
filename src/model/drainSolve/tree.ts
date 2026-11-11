@@ -5,6 +5,7 @@
 import type { Doc } from '../doc';
 import { isManhole } from '../fixtures';
 import type { Segment } from '../network';
+import { distToOutline, insideBuilding, underfloorLevels } from '../underfloorSlope';
 
 export type DrainTree = {
   root: string;
@@ -47,7 +48,15 @@ export function buildDrainTrees(doc: Doc): DrainTree[] {
     const pub = comp.filter((id) => { const f = fx(id); return f && isPublic(f.type); }).sort((p, q) => z(p) - z(q));
     const mh = comp.filter((id) => { const f = fx(id); return f && isManhole(f.type); }).sort((p, q) => z(p) - z(q));
     // マスが無ければいちばん低い端（器具の接続口でない、つながりが 1 本の点）
-    const ends = comp.filter((id) => !net.nodes[id].fixtureId && (byNode.get(id)?.length ?? 0) === 1).sort((p, q) => z(p) - z(q));
+    // 同じ高さ（1mm 以内）なら、建物の外の端を先に・外では家から遠い方を下流に（外へ向かって下がる）
+    const lv = underfloorLevels(doc);
+    const awayScore = (id: string) => {
+      if (!lv) return 0;
+      const p = net.nodes[id].pos, d = distToOutline(lv, p);
+      return insideBuilding(lv, p) ? d : -d;
+    };
+    const ends = comp.filter((id) => !net.nodes[id].fixtureId && (byNode.get(id)?.length ?? 0) === 1)
+      .sort((p, q) => (Math.abs(z(p) - z(q)) > 1 ? z(p) - z(q) : awayScore(p) - awayScore(q)));
     const root = pub[0] ?? mh[0] ?? ends[0] ?? comp.sort((p, q) => z(p) - z(q))[0];
     const parent = new Map<string, string>();
     const order = [root];

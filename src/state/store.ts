@@ -29,7 +29,7 @@ import { glOfDepth, levelSummary } from '../model/levels';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
-import { applySlope, defaultSlope, downstreamEnd, isDrain, planLength, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
+import { applySlope, defaultSlope, downstreamEnd, isDrain, isSlopePinned, planLength, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
@@ -863,9 +863,11 @@ export const useStore = create<State>((set, get) => {
     },
     setSegmentSlopeLocked: (segId, locked) => {
       const net = get().doc.network, s = net.segments[segId];
-      if (!s || !!s.slopeLocked === locked) return;
+      if (!s || isSlopePinned(s) === locked) return;
       if (locked) { get().setSegmentSlope(segId, s.slope ? Math.round(1 / s.slope) : Math.round(1 / defaultSlopeFor(s.diameter))); return; }
-      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, slopeLocked: false } } }));
+      // 外す: 以前の slopeLocked も新しい slopePin も外す（自動に戻す）
+      const { slopePin: _p, ...rest } = s;
+      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...rest, slopeLocked: false } } }));
     },
     updateSegment: (segId, patch) => {
       const net = get().doc.network;
@@ -1074,7 +1076,15 @@ export const useStore = create<State>((set, get) => {
     // ドラッグ中（beginDrag 後）だけ有効。途中で Undo 等により終了したドラッグの続きは無視する
     dragNode: (nodeId, pos) => {
       const base = get().dragBase;
-      if (base && !get().doc.network.nodes[nodeId]?.fixtureId) liveSet(withNet(propagateLockedSlopes(base.network, moveNode(get().doc.network, nodeId, pos), nodeId)));
+      const n0 = base?.network.nodes[nodeId];
+      if (!base || !n0 || n0.fixtureId) return;
+      // 元の位置に戻した（動かしていない）: ドラッグ前のまま（履歴を増やさない）
+      if (Math.hypot(pos.x - n0.pos.x, pos.y - n0.pos.y, pos.z - n0.pos.z) < 0.01) { set({ doc: base }); return; }
+      let moved = propagateLockedSlopes(base.network, moveNode(get().doc.network, nodeId, pos), nodeId);
+      // 排水の点を上下に動かしたら、その高さで固定（📌）。平面だけの移動は高さを自動のまま
+      const drain = segmentsAt(base.network, nodeId).some((x) => x.system === 'drain' || x.system === 'sewage');
+      if (drain && moved.nodes[nodeId] && Math.abs(pos.z - n0.pos.z) > 0.5) moved = { ...moved, nodes: { ...moved.nodes, [nodeId]: { ...moved.nodes[nodeId], zPin: true } } };
+      liveSet(withNet(moved));
     },
     dragSegment: (segId, d) => {
       const base = get().dragBase;
@@ -1101,7 +1111,7 @@ export const useStore = create<State>((set, get) => {
     },
     cancelDrag: () => {
       const base = get().dragBase;
-      if (base) set({ doc: base, dragBase: null });
+      if (base) set({ doc: base, dragBase: null, drainIssues: solveDoc(base).issues });
     },
     endDrag: () => {
       const { dragBase, past } = get();
@@ -1334,14 +1344,14 @@ export const useStore = create<State>((set, get) => {
       const { past, doc, future } = get();
       const prev = past.at(-1);
       if (!prev) return;
-      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev), ...fixDim(prev) });
+      set({ doc: prev, drainIssues: solveDoc(prev).issues, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev), ...fixDim(prev) });
     },
     redo: () => {
       get().endDrag();
       const { past, doc, future } = get();
       const next = future[0];
       if (!next) return;
-      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next), ...fixDim(next) });
+      set({ doc: next, drainIssues: solveDoc(next).issues, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next), ...fixDim(next) });
     },
   };
 

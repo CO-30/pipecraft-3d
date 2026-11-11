@@ -64,6 +64,9 @@ const isDrainLine = (s: Segment) => s.system === 'drain' || s.system === 'sewage
 /** 高さ z（絶対 mm）が床下（1 階の床より下・土間より上）か */
 export const inUnderfloor = (lv: UnderfloorLevels, z: number) => z < lv.floor - 1 && z > lv.slab - ZONE_TOL;
 
+/** 平面の点から外壁までの距離（外壁が無ければ 0） */
+export const distToOutline = (lv: Pick<UnderfloorLevels, 'outline'>, p: Vec2) => (lv.outline.length ? Math.min(...lv.outline.map(([a, b]) => pointSeg(p, a, b))) : 0);
+
 /** 平面の点が建物（1 階の外壁の内側）にあるか。外壁が無ければ true。外壁の線上は内 */
 export function insideBuilding(lv: Pick<UnderfloorLevels, 'outline'>, p: Vec2): boolean {
   if (!lv.outline.length) return true;
