@@ -14,7 +14,7 @@ import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { analyzeFittings } from '../model/fittings';
-import { pbBendArcs, trimmedEnds, type BendArc } from '../model/pbBends';
+import { arcPoints, pbBendArcs, trimmedEnds, type BendArc } from '../model/pbBends';
 import { portSystem, fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
 import { photoPlane } from '../model/facadePhoto';
 import { OUTSIDE_RGB } from '../model/homography';
@@ -106,7 +106,7 @@ function Pipe({ a, b, radius, color, selected, mode, onSelect, clip }: { a: Vec3
     const dir = vb.clone().sub(va);
     return { pos: va.clone().add(vb).multiplyScalar(0.5), quat: new THREE.Quaternion().setFromUnitVectors(UP, dir.clone().normalize()), len: dir.length() };
   }, [a, b]);
-  if (mode === 'hide') return null;
+  if (mode === 'hide' || len < 1e-3) return null; // 曲げで縮めて長さ 0 になった区間
   return (
     <mesh position={pos} quaternion={quat} onClick={(e) => { e.stopPropagation(); onSelect(); }} renderOrder={2}>
       <cylinderGeometry args={[selected ? radius * 1.6 : radius, selected ? radius * 1.6 : radius, len, 12]} />
@@ -118,7 +118,7 @@ function Pipe({ a, b, radius, color, selected, mode, onSelect, clip }: { a: Vec3
 
 /** PB の曲げ配管の曲線（2 次ベジェに沿った管） */
 function BendTube({ arc, radius, color, selected, mode, onSelect, clip }: { arc: BendArc; radius: number; color: string; selected: boolean; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
-  const curve = useMemo(() => new THREE.QuadraticBezierCurve3(toThree(arc.from), toThree(arc.corner), toThree(arc.to)), [arc]);
+  const curve = useMemo(() => new THREE.CatmullRomCurve3(arcPoints(arc, 16).map(toThree), false, 'centripetal'), [arc]);
   if (mode === 'hide') return null;
   const r = selected ? radius * 1.6 : radius;
   return (
@@ -378,7 +378,13 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
           onSelect={() => useStore.getState().select({ kind: 'segment', id: arc.segs[0] })} />;
       })}
       {/* 継手なしで曲げる角には玉を出さない（選んでいるときだけ出す） */}
-      {pipeMode !== 'hide' && Object.values(net.nodes).filter((n) => zIn(n.pos.z) && (!bendArcs.has(n.id) || (sel?.kind === 'node' && sel.id === n.id))).map((n) => (
+      {pipeMode !== 'hide' && Object.values(net.nodes).filter((n) => zIn(n.pos.z)).map((n) => bendArcs.has(n.id) && !(sel?.kind === 'node' && sel.id === n.id) ? (
+        // 曲げの角: 見えないつかみ所（押すと選んで動かせる）
+        <mesh key={n.id} position={toThree(n.pos)} onPointerDown={(e) => startDrag(e, n.id)}>
+          <sphereGeometry args={[0.05, 8, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ) : (
         <mesh key={n.id} position={toThree(n.pos)} onPointerDown={n.fixtureId ? undefined : (e) => startDrag(e, n.id)}
           onClick={n.fixtureId ? (e) => { e.stopPropagation(); useStore.getState().select({ kind: 'node', id: n.id }); } : undefined} renderOrder={3}>
           <sphereGeometry args={[n.kind === 'tee' || n.kind === 'cross' ? 0.07 : n.fixtureId ? 0.045 : 0.05, 16, 16]} />

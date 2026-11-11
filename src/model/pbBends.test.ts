@@ -17,19 +17,32 @@ describe('PB の曲げ配管の見た目（pbBends）', () => {
     expect(arc.to.y).toBeCloseTo(510, 6);
     const [a, b] = trimmedEnds(r.net, arcs, r.segmentIds[0]);
     expect([a.x, b.x]).toEqual([0, 1490]);
-    // 曲線は角の内側を通り、端は区間の縮めた端とつながる
+    // 曲線は本当の円弧（どの点も中心から曲げ半径）。角の内側を通り、端は区間の縮めた端とつながる
     const pts = arcPoints(arc);
     expect(pts[0]).toEqual(arc.from);
     expect(pts.at(-1)).toEqual(arc.to);
+    for (const q of pts) expect(Math.hypot(q.x - arc.center.x, q.y - arc.center.y, q.z - arc.center.z)).toBeCloseTo(510, 6);
+    expect(arc.center).toMatchObject({ x: 1490, z: -300 });
+    expect(arc.center.y).toBeCloseTo(510, 6);
     expect(pts[6].x).toBeLessThan(2000);
     expect(pts[6].y).toBeGreaterThan(0);
   });
 
-  it('曲げが続くときは間の直線を半分ずつ使う。曲げ半径は最小以上', () => {
+  it('曲げが続くときは間の直線を取り合う。どちらも最小曲げ半径以上で、間の直線からはみ出さない', () => {
     const r = draw([[0, 0], [1000, 0], [1000, 400], [2000, 400]], PB);
     const arcs = pbBendArcs(r.net, analyzeFittings(r.net));
-    expect(arcs.get(r.nodeIds[1])!.r).toBeCloseTo(200, 6);
-    expect(arcs.get(r.nodeIds[2])!.r).toBeCloseTo(200, 6);
+    const a1 = arcs.get(r.nodeIds[1])!, a2 = arcs.get(r.nodeIds[2])!;
+    expect(a1.r).toBeGreaterThanOrEqual(170 - 1e-6);
+    expect(a2.r).toBeGreaterThanOrEqual(170 - 1e-6);
+    expect(a1.r + a2.r).toBeLessThanOrEqual(400 + 1e-6); // 90° は 接線長 = 半径
+    // 大きい曲げ（25J・R680）と小さい曲げ（13J は口径が同じ区間でないと曲げないので、同じ口径で角度違い）: 大きい方が先に取る
+    const m = draw([[0, 0], [2000, 0], [2000, 1000], [3000, 1200]], PB);
+    const am = pbBendArcs(m.net, analyzeFittings(m.net));
+    const big = am.get(m.nodeIds[1])!, small = am.get(m.nodeIds[2])!;
+    const tOf = (a: typeof big) => a.r * Math.tan(a.angle / 2);
+    expect(tOf(big) + tOf(small)).toBeLessThanOrEqual(1000 + 1e-6);
+    expect(big.r).toBeGreaterThanOrEqual(170 - 1e-6);
+    expect(small.r).toBeGreaterThanOrEqual(170 - 1e-6);
   });
 
   it('エルボを使う角・塩ビ管・部品を選び直した角は曲線にしない', () => {
