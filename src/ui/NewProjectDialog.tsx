@@ -45,7 +45,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
       <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim(), file: v.mode === 'photo' ? v.file : undefined, files: v.mode === 'auto' ? files : undefined }); }}>
         <h2>新しい工事</h2>
         <label className="field">工事名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>
-        <label className="field">住所（任意）<input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
+        <label className="field">住所（任意）<input data-testid="np-address" value={v.address} placeholder="例: 沖縄県豊見城市字高安（市町村から申請の決まりを選びます）" onChange={(e) => setV({ ...v, address: e.target.value })} /></label>
         <div className="field-label">建物の作り方を選んでください</div>
         <div className="mode-cards" role="radiogroup" aria-label="建物の作り方" onKeyDown={(e) => {
           const ids = MODES.map((m) => m.id);

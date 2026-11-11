@@ -185,6 +185,23 @@ test.describe('申請図面', () => {
     await expect(page.getByTestId('app-applicantName')).toHaveValue('水道 太郎');
   });
 
+  test('新しい工事の住所の市町村から、申請書類と決まりの自治体を選ぶ。無ければ標準と知らせる', async ({ page }) => {
+    const create = async (name: string, address: string) => {
+      await page.getByTestId('new-project').click();
+      await page.getByTestId('np-name').fill(name);
+      await page.getByTestId('np-address').fill(address);
+      await page.getByTestId('np-create').click();
+      await expect(page.getByTestId('editor')).toBeVisible();
+    };
+    await create('住所テスト', '沖縄県豊見城市字高安 123');
+    await expect(page.locator('.toast.notice')).toContainText('住所（豊見城市）から、申請書類と決まり');
+    expect(await page.evaluate(() => (window as any).__pc.getState().doc.site?.municipalityProfileId)).toBe('tomigusuku');
+    await page.getByTestId('back-home').click();
+    await create('住所テスト2', '千葉県市原市五井');
+    await expect(page.locator('.toast.notice')).toContainText('市原市の申請の決まりはまだ入っていないので、標準');
+    expect(await page.evaluate(() => (window as any).__pc.getState().doc.site?.municipalityProfileId)).toBeUndefined();
+  });
+
   test('後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける', async ({ page }) => {
     const old = {
       schemaVersion: 5, id: 'old1', name: '旧データ', createdAt: 1, updatedAt: 2,

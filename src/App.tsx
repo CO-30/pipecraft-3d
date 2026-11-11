@@ -18,6 +18,8 @@ import type { ImportReport, PlacedCandidate } from './model/planRead/assemble';
 import { applyLearned } from './learn/fixtureLearning';
 import { learnStore, startFixtureLearning } from './learn/learnStore';
 import type { LearnedCandidate } from './ui/ImportReportDialog';
+import { profileForAddress } from './model/municipality';
+import { useProfiles } from './ui/useProfiles';
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');
@@ -64,9 +66,24 @@ export default function App() {
       : v.mode === 'dims'
       ? { building: createBuildingFromDims(v), network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {} }
       : v.mode === 'sketch' || v.mode === 'photo' || v.mode === 'facade' ? { ...emptyDoc(), building: emptyFloors(v.floors, v.floorHeight) } : emptyDoc();
+    // 住所の市町村から、申請書類・決まり（土かぶり・勾配・図面の様式）の自治体を選ぶ
+    let pick: ReturnType<typeof profileForAddress> = {};
+    if (v.address) {
+      const pr = useProfiles.getState();
+      if (!pr.loaded) await pr.load().catch(() => undefined);
+      pick = profileForAddress(v.address, useProfiles.getState().all());
+    }
+    const site = { ...(doc.site ?? {}), ...(pick.profile ? { municipalityProfileId: pick.profile.id } : {}) };
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();
-    st.newDoc(doc, meta);
+    st.newDoc({ ...doc, site }, meta);
+    if (pick.city) {
+      useStore.setState({
+        notice: pick.profile
+          ? `住所（${pick.city}）から、申請書類と決まり（土かぶり・勾配・図面の様式）を「${pick.profile.name}」にしました。「申請図面」で変えられます`
+          : `${pick.city}の申請の決まりはまだ入っていないので、標準（日本下水道協会の指針: 土かぶり 20cm・φ100 の勾配 2/100 など）で作ります。「申請図面」で自治体を選び直せます`,
+      });
+    }
     if (v.mode === 'sketch') st.setTool('outline');
     setPendingUnderlayFile(v.mode === 'photo' ? v.file ?? null : null);
     if (v.mode === 'photo') st.setTool('underlay');

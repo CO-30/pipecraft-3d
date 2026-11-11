@@ -224,3 +224,39 @@ export function minSlopeFor(profile: MunicipalityProfile, diameter: number): num
   for (const k of keys) if (k <= diameter) pick = k;
   return pick === undefined ? undefined : 1 / table[String(pick)];
 }
+
+/** 住所の頭の 郵便番号・国名・都道府県・郡 を外す */
+function stripHead(text: string): string {
+  let s = text.normalize('NFKC').replace(/\s+/g, '').replace(/^日本[、,]?/, '').replace(/^〒?\d{3}-?\d{4}/, '');
+  s = s.replace(/^(北海道|東京都|京都府|大阪府|[^都道府県市区町村]{2,3}県)/, '');
+  // 郡: 後ろが「…町／…村」（間に 市 が無い。大和郡山市 の 郡 は外さない）か、郡と同じ名前の町（余市郡余市町）
+  const g = /^(.{1,4}?)郡/.exec(s);
+  if (g) {
+    const rest = s.slice(g[0].length);
+    if (/^[^市]{1,4}?[町村]/.test(rest) || rest.startsWith(g[1])) s = rest;
+  }
+  return s;
+}
+
+/** 住所・プロファイル名から市町村名（「豊見城市」「南風原町」）を取り出す。名前に 市・町・村 を含むもの（四日市市・東村山市・余市町）も */
+export function cityOf(text: string): string | undefined {
+  const s = stripHead(text);
+  const m = /^(.+?[市区町村])/.exec(s);
+  if (!m) return undefined;
+  let c = m[1];
+  const rest = s.slice(c.length);
+  if (/^[市町村]/.test(rest)) c += rest[0]; // 四日市市・野々市市・余市町
+  else if (c.endsWith('村') && /^[^\d字]市/.test(rest)) c += rest.slice(0, 2); // 東村山市（東村 ではない）
+  return c;
+}
+
+/**
+ * 新しい工事の住所から、申請書類・決まり（土かぶり・勾配・図面の様式）の自治体プロファイルを選ぶ。
+ * city: 住所の市町村名、profile: その市町村のプロファイル（同じ市町村が複数あれば名前の長い方＝自作を優先）。標準は選ばない
+ */
+export function profileForAddress(address: string, profiles: MunicipalityProfile[]): { city?: string; profile?: MunicipalityProfile } {
+  const city = cityOf(address);
+  if (!city) return {};
+  const hit = profiles.filter((p) => p.id !== STANDARD_PROFILE.id && cityOf(p.name) === city).sort((a, b) => b.name.length - a.name.length)[0];
+  return hit ? { city, profile: hit } : { city };
+}

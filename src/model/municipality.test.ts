@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { BUILTIN_PROFILES, DEFAULT_COLORS, duplicateProfile, formatSlope, isBuiltinProfile, minSlopeFor, municipalityProfileSchema, parseProfileJson, resolveProfile, STANDARD_PROFILE } from './municipality';
+import { BUILTIN_PROFILES, cityOf, profileForAddress, DEFAULT_COLORS, duplicateProfile, formatSlope, isBuiltinProfile, minSlopeFor, municipalityProfileSchema, parseProfileJson, resolveProfile, STANDARD_PROFILE } from './municipality';
 
 describe('自治体プロファイル', () => {
   test('STANDARD_PROFILE は schema を通り、同梱として扱われる', () => {
@@ -136,5 +136,37 @@ describe('沖縄市の実際の申請図面に合わせた項目', () => {
   test('新しい項目は省略できる（既定: absolute / materialFirst / 3 桁 / table）', () => {
     const r = municipalityProfileSchema.safeParse(STANDARD_PROFILE);
     expect(r.success && r.data.profileTable).toMatchObject({ datum: 'absolute', pipeSpecFormat: 'materialFirst', lengthDecimals: 3, manholeLabel: 'table' });
+  });
+});
+
+describe('住所から自治体プロファイルを選ぶ（profileForAddress）', () => {
+  test('住所に入っている市町村のプロファイルを選ぶ。県名・全角・空白があってもよい', () => {
+    expect(profileForAddress('沖縄県豊見城市字高安 123', BUILTIN_PROFILES)).toMatchObject({ city: '豊見城市', profile: { id: 'tomigusuku' } });
+    expect(profileForAddress('那覇市おもろまち１－１', BUILTIN_PROFILES).profile?.id).toBe('naha');
+    expect(profileForAddress('沖縄県 沖縄市 美里5丁目28-2', BUILTIN_PROFILES).profile?.id).toBe('okinawa-city');
+    expect(profileForAddress('島尻郡南風原町字兼城', BUILTIN_PROFILES)).toMatchObject({ city: '南風原町', profile: { id: 'haebaru' } });
+  });
+  test('「沖縄県」を沖縄市と取り違えない。プロファイルの無い市町村は市町村名だけ返す', () => {
+    expect(profileForAddress('沖縄県宜野湾市大山', BUILTIN_PROFILES)).toEqual({ city: '宜野湾市' });
+    expect(profileForAddress('千葉県市原市五井', BUILTIN_PROFILES)).toEqual({ city: '市原市' });
+    expect(profileForAddress('', BUILTIN_PROFILES)).toEqual({});
+  });
+  test('この端末で作ったプロファイル（名前に市町村名）も選べる。名前の長い方を優先', () => {
+    const mine = { ...duplicateProfile(STANDARD_PROFILE, '市原市（自作）'), id: 'u1' };
+    expect(profileForAddress('千葉県市原市五井', [...BUILTIN_PROFILES, mine]).profile?.id).toBe('u1');
+  });
+});
+
+describe('住所の市町村名の取り出し（cityOf）: 名前に 市・町・村・郡 を含む市町村', () => {
+  test.each([
+    ['三重県四日市市諏訪町', '四日市市'], ['石川県野々市市本町', '野々市市'], ['東京都東村山市本町', '東村山市'],
+    ['奈良県大和郡山市北郡山町', '大和郡山市'], ['北海道余市郡余市町黒川町', '余市町'], ['山形県東村山郡中山町長崎', '中山町'],
+    ['岐阜県郡上市八幡町', '郡上市'], ['福島県郡山市朝日', '郡山市'], ['千葉県市川市八幡', '市川市'], ['神奈川県横浜市中区', '横浜市'],
+    ['〒900-0006 沖縄県那覇市おもろまち', '那覇市'], ['沖縄県糸満市西崎町', '糸満市'], ['沖縄県国頭郡東村平良', '東村'],
+  ])('%s → %s', (a, c) => expect(cityOf(a)).toBe(c));
+  test('東村山市の工事に、村のプロファイル「東村」を当てない', () => {
+    const higashi = { ...duplicateProfile(STANDARD_PROFILE, '東村'), id: 'h' };
+    expect(profileForAddress('東京都東村山市本町', [higashi]).profile).toBeUndefined();
+    expect(profileForAddress('沖縄県国頭郡東村平良', [higashi]).profile?.id).toBe('h');
   });
 });
