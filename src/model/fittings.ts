@@ -4,12 +4,13 @@
  * ユーザーの確定はノードの fitting に保存し、接続数が変わったら無効にする。
  */
 import { FIXTURE_CATALOG, type Fixture } from './fixtures';
+import { isPB, materialFamily } from './materials';
 import { adjacency, type Network, type PipeNode, type Segment, type SystemType, type Vec3 } from './network';
 
 export type FittingType =
   | 'elbow90' | 'elbow45' | 'elbow' | 'socket' | 'reducer' | 'tee' | 'wye' | 'cross'
   | 'valve' | 'adapter' | 'junctionBox' | 'cap' | 'other'
-  | 'faucetElbow' | 'faucetSocket' | 'threadSocket';
+  | 'faucetElbow' | 'faucetSocket' | 'threadSocket' | 'hivpAdapter';
 export type FittingChoice = FittingType | 'none';
 
 export const FITTING_LABEL: Record<FittingType, string> = {
@@ -17,6 +18,7 @@ export const FITTING_LABEL: Record<FittingType, string> = {
   tee: 'チーズ', wye: 'Y管', cross: 'クロス', valve: 'バルブ', adapter: '器具接続継手',
   junctionBox: 'ジョイントボックス', cap: 'キャップ', other: 'その他部品',
   faucetElbow: '給水栓用エルボ（ネジ）', faucetSocket: '給水栓用ソケット（ネジ）', threadSocket: 'バルブ用ソケット（ネジ）',
+  hivpAdapter: 'HIVP変換継手',
 };
 /** 片側がネジの継手（シールテープを巻く） */
 export const THREAD_FITTINGS: ReadonlySet<FittingType> = new Set(['faucetElbow', 'faucetSocket', 'threadSocket']);
@@ -45,6 +47,10 @@ export type NodeFitting = {
 };
 
 const ANGLE_TOL = 10;
+/** PB の曲がりは曲げ配管（最小曲げ半径: 13J 170mm・16J 220mm・20J 270mm・25J 680mm） */
+export const PB_BEND_REASON = 'ポリブテン管は曲げて配管（継手なし）';
+/** 曲げて配管する口径の上限（25J は最小曲げ半径 680mm のためエルボ） */
+const PB_BEND_MAX = 20;
 
 const sub = (p: Vec3, q: Vec3): Vec3 => ({ x: p.x - q.x, y: p.y - q.y, z: p.z - q.z });
 const unit = (v: Vec3): Vec3 => {
@@ -98,13 +104,20 @@ function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<str
     if (segs.length === 2) return { ...base, auto: 'none', needsConfirm: false };
     return { ...base, auto: 'junctionBox', needsConfirm: false };
   }
-  const mixed = systems.size > 1 || new Set(segs.map((s) => s.material ?? '')).size > 1;
+  const mixed = systems.size > 1 || new Set(segs.map((s) => materialFamily(s.material))).size > 1;
 
   if (segs.length === 2) {
     const bend = 180 - deg(dot(d[0], d[1]));
     const diaDiff = segs[0].diameter !== segs[1].diameter;
+    // ポリブテン管（PB）と塩ビ管のつなぎ目: HIVP変換継手（口径は PB×塩ビ）
+    const pb = segs.find((s) => isPB(s.material)), pvc = segs.find((s) => !isPB(s.material));
+    if (mixed && systems.size === 1 && pb && pvc && !isWire(pb.system)) {
+      return { size: `${pb.diameter}×${pvc.diameter}`, main: pb, auto: 'hivpAdapter', needsConfirm: false };
+    }
     if (mixed) return { ...base, auto: 'other', needsConfirm: true, reason: '種類または材質の違う配管の接続です（異種管継手など）' };
     if (bend < 1) return { ...base, auto: diaDiff ? 'reducer' : 'none', needsConfirm: false };
+    // PB は曲げて配管する（継手なし）。曲げられない所はエルボに確定し直せる
+    if (!diaDiff && segs[0].diameter <= PB_BEND_MAX && isPB(segs[0].material) && isPB(segs[1].material)) return { ...base, auto: 'none', needsConfirm: false, reason: PB_BEND_REASON };
     if (near(bend, 90)) return { ...base, auto: 'elbow90', needsConfirm: false };
     if (near(bend, 45)) return { ...base, auto: 'elbow45', needsConfirm: false };
     return { ...base, auto: 'elbow', needsConfirm: true, reason: `曲がり角 ${Math.round(bend)}° の部品を確定してください` };

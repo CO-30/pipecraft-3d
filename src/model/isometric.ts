@@ -9,6 +9,7 @@ import { FIXTURE_CATALOG, isHeader, isManhole, type FixtureType } from './fixtur
 import type { MunicipalityProfile } from './municipality';
 import type { SystemType, Vec3 } from './network';
 import { isDrain } from './slope';
+import { drawingMaterial } from './materials';
 
 export type IsoKind = 'water' | 'drain';
 export type IsoLine = { segId: string; x1: number; y1: number; x2: number; y2: number; label: string; system: SystemType; existing?: boolean };
@@ -35,7 +36,7 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     if (!a || !b) continue;
     const pa = isoProject(a.pos), pb = isoProject(b.pos);
     const len = Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y, b.pos.z - a.pos.z);
-    lines.push({ segId: s.id, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, label: `${s.material || (isDrain(s.system) ? 'VU' : 'HI')}${s.diameter}×${(len / 1000).toFixed(1)}`, system: s.system, ...(s.existing ? { existing: true } : {}) });
+    lines.push({ segId: s.id, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, label: `${drawingMaterial(s.material) || (isDrain(s.system) ? 'VU' : 'HI')}${s.diameter}×${(len / 1000).toFixed(1)}`, system: s.system, ...(s.existing ? { existing: true } : {}) });
     used.add(s.a); used.add(s.b);
   }
   const points: IsoPoint[] = [];

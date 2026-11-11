@@ -10,6 +10,8 @@
  */
 import type { SystemType } from './network';
 import type { FittingType } from './fittings';
+import type { SaleUnit } from './estimate';
+import { isPB } from './materials';
 
 export const CATALOG_SOURCE = '積水化学工業 エスロン 設計積算価格（2026年度・税抜）';
 
@@ -58,15 +60,66 @@ const norm = (m: string) => m.trim().toUpperCase().replace(/[‐－-]/g, '').rep
 
 export const effectiveMaterial = (s: { system: SystemType; material?: string }) => (s.material?.trim() ? s.material : DEFAULT_MATERIAL[s.system] ?? '');
 
-/** 直管 4m の参考価格（円/本）。なければ undefined */
-export function catalogPipePrice(s: { system: SystemType; material?: string; diameter: number }): number | undefined {
-  return PIPE[norm(effectiveMaterial(s))]?.[s.diameter];
+// ---------- プッシュマスター（ブリヂストン ポリブテン管・ワンタッチ継手） ----------
+export const PB_CATALOG_SOURCE = 'ブリヂストン プッシュマスター 建築設備配管カタログ 2024 Vol.13（2024年10月改定・税抜）';
+type PBKind = 'bare' | 'h5' | 'h10' | 'sheath';
+const pbKind = (m: string): PBKind => {
+  const u = m.toUpperCase();
+  if (u.includes('さや') || u.includes('コルゲート')) return 'sheath';
+  if (u.includes('保温10')) return 'h10';
+  if (u.includes('保温')) return 'h5';
+  return 'bare';
+};
+/** らく楽パイプ 円/m（巻）。裸管は 60m 巻（25J は 30m 巻）、保温付・さや管付は 30m 巻 */
+const PB_PER_M: Record<PBKind, Record<number, number>> = {
+  bare: { 13: 440, 16: 590, 20: 840, 25: 1390 },
+  h5: { 13: 810, 16: 1020, 20: 1470, 25: 2740 },
+  h10: { 13: 1070, 16: 1400, 20: 2480, 25: 3290 },
+  sheath: { 13: 810, 16: 1020, 20: 1470, 25: 2870 },
+};
+/** 裸管の直管（円/本）: 13〜20J は 3m、25J は 4m */
+const PB_STRAIGHT: Record<number, { length: number; price: number }> = {
+  13: { length: 3000, price: 1170 }, 16: { length: 3000, price: 1650 }, 20: { length: 3000, price: 2310 }, 25: { length: 4000, price: 4920 },
+};
+/** カタログの巻の長さ(mm) */
+export const pbRollLength = (material: string, diameter: number) => (pbKind(material) === 'bare' && diameter !== 25 ? 60000 : 30000);
+
+/** 管の参考価格（販売単位あたり。定尺=円/本、巻=円/巻、m 単位=円/m）。なければ undefined */
+export function catalogPipePrice(s: { system: SystemType; material?: string; diameter: number }, unit: SaleUnit = { kind: 'straight', length: 4000 }): number | undefined {
+  const mat = effectiveMaterial(s);
+  if (isPB(mat)) {
+    const perM = PB_PER_M[pbKind(mat)][s.diameter];
+    if (perM === undefined) return undefined;
+    if (unit.kind === 'perLength') return unit.step === 1000 ? perM : undefined;
+    if (unit.kind === 'roll') return unit.length === pbRollLength(mat, s.diameter) ? (perM * unit.length) / 1000 : undefined;
+    const st = PB_STRAIGHT[s.diameter];
+    return pbKind(mat) === 'bare' && st?.length === unit.length ? st.price : undefined;
+  }
+  return unit.kind === 'straight' && unit.length === 4000 ? PIPE[norm(mat)]?.[s.diameter] : undefined;
 }
+
+/** プッシュマスター継手（円/個）。同径は口径、径違いは「大×小」 */
+const PB_FITTING: Partial<Record<FittingType, Record<string, number>>> = {
+  socket: { 13: 1290, 16: 1960, 20: 4390, 25: 5760 }, // コネクターストレート NCS
+  elbow90: { 13: 1290, 16: 1960, 20: 4390, 25: 5760, '16×13': 1930, '20×13': 3080, '20×16': 3270 }, // コネクターエルボ NCE
+  reducer: { '16×13': 1930, '20×13': 3080, '25×13': 5410, '20×16': 3270, '25×20': 5760 }, // 異径ストレート NCS
+  tee: { 13: 1790, 16: 2520, 20: 4540, 25: 8010, '16×13': 2510, '20×13': 3840, '20×16': 4090, '25×13': 7790, '25×16': 7840, '25×20': 7890 }, // コネクターチーズ NCT
+  faucetElbow: { 13: 3070, 16: 3500, 20: 10990, 25: 12220 }, // 座付水栓エルボ NAE
+  faucetSocket: { 13: 2040, 16: 3030, 20: 4810, 25: 6050 }, // メスアダプター NAF
+  threadSocket: { 13: 2040, 16: 3030, 20: 4810, 25: 6050 }, // オスアダプター NAM
+  adapter: { 13: 2040, 16: 3030, 20: 4810, 25: 6050 }, // オスアダプター NAM
+  hivpAdapter: { '13×13': 2500, '13×20': 2560, '16×16': 2560, '16×20': 2560, '20×20': 4650 }, // HIVP変換継手 NAH（PB×HIVP）
+};
+/** プッシュマスター継手の品番（見積・部材表の参考） */
+export const PB_FITTING_CODE: Partial<Record<FittingType, string>> = {
+  socket: 'NCS', elbow90: 'NCE', reducer: 'NCS', tee: 'NCT', faucetElbow: 'NAE', faucetSocket: 'NAF', threadSocket: 'NAM', adapter: 'NAM', hivpAdapter: 'NAH',
+};
 
 /** 継手の参考価格（円/個）。同径のみ（径違いは undefined） */
 export { norm as normMaterial };
 
 export function catalogFittingPrice(type: FittingType, s: { system: SystemType; material?: string }, size: string): number | undefined {
+  if (isPB(effectiveMaterial(s))) return PB_FITTING[type]?.[size];
   if (size.includes('×')) return undefined;
   const mat = norm(effectiveMaterial(s));
   if (THREAD_FITTING[type]) return mat === 'HIVP' ? THREAD_FITTING[type]![Number(size)] : undefined;

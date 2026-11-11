@@ -12,7 +12,7 @@ import {
   type Estimate, type FittingLine, type Issue, type PipeLine, type SaleUnit,
 } from '../model/estimate';
 import { ISSUE_LABEL, yen } from '../export/report';
-import { CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice, catalogSupportPrice, SUPPORT_CATALOG_SOURCE } from '../model/priceCatalog';
+import { PB_CATALOG_SOURCE, CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice, catalogSupportPrice, SUPPORT_CATALOG_SOURCE } from '../model/priceCatalog';
 import { defaultConsumableSettings, type ConsumableSettings } from '../model/consumables';
 import { defaultSupportSettings, SUBSTRATE_LABEL, type SupportSettings } from '../model/supports';
 import type { SupportLine } from '../model/estimate';
@@ -223,7 +223,7 @@ function PriceRow({ line, pipe }: { line: PipeLine | FittingLine; pipe: boolean 
   const set = (patch: { material?: number; labor?: number }) =>
     st.setPrice(line.key, { material: line.price?.material ?? 0, labor: line.price?.labor ?? 0, ...(line.price?.saleUnit ? { saleUnit: line.price.saleUnit } : {}), ...patch });
   const hasCatalog = pipe
-    ? catalogPipePrice((line as PipeLine)) !== undefined // 戻すと販売単位も既定（定尺4m）に戻るので参考単価の有無だけで判定
+    ? catalogPipePrice(line as PipeLine, defaultSaleUnit(line as PipeLine)) !== undefined // 戻すと販売単位も既定（塩ビ=定尺4m・PB=巻）に戻るので参考単価の有無だけで判定
     : catalogFittingPrice((line as FittingLine).type, line as FittingLine, (line as FittingLine).size) !== undefined;
   const matUnit = !saleUnit ? '円/個' : saleUnit.kind === 'perLength' ? '円/m' : saleUnit.kind === 'straight' ? '円/本' : '円/巻';
   return (
@@ -286,10 +286,10 @@ function PriceTab({ est }: { est: Estimate }) {
         <p className="muted small" data-testid="support-catalog-note">支持金具・ビス・キリはメーカー希望価格のない「オープン価格」品のため、参考単価は {SUPPORT_CATALOG_SOURCE} です（サドル: 昭和コーポレーション ステンレス片サドル、コンクリートビス: マーベル SCS-432、ステンレスビス: 皿木ねじ 4.1×38、キリ: 大西工業 No.24 3.4mm）。レベルバンドはサイズ別の価格が得られないため入力してください。シールテープは日東電工 ニトフロン No.95S 13mm×15m、接着剤はクボタケミックス HI用・HT用 500g の通販税抜価格です。VP・VU用の接着剤は入力してください。</p>
       </section>
       <p className="muted small">単価はこの現場に保存されます。材料費 = 発注数量 × 材料単価、施工費 = 施工数量 × 施工単価（行ごとに円未満四捨五入）。</p>
-      <p className="muted small" data-testid="catalog-note">「メーカー参考単価」は {CATALOG_SOURCE} の材料価格です（配管は定尺4mのとき）。実際の仕入れ値に合わせて上書きしてください。施工単価は含まれません。材質を空欄にした配管は、給水=HIVP・給湯=HTVP・排水/汚水/通気/ドレン=VP として扱います。</p>
+      <p className="muted small" data-testid="catalog-note">「メーカー参考単価」は {CATALOG_SOURCE} の材料価格です（配管は定尺4mのとき）。ポリブテン管（PB）と継手は {PB_CATALOG_SOURCE}（管は巻・m・直管）。実際の仕入れ値に合わせて上書きしてください。施工単価は含まれません。材質を空欄にした配管は、給水=HIVP・給湯=HTVP・排水/汚水/通気/ドレン=VP として扱います（「自動」で描いた建物の中の給水・給湯は PB）。</p>
       <section>
         <h3>販売単位の目安</h3>
-        <p className="muted small">配管は {saleUnitLabel(defaultSaleUnit('water'))}、電気・通信・冷媒は {saleUnitLabel(defaultSaleUnit('electric'))} が初期値です。</p>
+        <p className="muted small">配管は {saleUnitLabel(defaultSaleUnit('water'))}（PB は {saleUnitLabel(defaultSaleUnit({ system: 'water', material: 'PB保温5mm', diameter: 13 }))}・裸管 {saleUnitLabel(defaultSaleUnit({ system: 'water', material: 'PB', diameter: 13 }))}）、電気・通信・冷媒は {saleUnitLabel(defaultSaleUnit('electric'))} が初期値です。</p>
       </section>
     </div>
   );

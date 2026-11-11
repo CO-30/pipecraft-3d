@@ -3,13 +3,13 @@
  * 1本指: ツールに応じた作図・選択・移動 / 2本指: 拡大縮小・移動（編集と干渉しない）。
  */
 import { useEffect, useRef, useState } from 'react';
-import { activeFloorElevation, useStore } from '../state/store';
+import { activeFloorElevation, isUnderFloor, useStore } from '../state/store';
 import { hitTestPlan, orthoSnap, simplify, type HitFilter, type Vec2 } from '../model/geometry';
 import { hitTestBuilding } from '../model/buildingHit';
 import { floorById, roomArea, wallLength } from '../model/building';
 import { pointInPolygon } from '../model/roomOps';
 import { connectedComponent, segmentLength, segmentsAt, type Network } from '../model/network';
-import { FIXTURE_CATALOG, fixtureCorners, fixtureSize, isManhole, MANHOLE_SHORT } from '../model/fixtures';
+import { FIXTURE_CATALOG, fixtureCorners, fixtureSize, isManhole, MANHOLE_SHORT, portSystem } from '../model/fixtures';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { underlayCorners } from '../model/underlay';
 import { pointInRing } from '../model/geo';
@@ -18,7 +18,7 @@ import { findConnectCandidate } from '../model/connect';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
-  | { kind: 'stroke'; tool: 'pipe' | 'wall' | 'outline'; startNodeId?: string; branchSegId?: string }
+  | { kind: 'stroke'; tool: 'pipe' | 'wall' | 'outline'; startNodeId?: string; branchSegId?: string; portDownId?: string }
   | { kind: 'room'; start: Vec2 }
   | { kind: 'split'; start: Vec2 }
   | { kind: 'dragNode'; nodeId: string; startPx: Vec2 }
@@ -76,6 +76,7 @@ export function PlanView() {
   const sel = useStore((s) => s.selection);
   const floorId = useStore((s) => s.activeFloorId);
   const dimFloor = useStore((s) => s.dimWizard?.floorId);
+  const underFloor = useStore(isUnderFloor);
   const svgRef = useRef<SVGSVGElement>(null);
   const [view, setView] = useState<ViewT | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -152,7 +153,8 @@ export function PlanView() {
   const tol = HIT_PX / vw.scale;
   // 現在の階に表示されている配管だけをタップ対象にする（他の階の配管は薄く表示・当たり判定なし）
   const curFloor = floorById(building, floorId);
-  const zLo = (curFloor?.elevation ?? 0) - 1000, zHi = (curFloor?.elevation ?? 0) + (curFloor?.height ?? 3000);
+  // 床下: 床より下だけ（床上の配管・器具の接続口は薄く表示・当たり判定なし）
+  const zLo = (curFloor?.elevation ?? 0) - 1000, zHi = (curFloor?.elevation ?? 0) + (underFloor ? 0 : curFloor?.height ?? 3000);
   const zRange = (z0: number, z1: number) => z1 >= zLo && z0 < zHi;
   const hitPipe = (w: Vec2) => hitTestPlan(useStore.getState().doc.network, w, tol, { zRange });
   /** 器具のヒット（小さい器具も指で押せるよう、外形の外でも中心から許容半径内なら当たり） */
@@ -208,8 +210,11 @@ export function PlanView() {
         gesture.current = { kind: 'stroke', tool: 'pipe', branchSegId: hit.id };
         setStroke([w]);
       } else {
-        gesture.current = { kind: 'stroke', tool: 'pipe' };
-        setStroke([w]);
+        // 床下: 器具の接続口から描き始めたら、床下まで下ろしてから描く
+        const ph = isUnderFloor(st) ? hitTestPlan(st.doc.network, w, tol, { zRange: (z0: number, z1: number) => z1 >= zLo && z0 < zLo + 1000 + (curFloor?.height ?? 3000) }) : null;
+        const port = ph?.type === 'node' && st.doc.network.nodes[ph.id]?.fixtureId ? st.doc.network.nodes[ph.id] : null;
+        gesture.current = { kind: 'stroke', tool: 'pipe', ...(port ? { portDownId: port.id } : {}) };
+        setStroke([port ? { x: port.pos.x, y: port.pos.y } : w]);
       }
       return;
     }
@@ -471,7 +476,8 @@ export function PlanView() {
       st.branch(g.branchSegId, { ...raw[0], z }, pts.slice(1).map((q) => ({ ...q, z })), { endNodeId, endSegId });
     } else {
       const z = g.startNodeId ? net.nodes[g.startNodeId].pos.z : activeFloorElevation() + st.drawHeight;
-      st.drawPolyline(pts.map((q) => ({ ...q, z })), { startNodeId: g.startNodeId, endNodeId, endSegId });
+      if (g.portDownId && net.nodes[g.portDownId]) st.drawFromPortDown(g.portDownId, pts.map((q) => ({ ...q, z })), { endNodeId, endSegId });
+      else st.drawPolyline(pts.map((q) => ({ ...q, z })), { startNodeId: g.startNodeId, endNodeId, endSegId });
     }
   };
 
@@ -507,7 +513,12 @@ export function PlanView() {
     const c = findConnectCandidate(net, fixtures, sel.id);
     return c ? { from: net.nodes[sel.id].pos, to: c.point } : null;
   })();
-  const unders = showUnderlays ? Object.values(underlays ?? {}).filter((u) => u.floorId === floorId) : [];
+  const floorUnders = showUnderlays ? Object.values(underlays ?? {}).filter((u) => u.floorId === floorId) : [];
+  // 床下は基礎伏図の下敷きがあればそれだけ、ふだんは基礎伏図以外があればそれだけを敷く
+  const isFooting = (label: string) => /基礎/.test(label);
+  const preferred = floorUnders.filter((u) => isFooting(u.label) === underFloor);
+  const unders = preferred.length ? preferred : floorUnders;
+  const dim = underFloor ? 0.35 : 1; // 床下では床上の壁・部屋・器具を薄く
   const attributions = [...new Set(unders.map((u) => u.attribution).filter(Boolean))] as string[];
   const walls = Object.values(building.walls).filter((w) => w.floorId === floorId);
 
@@ -544,7 +555,7 @@ export function PlanView() {
         const pts = r.polygon.map(toScreen);
         const cx = pts.reduce((a, p) => a + p.x, 0) / pts.length, cy = pts.reduce((a, p) => a + p.y, 0) / pts.length;
         return (
-          <g key={r.id} data-room={r.id}>
+          <g key={r.id} data-room={r.id} opacity={dim}>
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={isSel('room', r.id) ? '#fde68a' : '#f1f5f9'} fillOpacity={unders.length ? 0.35 : 1} stroke="#cbd5e1" strokeDasharray="4 3" />
             <text x={cx} y={cy} textAnchor="middle" fontSize={12} fill="#475569">{r.name}</text>
             <text x={cx} y={cy + 14} textAnchor="middle" fontSize={10} fill="#94a3b8">{roomArea(r).toFixed(2)}㎡</text>
@@ -555,7 +566,7 @@ export function PlanView() {
         const a = toScreen(building.corners[w.a]), b = toScreen(building.corners[w.b]);
         const selected = isSel('wall', w.id);
         return (
-          <g key={w.id} data-wall={w.id}>
+          <g key={w.id} data-wall={w.id} opacity={dim}>
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected ? SELECT_COLOR : w.kind === 'exterior' ? '#334155' : '#64748b'}
               strokeWidth={Math.max(3, w.thickness * vw.scale)} strokeLinecap="square" />
             {(selected || w.lengthSet === false || (dimFloor === floorId && w.kind === 'exterior')) && (() => {
@@ -574,12 +585,12 @@ export function PlanView() {
       })}
       {membersOf(building).filter((m) => m.floorId === floorId).map((m) => {
         const cs = memberCorners(m).map(toScreen);
-        const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : m.kind === 'footing' ? '#64748b' : '#7c3aed';
+        const color = m.kind === 'beam' ? '#57534e' : m.kind === 'eave' ? '#92400e' : m.kind === 'balcony' ? '#0f766e' : m.kind === 'footing' ? (underFloor ? '#1e293b' : '#64748b') : '#7c3aed';
         const selected = isSel('member', m.id);
         const steps = m.kind === 'stair' ? stairSteps(m) : 0;
         return (
           <g key={m.id} data-member={m.id} data-kind={m.kind}>
-            <polygon points={cs.map((q) => `${q.x},${q.y}`).join(' ')} fill={color} fillOpacity={m.kind === 'balcony' ? 0.15 : 0.08}
+            <polygon points={cs.map((q) => `${q.x},${q.y}`).join(' ')} fill={color} fillOpacity={m.kind === 'balcony' ? 0.15 : m.kind === 'footing' && underFloor ? 0.45 : 0.08} opacity={underFloor && m.kind !== 'footing' ? dim : 1}
               stroke={selected ? SELECT_COLOR : color} strokeWidth={selected ? 3 : 1.5} strokeDasharray={m.kind === 'beam' || m.kind === 'eave' ? '6 4' : undefined} />
             {Array.from({ length: Math.max(0, steps - 1) }, (_, i) => {
               const t = (i + 1) / steps;
@@ -598,7 +609,7 @@ export function PlanView() {
         const p0 = toScreen({ x: A.x + u.x * (o.offset - o.width / 2), y: A.y + u.y * (o.offset - o.width / 2) });
         const p1 = toScreen({ x: A.x + u.x * (o.offset + o.width / 2), y: A.y + u.y * (o.offset + o.width / 2) });
         return (
-          <line key={o.id} data-opening={o.id} data-type={o.type} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y}
+          <line key={o.id} data-opening={o.id} data-type={o.type} opacity={dim} x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y}
             stroke={isSel('opening', o.id) ? SELECT_COLOR : o.type === 'door' ? '#fff' : '#bae6fd'}
             strokeWidth={Math.max(3, w.thickness * vw.scale) - 1} strokeLinecap="butt" />
         );
@@ -625,7 +636,7 @@ export function PlanView() {
           );
         }
         return (
-          <g key={f.id} data-fixture={f.id} data-type={f.type}>
+          <g key={f.id} data-fixture={f.id} data-type={f.type} opacity={dim}>
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
             <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize={11} fill="#0e7490" pointerEvents="none">{FIXTURE_CATALOG[f.type].label}</text>
           </g>
@@ -665,11 +676,14 @@ export function PlanView() {
         const p = toScreen(n.pos);
         const big = n.kind === 'tee' || n.kind === 'cross';
         const drop = dropHit?.type === 'node' && dropHit.id === n.id;
+        const portSys = portSystem(fixtures, n);
         const port = !!n.fixtureId;
+        // 器具の接続口は種類の色（給水=青・給湯=赤・排水=茶…）。床下では床上の接続口も始点にできるので少し濃く
+        const op = onThisFloor(n.pos.z) ? 1 : port && underFloor ? 0.55 : 0.2;
         return (
-          <circle key={n.id} data-node={n.id} data-kind={n.kind} cx={p.x} cy={p.y} r={drop ? 10 : big ? 7 : port ? 6 : 5} opacity={onThisFloor(n.pos.z) ? 1 : 0.2}
-            fill={isSel('node', n.id) ? SELECT_COLOR : drop ? '#16a34a' : n.kind === 'valve' ? '#f97316' : big ? '#111827' : port ? '#0e7490' : '#fff'}
-            stroke="#111827" strokeWidth={2} />
+          <circle key={n.id} data-node={n.id} data-kind={n.kind} data-port-system={portSys} cx={p.x} cy={p.y} r={drop ? 10 : big ? 7 : port ? 7 : 5} opacity={op}
+            fill={isSel('node', n.id) ? SELECT_COLOR : drop ? '#16a34a' : n.kind === 'valve' ? '#f97316' : big ? '#111827' : portSys ? systemColor(portSys) : port ? '#0e7490' : '#fff'}
+            stroke="#111827" strokeWidth={port ? 1.5 : 2} />
         );
       })}
       {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} />}
@@ -681,7 +695,7 @@ export function PlanView() {
         const a = toScreen(roomPreview.a), b = toScreen(roomPreview.b);
         return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(a.x - b.x)} height={Math.abs(a.y - b.y)} fill="rgba(37,99,235,0.1)" stroke="#2563eb" strokeDasharray="6 4" />;
       })()}
-      <text x={8} y={H - 10} fontSize={11} fill="#94a3b8" pointerEvents="none">{floor?.name ?? ''} 平面図（1目盛=1m）</text>
+      <text x={8} y={H - 10} fontSize={11} fill="#94a3b8" pointerEvents="none">{underFloor ? `床下（${floor?.name ?? ''}の床の下）` : `${floor?.name ?? ''} 平面図`}（1目盛=1m）</text>
       {connectPreview && (() => {
         const a = toScreen(connectPreview.from), b = toScreen(connectPreview.to);
         return (

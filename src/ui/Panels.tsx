@@ -2,7 +2,7 @@
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { activeFloorElevation, branchDeletionPreview, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
+import { activeFloorElevation, branchDeletionPreview, isUnderFloor, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
 import { floorById, roomArea, wallLength } from '../model/building';
@@ -21,6 +21,7 @@ import { SYSTEM_NAME } from '../model/systems';
 import { actualSlope, defaultSlope, isDrain, slopeEnough, slopeLabel } from '../model/slope';
 import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
+import { PB_MATERIAL_LABEL, PB_MATERIALS, WATER_MATERIAL_OPTIONS } from '../model/materials';
 
 const DIAMETERS = [13, 16, 20, 25, 30, 40, 50, 65, 75, 100, 125, 150];
 const HEIGHT_PRESETS: { label: string; z: number }[] = [
@@ -359,8 +360,12 @@ export function PropertyPanel() {
             {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
           <label className="field inline">口径<select value={drawAttrs.diameter} onChange={(e) => st.setDrawAttrs({ diameter: Number(e.target.value) })}>
             {DIAMETERS.map((d) => <option key={d} value={d}>φ{d}</option>)}</select></label>
-          <label className="field inline">高さ<select value={drawHeight} onChange={(e) => st.setDrawHeight(Number(e.target.value))}>
-            {HEIGHT_PRESETS.map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
+          {(drawAttrs.system === 'water' || drawAttrs.system === 'hotWater') && (
+            <label className="field inline">管<select data-testid="draw-material" value={drawAttrs.material ?? ''} onChange={(e) => st.setDrawAttrs({ material: e.target.value || undefined })}>
+              {WATER_MATERIAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+          )}
+          <label className="field inline">高さ<select data-testid="draw-height" value={drawHeight} onChange={(e) => st.setDrawHeight(Number(e.target.value))}>
+            {[...HEIGHT_PRESETS, ...(HEIGHT_PRESETS.some((h) => h.z === drawHeight) ? [] : [{ label: '指定', z: drawHeight }])].map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
       ) : <div className="ptitle muted tool-help">{TOOL_HELP[tool]}</div>}
       {tool === 'split' && (
@@ -624,6 +629,7 @@ function FittingField({ nodeId }: { nodeId: string }) {
         </select></label>
       <span className="small muted">{f.size.split('×').map((d) => `φ${d}`).join('×')}</span>
       {f.needsConfirm && <div className="warn small" data-testid="fitting-confirm">⚠ {f.reason ?? '部品を確定してください'}</div>}
+      {!f.needsConfirm && f.reason && <div className="muted small" data-testid="fitting-note">{f.reason}。曲げられない所は部品を選んでください</div>}
     </>
   );
 }
@@ -632,9 +638,12 @@ function MaterialField({ id, value }: { id: string; value: string }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
   return (
-    <label className="field inline">材質<input value={v} placeholder="例: VP, HIVP, PB, VVF" data-testid="seg-material" onChange={(e) => setV(e.target.value)}
+    <label className="field inline">材質<input value={v} placeholder="例: VP, HIVP, PB保温5mm, VVF" data-testid="seg-material" list="material-list" onChange={(e) => setV(e.target.value)}
       onBlur={() => { if (v.trim() !== value) useStore.getState().updateSegment(id, { material: v.trim() || undefined }); }}
-      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} /></label>
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+      <datalist id="material-list">
+        {[...PB_MATERIALS, 'HIVP', 'HTVP', 'VP', 'VU'].map((m) => <option key={m} value={m}>{(PB_MATERIAL_LABEL as Record<string, string>)[m] ?? m}</option>)}
+      </datalist></label>
   );
 }
 
@@ -683,13 +692,17 @@ export function FloorBar({ compact = false }: { compact?: boolean }) {
   const [settings, setSettings] = useState(false);
   const floors = useStore((s) => s.doc.building.floors);
   const active = useStore((s) => s.activeFloorId);
+  const underFloor = useStore(isUnderFloor);
   const st = useStore.getState();
   const f = floors.find((x) => x.id === active);
   return (
     <div className="floorbar">
       <div className="chips">
+        {floors.length > 0 && (
+          <button data-testid="underfloor-chip" className={underFloor ? 'on' : ''} title="1階の床の下（基礎の中）の配管を描く・見る" onClick={() => (underFloor ? st.setActiveFloor(floors[0].id) : st.setUnderFloor(true))}>床下</button>
+        )}
         {floors.map((x) => (
-          <button key={x.id} data-testid="floor-chip" className={x.id === active ? 'on' : ''} onClick={() => st.setActiveFloor(x.id)}>{x.name}</button>
+          <button key={x.id} data-testid="floor-chip" className={x.id === active && !underFloor ? 'on' : ''} onClick={() => st.setActiveFloor(x.id)}>{x.name}</button>
         ))}
         <button data-testid="add-floor" onClick={() => st.addFloor(true)} title="現在の階の外壁をコピーして上に階を追加">＋階</button>
         <ElevationChips />

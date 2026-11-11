@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { emptyDoc, findUpstreamBranchPoint, useStore } from './store';
+import { emptyDoc, findUpstreamBranchPoint, isUnderFloor, useStore } from './store';
 import { totalLength, validateNetwork } from '../model/network';
 import { createBuildingFromDims, validateBuilding, wallsOnFloor } from '../model/building';
 import { validateFixtures } from '../model/fixtures';
@@ -733,5 +733,67 @@ describe('落差桝', () => {
     s().updateFixtureParams(m2, { drop: undefined });
     expect(port(m2).dropIn).toBeUndefined();
     expect(s().doc.network.nodes[mid.id].pos.z).toBeCloseTo(-850, 1);
+  });
+});
+
+describe('共通ストア: 床下', () => {
+  const house = () => s().newDoc({ ...emptyDoc(), building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 120, slabThickness: 200 }) }, { id: 'h', name: '家', createdAt: 1 });
+
+  it('「床下」を選ぶと 1 階・床から 300mm 下に描く。階を選び直すと床上に戻る', () => {
+    house();
+    const [f1, f2] = bld().floors;
+    s().setActiveFloor(f2.id);
+    s().setUnderFloor(true);
+    expect(s()).toMatchObject({ underFloor: true, activeFloorId: f1.id, drawHeight: -300 });
+    s().setActiveFloor(f1.id);
+    expect(s()).toMatchObject({ underFloor: false, drawHeight: 100 });
+  });
+
+  it('床下で器具の接続口から描くと、床下まで下ろしてから描く（取り消しは 1 回）。屋内の給水は PB', () => {
+    house();
+    s().setFixtureType('washbasin');
+    s().placeFixtureAt({ x: 2000, y: 3000 });
+    s().setUnderFloor(true);
+    const port = Object.values(net().nodes).find((n) => n.fixtureId && n.portId === 'water')!;
+    const before = Object.keys(net().segments).length;
+    s().drawFromPortDown(port.id, [v(port.pos.x, port.pos.y, -300), v(port.pos.x + 1500, port.pos.y, -300)]);
+    expect(validateNetwork(net())).toEqual([]);
+    const added = Object.values(net().segments).slice(before);
+    expect(added).toHaveLength(2);
+    expect(added.every((x) => x.material === 'PB保温5mm')).toBe(true);
+    const riser = added.find((x) => net().nodes[x.a].pos.x === net().nodes[x.b].pos.x && net().nodes[x.a].pos.y === net().nodes[x.b].pos.y)!;
+    expect([net().nodes[riser.a].pos.z, net().nodes[riser.b].pos.z].sort((a, b) => a - b)).toEqual([-300, port.pos.z]);
+    s().undo();
+    expect(Object.keys(net().segments)).toHaveLength(before);
+  });
+
+  it('管を指定して描けば自動にしない。建物の外へ出る給水は外で HIVP に替わる', () => {
+    house();
+    s().setUnderFloor(true);
+    s().setDrawAttrs({ system: 'water', diameter: 13, material: 'HIVP' });
+    s().drawPolyline([v(1000, 1000, -300), v(3000, 1000, -300)]);
+    expect(Object.values(net().segments).map((x) => x.material)).toEqual(['HIVP']);
+    s().setDrawAttrs({ material: undefined });
+    s().drawPolyline([v(1000, 2000, -300), v(-2000, 2000, -300)]);
+    expect(Object.values(net().segments).slice(1).map((x) => x.material).sort()).toEqual(['HIVP', 'PB保温5mm']);
+  });
+});
+
+describe('共通ストア: 床下・管種の細部', () => {
+  it('種類を変えると管種は自動に戻る（PB のまま排水を描かない）', () => {
+    s().setDrawAttrs({ system: 'water', material: 'PB' });
+    s().setDrawAttrs({ system: 'drain' });
+    expect(s().drawAttrs.material).toBeUndefined();
+  });
+
+  it('床下のまま別の階へ移ったら床下ではない。床上で選んだ床下の高さは階を変えても残す', () => {
+    s().newDoc({ ...emptyDoc(), building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 120, slabThickness: 200 }) }, { id: 'h', name: '家', createdAt: 1 });
+    s().setUnderFloor(true);
+    useStore.setState({ activeFloorId: bld().floors[1].id }); // 立て管を上の階へ、など
+    expect(isUnderFloor(s())).toBe(false);
+    s().setActiveFloor(bld().floors[0].id);
+    s().setDrawHeight(-300);
+    s().setActiveFloor(bld().floors[1].id);
+    expect(s().drawHeight).toBe(-300);
   });
 });

@@ -34,6 +34,7 @@ test('梁にぶつかる配管を A 下をくぐる で回し、積算に「梁�
   // 天井付近（床から 2400）に、梁を横切る給水管を2本（設定は共通ストアで）
   await page.evaluate(() => {
     const s = (window as any).__pc.getState();
+    s.setDrawAttrs({ material: 'HIVP' }); // 塩ビ管（エルボで梁をかわす）。屋内の「自動」は PB（曲げ配管）になる
     s.drawPolyline([{ x: 2000, y: 2000, z: 2400 }, { x: 2000, y: -1000, z: 2400 }]);
     s.drawPolyline([{ x: 4000, y: 2000, z: 2400 }, { x: 4000, y: -1000, z: 2400 }]);
   });

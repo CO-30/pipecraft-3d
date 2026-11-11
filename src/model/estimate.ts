@@ -9,7 +9,8 @@ import { MEMBER_LABEL } from './members';
 import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
-import { catalogFittingPrice, catalogPipePrice, catalogSupportPrice, effectiveMaterial } from './priceCatalog';
+import { catalogFittingPrice, catalogPipePrice, catalogSupportPrice, effectiveMaterial, pbRollLength } from './priceCatalog';
+import { isPB } from './materials';
 import { computeConsumables, defaultConsumableSettings, GLUE_LABEL, type ConsumableSettings, type GlueKind } from './consumables';
 import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportMark, type SupportSettings } from './supports';
 import { orderChain, pointsAlong } from './chain';
@@ -60,8 +61,13 @@ const EPS = 1e-6;
 export const pipeKey = (s: Pick<Segment, 'system' | 'material' | 'diameter'>) => `pipe|${s.system}|${s.material ?? ''}|${s.diameter}`;
 export const fittingKey = (type: FittingType, s: Pick<Segment, 'system' | 'material'>, size: string) => `fit|${type}|${s.system}|${s.material ?? ''}|${size}`;
 
-export const defaultSaleUnit = (system: SystemType): SaleUnit =>
-  isWire(system) || system === 'refrigerant' ? { kind: 'perLength', step: 1000 } : { kind: 'straight', length: 4000 };
+/** 販売単位の初期値。PB（プッシュマスター）はカタログの巻、電気・通信・冷媒は m、その他は定尺 4m */
+export const defaultSaleUnit = (s: SystemType | { system: SystemType; material?: string; diameter?: number }): SaleUnit => {
+  const { system, material, diameter } = typeof s === 'string' ? { system: s, material: undefined, diameter: undefined } : s;
+  if (isWire(system) || system === 'refrigerant') return { kind: 'perLength', step: 1000 };
+  if (isPB(material)) return { kind: 'roll', length: pbRollLength(material!, diameter ?? 13) };
+  return { kind: 'straight', length: 4000 };
+};
 
 export const saleUnitLabel = (u: SaleUnit) =>
   u.kind === 'perLength' ? `${u.step / 1000}m単位` : u.kind === 'straight' ? `定尺${u.length / 1000}m` : `${u.length / 1000}m巻`;
@@ -263,9 +269,9 @@ export function computeEstimate(doc: Doc): Estimate {
   for (const [key, segs] of groups) {
     const s0 = segs[0];
     const user = st.prices[key];
-    const saleUnit = user?.saleUnit ?? defaultSaleUnit(s0.system);
-    // 参考単価は定尺4mの1本価格なので、販売単位が定尺4mのときだけ使う
-    const cat = !user && saleUnit.kind === 'straight' && saleUnit.length === 4000 ? catalogPipePrice(s0) : undefined;
+    const saleUnit = user?.saleUnit ?? defaultSaleUnit(s0);
+    // 参考単価はカタログの販売単位（塩ビ=定尺4m、PB=巻・m・直管）と同じときだけ使う
+    const cat = user ? undefined : catalogPipePrice(s0, saleUnit);
     const price: PriceItem | undefined = user ?? (cat !== undefined ? { material: cat, labor: 0 } : undefined);
     const priceSource: PriceSource = user ? 'user' : cat !== undefined ? 'catalog' : 'none';
     let used = 0, model = 0, need = 0, fieldCount = 0;
@@ -303,7 +309,9 @@ export function computeEstimate(doc: Doc): Estimate {
 
   // --- 部品 ---
   const fitMap = new Map<string, FittingLine>();
-  const addFit = (type: FittingType, seg: Segment, size: string, nodeId: string | null, n = 1) => {
+  const addFit = (type: FittingType, seg0: Segment, size: string, nodeId: string | null, n = 1) => {
+    // PB の継手は保温・さや管の違いに関係なく同じ部品
+    const seg = isPB(seg0.material) ? { ...seg0, material: 'PB' } : seg0;
     const key = fittingKey(type, seg, size);
     let line = fitMap.get(key);
     if (!line) {
