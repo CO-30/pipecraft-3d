@@ -4,7 +4,9 @@
       "/opt/node22/bin/node",
       "/home/claude/pipecraft-3d/node_modules/.bin/playwright",
       "test",
-      "e2e/fixturelearn.spec.ts"
+      "e2e/underfloor.spec.ts",
+      "-g",
+      "2/100"
     ],
     "configFile": "/home/claude/pipecraft-3d/playwright.config.ts",
     "rootDir": "/home/claude/pipecraft-3d/e2e",
@@ -228,13 +230,13 @@
   },
   "suites": [
     {
-      "title": "fixturelearn.spec.ts",
-      "file": "fixturelearn.spec.ts",
+      "title": "underfloor.spec.ts",
+      "file": "underfloor.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "浴槽の向きを直すと端末が覚え、次に図面を読んだときその向き・壁に置く。消すと元に戻る",
+          "title": "床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配がつき、レベルバンドで支持する",
           "ok": true,
           "tags": [],
           "tests": [
@@ -249,12 +251,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6904,
+                  "duration": 2014,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T03:59:45.249Z",
+                  "startTime": "2026-11-11T22:33:44.933Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -272,12 +274,12 @@
                   "workerIndex": 1,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 3769,
+                  "duration": 2065,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T03:59:53.301Z",
+                  "startTime": "2026-11-11T22:33:47.557Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -295,12 +297,12 @@
                   "workerIndex": 2,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 3216,
+                  "duration": 2019,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-11T03:59:57.866Z",
+                  "startTime": "2026-11-11T22:33:50.191Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -308,9 +310,9 @@
               "status": "expected"
             }
           ],
-          "id": "78fbad491a71c9e7c4e8-49fee06df8a5728419ff",
-          "file": "fixturelearn.spec.ts",
-          "line": 46,
+          "id": "165c30225d6bd92657d8-2d5662a9495ecb117643",
+          "file": "underfloor.spec.ts",
+          "line": 112,
           "column": 1
         }
       ]
@@ -318,8 +320,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-11T03:59:39.655Z",
-    "duration": 21766.55,
+    "startTime": "2026-11-11T22:33:39.537Z",
+    "duration": 12971.093,
     "expected": 3,
     "skipped": 0,
     "unexpected": 0,
