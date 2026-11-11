@@ -11,7 +11,7 @@ import {
 } from '../model/network';
 import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
-import { routeDrainsOut as routeDrains } from '../model/drainRoute';
+import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
 import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import { assignAutoMaterials } from '../model/materials';
@@ -180,7 +180,8 @@ type State = {
   /** 器具の真下に配管を落とす（床から depth mm 下。屋外の器具は地中）。作った本数を返す */
   dropFixturePipes(depth?: number): number;
   /** 床下へ落とした排水を、外壁の外に置いた汚水マスまでつなぐ（案）。つないだ本数を返す */
-  routeDrainsOut(): number;
+  /** rules: 外の排水管の土かぶり・勾配（自治体のプロファイルから。省略時は標準） */
+  routeDrainsOut(rules?: DrainRules): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -714,13 +715,13 @@ export const useStore = create<State>((set, get) => {
       else set({ notice: '落とせる配管がありません（器具が無いか、すでに配管がつながっています）' });
       return r.pipes;
     },
-    routeDrainsOut: () => {
-      const r = routeDrains(get().doc);
+    routeDrainsOut: (rules) => {
+      const r = routeDrains(get().doc, undefined, rules);
       if (!r.pipes) {
-        set({ notice: r.skipped ? '出口を決められませんでした（外壁が途切れている・器具が建物の外にある・置いてあるマスの管底が配管より高い、など）。配管の道具でつないでください' : 'つなぐ排水がありません。先に「器具の真下に配管を落とす」を押してください' });
+        set({ notice: r.skipped ? '出口を決められませんでした（外壁が途切れている・器具が建物の外にある・置いてあるマスが浅く管底が配管より高い／土かぶりが取れない、など）。配管の道具でつないでください' : 'つなぐ排水がありません。先に「器具の真下に配管を落とす」を押してください' });
         return 0;
       }
-      const parts = [`排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置（敷地境界・他の設備との離れ）・マスどうしの接続・勾配は現場に合わせて直してください'];
+      const parts = [`排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', `外では基礎を出てすぐ地中へ下ろし、土かぶり ${(rules?.cover ?? DEFAULT_COVER) / 10}cm 以上・最小勾配でマスへ下げています`, r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置（敷地境界・他の設備との離れ）・マスどうしの接続・勾配は現場に合わせて直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
     },
