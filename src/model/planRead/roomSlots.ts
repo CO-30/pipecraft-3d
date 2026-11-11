@@ -21,8 +21,6 @@ export type SlotFeatures = {
 export type Slot = { key: string; side: Side; x: number; y: number; rotation: Rotation; f: SlotFeatures };
 export type RoomBox = { x0: number; x1: number; y0: number; y1: number };
 
-/** 文字から壁を探す距離 */
-const REACH = 4000;
 const MIN_ROOM = 600, MAX_ROOM = 8000;
 /** 辺の内法 − 器具の幅 がこれ未満なら「辺いっぱい」 */
 const FULL = 300;
@@ -35,7 +33,7 @@ const vertical = (w: WallLine) => Math.abs(w.a.x - w.b.x) < 1 && Math.abs(w.a.y 
 const horizontal = (w: WallLine) => Math.abs(w.a.y - w.b.y) < 1 && Math.abs(w.a.x - w.b.x) >= 1;
 const within = (v: number, a: number, b: number) => v >= Math.min(a, b) - 1 && v <= Math.max(a, b) + 1;
 
-/** p から上下左右に軸に平行な壁の面を探して内法の箱を作る。どれかの向きに壁が無い・大きさが部屋らしくなければ null */
+/** p から上下左右に軸に平行な壁の面を探して内法の箱を作る。どれかの向きに壁が無い・大きさが部屋らしくない（内法 600〜8000 の外）なら null */
 export function roomBox(p: Vec2, walls: WallLine[]): RoomBox | null {
   let x0 = -Infinity, x1 = Infinity, y0 = -Infinity, y1 = Infinity;
   for (const w of walls) {
@@ -48,7 +46,6 @@ export function roomBox(p: Vec2, walls: WallLine[]): RoomBox | null {
       else y1 = Math.min(y1, w.a.y - h);
     }
   }
-  if (p.x - x0 > REACH || x1 - p.x > REACH || p.y - y0 > REACH || y1 - p.y > REACH) return null;
   const W = x1 - x0, H = y1 - y0;
   if (!(W >= MIN_ROOM && W <= MAX_ROOM && H >= MIN_ROOM && H <= MAX_ROOM)) return null;
   return { x0, x1, y0, y1 };

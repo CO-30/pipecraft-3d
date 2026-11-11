@@ -84,6 +84,8 @@ describe('器具の候補（fixtureGuess）', () => {
     expect(r.fixtures.every((f) => f.floorId === r.building.floors[0].id)).toBe(true);
     const wc = r.fixtures.find((f) => f.type === 'toilet')!;
     expect(wc.x).toBeGreaterThan(0); expect(wc.x).toBeLessThan(W); expect(wc.y).toBeLessThan(D);
+    // 部屋の情報: 間仕切り（東の辺）のドアを出入口として読む（直し方を覚えるのに使う）
+    expect(wc.room?.slots.filter((s) => s.side === 'R').map((s) => s.f.door)).toEqual(expect.arrayContaining(['on']));
     expect(r.report.found.join()).toContain('器具の候補 5 個');
   });
 });

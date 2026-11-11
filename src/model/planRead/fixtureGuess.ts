@@ -6,6 +6,18 @@
  */
 import type { Vec2 } from '../building';
 import { FIXTURE_CATALOG, type FixtureType, type Rotation } from '../fixtures';
+import { matchSlot, roomBox, roomSlots, MATCH_MM, type RoomBox, type Slot } from './roomSlots';
+
+/** 部屋の名前から出した候補の部屋の情報（直し方を覚える・合わせるのに使う。src/learn/fixtureLearning.ts） */
+export type CandidateRoom = {
+  /** 部屋の名前（寸法の数字を除いた大文字。「UB1618」→「UB」） */
+  name: string;
+  box: RoomBox;
+  slots: Slot[];
+  /** 置いたスロット（どれにも当てはまらなければ null）と、その向きが逆か */
+  first: string | null;
+  flip?: boolean;
+};
 
 export type FixtureCandidate = {
   type: FixtureType;
@@ -16,6 +28,7 @@ export type FixtureCandidate = {
   source: string;
   /** 文字のすぐそばに置いた（部屋の名前から置いたものは false = 位置は大まか） */
   near: boolean;
+  room?: CandidateRoom;
 };
 /** 文字（図面座標 mm） */
 export type WText = { x: number; y: number; s: string };
@@ -118,7 +131,9 @@ export function guessFixtures(texts: WText[], walls: WallLine[], area?: { x0: nu
           const off = wall.t / 2 + size.d / 2;
           p = { x: wall.a.x + wall.u.x * along + wall.n.x * off, y: wall.a.y + wall.u.y * along + wall.n.y * off };
         }
-        roomed.push({ type, x: Math.round(p.x), y: Math.round(p.y), rotation: wall ? facing(wall.n) : 0, source: `「${token}」の部屋`, near: false, label: { x: t.x, y: t.y }, generic: !!room.generic });
+        const c: FixtureCandidate = { type, x: Math.round(p.x), y: Math.round(p.y), rotation: wall ? facing(wall.n) : 0, source: `「${token}」の部屋`, near: false };
+        const info = roomInfo(norm(token), t, size, walls, c);
+        roomed.push({ ...c, ...(info ? { room: info } : {}), label: { x: t.x, y: t.y }, generic: !!room.generic });
       });
     }
   }
@@ -133,3 +148,15 @@ export function guessFixtures(texts: WText[], walls: WallLine[], area?: { x0: nu
   }
   return out;
 }
+
+/** 文字のある部屋の箱とスロット。箱を作れない・器具の入る辺が無いときは undefined */
+function roomInfo(name: string, label: Vec2, size: { w: number; d: number }, walls: WallLine[], c: FixtureCandidate): CandidateRoom | undefined {
+  const box = roomBox(label, walls);
+  if (!box) return undefined;
+  const slots = roomSlots(box, size, walls, label);
+  if (!slots.length) return undefined;
+  const m = matchSlot(slots, c.x, c.y, c.rotation, matchTol(box));
+  return { name: name.replace(/\d+$/, ''), box, slots, first: m?.slot.key ?? null, ...(m?.flip ? { flip: true } : {}) };
+}
+/** スロットに当てはめる距離: 400mm か箱の短辺の 1/4 の大きい方 */
+export const matchTol = (b: RoomBox) => Math.max(MATCH_MM, Math.min(b.x1 - b.x0, b.y1 - b.y0) / 4);

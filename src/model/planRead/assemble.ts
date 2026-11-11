@@ -206,7 +206,9 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     // 器具の候補（文字から）。凡例・表の文字を除くため、通り芯（無ければ壁）の範囲 + 3m だけを見る
     const gwF = r.grid ? gridWorld(r.grid, t) : null;
     const area = gwF ? { x0: Math.min(...gwF.xs.values()) - 3000, x1: Math.max(...gwF.xs.values()) + 3000, y0: Math.min(...gwF.ys.values()) - 3000, y1: Math.max(...gwF.ys.values()) + 3000 } : undefined;
-    const lines = walls.map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], thickness: w.thickness }));
+    // 出入口（ドア）の位置も渡す（器具の候補の部屋の情報＝直し方を覚えるのに使う）
+    const doorsOn = (id: string) => Object.values(b.openings).filter((o) => o.wallId === id && o.type === 'door').map((o) => o.offset);
+    const lines = walls.map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], thickness: w.thickness, doors: doorsOn(w.id) }));
     const cands = guessFixtures(r.page.texts.map((x) => ({ x: toWorldX(t, x.x), y: toWorldY(t, x.y), s: x.s })), lines, area);
     // 屋外の器具（立水栓・給湯器）は 1 階の図面から出たものだけ（上の階の図面にも同じ文字が写っていることがある）
     fixtures.push(...cands.filter((c) => n === floors[0] || (c.type !== 'outdoorFaucet' && c.type !== 'waterHeater')).map((c) => ({ ...c, floorId: f.floorId })));
