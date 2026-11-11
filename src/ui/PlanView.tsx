@@ -12,6 +12,7 @@ import { floorById, roomArea, wallLength } from '../model/building';
 import { pointInPolygon } from '../model/roomOps';
 import { connectedComponent, segmentLength, segmentsAt, type Network } from '../model/network';
 import { FIXTURE_CATALOG, fixtureCorners, fixtureSize, isManhole, MANHOLE_SHORT, portSystem } from '../model/fixtures';
+import { levelSummary, underfloorText } from '../model/levels';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { underlayCorners } from '../model/underlay';
 import { pointInRing } from '../model/geo';
@@ -79,6 +80,9 @@ export function PlanView() {
   const floorId = useStore((s) => s.activeFloorId);
   const dimFloor = useStore((s) => s.dimWizard?.floorId);
   const underFloor = useStore(isUnderFloor);
+  const levelBuilding = useStore((s) => s.doc.building);
+  const levelSite = useStore((s) => s.doc.site);
+  const underRange = useMemo(() => (underFloor ? underfloorText(levelSummary(levelBuilding, levelSite)) : null), [underFloor, levelBuilding, levelSite]);
   const svgRef = useRef<SVGSVGElement>(null);
   const [view, setView] = useState<ViewT | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
@@ -712,7 +716,7 @@ export function PlanView() {
         const a = toScreen(roomPreview.a), b = toScreen(roomPreview.b);
         return <rect x={Math.min(a.x, b.x)} y={Math.min(a.y, b.y)} width={Math.abs(a.x - b.x)} height={Math.abs(a.y - b.y)} fill="rgba(37,99,235,0.1)" stroke="#2563eb" strokeDasharray="6 4" />;
       })()}
-      <text x={8} y={H - 10} fontSize={11} fill="#94a3b8" pointerEvents="none">{underFloor ? `床下（${floor?.name ?? ''}の床の下）` : `${floor?.name ?? ''} 平面図`}（1目盛=1m）</text>
+      <text x={8} y={H - 10} fontSize={11} fill="#94a3b8" pointerEvents="none" data-testid="plan-caption">{underFloor ? `床下（${floor?.name ?? ''}の床の下${underRange ? `・${underRange}` : ''}）` : `${floor?.name ?? ''} 平面図`}（1目盛=1m）</text>
       {connectPreview && (() => {
         const a = toScreen(connectPreview.from), b = toScreen(connectPreview.to);
         return (

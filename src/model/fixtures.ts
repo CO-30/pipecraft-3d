@@ -90,8 +90,17 @@ export const FIXTURE_GROUPS: { label: string; types: FixtureType[] }[] = [
   { label: '電気', types: ['panel', 'outlet', 'light'] },
 ];
 
-/** 設計地盤高（絶対 mm）＝ いちばん低い階（1階）の床高 + 現場の designGL（未入力は 0）。どの階に置いたマスでも同じ */
-export const groundZ = (b: Pick<Building, 'floors'>, site?: SiteSettings) => Math.min(0, ...b.floors.map((f) => f.elevation)) + (site?.designGL ?? 0);
+/**
+ * 設計地盤高（絶対 mm）＝ いちばん低い階（1階）の床高 + 現場の designGL。どの階に置いたマスでも同じ。
+ * designGL が未入力でも図面から置いた基礎の立上りがあれば、その下端（読み取りで GL に置いている）。どちらも無ければ床の高さ
+ */
+export function groundZ(b: Pick<Building, 'floors'> & Partial<Pick<Building, 'members'>>, site?: SiteSettings): number {
+  const base = Math.min(0, ...b.floors.map((f) => f.elevation));
+  if (site?.designGL !== undefined) return base + site.designGL;
+  const fl = new Map(b.floors.map((f) => [f.id, f.elevation]));
+  const feet = Object.values(b.members ?? {}).filter((m) => m.kind === 'footing').map((m) => (fl.get(m.floorId) ?? 0) + m.z0);
+  return feet.length ? Math.min(...feet) : base;
+}
 
 /** マスの管底高（絶対 mm） */
 export const manholeInvertZ = (f: Fixture, b: Pick<Building, 'floors'>, site?: SiteSettings) => f.params?.invertZ ?? groundZ(b, site) - MANHOLE_DEFAULT_DEPTH;

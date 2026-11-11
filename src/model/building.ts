@@ -43,6 +43,8 @@ export type Building = {
   rooms: Record<string, Room>;
   /** 梁・軒/庇・バルコニー・階段（省略可） */
   members?: Record<string, Member>;
+  /** 基礎（省略可）。slabTop: 床下の底＝ベタ基礎のスラブ（耐圧盤）天端の高さ(mm、1 階の床基準で負) */
+  foundation?: { slabTop: number };
 };
 
 export const SNAP_CORNER_MM = 150;

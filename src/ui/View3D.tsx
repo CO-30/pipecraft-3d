@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { useStore, type SelKind, type VisMode } from '../state/store';
 import type { Vec3 } from '../model/network';
 import { buildingBoxes, type Box } from '../model/building3d';
+import { viewGroundZ } from '../model/levels';
 import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
@@ -196,7 +197,9 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const bendArcs = useMemo(() => pbBendArcs(net, analyzeFittings(net, fixtures)), [net, fixtures]);
   const elevations = useStore((s) => s.doc.elevations);
   useColors((c) => c.overrides);
-  const allBoxes = useMemo(() => buildingBoxes(building), [building]);
+  const siteGL = useStore((s) => s.doc.site);
+  const allBoxes = useMemo(() => buildingBoxes(building, siteGL), [building, siteGL]);
+  const groundY = viewGroundZ(building, siteGL) / 1000;
   const boxes = useMemo(() => {
     if (floorFilter === 'all') return allBoxes;
     const idx = new Map(building.floors.map((f, i) => [f.id, i]));
@@ -331,7 +334,8 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
       <ambientLight intensity={0.75} />
       <directionalLight position={[8, 14, 6]} intensity={1.1} />
       <directionalLight position={[-6, 8, -8]} intensity={0.35} />
-      <Grid args={[60, 60]} cellSize={1} sectionSize={5} infiniteGrid fadeDistance={80} cellColor="#d1d5db" sectionColor="#9ca3af" position={[0, -0.001, 0]} />
+      {/* 地面は設計 GL（1 階の床ではない）。床下（基礎の中）が地面より上に見えるように */}
+      <Grid args={[60, 60]} cellSize={1} sectionSize={5} infiniteGrid fadeDistance={80} cellColor="#d1d5db" sectionColor="#9ca3af" position={[0, groundY - 0.001, 0]} />
       {boxes.map((b) => {
         const k = selKindFor(b);
         const selected = !!k && sel?.kind === k && sel.id === b.elementId;
@@ -442,10 +446,12 @@ function AutoFit({ onTarget }: { onTarget: (t: [number, number, number]) => void
 }
 
 export function View3D() {
+  // 地面の高さ（設計 GL、mm）。E2E で確かめられるように属性にも出す
+  const groundZ3d = useStore((s) => Math.round(viewGroundZ(s.doc.building, s.doc.site)));
   const [orbit, setOrbit] = useState(true);
   const [target, setTarget] = useState<[number, number, number]>([0, 1, 0]);
   return (
-    <div className="view3d" data-testid="view3d">
+    <div className="view3d" data-testid="view3d" data-ground-z={groundZ3d}>
       <Canvas camera={{ position: [10, 10, 10], fov: FOV, near: 0.05, far: 500 }} gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
         onCreated={({ gl }) => { gl.localClippingEnabled = true; }}
         onPointerMissed={() => useStore.getState().select(null)}>

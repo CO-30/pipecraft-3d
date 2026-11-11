@@ -65,6 +65,8 @@ export const buildingSchema = z.object({
     id: z.string().min(1), kind: z.enum(['beam', 'eave', 'balcony', 'stair', 'footing']), floorId: z.string().min(1),
     a: vec2, b: vec2, width: z.number().finite().positive(), z0: z.number().finite(), z1: z.number().finite(), outward: vec2.optional(),
   })).optional(),
+  /** 基礎: 床下の底（スラブ天端、1 階の床基準 mm）。図面から読み取る（省略可） */
+  foundation: z.object({ slabTop: z.number().finite() }).optional(),
 });
 
 export const fixtureSchema = z.object({

@@ -82,3 +82,42 @@ export function readHeights(texts: PText[], k: number): Heights {
   h.topFloor = top;
   return h;
 }
+
+/** 基礎伏図: 基礎天端からスラブ（耐圧盤）天端までの差の印が無いときの標準(mm) */
+export const DEFAULT_SLAB_BELOW_FOOTING = 350;
+
+const minusValue = (s: string): number | null => {
+  const m = /^[-−‐－ー](\d{2,4})$/.exec(s);
+  return m ? -Number(m[1]) : null;
+};
+
+/**
+ * 基礎伏図の区画ごとの高さの印「基礎天端 −350」（＝ その区画のスラブ天端は基礎天端の 350mm 下）から、
+ * 基礎天端からスラブ天端までの差（負、mm）を読む。「基礎天端」の文字のすぐ近くの「−350」、または「基礎天端-350」の 1 つの文字。
+ * いちばん多い値を採る。印が無ければ undefined。
+ */
+export function readSlabOffset(texts: PText[]): number | undefined {
+  const ok = slabMarks(texts);
+  if (!ok.length) return undefined;
+  const count = new Map<number, number>();
+  for (const v of ok) count.set(v, (count.get(v) ?? 0) + 1);
+  // いちばん多い値。同数なら標準（−350）に近い方
+  return [...count].sort((p, q) => q[1] - p[1] || Math.abs(p[0] + DEFAULT_SLAB_BELOW_FOOTING) - Math.abs(q[0] + DEFAULT_SLAB_BELOW_FOOTING))[0][0];
+}
+
+/** 基礎伏図の「基礎天端 −350」の印の値をすべて（区画ごと・凡例を含む）。−100〜−1000 のものだけ */
+export function slabMarks(texts: PText[]): number[] {
+  const vals: number[] = [];
+  const nums = texts.map((t) => ({ t, v: minusValue(norm(t.s)) })).filter((x) => x.v !== null) as { t: PText; v: number }[];
+  for (const t of texts) {
+    const s = norm(t.s);
+    if (!s.startsWith('基礎天端')) continue;
+    const joined = minusValue(s.slice(4));
+    if (joined !== null) { vals.push(joined); continue; }
+    if (s !== '基礎天端') continue;
+    const reach = 3 * Math.max(t.h, 4);
+    const near = nums.filter((n) => Math.hypot(n.t.x - t.x, n.t.y - t.y) <= reach).sort((p, q) => Math.hypot(p.t.x - t.x, p.t.y - t.y) - Math.hypot(q.t.x - t.x, q.t.y - t.y))[0];
+    if (near) vals.push(near.v);
+  }
+  return vals.filter((v) => v <= -100 && v >= -1000);
+}
