@@ -20,7 +20,7 @@ export type FixtureCandidate = {
 /** 文字（図面座標 mm） */
 export type WText = { x: number; y: number; s: string };
 /** 壁の芯線と厚さ（図面座標 mm） */
-export type WallLine = { a: Vec2; b: Vec2; thickness: number };
+export type WallLine = { a: Vec2; b: Vec2; thickness: number; /** 出入口（ドア）の中心の a 端からの距離(mm) */ doors?: number[] };
 
 const norm = (s: string) => s.normalize('NFKC').toUpperCase();
 
