@@ -2,11 +2,19 @@ import { useState } from 'react';
 import { FIXTURE_CATALOG } from '../model/fixtures';
 import type { ImportReport, PlacedCandidate } from '../model/planRead/assemble';
 
+/** learned: 直し方の記録に合わせて置き直した候補（参考にした記録の数） */
+export type LearnedCandidate = PlacedCandidate & { learned?: number };
+
 /**
  * 図面から自動で作った直後に、何を読めて何を確かめてほしいかを見せる。
  * 器具は「候補」として出し、チェックしたものだけを置く（onClose に置くものを渡す）。
  */
-export function ImportReportDialog({ report, fixtures, floorNames, onClose }: { report: ImportReport; fixtures: PlacedCandidate[]; floorNames: Record<string, string>; onClose: (place: PlacedCandidate[]) => void }) {
+export function ImportReportDialog({ report, fixtures, floorNames, learnedCount = 0, onForget, onClose }: {
+  report: ImportReport; fixtures: LearnedCandidate[]; floorNames: Record<string, string>;
+  /** この端末が覚えている直し方の数と、それを消す */
+  learnedCount?: number; onForget?: () => void;
+  onClose: (place: LearnedCandidate[]) => void;
+}) {
   const [on, setOn] = useState(() => fixtures.map(() => true));
   const picked = fixtures.filter((_, i) => on[i]);
   const multiFloor = new Set(fixtures.map((f) => f.floorId)).size > 1;
@@ -30,12 +38,15 @@ export function ImportReportDialog({ report, fixtures, floorNames, onClose }: { 
                 <li key={i}>
                   <label className="inline">
                     <input type="checkbox" data-testid={`ir-fx-${i}`} checked={on[i]} onChange={(e) => setOn(on.map((v, k) => (k === i ? e.target.checked : v)))} />
-                    <span><b>{FIXTURE_CATALOG[f.type].label}</b> <span className="muted">— {multiFloor ? `${floorNames[f.floorId] ?? ''} ` : ''}{f.source}{f.near ? '' : '（位置は大まか）'}</span></span>
+                    <span><b>{FIXTURE_CATALOG[f.type].label}</b> <span className="muted">— {multiFloor ? `${floorNames[f.floorId] ?? ''} ` : ''}{f.source}{f.near ? '' : f.learned ? `（これまでの直し方 ${f.learned} 件に合わせた位置）` : '（位置は大まか）'}</span></span>
                   </label>
                 </li>
               ))}
             </ul>
             <p className="hint">部屋の名前と文字から出した候補です。置いたあと、下の図面の絵に合わせてドラッグで動かし、選んで「⟳ 90°回転」で向きを直してください。足りない器具は「器具」から足せます。</p>
+            <p className="hint" data-testid="ir-learn">部屋の名前から出した器具の向き・位置を直すと、この端末が覚えて次から合わせます。
+              {learnedCount > 0 && onForget && <> <button type="button" className="linkish" data-testid="ir-forget" onClick={onForget}>覚えた直し方を消す（{learnedCount} 件）</button></>}
+            </p>
           </>
         )}
         {report.check.length > 0 && (
