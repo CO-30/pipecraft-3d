@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { addPolyline, emptyNetwork, moveNode, type Network } from './network';
-import { actualSlope, downstreamEnd, endZ, propagateLockedSlopes, setSlopeRatio } from './slope';
+import { actualSlope, downstreamEnd, endZ, maxSlope, propagateLockedSlopes, setSlopeRatio } from './slope';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 
@@ -168,5 +168,15 @@ describe('落差桝: 向きが分かっているときの計算と削除', () =>
     const { net, up, m } = withManhole(-500, -900, -1000, 300);
     const plain: Network = { ...net, nodes: { ...net.nodes, [m]: { ...net.nodes[m], fixtureId: undefined, portId: undefined, fixedKind: undefined } } };
     expect(endZ(plain, plain.segments[up], plain.segments[up].a === m ? 'a' : 'b')).toBe(-900);
+  });
+});
+
+describe('急すぎる勾配の上限（流速）', () => {
+  test('満流の流速が標準の 1.5m/秒（下水道施設計画・設計指針）になる勾配。塩ビ管 n=0.010（マニング式）', () => {
+    expect(maxSlope(100)).toBeCloseTo(0.0308, 3); // 約 3/100
+    expect(maxSlope(75)).toBeCloseTo(0.0453, 3);
+    expect(maxSlope(150)).toBeCloseTo(0.0179, 3);
+    // やむを得ないときの上限 3.0m/秒
+    expect(maxSlope(100, 3)).toBeCloseTo(0.123, 2);
   });
 });

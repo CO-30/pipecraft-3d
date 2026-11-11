@@ -17,6 +17,17 @@ export function defaultSlope(diameter: number): number {
 
 export const slopeLabel = (r: number) => (r > 0 ? `1/${Math.round(1 / r)}` : '水平');
 
+/** 排水管の流速の標準の上限(m/秒)。「下水道施設計画・設計指針と解説」: 0.6〜1.5m/秒、やむを得ない場合 3.0m/秒まで */
+export const MAX_VELOCITY = 1.5;
+/**
+ * 急すぎない勾配の上限: 満流の流速が v(m/秒) になる勾配（マニング式、塩ビ管 n=0.010、内径は呼び径）。
+ * 急すぎると水だけが薄く流れて汚物が残る
+ */
+export function maxSlope(diameter: number, v = MAX_VELOCITY): number {
+  const R = diameter / 1000 / 4;
+  return ((v * 0.010) / Math.pow(R, 2 / 3)) ** 2;
+}
+
 export function planLength(net: Network, s: Segment): number {
   const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos;
   return Math.hypot(a.x - b.x, a.y - b.y);

@@ -162,7 +162,7 @@ test.describe('図面から自動で3Dにする', () => {
     // もう一度押しても増えない
     await page.getByTestId('drop-run').click();
     expect(Object.keys((await full(page)).network.segments)).toHaveLength(2);
-    // 排水を外の桝までつなぐ（案）: 北の外壁の外に汚水マスが置かれ、床下を水平に出て立ち下げる
+    // 排水を外の桝までつなぐ（案）: 北の外壁の外に汚水マスが置かれ、床下を水平に出て基礎の外ですぐ地中へ下ろし、勾配をつけてマスへ
     await page.getByTestId('drain-route').click();
     await expect(page.locator('.toast.notice')).toContainText('排水 1 本を外の汚水マス（新しく 1 個）へつなぎました');
     doc = await full(page);
@@ -170,9 +170,14 @@ test.describe('図面から自動で3Dにする', () => {
     expect(mh).toHaveLength(1);
     expect(mh[0].y).toBe(5460 + 60 + 700);
     expect(Math.abs(mh[0].x - 900)).toBeLessThan(200);
-    expect(Object.keys(doc.network.segments)).toHaveLength(4);
+    expect(Object.keys(doc.network.segments)).toHaveLength(5);
+    // 建物の外（北の外壁より外）の配管の点は 2 つ（基礎のすぐ外で下ろす点と、その下の地中の点）。地面より下の点は管頂の土かぶり 20cm 以上
+    const gl = doc.site?.designGL ?? 0; // この工事は立面図が無いので GL は仮（床の高さ）
+    const outside = (Object.values(doc.network.nodes) as { pos: { y: number; z: number }; fixtureId?: string }[]).filter((n) => !n.fixtureId && n.pos.y > 5460 + 60);
+    expect(outside).toHaveLength(2);
+    expect(outside.filter((n) => n.pos.z < gl).every((n) => gl - (n.pos.z + 89) >= 200)).toBe(true);
     await page.getByTestId('drain-route').click(); // もう一度押しても増えない
-    expect(Object.keys((await full(page)).network.segments)).toHaveLength(4);
+    expect(Object.keys((await full(page)).network.segments)).toHaveLength(5);
     await show(page, '3D');
     if (!isMobile()) await page.getByRole('button', { name: '設備だけ' }).click(); // スマホは 👁 の中
     await page.waitForTimeout(600);

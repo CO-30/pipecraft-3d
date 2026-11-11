@@ -10,6 +10,8 @@ import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN } from '../model/dropPipes';
 import { levelSummary, levelText } from '../model/levels';
+import { minSlopeFor, resolveProfile } from '../model/municipality';
+import { useProfiles } from './useProfiles';
 import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
@@ -19,7 +21,7 @@ import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from
 import { defaultEstimate, measureSegment } from '../model/estimate';
 import { findConnectCandidate } from '../model/connect';
 import { SYSTEM_NAME } from '../model/systems';
-import { actualSlope, defaultSlope, isDrain, slopeEnough, slopeLabel } from '../model/slope';
+import { actualSlope, defaultSlope, isDrain, maxSlope, slopeEnough, slopeLabel } from '../model/slope';
 import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
 import { PB_MATERIAL_LABEL, PB_MATERIALS, WATER_MATERIAL_OPTIONS } from '../model/materials';
@@ -405,7 +407,11 @@ function DropPipes() {
       {!ok && <div className="err small">{DROP_MIN}〜{DROP_MAX}mm で入力してください</div>}
       <div className="muted small">すべての階の器具が対象です。配管がつながっている接続口には足しません。</div>
       <div className="row">
-        <button data-testid="drain-route" title="床下へ落とした排水・汚水を、いちばん出しやすい外壁の外に汚水マスを置いてつなぎます。基礎の立上りの貫通が少ない向きを選びます" onClick={() => useStore.getState().routeDrainsOut()}>🚽 排水を外の桝までつなぐ（案）</button>
+        <button data-testid="drain-route" title="床下へ落とした排水・汚水を、いちばん出しやすい外壁の外に汚水マスを置いてつなぎます。基礎の立上りの貫通が少ない向きを選びます" onClick={() => {
+          // 外の排水管の土かぶり・勾配は、申請図面で選んでいる自治体の決まりに合わせる
+          const p = resolveProfile(useStore.getState().doc.site?.municipalityProfileId, useProfiles.getState().user);
+          useStore.getState().routeDrainsOut({ cover: p.profileTable.minCover, slopeFor: (d) => minSlopeFor(p, d) });
+        }}>🚽 排水を外の桝までつなぐ（案）</button>
       </div>
       <div className="muted small">1 階の床下の排水が対象です。給水・給湯はつなぎません。3D で確かめて、合わない所は直してください。</div>
     </div>
@@ -594,9 +600,10 @@ function SupportFields({ segId }: { segId: string }) {
   return (
     <>
       {slope !== null && (
-        <div className={`small ${!slopeEnough(doc.network, seg, need) ? 'warn' : ''}`} data-testid="seg-slope">
+        <div className={`small ${!slopeEnough(doc.network, seg, need) || slope > maxSlope(seg.diameter) ? 'warn' : ''}`} data-testid="seg-slope">
           勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}${seg.slopeLocked ? ' 🔒' : ''}）` : ''}
           {!slopeEnough(doc.network, seg, need) && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
+          {slope > maxSlope(seg.diameter) && `　⚠ 急すぎる勾配（φ${seg.diameter} は ${slopeLabel(maxSlope(seg.diameter))} まで。流速が標準の 1.5m/秒を超え、水だけ流れて汚物が残ります。高さを下げる所は立て管やドロップますで）`}
         </div>
       )}
       {slope !== null && <SegmentSlopeInput key={`${segId}:${seg.slope ?? ''}`} segId={segId} />}
