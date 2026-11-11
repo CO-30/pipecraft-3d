@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, type PDFPage } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import { readFileSync } from 'node:fs';
 import { evidence, isMobile, show, useTool } from './helpers';
 
 const full = (page: Page) => page.evaluate(() => (window as any).__pc.getState().doc);
@@ -11,10 +13,14 @@ async function sheet(scale: number, draw: (d: { line(x1: number, y1: number, x2:
   const doc = await PDFDocument.create();
   const page: PDFPage = doc.addPage([1191, 842]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  // 日本語の文字（「基礎天端」など）はアプリと同じ日本語フォントで書く
+  doc.registerFontkit(fontkit);
+  const jp = await doc.embedFont(readFileSync('public/fonts/NotoSansJP-JIS.ttf'), { subset: true });
+  const fontOf = (s: string) => (/[^\x20-\x7e]/.test(s) ? jp : font);
   const k = PT_MM * scale, ox = 250, oy = 200;
   const X = (x: number) => ox + x / k, Y = (y: number) => oy + y / k;
   const line = (x1: number, y1: number, x2: number, y2: number, w = 0.5) => page.drawLine({ start: { x: X(x1), y: Y(y1) }, end: { x: X(x2), y: Y(y2) }, thickness: w });
-  const text = (x: number, y: number, s: string, size = 8) => page.drawText(s, { x: X(x) - font.widthOfTextAtSize(s, size) / 2, y: Y(y) - size / 2, size, font });
+  const text = (x: number, y: number, s: string, size = 8) => page.drawText(s, { x: X(x) - fontOf(s).widthOfTextAtSize(s, size) / 2, y: Y(y) - size / 2, size, font: fontOf(s) });
   const wall = (x1: number, y1: number, x2: number, y2: number, t = 120) => {
     const h = t / 2;
     if (y1 === y2) { line(x1, y1 - h, x2, y1 - h); line(x1, y1 + h, x2, y1 + h); } else { line(x1 - h, y1, x1 - h, y2); line(x1 + h, y1, x1 + h, y2); }
@@ -42,6 +48,7 @@ const foundation = () => sheet(50, ({ wall, text }) => {
   wall(0, D, W, D, 150); wall(0, 0, W, 0, 150); wall(0, 0, 0, D, 150); wall(W, 0, W, D, 150);
   wall(3640, 0, 3640, 2730, 150); wall(3640, 3330, 3640, D, 150);
   text(3000, -2600, 'S:1/50', 12);
+  text(1800, 2850, '基礎天端'); text(1800, 2550, '-350'); // 区画のスラブの高さの印（基礎天端の 350 下）
 });
 const elevation = () => sheet(100, ({ line, text }) => {
   text(0, 0, 'GL'); text(0, 550, '1FL'); text(900, 280, '550');
@@ -75,6 +82,8 @@ test.describe('図面から自動で3Dにする', () => {
     await expect(page.getByTestId('ir-found')).toContainText('1階の壁 7 本・開口部 2 か所');
     await expect(page.getByTestId('ir-found')).toContainText('基礎の立上り 6 本');
     await expect(page.getByTestId('ir-found')).toContainText('GL+550mm');
+    // 基礎天端（標準 GL+400）の 350 下 = 床下の底 GL+50
+    await expect(page.getByTestId('ir-found')).toContainText('床下の底（基礎のスラブの上）は GL+50mm');
     await expect(page.getByTestId('ir-sheets').locator('li')).toHaveCount(3);
     await page.screenshot({ path: evidence('planauto-report') });
     await page.getByTestId('ir-ok').click();
@@ -89,6 +98,14 @@ test.describe('図面から自動で3Dにする', () => {
     expect(members).toHaveLength(6);
     expect(members.every((m) => m.kind === 'footing' && m.z0 === -550 && m.z1 === -150)).toBe(true);
     expect(doc.site.designGL).toBe(-550);
+    expect(doc.building.foundation).toEqual({ slabTop: -500 });
+    // 高さの並びを階の設定に出す。床下は「基礎の中・地面より上」
+    if (await page.getByTestId('floor-settings').isVisible()) await page.getByTestId('floor-settings').click();
+    await expect(page.getByTestId('floor-levels')).toHaveText('1階の床 GL+550・基礎天端 GL+400・床下の底 GL+50');
+    await page.getByTestId('underfloor-chip').click();
+    await expect(page.getByTestId('plan-caption')).toContainText('GL+50〜GL+400 の基礎の中・地面より上');
+    await page.screenshot({ path: evidence('planauto-underfloor-levels') });
+    await page.getByTestId('floor-chip').first().click();
     // 平面図が実寸で壁に重なって敷かれている: X1-Y1 の交点（原点）が紙の (250pt, 下から 200pt)
     const [u] = Object.values(doc.underlays) as { scaled: boolean; mmPerPx: number; widthPx: number; heightPx: number; center: { x: number; y: number } }[];
     expect(u.scaled).toBe(true);
@@ -100,6 +117,8 @@ test.describe('図面から自動で3Dにする', () => {
     await show(page, '2D');
     await page.screenshot({ path: evidence('planauto-2d') });
     await show(page, '3D');
+    // 3D の地面は 1 階の床ではなく設計 GL（床下が地下に見えない）
+    await expect(page.getByTestId('view3d')).toHaveAttribute('data-ground-z', '-550');
     await page.waitForTimeout(800);
     await page.screenshot({ path: evidence('planauto-3d') });
 
@@ -108,6 +127,7 @@ test.describe('図面から自動で3Dにする', () => {
     await page.getByText('自動3Dテスト').first().click();
     await expect(page.getByTestId('editor')).toBeVisible();
     expect(Object.keys((await full(page)).building.members)).toHaveLength(6);
+    expect((await full(page)).building.foundation).toEqual({ slabTop: -500 });
   });
 
   test('器具の候補を確認して置き、真下に配管を落とし、排水を外の桝までつなぐ。取り消しで戻せる', async ({ page }) => {

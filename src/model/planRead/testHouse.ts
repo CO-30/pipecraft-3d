@@ -63,13 +63,20 @@ export function planSheet(opts: { title?: boolean; scaleText?: boolean; labels?:
   return page(s);
 }
 
-/** 基礎伏図（1/50）: 外周と中央の立上り（厚さ 150）。中央に人通口（y 2730〜3330、線なし） */
-export function foundationSheet(opts: { firstY?: number } = {}): VectorPage {
+/**
+ * 基礎伏図（1/50）: 外周と中央の立上り（厚さ 150）。中央に人通口（y 2730〜3330、線なし）。
+ * slab: 区画ごとのスラブ（耐圧盤）の高さの印「基礎天端」「−350」（実物の図面と同じく 2 つの文字）と、凡例の「基礎天端-350」
+ */
+export function foundationSheet(opts: { firstY?: number; slab?: string } = {}): VectorPage {
   const s = sketch(50, 150, 700);
   gridLabels(s, 9, 7, 1, opts.firstY ?? 1);
   wall(s, 0, D, W, D, 150); wall(s, 0, 0, W, 0, 150); wall(s, 0, 0, 0, D, 150); wall(s, W, 0, W, D, 150);
   wall(s, 3640, 0, 3640, 2730, 150); wall(s, 3640, 3330, 3640, D, 150);
   text(s, 3000, -2600, '基礎伏図 S:1/50', 12);
+  if (opts.slab) {
+    for (const [x, y] of [[1800, 2700], [5500, 2700]]) { text(s, x, y + 150, '基礎天端'); text(s, x, y - 150, opts.slab); }
+    text(s, -3000, D + 1500, `基礎天端${opts.slab}`);
+  }
   return page(s);
 }
 

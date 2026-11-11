@@ -9,6 +9,7 @@ import { floorById, roomArea, wallLength } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN } from '../model/dropPipes';
+import { levelSummary, levelText } from '../model/levels';
 import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
@@ -719,6 +720,7 @@ export function FloorBar({ compact = false }: { compact?: boolean }) {
         <div className="row">
           <NumField label="階高" value={f.height} min={1000} testId="floor-height" onCommit={(v) => st.updateFloor(f.id, { height: v })} />
           <span className="muted small">床高 {activeFloorElevation()}mm</span>
+          {f.id === floors[0]?.id && <LevelsLine />}
           <button className="danger" disabled={floors.length <= 1} onClick={() => {
             if (window.confirm(`${f.name}を削除します。この階の壁・部屋・ドア・窓・器具も削除されます（配管は残ります）。上の階は下がります。（「戻す」で取り消せます）`)) st.deleteFloor(f.id);
           }}>この階を削除</button>
@@ -726,6 +728,14 @@ export function FloorBar({ compact = false }: { compact?: boolean }) {
       )}
     </div>
   );
+}
+
+/** 1 階の床・基礎天端・床下の底の GL からの高さ（図面から読み取った・申請で入れた設計 GL） */
+function LevelsLine() {
+  const building = useStore((s) => s.doc.building);
+  const site = useStore((s) => s.doc.site);
+  const t = levelText(levelSummary(building, site));
+  return t ? <span className="muted small" data-testid="floor-levels">{t}</span> : null;
 }
 
 /** 立面図（外壁）の一覧と追加 */

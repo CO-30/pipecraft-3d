@@ -21,6 +21,7 @@ import { mergeRooms, splitRoom } from '../model/roomOps';
 import { clampSection, defaultSectionValue, type Section, type SectionMode } from '../model/section';
 import { estimateSchema, SCHEMA_VERSION, type ProjectData } from '../model/schema';
 import type { BoxCategory } from '../model/building3d';
+import { glOfDepth, levelSummary } from '../model/levels';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
@@ -504,7 +505,11 @@ export const useStore = create<State>((set, get) => {
       set({
         underFloor: true, activeFloorId: first.id, selection: null, pendingMerge: null, activeElevationId: null,
         drawHeight: get().drawHeight < 0 ? get().drawHeight : UNDER_FLOOR_HEIGHT,
-        notice: '床下（基礎の中）を表示しています。配管は床から 300mm 下に描きます。器具の丸から描き始めると、床下まで下ろしてから続けて描きます',
+        notice: (() => {
+          const depth = -(get().drawHeight < 0 ? get().drawHeight : UNDER_FLOOR_HEIGHT);
+          const at = glOfDepth(levelSummary(get().doc.building, get().doc.site), depth);
+          return `床下（基礎の中）を表示しています。配管は床から ${depth}mm 下${at ? `（${at}）` : ''}に描きます。器具の丸から描き始めると、床下まで下ろしてから続けて描きます`;
+        })(),
       });
     },
     drawFromPortDown: (portNodeId, points, opts) => {

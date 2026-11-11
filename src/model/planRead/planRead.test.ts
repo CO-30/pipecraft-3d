@@ -4,7 +4,7 @@ import { membersOf } from '../members';
 import { memberBoxes } from '../members3d';
 import { buildingSchema } from '../schema';
 import { PlanReadError, buildFromSheets, overlapLength } from './assemble';
-import { readHeights } from './heights';
+import { readHeights, readSlabOffset } from './heights';
 import { PT_TO_MM, alignTransform, baseTransform, classifySheet, gridWorld, readGrid, sheetScale, toWorldX, toWorldY, type PText } from './sheet';
 import { detectStrips, heavyWidth, subtract, type WSeg } from './strips';
 import { D, HEAVY, PITCH, THIN, W, elevationSheet, foundationSheet, planSheet } from './testHouse';
@@ -160,6 +160,17 @@ describe('高さ（heights）', () => {
   });
 });
 
+describe('床下の底（基礎伏図のスラブの高さの印）', () => {
+  it('区画の「基礎天端」「−350」から、基礎天端からスラブ天端までの差を読む（凡例・記号の違いも同じ）', () => {
+    expect(readSlabOffset(foundationSheet({ slab: '-350' }).texts)).toBe(-350);
+    expect(readSlabOffset(foundationSheet({ slab: '−300' }).texts)).toBe(-300);
+    expect(readSlabOffset([t('基礎天端-350', 8, 10, 10)])).toBe(-350);
+    // 印が無い・離れた数字は読まない
+    expect(readSlabOffset(foundationSheet().texts)).toBeUndefined();
+    expect(readSlabOffset([t('基礎天端', 8, 10, 10), t('-350', 8, 300, 300)])).toBeUndefined();
+  });
+});
+
 describe('図面一式 → 建物（assemble）', () => {
   const sheets = () => [{ name: 'a', page: planSheet() }, { name: 'b', page: foundationSheet() }, { name: 'c', page: elevationSheet() }];
   it('平面図・基礎伏図・立面図から、壁・開口部・基礎・高さの入った建物を作る', () => {
@@ -182,6 +193,18 @@ describe('図面一式 → 建物（assemble）', () => {
     expect(r.plans).toHaveLength(1);
     expect(r.report.sheets.map((s) => s.used)).toEqual([true, true, true]);
     expect(r.report.found.join()).toContain('基礎の立上り 6 本');
+  });
+  it('床下の底（スラブ天端）を 基礎の高さ + 基礎伏図の印 で決める。印が無ければ標準値にして確かめてもらう', () => {
+    const r = buildFromSheets([sheets()[0], { name: 'b', page: foundationSheet({ slab: '-350' }) }, sheets()[2]]);
+    // GL = 1階FL−550、基礎天端 GL+400 → スラブ天端 GL+50 = 1階FL−500
+    expect(r.building.foundation).toEqual({ slabTop: -500 });
+    expect(r.report.found.join()).toContain('床下の底（基礎のスラブの上）は GL+50mm');
+    expect(buildingSchema.safeParse(r.building).success).toBe(true);
+    const d = buildFromSheets(sheets());
+    expect(d.building.foundation).toEqual({ slabTop: -550 + 400 - 350 });
+    expect(d.report.check.join()).toContain('床下の底（基礎のスラブの上）は読めなかった');
+    // 基礎伏図が無ければ床下の底も入れない
+    expect(buildFromSheets([sheets()[0], sheets()[2]]).building.foundation).toBeUndefined();
   });
   it('基礎伏図の通り芯の番号が 1 つずれていても、壁の重なりで合わせて知らせる', () => {
     const r = buildFromSheets([sheets()[0], { name: 'b', page: foundationSheet({ firstY: 2 }) }]);

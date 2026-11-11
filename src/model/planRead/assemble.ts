@@ -8,7 +8,7 @@ import { withMember } from '../members';
 import { heavyWidth, detectStrips, WALL_STRIP, type StripOptions, type WSeg } from './strips';
 import { FIXTURE_CATALOG } from '../fixtures';
 import { guessFixtures, type FixtureCandidate } from './fixtureGuess';
-import { readHeights, type Heights } from './heights';
+import { DEFAULT_SLAB_BELOW_FOOTING, readHeights, readSlabOffset, type Heights } from './heights';
 import {
   PT_TO_MM, SHEET_LABEL, alignTransform, baseTransform, classifySheet, gridWorld, readGrid, sheetScale, toWorldX, toWorldY,
   type Grid, type GridWorld, type SheetKind, type ToWorld, type VectorPage,
@@ -256,6 +256,12 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
       found.push(`基礎の立上り ${n} 本（GL〜GL+${mm(top)}mm）`);
       if (gl === undefined) check.push(`GL の高さが立面図から読めなかったので、1階の床を GL+${DEFAULT_GL_TO_FL}mm として基礎を置いています`);
       if (!heights.footingTop) check.push(`基礎の高さは読めなかったので GL+${mm(top)}mm にしています`);
+      // 床下の底: 区画の「基礎天端 −350」の印（スラブ天端は基礎天端のその分下）。床下の配管はこの上〜基礎天端の間を通る
+      const off = readSlabOffset(r.page.texts);
+      const slabGL = Math.max(0, top + (off ?? -DEFAULT_SLAB_BELOW_FOOTING));
+      b = { ...b, foundation: { slabTop: z0 + slabGL } };
+      if (off !== undefined) found.push(`床下の底（基礎のスラブの上）は GL+${mm(slabGL)}mm（基礎伏図の「基礎天端 ${off}」）。1階の床まで ${mm(-(z0 + slabGL))}mm`);
+      else check.push(`床下の底（基礎のスラブの上）は読めなかったので GL+${mm(slabGL)}mm（基礎天端の ${DEFAULT_SLAB_BELOW_FOOTING}mm 下）にしています`);
     }
   }
   if (!reads.some((r) => r.kind === 'foundation')) check.push('基礎伏図が無いので、基礎は入っていません');

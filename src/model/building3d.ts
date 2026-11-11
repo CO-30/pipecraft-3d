@@ -5,6 +5,7 @@
 import type { Building, Opening, Wall } from './building';
 import { wallLength } from './building';
 import { memberBoxes } from './members3d';
+import { SLAB_THICKNESS } from './levels';
 import type { Vec3 } from './network';
 
 export type BoxCategory = 'exteriorWall' | 'interiorWall' | 'floor' | 'ceiling' | 'door' | 'window' | 'member';
@@ -95,6 +96,16 @@ export function buildingBoxes(b: Building): Box[] {
       out.push({ ...base, key: `${f.id}:floor`, category: 'floor', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation - f.slabThickness / 2 }, size: { x: x1 - x0, y: y1 - y0, z: f.slabThickness } });
       out.push({ ...base, key: `${f.id}:ceiling`, category: 'ceiling', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: f.elevation + clear - CEILING_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: CEILING_THICKNESS } });
     }
+  }
+  // 床下の底（ベタ基礎のスラブ）: いちばん下の階の外形いっぱい、天端が foundation.slabTop
+  const f0 = [...b.floors].sort((p, q) => p.elevation - q.elevation)[0];
+  const walls0 = f0 ? Object.values(b.walls).filter((w) => w.floorId === f0.id) : [];
+  if (b.foundation && walls0.length) {
+    const pts = walls0.flatMap((w) => [w.a, w.b].map((c) => ({ x: b.corners[c].x, y: b.corners[c].y, pad: w.thickness / 2 })));
+    const x0 = Math.min(...pts.map((p) => p.x - p.pad)), x1 = Math.max(...pts.map((p) => p.x + p.pad));
+    const y0 = Math.min(...pts.map((p) => p.y - p.pad)), y1 = Math.max(...pts.map((p) => p.y + p.pad));
+    const top = f0.elevation + b.foundation.slabTop;
+    out.push({ key: `${f0.id}:foundation`, elementId: f0.id, floorId: f0.id, rotationZ: 0, category: 'floor', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: top - SLAB_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: SLAB_THICKNESS } });
   }
   out.push(...memberBoxes(b));
   return out;
