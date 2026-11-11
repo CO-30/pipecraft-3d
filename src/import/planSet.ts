@@ -5,12 +5,12 @@
 import type { Building } from '../model/building';
 import { newId } from '../model/id';
 import { MAX_UNDERLAYS_TOTAL, type Underlay } from '../model/underlay';
-import { buildFromSheets, PlanReadError, type ImportReport, type PlacedCandidate, type SheetInput } from '../model/planRead/assemble';
+import { buildFromSheets, PlanReadError, type ImportReport, type PlacedCandidate, type SheetInput, type SiteResult } from '../model/planRead/assemble';
 import { toWorldX, toWorldY } from '../model/planRead/sheet';
 import { openPdf } from './pdf';
 import { readVectorPages } from './pdfVector';
 
-export type PlanSetImport = { building: Building; designGL?: number; underlays: Record<string, Underlay>; fixtures: PlacedCandidate[]; report: ImportReport };
+export type PlanSetImport = { building: Building; designGL?: number; underlays: Record<string, Underlay>; fixtures: PlacedCandidate[]; report: ImportReport; site?: SiteResult };
 /** 一度に読む枚数の上限（ページ数の合計） */
 export const MAX_PLAN_PAGES = 40;
 
@@ -54,7 +54,7 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
           id, floorId: p.floorId, kind: 'pdf', label: `${inputs[p.index].name}（1/${p.scale}）`,
           src: raster.src, widthPx: raster.widthPx, heightPx: raster.heightPx,
           center: { x: toWorldX(p.toWorld, widthPt / 2), y: toWorldY(p.toWorld, heightPt / 2) },
-          mmPerPx: (p.toWorld.k * widthPt) / raster.widthPx, rotation: 0, opacity: 0.5, scaled: true, paperMmPerPx: raster.paperMmPerPx,
+          mmPerPx: (p.toWorld.k * widthPt) / raster.widthPx, rotation: 0, opacity: p.site ? 0.3 : 0.5, scaled: true, paperMmPerPx: raster.paperMmPerPx,
         };
       } finally {
         doc.destroy();
@@ -63,5 +63,5 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
       report.check.push(`${inputs[p.index].name} を下に敷けませんでした（壁は読み取れています）`);
     }
   }
-  return { building: r.building, designGL: r.designGL, underlays, fixtures: r.fixtures, report };
+  return { building: r.building, designGL: r.designGL, underlays, fixtures: r.fixtures, report, ...(r.site ? { site: r.site } : {}) };
 }

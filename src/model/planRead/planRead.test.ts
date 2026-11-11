@@ -7,7 +7,7 @@ import { PlanReadError, buildFromSheets, overlapLength } from './assemble';
 import { readHeights, readSlabOffset } from './heights';
 import { PT_TO_MM, alignTransform, baseTransform, classifySheet, gridWorld, readGrid, sheetScale, toWorldX, toWorldY, type PText } from './sheet';
 import { detectStrips, heavyWidth, subtract, type WSeg } from './strips';
-import { D, HEAVY, PITCH, THIN, W, elevationSheet, foundationSheet, planSheet } from './testHouse';
+import { D, HEAVY, PITCH, THIN, W, elevationSheet, foundationSheet, planSheet, siteSheet } from './testHouse';
 import { buildingStrips, wallsFromStrips } from './walls';
 
 const t = (s: string, h = 8, x = 0, y = 0): PText => ({ x, y, h, s });
@@ -281,5 +281,27 @@ describe('基礎の立上り（部材 footing）', () => {
     const doc = { building: r.building, network, fixtures: {} };
     expect(findHits(doc)).toEqual([]);
     expect(penetrationsOf(doc)).toEqual([]);
+  });
+});
+
+describe('配置図（assemble）', () => {
+  it('家の外形で位置を合わせ、ます・メーター・敷地の高さを図面座標で返す。配置図も下に敷く', () => {
+    const r = buildFromSheets([{ name: '1階平面図', page: planSheet() }, { name: '配置図', page: siteSheet() }, { name: '立面図', page: elevationSheet() }]);
+    expect(r.site).toBeDefined();
+    const pub = r.site!.items.find((x) => x.type === 'publicSewage')!;
+    expect(Math.abs(pub.x - -1500)).toBeLessThan(60);
+    expect(Math.abs(pub.y - (D + 600))).toBeLessThan(60);
+    expect(r.site!.items.filter((x) => x.type === 'manholeSewage')).toHaveLength(3);
+    // 1 階の床（GL+550）より高い GL+300 は使う（床より低い）
+    expect(r.site!.levels.map((l) => l.gl).sort((a, b) => a - b)).toEqual([-950, -500, 0, 300]);
+    expect(r.plans.some((p) => p.site)).toBe(true);
+    expect(r.report.found.join()).toContain('配置図: 汚水公共ます 1・汚水ます 3・雨水ます 1・水道メーター 1');
+    expect(r.report.found.join()).toContain('BM は GL−550');
+  });
+  it('家の外形と重ならなければ合わせない（読まない）と知らせる', () => {
+    const bad = { ...siteSheet(), segs: siteSheet().segs.filter((s) => s.w < 0.2 || Math.hypot(s.x2 - s.x1, s.y2 - s.y1) < 20) }; // 家・軒・境界の長い線を消す
+    const r = buildFromSheets([{ name: '1階平面図', page: planSheet() }, { name: '配置図', page: bad }]);
+    expect(r.site).toBeUndefined();
+    expect(r.report.check.join()).toContain('配置図は家の外形と重ならず、位置を合わせられませんでした');
   });
 });

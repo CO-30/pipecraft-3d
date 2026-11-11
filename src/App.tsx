@@ -19,6 +19,7 @@ import { applyLearned } from './learn/fixtureLearning';
 import { learnStore, startFixtureLearning } from './learn/learnStore';
 import type { LearnedCandidate } from './ui/ImportReportDialog';
 import { profileForAddress } from './model/municipality';
+import { applySite } from './model/siteApply';
 import { useProfiles } from './ui/useProfiles';
 
 export default function App() {
@@ -74,9 +75,11 @@ export default function App() {
       pick = profileForAddress(v.address, useProfiles.getState().all());
     }
     const site = { ...(doc.site ?? {}), ...(pick.profile ? { municipalityProfileId: pick.profile.id } : {}) };
+    // 配置図から読んだ ます・メーター・立水栓・敷地の高さを入れる
+    const withSite = auto?.site && doc.building.floors[0] ? applySite({ ...doc, site } as Parameters<typeof applySite>[0], doc.building.floors[0].id, auto.site).doc : { ...doc, site };
     const meta = { id: newId('p'), name: v.name, address: v.address || undefined, createdAt: Date.now() };
     const st = useStore.getState();
-    st.newDoc({ ...doc, site }, meta);
+    st.newDoc(withSite, meta);
     if (pick.city) {
       useStore.setState({
         notice: pick.profile

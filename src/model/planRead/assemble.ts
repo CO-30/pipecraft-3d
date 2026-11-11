@@ -8,6 +8,7 @@ import { withMember } from '../members';
 import { heavyWidth, detectStrips, WALL_STRIP, type StripOptions, type WSeg } from './strips';
 import { FIXTURE_CATALOG } from '../fixtures';
 import { guessFixtures, type FixtureCandidate } from './fixtureGuess';
+import { alignSite, readSite, type SiteItem } from './siteRead';
 import { DEFAULT_SLAB_BELOW_FOOTING, readHeights, readSlabOffset, slabMarks, type Heights } from './heights';
 import {
   PT_TO_MM, SHEET_LABEL, alignTransform, baseTransform, classifySheet, gridWorld, readGrid, sheetScale, toWorldX, toWorldY,
@@ -25,10 +26,12 @@ export type ImportReport = {
   check: string[];
 };
 /** 下敷きにする平面図: sheets の番号と、紙の座標 → 図面座標の変換 */
-export type PlanPlacement = { index: number; floorId: string; toWorld: ToWorld; scale: number };
+export type PlanPlacement = { index: number; floorId: string; toWorld: ToWorld; scale: number; /** 配置図（下に薄く敷く） */ site?: boolean };
+/** 配置図から読んだもの（図面座標 mm）。levels: 敷地の高さ（設計 GL からの mm）、bm: BM から GL±0 までの高さ(mm) */
+export type SiteResult = { items: { type: SiteItem['type']; x: number; y: number }[]; levels: { x: number; y: number; gl: number }[]; bm?: number };
 /** 器具の候補（どの階か付き）。使う人が確認してから置く */
 export type PlacedCandidate = FixtureCandidate & { floorId: string };
-export type PlanSetResult = { building: Building; designGL?: number; plans: PlanPlacement[]; fixtures: PlacedCandidate[]; report: ImportReport };
+export type PlanSetResult = { building: Building; designGL?: number; plans: PlanPlacement[]; fixtures: PlacedCandidate[]; report: ImportReport; site?: SiteResult };
 
 /** 図面から建物を作れないとき（使う人にそのまま見せる文） */
 export class PlanReadError extends Error {
@@ -269,14 +272,40 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
       if (raw < 0) check.push(`床下の底が GL より下になる値だったので、GL+0 にしています（基礎の高さ・スラブの印を確かめてください）`);
     }
   }
+  // 配置図: 家の外形（1 階の外壁）で位置を合わせ、ます・メーター・敷地の高さを読む
+  let site: SiteResult | undefined;
+  for (const r of reads.filter((x) => x.kind === 'site')) {
+    if (!vector(r)) { note(r, false, '線のデータが入っていません'); continue; }
+    const ref = wallsOnFloor(b, floor1).filter((w) => w.kind === 'exterior').map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], t: w.thickness }));
+    const scale = r.scale?.scale ?? 100;
+    const t = alignSite(r.page, PT_TO_MM * scale, ref);
+    if (!t) { note(r, false, '家の外形と重ならず、位置を合わせられませんでした'); check.push('配置図は家の外形と重ならず、位置を合わせられませんでした（ます・メーター・敷地の高さは入っていません）'); continue; }
+    const sr = readSite(r.page);
+    const at = (p: Vec2) => ({ x: Math.round(toWorldX(t, p.x)), y: Math.round(toWorldY(t, p.y)) });
+    // 1 階の床より高い高さは、隣地・擁壁の高さとみて使わない（家のすぐ横の地面が床より高いことはまず無い）
+    const floorGL = gl ?? DEFAULT_GL_TO_FL;
+    const levels = sr.levels.filter((l) => l.gl < floorGL).map((l) => ({ ...at(l.p), gl: l.gl }));
+    const dropped = [...new Set(sr.levels.filter((l) => l.gl >= floorGL).map((l) => l.gl))];
+    site = { items: sr.items.map((i) => ({ type: i.type, ...at(i.p) })), levels, ...(sr.bm !== undefined ? { bm: sr.bm } : {}) };
+    placements.push({ index: r.index, floorId: floor1, toWorld: t, scale, site: true });
+    const n = (type: SiteItem['type']) => site!.items.filter((x) => x.type === type).length;
+    const parts = ([['publicSewage', '汚水公共ます'], ['manholeSewage', '汚水ます'], ['manholeRain', '雨水ます'], ['outdoorFaucet', '立水栓'], ['waterMeter', '水道メーター']] as const).filter(([k]) => n(k)).map(([k, l]) => `${l} ${n(k)}`);
+    const gls = levels.map((l) => l.gl);
+    const sgl = (v: number) => `GL${v === 0 ? '±0' : v > 0 ? `+${v}` : `−${-v}`}`;
+    note(r, true, parts.length ? parts.join('・') : '家の外形で位置を合わせました');
+    found.push(`配置図: ${parts.join('・') || 'ますの記号なし'}${levels.length ? `、敷地の高さ ${levels.length} か所（${sgl(Math.min(...gls))}〜${sgl(Math.max(...gls))}）` : ''}（家の外形で位置を合わせました）`);
+    if (sr.bm !== undefined) found.push(`配置図: BM は GL−${mm(sr.bm)}（「BM+${sr.bm}=GL±0」）`);
+    if (!sr.legend) check.push('配置図に凡例（汚水桝・雨水桝の記号）が見つからなかったので、ますは読んでいません');
+    if (!n('publicSewage')) check.push(`配置図に汚水公共ますの記号はありませんでした${r.page.texts.some((x) => /下水引込/.test(x.s)) ? '（「下水引込へ」の向きにあるはずです）' : ''}。公共ますは「器具」から置いてください`);
+    if (dropped.length) check.push(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
+  }
   if (!reads.some((r) => r.kind === 'foundation')) check.push('基礎伏図が無いので、基礎は入っていません');
   if (!reads.some((r) => r.kind === 'elevation')) check.push('立面図が無いので、高さは標準値です');
   for (const r of reads) if (r.page.truncated) check.push(`${r.name} は線が多すぎて途中までしか読んでいません。壁が欠けていないか確かめてください`);
   for (const r of reads) {
     if (sheets[r.index].note) continue;
-    if (r.kind === 'site') note(r, false, '配置図（桝・メーターの位置）の読み取りは今後追加します');
-    else if (r.kind === 'detail') note(r, false, '展開図は読み取りません（器具の高さは標準値です）');
+    if (r.kind === 'detail') note(r, false, '展開図は読み取りません（器具の高さは標準値です）');
     else if (r.kind === 'unknown') note(r, false, '図面の種類が分かりませんでした（図面名の文字が読めない PDF）');
   }
-  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures, report: { sheets, found, check } };
+  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures, report: { sheets, found, check }, ...(site ? { site } : {}) };
 }
