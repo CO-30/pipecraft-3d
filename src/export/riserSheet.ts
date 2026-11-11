@@ -4,6 +4,7 @@
  */
 import type { RiserEdge, RiserModel, RiserNode } from '../model/riser';
 import { riserNodes } from '../model/riser';
+import { drawingMaterial } from '../model/materials';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
 import { drawFrame, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
@@ -57,7 +58,7 @@ export function renderRiserSheet(model: RiserModel, meta: SheetMeta): Sheet {
     sheet.ops.push({ t: 'poly', pts, w: 0.5, color });
     for (let i = 1; i < pts.length; i++) segs.push([pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], id]);
     // 口径ラベル: 立ち上がり（列ごとに固有）があればそこに、無ければ横引きの中央に。短すぎる区間には書かない
-    const l: LabelLine = { s: `φ${e.diameter}${e.material ? ` ${e.material}` : ''}`, size: 2.4, color };
+    const l: LabelLine = { s: `φ${e.diameter}${e.material ? ` ${drawingMaterial(e.material)}` : ''}`, size: 2.4, color };
     const side = profile.riser.diameterLabelPos === 'side';
     const cands: Cand[] = [];
     if (Math.abs(y1 - y0) > 4) {

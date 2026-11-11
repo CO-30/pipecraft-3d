@@ -14,6 +14,7 @@ import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes }
 import { routeDrainsOut as routeDrains } from '../model/drainRoute';
 import { deleteFixture, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
+import { assignAutoMaterials } from '../model/materials';
 import * as B from '../model/building';
 import type { Building, OpeningType, Vec2 } from '../model/building';
 import { mergeRooms, splitRoom } from '../model/roomOps';
@@ -34,6 +35,9 @@ import { elevationSchema } from '../model/schema';
 import { applyDetour, findHits, markPenetration, type DetourStyle } from '../model/obstacles';
 import { addFaceMember, addFaceStair, bumpFace, deleteMember, faceWallAt, MEMBER_LABEL, updateMember, type FaceRect, type Member, type MemberKind } from '../model/members';
 import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineLoop, straightenOutline, type FixedEnd, type OutlineLengthResult } from '../model/sketch';
+
+/** 床下に描く高さの初期値（床から mm） */
+export const UNDER_FLOOR_HEIGHT = -300;
 
 export type { Doc };
 export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
@@ -98,6 +102,11 @@ type State = {
   drawAttrs: SegmentAttrs;
   /** 配管を描く高さ（現在の階の床からの高さ mm） */
   drawHeight: number;
+  /** 床下（1 階の床の下・基礎の中）を表示・作図中 */
+  underFloor: boolean;
+  setUnderFloor(on: boolean): void;
+  /** 床下で器具の接続口から描き始めた: 接続口から床下まで立て管を下ろし、そこから points を描く（履歴は 1 件） */
+  drawFromPortDown(portNodeId: string, points: Vec3[], opts?: { endNodeId?: string; endSegId?: string }): void;
   orthoSnap: boolean;
   /** 器具ツールで置く種類 */
   fixtureType: FixtureType;
@@ -384,10 +393,19 @@ export const useStore = create<State>((set, get) => {
     const r = addPolyline(doc.network, points, { ...attrs, ...extra } as SegmentAttrs, { startNodeId: opts?.startNodeId, endNodeId: end.endNodeId });
     const last = r.segmentIds.at(-1);
     if (!last) return;
-    const net = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
-    commit(withNet(net), { selection: net.segments[last] ? { kind: 'segment', id: last } : null, notice: [notice, end.notice].filter(Boolean).join('。') || null });
+    // 「自動」の給水・給湯は、建物の内（床下を含む）を PB・外を HIVP/HTVP に（外周をまたぐ所で分ける）
+    // 立面（外壁の面）に描く配管は外周の線の上にあるため自動にしない（未設定 = HIVP/HTVP 扱い）
+    const joined = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
+    const net = extra.face ? joined : autoMat(joined, doc0.network);
+    // 外周で分けたときは、描き終わりの側の区間を選ぶ
+    const endNode = r.nodeIds.at(-1);
+    const selId = net.segments[last] ? last : Object.values(net.segments).find((s) => !doc0.network.segments[s.id] && (s.a === endNode || s.b === endNode))?.id;
+    commit(withNet(net), { selection: selId ? { kind: 'segment', id: selId } : null, notice: [notice, end.notice].filter(Boolean).join('。') || null });
   };
   const withBld = (building: Building): Doc => ({ ...get().doc, building });
+  /** before に無かった区間に、自動の管種を付ける */
+  const autoMat = (net: Network, before: Network): Network =>
+    assignAutoMaterials(net, get().doc.building, Object.keys(net.segments).filter((id) => !before.segments[id]));
   /** 表示中の立面が（Undo・階の削除などで）無くなったら平面図へ */
   /** Undo/Redo 後も外壁が1周つながっていれば寸法入力を続ける（その辺を選び直す） */
   const fixDim = (doc: Doc): Partial<State> => {
@@ -403,7 +421,7 @@ export const useStore = create<State>((set, get) => {
   const resetView = (doc: Doc): Partial<State> => ({
     past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
     section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null, activeElevationId: null,
-    activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1, dimWizard: null,
+    activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1, dimWizard: null, underFloor: false,
   });
 
   const initial = emptyDoc();
@@ -416,6 +434,7 @@ export const useStore = create<State>((set, get) => {
     tool: 'select',
     drawAttrs: { system: 'water', diameter: 20 },
     drawHeight: 100,
+    underFloor: false,
     orthoSnap: true,
     dimWizard: null,
     elevDraw: 'pipe',
@@ -457,11 +476,38 @@ export const useStore = create<State>((set, get) => {
     },
 
     setTool: (tool) => set({ tool, pendingMerge: null, ...(tool === 'pipe' ? { elevDraw: 'pipe' as const } : {}), ...(tool !== 'underlay' ? { scalePick: null } : {}) }),
-    setDrawAttrs: (a) => set({ drawAttrs: { ...get().drawAttrs, ...a } }),
+    // 種類を変えたら管種は「自動」に戻す（PB のまま排水を描かない）
+    setDrawAttrs: (a) => {
+      const cur = get().drawAttrs;
+      const next = { ...cur, ...a };
+      if (a.system && a.system !== cur.system && !('material' in a)) delete next.material;
+      set({ drawAttrs: next });
+    },
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
     select: (selection) => set({ selection }),
-    setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null, ...(get().dimWizard?.floorId !== activeFloorId ? { dimWizard: null } : {}) }),
+    setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null, underFloor: false, ...(get().underFloor && get().drawHeight < 0 ? { drawHeight: 100 } : {}), ...(get().dimWizard?.floorId !== activeFloorId ? { dimWizard: null } : {}) }),
+    setUnderFloor: (on) => {
+      if (!on) { set({ underFloor: false, ...(get().underFloor && get().drawHeight < 0 ? { drawHeight: 100 } : {}) }); return; }
+      const first = get().doc.building.floors[0];
+      if (!first) return;
+      set({
+        underFloor: true, activeFloorId: first.id, selection: null, pendingMerge: null, activeElevationId: null,
+        drawHeight: get().drawHeight < 0 ? get().drawHeight : UNDER_FLOOR_HEIGHT,
+        notice: '床下（基礎の中）を表示しています。配管は床から 300mm 下に描きます。器具の丸から描き始めると、床下まで下ろしてから続けて描きます',
+      });
+    },
+    drawFromPortDown: (portNodeId, points, opts) => {
+      const { doc, drawAttrs } = get();
+      if (!doc.network.nodes[portNodeId] || points.length < 2) return;
+      const pa = nodeAttrs(doc.network, doc.fixtures, portNodeId).attrs;
+      // 管種を指定して描くときは、下ろす立て管も同じ管種（つなぎ目に変換継手を作らない）
+      const ra = pa ? { ...pa, ...(drawAttrs.material && pa.system === drawAttrs.system ? { material: drawAttrs.material } : {}) } : drawAttrs;
+      const r = addRiser(doc.network, portNodeId, points[0].z, ra);
+      if (!r) return;
+      const bottom = r.net.nodes[r.nodeId].pos;
+      drawCore([{ ...points[0], x: bottom.x, y: bottom.y, z: bottom.z }, ...points.slice(1)], drawAttrs, { ...opts, startNodeId: r.nodeId }, {}, r.net);
+    },
 
     drawPolyline: (points, opts) => drawCore(points, get().drawAttrs, opts),
     activeElevationId: null,
@@ -628,8 +674,9 @@ export const useStore = create<State>((set, get) => {
         floorId = f.id;
       } else z = target;
       // 立て管は元の配管（接続口）と同じ種類・口径で作る
-      const r = addRiser(doc.network, nodeId, z, nodeAttrs(doc.network, doc.fixtures, nodeId).attrs ?? drawAttrs);
-      if (!r) return;
+      const r0 = addRiser(doc.network, nodeId, z, nodeAttrs(doc.network, doc.fixtures, nodeId).attrs ?? drawAttrs);
+      if (!r0) return;
+      const r = { ...r0, net: autoMat(r0.net, doc.network) };
       const net = floorId ? { ...r.net, nodes: { ...r.net.nodes, [r.nodeId]: { ...r.net.nodes[r.nodeId], floorId } } } : r.net;
       commit(withNet(net), { selection: { kind: 'node', id: r.nodeId }, ...(floorId ? { activeFloorId: floorId } : {}) });
     },
@@ -646,7 +693,7 @@ export const useStore = create<State>((set, get) => {
       const d = Math.max(DROP_MIN, Math.min(DROP_MAX, Math.round(depth ?? DEFAULT_DROP_DEPTH)));
       const r = dropPipes(get().doc, d);
       // withNet: 新しい点にどの階の配管かを付ける（他の配管の操作と同じ）
-      if (r.pipes) commit(withNet(r.doc.network), { selection: null, notice: `${r.fixtures} 個の器具から ${r.pipes} 本の配管を真下（床から ${d}mm 下）へ落としました。3D では表示（スマホは 👁）を「配管だけ」「設備だけ」にすると床下が見えます` });
+      if (r.pipes) commit(withNet(autoMat(r.doc.network, get().doc.network)), { selection: null, notice: `${r.fixtures} 個の器具から ${r.pipes} 本の配管を真下（床から ${d}mm 下）へ落としました。3D では表示（スマホは 👁）を「配管だけ」「設備だけ」にすると床下が見えます` });
       else set({ notice: '落とせる配管がありません（器具が無いか、すでに配管がつながっています）' });
       return r.pipes;
     },
@@ -1215,6 +1262,10 @@ const midpoint = (net: Network, a: string, b: string): Vec3 => {
   const p = net.nodes[a].pos, q = net.nodes[b].pos;
   return { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, z: (p.z + q.z) / 2 };
 };
+
+/** 床下を表示中か（床下の階 = いちばん下の階を表示しているときだけ） */
+export const isUnderFloor = (st: { underFloor: boolean; activeFloorId: string; doc: Doc }) =>
+  st.underFloor && st.doc.building.floors[0]?.id === st.activeFloorId;
 
 /** 現在の階の床高さ(mm) */
 export const activeFloorElevation = () => {

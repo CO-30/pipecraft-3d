@@ -13,7 +13,7 @@ import { buildingBoxes, type Box } from '../model/building3d';
 import { floorById } from '../model/building';
 import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
-import { fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
+import { portSystem, fixtureBaseZ, fixtureSize, groundZ, isManhole, type Fixture } from '../model/fixtures';
 import { photoPlane } from '../model/facadePhoto';
 import { OUTSIDE_RGB } from '../model/homography';
 import type { Elevation } from '../model/elevation';
@@ -356,11 +356,17 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
         <mesh key={n.id} position={toThree(n.pos)} onPointerDown={n.fixtureId ? undefined : (e) => startDrag(e, n.id)}
           onClick={n.fixtureId ? (e) => { e.stopPropagation(); useStore.getState().select({ kind: 'node', id: n.id }); } : undefined} renderOrder={3}>
           <sphereGeometry args={[n.kind === 'tee' || n.kind === 'cross' ? 0.07 : n.fixtureId ? 0.045 : 0.05, 16, 16]} />
-          <meshStandardMaterial clippingPlanes={clip} color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' || n.kind === 'cross' ? '#111827' : n.kind === 'valve' ? '#f97316' : n.fixtureId ? '#0e7490' : '#f9fafb'} />
+          <meshStandardMaterial clippingPlanes={clip} color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' || n.kind === 'cross' ? '#111827' : n.kind === 'valve' ? '#f97316' : n.fixtureId ? portColor(n) : '#f9fafb'} />
         </mesh>
       ))}
     </>
   );
+}
+
+/** 器具の接続口の色（給水=青・給湯=赤・排水=茶…） */
+function portColor(n: { fixtureId?: string; portId?: string }): string {
+  const sys = portSystem(useStore.getState().doc.fixtures, n);
+  return sys ? systemColor(sys) : '#0e7490';
 }
 
 /** 建物全体が画面に収まるカメラ位置（南東の斜め上から。縦長の画面では離れる） */

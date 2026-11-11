@@ -224,3 +224,9 @@ export function validateFixtures(doc: Doc): string[] {
   }
   return errors;
 }
+
+/** 器具の接続口の種類（接続口でなければ undefined） */
+export function portSystem(fixtures: Record<string, Fixture>, n: { fixtureId?: string; portId?: string }): SystemType | undefined {
+  const f = n.fixtureId ? fixtures[n.fixtureId] : undefined;
+  return f ? FIXTURE_CATALOG[f.type]?.ports.find((p) => p.id === n.portId)?.system : undefined;
+}

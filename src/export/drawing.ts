@@ -38,7 +38,7 @@ export type Drawing = { pages: DrawPage[]; parts: PartsRow[]; est: Estimate };
 /** 継手の記号（図の上の短い文字） */
 export const FITTING_CODE: Record<FittingType, string> = {
   elbow90: 'L', elbow45: '45', elbow: 'L*', socket: 'S', reducer: 'RS', tee: 'T', wye: 'Y', cross: '+',
-  valve: 'V', adapter: 'A', junctionBox: 'J', cap: 'C', other: '?', faucetElbow: 'WL', faucetSocket: 'WS', threadSocket: 'VS',
+  valve: 'V', adapter: 'A', junctionBox: 'J', cap: 'C', other: '?', faucetElbow: 'WL', faucetSocket: 'WS', threadSocket: 'VS', hivpAdapter: 'HA',
 };
 export const SUPPORT_CODE: Record<SupportKind, string> = { saddle: 'SB', levelBand: 'LB', tBracket: 'TB' };
 
