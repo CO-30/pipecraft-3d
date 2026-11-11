@@ -19,6 +19,9 @@ export function defaultSlope(diameter: number): number {
 const VU_OD: Record<number, number> = { 40: 48, 50: 60, 65: 76, 75: 89, 100: 114, 125: 140, 150: 165, 200: 216 };
 export const outerDiameter = (d: number) => VU_OD[d] ?? Math.round(d * 1.15);
 
+/** 勾配が手で固定されているか（slopePin、または以前の slopeLocked） */
+export const isSlopePinned = (s: { slopePin?: boolean; slopeLocked?: boolean }) => !!(s.slopePin || s.slopeLocked);
+
 export const slopeLabel = (r: number) => (r > 0 ? `1/${Math.round(1 / r)}` : '水平');
 
 /** 排水管の流速の標準の上限(m/秒)。「下水道施設計画・設計指針と解説」: 0.6〜1.5m/秒、やむを得ない場合 3.0m/秒まで */

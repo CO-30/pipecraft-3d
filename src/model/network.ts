@@ -38,6 +38,8 @@ export type PipeNode = {
   groundLevel?: number;
   /** 落差桝: 流入側の管底が pos.z（流出側の管底）より高い分(mm)。マスの params.drop から同期 */
   dropIn?: number;
+  /** 排水: 使う人が手で固定した管底高（自動計算で変えない） */
+  zPin?: boolean;
 };
 
 export type SystemType =
@@ -70,6 +72,10 @@ export type Segment = SegmentAttrs & {
   slope?: number;
   /** 勾配固定: 上流端の高さが変わったら下流端を勾配から再計算する（下流端を手で動かすと解除） */
   slopeLocked?: boolean;
+  /** 排水: 使う人が手で固定した勾配（自動計算で変えない。slopeLocked も同じ意味に読む） */
+  slopePin?: boolean;
+  /** 排水: 使う人が手で固定した管径 */
+  diameterPin?: boolean;
 
   /** 支持金具（未指定 = 自動） */
   support?: 'saddle' | 'levelBand' | 'tBracket' | 'none';
