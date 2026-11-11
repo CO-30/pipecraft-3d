@@ -203,6 +203,12 @@ describe('図面一式 → 建物（assemble）', () => {
     const d = buildFromSheets(sheets());
     expect(d.building.foundation).toEqual({ slabTop: -550 + 400 - 350 });
     expect(d.report.check.join()).toContain('床下の底（基礎のスラブの上）は読めなかった');
+    // 印の値が区画で違えば、いちばん多い値にして確かめてもらう
+    const fs = foundationSheet({ slab: '-350' });
+    const two = { ...fs, texts: [...fs.texts, { ...fs.texts.find((x) => x.s === '-350')!, s: '-300', x: 50 }, { ...fs.texts.find((x) => x.s === '基礎天端')!, x: 50 }] };
+    const m = buildFromSheets([sheets()[0], { name: 'b', page: two }, sheets()[2]]);
+    expect(m.building.foundation).toEqual({ slabTop: -500 });
+    expect(m.report.check.join()).toContain('スラブの高さの印が区画で違います（−350・−300）');
     // 基礎伏図が無ければ床下の底も入れない
     expect(buildFromSheets([sheets()[0], sheets()[2]]).building.foundation).toBeUndefined();
   });

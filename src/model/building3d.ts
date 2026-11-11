@@ -6,6 +6,8 @@ import type { Building, Opening, Wall } from './building';
 import { wallLength } from './building';
 import { memberBoxes } from './members3d';
 import { SLAB_THICKNESS } from './levels';
+import { groundZ } from './fixtures';
+import type { SiteSettings } from './doc';
 import type { Vec3 } from './network';
 
 export type BoxCategory = 'exteriorWall' | 'interiorWall' | 'floor' | 'ceiling' | 'door' | 'window' | 'member';
@@ -79,7 +81,7 @@ function wallPieces(b: Building, w: Wall, elevation: number, clearHeight: number
   return out;
 }
 
-export function buildingBoxes(b: Building): Box[] {
+export function buildingBoxes(b: Building, site?: SiteSettings): Box[] {
   const out: Box[] = [];
   for (const f of b.floors) {
     const clear = f.height - f.slabThickness;
@@ -106,6 +108,16 @@ export function buildingBoxes(b: Building): Box[] {
     const y0 = Math.min(...pts.map((p) => p.y - p.pad)), y1 = Math.max(...pts.map((p) => p.y + p.pad));
     const top = f0.elevation + b.foundation.slabTop;
     out.push({ key: `${f0.id}:foundation`, elementId: f0.id, floorId: f0.id, rotationZ: 0, category: 'floor', center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: top - SLAB_THICKNESS / 2 }, size: { x: x1 - x0, y: y1 - y0, z: SLAB_THICKNESS } });
+  }
+  // 基礎の目安: 基礎の立上りが無い建物で GL が床より下なら、外壁の下を GL まで埋める（建物が浮いて見えないように）。外壁の一部として選べる
+  const hasFooting = Object.values(b.members ?? {}).some((m) => m.kind === 'footing');
+  if (f0 && site?.designGL !== undefined && !hasFooting) {
+    const gl = groundZ(b, site), under = f0.elevation - f0.slabThickness;
+    if (under - gl > 1) for (const w of walls0.filter((x) => x.kind === 'exterior')) {
+      const A = b.corners[w.a], B = b.corners[w.b], L = Math.hypot(B.x - A.x, B.y - A.y);
+      if (L < 1) continue;
+      out.push({ key: `${w.id}:skirt`, elementId: w.id, floorId: f0.id, category: 'exteriorWall', center: { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, z: (gl + under) / 2 }, size: { x: L + w.thickness, y: w.thickness, z: under - gl }, rotationZ: Math.atan2(B.y - A.y, B.x - A.x) });
+    }
   }
   out.push(...memberBoxes(b));
   return out;

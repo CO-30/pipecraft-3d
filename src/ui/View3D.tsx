@@ -197,8 +197,8 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const bendArcs = useMemo(() => pbBendArcs(net, analyzeFittings(net, fixtures)), [net, fixtures]);
   const elevations = useStore((s) => s.doc.elevations);
   useColors((c) => c.overrides);
-  const allBoxes = useMemo(() => buildingBoxes(building), [building]);
   const siteGL = useStore((s) => s.doc.site);
+  const allBoxes = useMemo(() => buildingBoxes(building, siteGL), [building, siteGL]);
   const groundY = viewGroundZ(building, siteGL) / 1000;
   const boxes = useMemo(() => {
     if (floorFilter === 'all') return allBoxes;

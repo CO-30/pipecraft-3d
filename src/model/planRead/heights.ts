@@ -97,6 +97,16 @@ const minusValue = (s: string): number | null => {
  * いちばん多い値を採る。印が無ければ undefined。
  */
 export function readSlabOffset(texts: PText[]): number | undefined {
+  const ok = slabMarks(texts);
+  if (!ok.length) return undefined;
+  const count = new Map<number, number>();
+  for (const v of ok) count.set(v, (count.get(v) ?? 0) + 1);
+  // いちばん多い値。同数なら標準（−350）に近い方
+  return [...count].sort((p, q) => q[1] - p[1] || Math.abs(p[0] + DEFAULT_SLAB_BELOW_FOOTING) - Math.abs(q[0] + DEFAULT_SLAB_BELOW_FOOTING))[0][0];
+}
+
+/** 基礎伏図の「基礎天端 −350」の印の値をすべて（区画ごと・凡例を含む）。−100〜−1000 のものだけ */
+export function slabMarks(texts: PText[]): number[] {
   const vals: number[] = [];
   const nums = texts.map((t) => ({ t, v: minusValue(norm(t.s)) })).filter((x) => x.v !== null) as { t: PText; v: number }[];
   for (const t of texts) {
@@ -109,9 +119,5 @@ export function readSlabOffset(texts: PText[]): number | undefined {
     const near = nums.filter((n) => Math.hypot(n.t.x - t.x, n.t.y - t.y) <= reach).sort((p, q) => Math.hypot(p.t.x - t.x, p.t.y - t.y) - Math.hypot(q.t.x - t.x, q.t.y - t.y))[0];
     if (near) vals.push(near.v);
   }
-  const ok = vals.filter((v) => v <= -100 && v >= -1000);
-  if (!ok.length) return undefined;
-  const count = new Map<number, number>();
-  for (const v of ok) count.set(v, (count.get(v) ?? 0) + 1);
-  return [...count].sort((p, q) => q[1] - p[1] || p[0] - q[0])[0][0];
+  return vals.filter((v) => v <= -100 && v >= -1000);
 }

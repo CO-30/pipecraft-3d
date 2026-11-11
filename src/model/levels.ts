@@ -10,19 +10,16 @@ import { membersOf } from './members';
 /** 3D に描く床下の底（スラブ）の厚さ(mm) */
 export const SLAB_THICKNESS = 150;
 
-const lowest = (b: Pick<Building, 'floors'>) => Math.min(0, ...b.floors.map((f) => f.elevation));
+/** いちばん下の階の床の高さ（基礎・床下の底の基準。3D の床下の底と同じ） */
+const lowest = (b: Pick<Building, 'floors'>) => (b.floors.length ? Math.min(...b.floors.map((f) => f.elevation)) : 0);
 /** 図面から置いた基礎の立上り（絶対 z の下端・上端） */
 function footings(b: Building) {
   const fl = new Map(b.floors.map((f) => [f.id, f.elevation]));
   return membersOf(b).filter((m) => m.kind === 'footing').map((m) => ({ z0: (fl.get(m.floorId) ?? 0) + m.z0, z1: (fl.get(m.floorId) ?? 0) + m.z1 }));
 }
 
-/** 3D の地面の高さ（絶対 mm）: 設計 GL。未入力でも図面から置いた基礎があれば その下端（読み取りで GL に置いている） */
-export function viewGroundZ(b: Building, site?: SiteSettings): number {
-  if (site?.designGL !== undefined) return groundZ(b, site);
-  const f = footings(b);
-  return f.length ? Math.min(...f.map((x) => x.z0)) : groundZ(b, site);
-}
+/** 3D の地面の高さ（絶対 mm）: マス・外の配管と同じ設計地盤高（groundZ） */
+export const viewGroundZ = (b: Building, site?: SiteSettings): number => groundZ(b, site);
 
 /** GL からの高さ(mm): floor = 1 階の床、footingTop = 基礎天端、slabTop = 床下の底。tentative: 設計 GL 未入力 */
 export type LevelSummary = { floor: number; footingTop?: number; slabTop?: number; tentative: boolean };
