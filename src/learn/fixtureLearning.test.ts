@@ -51,4 +51,16 @@ describe('直し方を覚えて合わせる（fixtureLearning）', () => {
     expect([p.rotation, q.rotation]).toEqual([0, 0]); // どちらも上の辺
     expect(Math.abs(p.x - q.x)).toBeGreaterThanOrEqual(half('washbasin', p.rotation) + half('washer', q.rotation));
   });
+  it('後に続く記録の無い器具（そのままの位置）と重なる置き場所には、記録のある器具を置かない', () => {
+    const walls = box(2620, 2120, ['B', 2200]);
+    const c = guessFixtures([{ x: 1300, y: 1000, s: '洗面' }], walls);
+    const [basin, washer] = c;
+    // 洗面台の記録だけ。洗濯機の今の位置（下の壁ぎわ）に重なる置き場所を望む
+    const want = basin.room!.slots.filter((x) => x.side === 'B').sort((p, q) => Math.abs(p.x - washer.x) - Math.abs(q.x - washer.x))[0];
+    const out = applyLearned(c, [{ id: 'a', type: 'washbasin', room: '洗面', f: want.f, flip: false, at: 1 }]);
+    const r = (t: 'washbasin' | 'washer', x: number, y: number, rot: number) => { const { w, d } = FIXTURE_CATALOG[t].size; const hx = (rot % 180 === 0 ? w : d) / 2, hy = (rot % 180 === 0 ? d : w) / 2; return { x0: x - hx, x1: x + hx, y0: y - hy, y1: y + hy }; };
+    const p = r('washbasin', out[0].x, out[0].y, out[0].rotation), q = r('washer', out[1].x, out[1].y, out[1].rotation);
+    expect(out[1]).toMatchObject({ x: washer.x, y: washer.y }); // 記録の無い洗濯機はそのまま
+    expect(p.x0 < q.x1 - 5 && q.x0 < p.x1 - 5 && p.y0 < q.y1 - 5 && q.y0 < p.y1 - 5).toBe(false);
+  });
 });

@@ -21,7 +21,7 @@ describe('直し方の保存と見張り（learnStore）', () => {
   const setup = () => {
     const kv = mem();
     const st = createLearnStore(kv, () => 1000);
-    st.watchPlaced('P', [{ id: 'f1', type: 'bathtub', room: tub.room! }]);
+    st.watchPlaced('P', [{ id: 'f1', type: 'bathtub', room: tub.room!, x: tub.x, y: tub.y, rotation: tub.rotation }]);
     st.onFixtures('P', fx(tub.x, tub.y, tub.rotation));
     return { kv, st };
   };
@@ -64,10 +64,30 @@ describe('直し方の保存と見張り（learnStore）', () => {
   it('端末に保存できない環境・壊れたデータでも例外を出さない', () => {
     const bad: KeyValue = { getItem: () => { throw new Error('x'); }, setItem: () => { throw new Error('x'); }, removeItem: () => { throw new Error('x'); } };
     const st = createLearnStore(bad);
-    st.watchPlaced('P', [{ id: 'f1', type: 'bathtub', room: tub.room! }]);
+    st.watchPlaced('P', [{ id: 'f1', type: 'bathtub', room: tub.room!, x: tub.x, y: tub.y, rotation: tub.rotation }]);
     st.onFixtures('P', fx(480, 840, 270));
     expect(st.sampleCount()).toBe(1); // 今回の間だけは覚えている
     const kv = mem(); kv.m.set('pipecraft3d.fixtureLearn.v1', '{壊れた');
     expect(createLearnStore(kv).sampleCount()).toBe(0);
+  });
+  it('覚えた直し方を消したあと、工事を開き直しても（読み込み直しても）記録が戻らない', () => {
+    const { kv, st } = setup();
+    st.onFixtures('P', fx(480, 840, 270));
+    st.clearSamples();
+    st.onFixtures('P', fx(480, 840, 270));
+    expect(st.sampleCount()).toBe(0);
+    const again = createLearnStore(kv);
+    again.onFixtures('P', fx(480, 840, 270));
+    expect(again.sampleCount()).toBe(0);
+  });
+  it('読み込み直した直後は、いまの位置を基準にするだけで記録を作り直さない', () => {
+    const { kv, st } = setup();
+    st.onFixtures('P', fx(480, 840, 270));
+    kv.m.set('pipecraft3d.fixtureLearn.v1', '[]'); // 種類ごとの上限で押し出された、など
+    const again = createLearnStore(kv);
+    again.onFixtures('P', fx(480, 840, 270));
+    expect(again.sampleCount()).toBe(0);
+    again.onFixtures('P', fx(1660, 1260, 0));
+    expect(again.sampleCount()).toBe(1);
   });
 });

@@ -116,7 +116,7 @@ export default function App() {
               const st = useStore.getState();
               const ids = st.placeFixtureCandidates(place);
               const meta = st.meta;
-              if (meta) learnStore.watchPlaced(meta.id, place.flatMap((c, i) => (ids[i] && c.room ? [{ id: ids[i]!, type: c.type, room: c.room }] : [])));
+              if (meta) learnStore.watchPlaced(meta.id, place.flatMap((c, i) => (ids[i] && c.room ? [{ id: ids[i]!, type: c.type, room: c.room, x: c.x, y: c.y, rotation: c.rotation }] : [])));
             }
             setReport(null);
           }} />

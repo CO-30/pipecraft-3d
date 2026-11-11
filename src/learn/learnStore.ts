@@ -2,7 +2,7 @@
  * 器具の直し方の記録を、この端末（localStorage）に置く。工事データには入れない。
  * 図面から置いた器具を「見張り」、使う人が動かす・回す・消すたびに記録を作り直す（src/learn/fixtureLearning.ts）。
  */
-import type { Fixture, FixtureType } from '../model/fixtures';
+import type { Fixture, FixtureType, Rotation } from '../model/fixtures';
 import type { CandidateRoom } from '../model/planRead/fixtureGuess';
 import { sampleFor, type LearnSample } from './fixtureLearning';
 
@@ -40,12 +40,16 @@ export function createLearnStore(kv: KeyValue | null, now: () => number = Date.n
   return {
     loadSamples: (): LearnSample[] => samples,
     sampleCount: () => samples.length,
-    clearSamples: () => { samples = []; try { kv?.removeItem(SAMPLES_KEY); } catch { /* 今回のみ */ } },
+    /** 覚えた直し方を消す。見張りも外す（開き直したときに今の位置から記録を作り直さない） */
+    clearSamples: () => {
+      samples = []; watch = {}; last.clear();
+      try { kv?.removeItem(SAMPLES_KEY); kv?.removeItem(WATCH_KEY); } catch { /* 今回のみ */ }
+    },
     /** 図面の候補から置いた器具を見張る（project: 工事の id） */
-    watchPlaced(project: string, list: { id: string; type: FixtureType; room: CandidateRoom }[]) {
+    watchPlaced(project: string, list: { id: string; type: FixtureType; room: CandidateRoom; x: number; y: number; rotation: Rotation }[]) {
       if (!list.length) return;
       const at = now();
-      for (const x of list) watch[x.id] = { project, type: x.type, room: x.room, at };
+      for (const x of list) { watch[x.id] = { project, type: x.type, room: x.room, at }; last.set(x.id, `${x.x},${x.y},${x.rotation}`); }
       const ids = Object.keys(watch);
       if (ids.length > KEEP_WATCH) for (const id of ids.sort((p, q) => watch[p].at - watch[q].at).slice(0, ids.length - KEEP_WATCH)) delete watch[id];
       write(WATCH_KEY, watch);
@@ -57,8 +61,11 @@ export function createLearnStore(kv: KeyValue | null, now: () => number = Date.n
         if (w.project !== project) continue;
         const f = fixtures[id];
         const pose = f ? `${f.x},${f.y},${f.rotation}` : '';
+        const seen = last.has(id);
         if (last.get(id) === pose) continue;
         last.set(id, pose);
+        // 読み込み直した後に初めて見た位置は基準にするだけ（消した・押し出された記録を作り直さない）
+        if (!seen) continue;
         const s = f && f.type === w.type ? sampleFor(id, w.type, w.room, f, now()) : null;
         const old = next.find((x) => x.id === id);
         if (s && old && same(s, old)) continue;

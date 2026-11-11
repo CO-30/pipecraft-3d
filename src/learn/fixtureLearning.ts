@@ -35,11 +35,16 @@ const sameBox = (a: CandidateRoom, b: CandidateRoom) => a.box.x0 === b.box.x0 &&
  */
 export function applyLearned<T extends FixtureCandidate>(cands: T[], samples: LearnSample[]): (T & { learned?: number })[] {
   const out: (T & { learned?: number })[] = [];
+  const mineOf = (c: T) => samples.filter((x) => x.type === c.type).sort((p, q) => q.at - p.at).slice(0, USE_SAMPLES);
+  // 記録の無い器具はその位置のまま → 後に続くものも含めて、先に場所を取っておく
+  const stays = new Set(cands.filter((c) => !c.room || !mineOf(c).length));
+  const floorOf = (c: FixtureCandidate) => (c as { floorId?: string }).floorId;
   for (const c of cands) {
     const room = c.room;
-    const mine = samples.filter((x) => x.type === c.type).sort((p, q) => q.at - p.at).slice(0, USE_SAMPLES);
+    const mine = mineOf(c);
     if (!room || !mine.length) { out.push(c); continue; }
-    const taken = out.filter((o) => o.room && sameBox(o.room, room) && (o as { floorId?: string }).floorId === (c as { floorId?: string }).floorId)
+    const others = [...out, ...cands.filter((o) => stays.has(o) && !out.includes(o))];
+    const taken = others.filter((o) => o !== c && o.room && sameBox(o.room, room) && floorOf(o) === floorOf(c))
       .map((o) => rectOf(o.type, o.x, o.y, o.rotation));
     let best: { slot: Slot; v: number; flip: boolean } | null = null;
     for (const slot of room.slots) {
