@@ -1,6 +1,7 @@
 /**
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
+import { isUnderfloorDrain, underfloorLevels } from '../model/underfloorSlope';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, isUnderFloor, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
@@ -111,6 +112,7 @@ export function PropertyPanel() {
   const drawAttrs = useStore((s) => s.drawAttrs);
   const drawHeight = useStore((s) => s.drawHeight);
   const ortho = useStore((s) => s.orthoSnap);
+  const autoUfSlope = useStore((s) => s.autoUnderfloorSlope);
   const splitWithWall = useStore((s) => s.splitWithWall);
   const floorElev = useStore((s) => floorById(s.doc.building, s.activeFloorId)?.elevation ?? 0);
   const st = useStore.getState();
@@ -374,6 +376,10 @@ export function PropertyPanel() {
             <label className="field inline">管<select data-testid="draw-material" value={drawAttrs.material ?? ''} onChange={(e) => st.setDrawAttrs({ material: e.target.value || undefined })}>
               {WATER_MATERIAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
           )}
+          {(drawAttrs.system === 'drain' || drawAttrs.system === 'sewage') && (
+            <label className="field inline" title="床下（1 階の床と土間の間）に排水・汚水を描くと、床下から外へ出る所の管底を土間に置き、そこから器具の方へ 2/100（床下の高さが足りなければ 1.5/100、自治体の最小勾配が急ならそれ）で上げます。レベルバンドで支持します">
+              <input type="checkbox" data-testid="auto-underfloor-slope" checked={autoUfSlope} onChange={(e) => st.setAutoUnderfloorSlope(e.target.checked)} /> 床下は土間から自動で勾配</label>
+          )}
           <label className="field inline">高さ<select data-testid="draw-height" value={drawHeight} onChange={(e) => st.setDrawHeight(Number(e.target.value))}>
             {[...HEIGHT_PRESETS, ...(HEIGHT_PRESETS.some((h) => h.z === drawHeight) ? [] : [{ label: '指定', z: drawHeight }])].map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
@@ -597,6 +603,8 @@ function SupportFields({ segId }: { segId: string }) {
   const auto = supportKindOf({ ...doc, network: { ...doc.network, segments: { ...doc.network.segments, [segId]: { ...seg, support: undefined } } } }, seg);
   const slope = isDrain(seg.system) ? actualSlope(doc.network, seg) : null;
   const need = defaultSlope(seg.diameter);
+  const lv = underfloorLevels(doc);
+  const uf = lv && isUnderfloorDrain(doc.network, seg, lv) ? (([p, q]) => ({ lo: Math.round(Math.min(p, q) - lv.slab), hi: Math.round(Math.max(p, q) - lv.slab) }))([doc.network.nodes[seg.a].pos.z, doc.network.nodes[seg.b].pos.z]) : null;
   return (
     <>
       {slope !== null && (
@@ -607,6 +615,12 @@ function SupportFields({ segId }: { segId: string }) {
         </div>
       )}
       {slope !== null && <SegmentSlopeInput key={`${segId}:${seg.slope ?? ''}`} segId={segId} />}
+      {uf && (
+        <div className="row">
+          <span className="small muted" data-testid="seg-underfloor">床下の排水: 土間から管底 {uf.lo}〜{uf.hi}mm（レベルバンドの高さ）</span>
+          <button data-testid="underfloor-slope" title="この配管につながる床下の排水を、床下から出る所（土間）を起点に器具の方へ 2/100（足りなければ 1.5/100）で付け直します" onClick={() => st.slopeUnderfloorDrains(seg.a)}>📐 土間から勾配をつけ直す</button>
+        </div>
+      )}
       <label className="field inline">支持金具
         <select data-testid="seg-support" value={seg.support ?? 'auto'} onChange={(e) => st.setSegmentSupport(segId, { support: e.target.value === 'auto' ? null : (e.target.value as 'saddle' | 'levelBand' | 'tBracket' | 'none') })}>
           <option value="auto">自動（{auto ? SUPPORT_LABEL[auto] : 'なし'}）</option>

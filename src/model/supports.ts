@@ -2,7 +2,8 @@
  * 支持金具（サドルバンド・レベルバンド）と、それを止めるビス・下穴用のコンクリキリの数量。
  * - 支持間隔: ビニル管等の横走り管の支持間隔（公共建築工事標準仕様書の一般値）＝呼び径80以下 1.0m、100以上 2.0m。現場ごとに変更可
  * - 一直線に続く区間（継手で区切られるまとまり）ごとに max(1, ceil(長さ/間隔 − 0.01)) 個（勾配で数mm伸びた分は数えない）
- * - 自動判定: 配線は対象外。排水系で床から0〜400mmの横管（床上排水）はレベルバンド、それ以外はサドルバンド
+ * - 自動判定: 配線は対象外。排水系で床から0〜400mmの横管（床上排水）と、床下の排水の横管（土間から立てる）はレベルバンド、それ以外はサドルバンド
+ * - 床下のレベルバンドは支持点ごとに土間から管底までの高さ（調整する高さ）を持つ
  * - ビス: 支持金具1個あたり N 本（初期2本）。下地がコンクリートならコンクリートビス＋インパクト用コンクリキリ（M 穴ごとに1本）、木ならステンレスビス
  */
 import type { Doc } from './doc';
@@ -11,6 +12,7 @@ import { orderChain, pointsAlong } from './chain';
 import { isWire } from './fittings';
 import { isDrain, isRiserLike } from './slope';
 import type { SegmentMeasure } from './estimate';
+import { bandHeight, isUnderfloorRun, underfloorLevels } from './underfloorSlope';
 
 export type SupportKind = 'saddle' | 'levelBand' | 'tBracket';
 export type Substrate = 'concrete' | 'wood';
@@ -50,6 +52,8 @@ export function supportKindOf(doc: Doc, s: Segment): SupportKind | null {
     const base = floor?.elevation ?? 0;
     const lo = Math.min(a.pos.z, b.pos.z) - base, hi = Math.max(a.pos.z, b.pos.z) - base;
     if (lo >= 0 && hi <= FLOOR_DRAIN_MAX) return 'levelBand';
+    const lv = underfloorLevels(doc);
+    if (lv && isUnderfloorRun(net, s, lv)) return 'levelBand';
   }
   return 'saddle';
 }
@@ -61,9 +65,11 @@ export type SupportCount = {
   /** 下地別の支持金具の数 */
   bySubstrate: Record<Substrate, number>;
   segmentIds: string[];
+  /** 床下のレベルバンド: 土間から管底までのいちばん高い所(mm)（レベルバンドの長さを選ぶ目安） */
+  maxHeight?: number;
 };
-/** 部材図用の支持金具の位置（数量と同じ個数） */
-export type SupportMark = { kind: SupportKind; diameter: number; pos: Vec3; segId: string };
+/** 部材図用の支持金具の位置（数量と同じ個数）。height: 床下のレベルバンドの土間から管底までの高さ(mm) */
+export type SupportMark = { kind: SupportKind; diameter: number; pos: Vec3; segId: string; height?: number };
 export type SupportResult = {
   supports: SupportCount[];
   marks: SupportMark[];
@@ -115,19 +121,25 @@ export function computeSupports(doc: Doc, st: SupportSettings, measures: Record<
   const marks: SupportMark[] = [];
   for (const g of groups.values()) {
     let n = 0;
+    const heights: number[] = [];
     for (const run of runs(doc.network, g.segs, passThrough)) {
       const len = run.reduce((a, r) => a + (measures[r.id]?.usedLength ?? 0), 0);
       // 勾配による長さの増加（数mm）で1個増えないよう、1%の余裕を見る
       const k = Math.max(1, Math.ceil(len / spacingFor(st, g.diameter) - 0.01));
       n += k;
       // 位置: 全長を k 等分した各区間の中央
-      for (const p of pointsAlong(doc.network, orderChain(run), Array.from({ length: k }, (_, i) => (i + 0.5) / k))) marks.push({ kind: g.kind, diameter: g.diameter, ...p });
+      for (const p of pointsAlong(doc.network, orderChain(run), Array.from({ length: k }, (_, i) => (i + 0.5) / k))) {
+        const h = g.kind === 'levelBand' ? bandHeight(doc, doc.network.segments[p.segId], p.pos.z) : undefined;
+        marks.push({ kind: g.kind, diameter: g.diameter, ...p, ...(h !== undefined ? { height: h } : {}) });
+        if (h !== undefined) heights.push(h);
+      }
     }
     const key = `${g.kind}|${g.diameter}`;
     const m = merged.get(key) ?? { kind: g.kind, diameter: g.diameter, count: 0, bySubstrate: { concrete: 0, wood: 0 }, segmentIds: [] };
     m.count += n;
     m.bySubstrate[g.substrate] += n;
     m.segmentIds.push(...g.segs.map((s) => s.id));
+    if (heights.length) m.maxHeight = Math.max(m.maxHeight ?? 0, ...heights);
     merged.set(key, m);
     holes[g.substrate] += n * st.screwsPerSupport;
   }

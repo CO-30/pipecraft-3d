@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { HomeScreen } from './ui/HomeScreen';
 import { Editor } from './ui/Editor';
 import type { NewProjectInput } from './ui/NewProjectDialog';
-import { emptyDoc, useStore } from './state/store';
+import { emptyDoc, setUnderfloorRulesSource, useStore } from './state/store';
 import { repo } from './storage/instance';
 import { flushNow, useSaveState } from './ui/autosave';
 import { addFloor, createBuildingFromDims, emptyBuilding, type Building } from './model/building';
@@ -18,9 +18,15 @@ import type { ImportReport, PlacedCandidate } from './model/planRead/assemble';
 import { applyLearned } from './learn/fixtureLearning';
 import { learnStore, startFixtureLearning } from './learn/learnStore';
 import type { LearnedCandidate } from './ui/ImportReportDialog';
-import { profileForAddress } from './model/municipality';
+import { minSlopeFor, profileForAddress, resolveProfile } from './model/municipality';
 import { applySite } from './model/siteApply';
 import { useProfiles } from './ui/useProfiles';
+
+// 床下の排水の自動勾配: 工事の自治体（申請図面のプロファイル）の最小勾配が急ならそれに合わせる
+setUnderfloorRulesSource((doc) => {
+  const p = resolveProfile(doc.site?.municipalityProfileId, useProfiles.getState().user);
+  return { slopeFor: (d) => minSlopeFor(p, d) };
+});
 
 export default function App() {
   const [screen, setScreen] = useState<'home' | 'editor'>('home');

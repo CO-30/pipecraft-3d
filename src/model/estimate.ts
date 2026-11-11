@@ -352,7 +352,7 @@ export function computeEstimate(doc: Doc): Estimate {
   };
   for (const g of sup.supports) {
     const by = (['concrete', 'wood'] as const).filter((k) => g.bySubstrate[k] > 0).map((k) => `${SUBSTRATE_LABEL[k]}${g.bySubstrate[k]}`).join('・');
-    addSup(`sup|${g.kind}|${g.diameter}`, SUPPORT_LABEL[g.kind], `φ${g.diameter}`, g.count, '個', `間隔 ${spacingNote(sst, g.diameter)}／下地 ${by}`);
+    addSup(`sup|${g.kind}|${g.diameter}`, SUPPORT_LABEL[g.kind], `φ${g.diameter}`, g.count, '個', `間隔 ${spacingNote(sst, g.diameter)}／下地 ${by}${g.maxHeight !== undefined ? `／土間から管底 最大 ${g.maxHeight}mm（長さを選ぶ目安）` : ''}`);
   }
   addSup('sup|screwConcrete', 'コンクリートビス', 'ステンレス 4×32', sup.holes.concrete, '本', `支持金具1個につき${sst.screwsPerSupport}本`);
   addSup('sup|bit', 'コンクリキリ（インパクト用）', '六角軸 3.4mm', sup.bits, '本', `${sst.holesPerBit}穴ごとに1本`);

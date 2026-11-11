@@ -15,6 +15,10 @@ export function defaultSlope(diameter: number): number {
   return 1 / 200;
 }
 
+/** 塩ビ管（VU）の外径(mm) */
+const VU_OD: Record<number, number> = { 40: 48, 50: 60, 65: 76, 75: 89, 100: 114, 125: 140, 150: 165, 200: 216 };
+export const outerDiameter = (d: number) => VU_OD[d] ?? Math.round(d * 1.15);
+
 export const slopeLabel = (r: number) => (r > 0 ? `1/${Math.round(1 / r)}` : '水平');
 
 /** 排水管の流速の標準の上限(m/秒)。「下水道施設計画・設計指針と解説」: 0.6〜1.5m/秒、やむを得ない場合 3.0m/秒まで */
@@ -68,15 +72,21 @@ export function actualSlope(net: Network, s: Segment): number | null {
  * outletId を流末として勾配をつける。slope = 'auto' なら区間ごとに管径別の最小勾配。
  * 成功なら新しい Network と、高さを変えた点の数・勾配をつけた区間の数。
  */
-export function applySlope(net: Network, outletId: string, slope: number | 'auto'): { net: Network; nodes: number; segments: number } | null {
+export function applySlope(
+  net: Network, outletId: string, slope: number | 'auto' | ((s: Segment) => number),
+  opts: { include?: (s: Segment) => boolean; allowMid?: boolean } = {},
+): { net: Network; nodes: number; segments: number } | null {
   if (!net.nodes[outletId]) return null;
+  const ratioOf = (s: Segment) => (slope === 'auto' ? defaultSlope(s.diameter) : typeof slope === 'function' ? slope(s) : slope);
   const adj = new Map<string, Segment[]>();
   for (const s of Object.values(net.segments)) {
-    if (!isDrain(s.system) || isRiserLike(net, s)) continue;
+    if (!isDrain(s.system) || isRiserLike(net, s) || (opts.include && !opts.include(s))) continue;
     for (const n of [s.a, s.b]) adj.set(n, [...(adj.get(n) ?? []), s]);
   }
   // 流末は横管の端（または立て管・器具とのつなぎ目）。横管の途中の点を流末にすると V 字になるので受け付けない
-  if ((adj.get(outletId)?.length ?? 0) !== 1) return null;
+  // （allowMid: 起点が分かっていて、両側へ上げてよいとき）
+  const deg = adj.get(outletId)?.length ?? 0;
+  if (opts.allowMid ? deg < 1 : deg !== 1) return null;
   // 平面距離の最短経路木（Dijkstra）。高さは木に沿って区間ごとの勾配で積み上げる
   const dist = new Map<string, number>([[outletId, 0]]);
   const z = new Map<string, number>([[outletId, net.nodes[outletId].pos.z]]);
@@ -95,7 +105,7 @@ export function applySlope(net: Network, outletId: string, slope: number | 'auto
       const L = planLength(net, s);
       const nd = dist.get(cur)! + L;
       if (!dist.has(o) || nd < dist.get(o)! - 1e-6) {
-        const r = slope === 'auto' ? defaultSlope(s.diameter) : slope;
+        const r = ratioOf(s);
         dist.set(o, nd);
         z.set(o, z.get(cur)! + r * L);
         parent.set(o, s);
@@ -115,7 +125,7 @@ export function applySlope(net: Network, outletId: string, slope: number | 'auto
   const segments = { ...out.segments };
   for (const id of used) {
     const s = segments[id];
-    segments[id] = { ...s, slope: slope === 'auto' ? defaultSlope(s.diameter) : slope };
+    segments[id] = { ...s, slope: ratioOf(s) };
   }
   out = { ...out, segments };
   if (validateNetwork(out).length) return null;

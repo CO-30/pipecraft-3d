@@ -12,7 +12,8 @@ import type { Doc } from './doc';
 import { groundZ, groundZAt, isManhole, moveFixture, placeFixture, portNodes } from './fixtures';
 import { membersOf } from './members';
 import { addPolyline, connectNodeToSegment, moveNode, segmentsAt, splitSegment, type PipeNode, type Segment, type Vec3 } from './network';
-import { applySlope } from './slope';
+import { applySlope, outerDiameter } from './slope';
+import { inUnderfloor, slopeUnderfloor, underfloorLevels } from './underfloorSlope';
 import { findFloorRoute, ROUTE_STEP, type RouteGoal, type RouteResult } from './floorRoute';
 
 /** 外壁の芯からマスの中心までの距離の初期値(mm) */
@@ -40,7 +41,7 @@ const BUSY_GAP = 40;
 const FAR = 100_000;
 
 /** buried: 基礎の外で地中へ下ろした本数。unsloped: 床下に勾配をつけられなかった起点の数 */
-export type DrainRouteResult = { doc: Doc; pipes: number; manholes: number; sleeves: number; skipped: number; buried?: number; unsloped?: number };
+export type DrainRouteResult = { doc: Doc; pipes: number; manholes: number; sleeves: number; skipped: number; buried?: number; unsloped?: number; /** 1.5/100 でも配管の上が基礎天端を超える床下の系統 */ over?: number };
 /** 床下の配管とみなす勾配の上限（これより急な区間は立て管・地中の配管として扱う） */
 const FLATISH = 0.06;
 /** 勾配のついた床下の配管を「同じ高さの層」とみなす幅(mm) */
@@ -56,9 +57,7 @@ export const DEFAULT_COVER = 200;
 /** 屋外排水管の最小勾配の標準（指針: φ100 2/100、φ125 1.7/100、φ150 1.5/100、φ200 1.2/100。φ75 は 3m 以下の枝管で 3/100） */
 const OUTDOOR_SLOPE: [number, number][] = [[75, 0.03], [100, 0.02], [125, 0.017], [150, 0.015], [200, 0.012]];
 export const outdoorSlope = (d: number) => OUTDOOR_SLOPE.find(([k]) => d <= k)?.[1] ?? 0.01;
-/** 塩ビ管（VU）の外径(mm) */
-const VU_OD: Record<number, number> = { 40: 48, 50: 60, 65: 76, 75: 89, 100: 114, 125: 140, 150: 165, 200: 216 };
-export const outerDiameter = (d: number) => VU_OD[d] ?? Math.round(d * 1.15);
+export { outerDiameter } from './slope';
 /** 基礎の外面から、地中へ下ろす立て管の芯までの離れ(mm) */
 const OUT_GAP = 100;
 
@@ -153,6 +152,9 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const nearExt = (f: Line) => extWalls.some((w) => pointSeg({ x: (f.a.x + f.b.x) / 2, y: (f.a.y + f.b.y) / 2 }, w.a, w.b) < Math.max(w.t, f.t) / 2 + 250);
   const extFoot = footLines.filter(nearExt), inFoot = footLines.filter((f) => !nearExt(f));
   const gl = groundZ(b, doc.site);
+  /** 同じ層の床下の配管とみなす: 高さの差が BAND 未満、またはどちらも床下（土間〜床。勾配はあとで起点から付け直す） */
+  const ufl = underfloorLevels(doc);
+  const sameLayer = (z1: number, z2: number) => Math.abs(z1 - z2) < BAND || (!!ufl && inUnderfloor(ufl, z1) && inUnderfloor(ufl, z2));
   /** 床下の横の配管（勾配 FLATISH 以下・地面より上） */
   const underfloor = (a: Vec3, c: Vec3) => { const L = Math.hypot(a.x - c.x, a.y - c.y); return L >= 1 && Math.abs(a.z - c.z) <= FLATISH * L && a.z > gl && c.z > gl; };
   const cover = rules.cover ?? DEFAULT_COVER;
@@ -196,7 +198,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
         if (sg.system !== 'drain' && sg.system !== 'sewage') continue;
         const a = net.nodes[sg.a].pos, b = net.nodes[sg.b].pos;
         // 床下の横の配管（勾配つきを含む。地中の配管は除く）。同じ層なら合流先、違う深さなら合流しない
-        if (underfloor(a, b)) { if (Math.abs(a.z - z) < BAND && Math.abs(b.z - z) < BAND) segs.push(sg); else otherDepth = true; }
+        if (underfloor(a, b)) { if (sameLayer(a.z, z) && sameLayer(b.z, z)) segs.push(sg); else otherDepth = true; }
         const o = sg.a === id ? sg.b : sg.a;
         if (!seen.has(o) && !net.nodes[o].fixtureId) { seen.add(o); stack.push(o); }
       }
@@ -245,7 +247,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     // 先にある同じ高さの排水管の上は通らない・横切らない（重ねない）
     const busy = Object.values(net.segments).filter((sg) => {
       const a = net.nodes[sg.a].pos, c = net.nodes[sg.b].pos;
-      return (sg.system === 'drain' || sg.system === 'sewage') && ((Math.abs(a.z - p.z) < 1 && Math.abs(c.z - p.z) < 1) || (underfloor(a, c) && Math.abs(a.z - p.z) < BAND && Math.abs(c.z - p.z) < BAND));
+      return (sg.system === 'drain' || sg.system === 'sewage') && ((Math.abs(a.z - p.z) < 1 && Math.abs(c.z - p.z) < 1) || (underfloor(a, c) && sameLayer(a.z, p.z) && sameLayer(c.z, p.z)));
     });
     const nearStart = (q: Vec2) => Math.hypot(q.x - p.x, q.y - p.y) < 2 * ROUTE_STEP;
     const edgeOk = (q: Vec2, r: Vec2) => nearStart(q) || busy.every((sg) => {
@@ -304,7 +306,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     let joined = false;
     // 同じ平面位置の点。床下（地面より上）なら勾配で少し高さが違っても同じ点とみる
     const nodeAt = (q: Vec3) => Object.values(net.nodes).find((x) => !x.fixtureId && Math.hypot(x.pos.x - q.x, x.pos.y - q.y) < 1
-      && (Math.abs(x.pos.z - q.z) < 1 || (q.z > gl && x.pos.z > gl && Math.abs(x.pos.z - q.z) < BAND)));
+      && (Math.abs(x.pos.z - q.z) < 1 || (q.z > gl && x.pos.z > gl && sameLayer(x.pos.z, q.z))));
     if (plan.kind === 'node') {
       // 先の配管の点へ合流
       const hitNode = nodeAt(pts[pts.length - 1]);
@@ -357,13 +359,17 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     const flat = pts.filter((q) => Math.abs(q.z - p.z) < 1);
     for (let i = 1; i < flat.length; i++) sleeves += sleevesOn(flat[i - 1], flat[i], p.z);
   }
-  // 起点（基礎を出て地中へ下ろす点）から上流（器具の方）へ、管径ごとの最小勾配で上げる。
-  // 器具側の端の高さを保つように起点を下げる（地中の点・スラブより下へは下げず、元より上へは上げない）
+  // 床下: 起点（基礎を出て地中へ下ろす点）の管底を土間に置き、器具の方へ 2/100（足りなければ 1.5/100、自治体の最小勾配が急ならそれ）で上げる
+  const uf = slopeUnderfloor(cur, { slopeFor: rules.slopeFor }, touched);
+  cur = { ...cur, network: uf.net };
+  let unsloped = uf.failed;
+  const lv = uf.levels;
+  // 土間より深く落とした配管（床下の外）は、器具側の端の高さを保つように起点を下げ、管径ごとの最小勾配で上げる
   const slabAbs = b.foundation ? base.elevation + b.foundation.slabTop : undefined;
-  let unsloped = 0;
   for (const s0 of startsFrom(cur.network, touched)) {
     let net = cur.network;
     const x = net.nodes[s0.id];
+    if (lv && x.pos.z < lv.floor - 1 && x.pos.z > lv.slab - 30) continue; // 床下は上でつけた
     const dry = applySlope(net, s0.id, 'auto');
     if (!dry) { unsloped++; continue; }
     const rise = Math.max(0, ...Object.keys(dry.net.nodes).map((id) => (net.nodes[id] ? dry.net.nodes[id].pos.z - net.nodes[id].pos.z : 0)));
@@ -376,7 +382,8 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     if (r) cur = { ...cur, network: r.net };
     else unsloped++;
   }
-  return pipes ? { doc: cur, pipes, manholes, sleeves, skipped, buried: buriedCount, unsloped } : { ...none, skipped };
+  const over = uf.over;
+  return pipes ? { doc: cur, pipes, manholes, sleeves, skipped, buried: buriedCount, unsloped, over } : { ...none, skipped };
 }
 
 /**
