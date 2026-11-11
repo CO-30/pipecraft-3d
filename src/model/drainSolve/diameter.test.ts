@@ -85,3 +85,13 @@ describe('管径の自動決定（autoDiameters）', () => {
     expect(autoDiameters(once)).toBe(once);
   });
 });
+
+describe('管径の自動決定: 細くはしない', () => {
+  it('描いた・以前の工事の太い管径（φ125）は細くしない', () => {
+    const h = house(['toilet']);
+    const segs = Object.fromEntries(Object.entries(h.doc.network.segments).map(([id, s]) => [id, { ...s, diameter: 125 }]));
+    const out = autoDiameters({ ...h.doc, network: { ...h.doc.network, segments: segs } });
+    expect(dia(out, h.main[0])).toBe(125);
+    expect(dia(out, h.branches[0])).toBe(125);
+  });
+});

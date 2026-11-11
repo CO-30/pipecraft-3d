@@ -120,3 +120,15 @@ describe('管径の自動決定（ストア）', () => {
     expect(s().doc.network.segments[seg.id]).toMatchObject({ diameter: 125, diameterPin: true });
   });
 });
+
+describe('管径の固定を外す（ストア）', () => {
+  it('unpinSegmentDiameter で diameterPin が外れる', () => {
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([v(4000, 2000, -300), v(300, 2000, -300)]);
+    const seg = Object.values(s().doc.network.segments).at(-1)!;
+    s().updateSegment(seg.id, { diameter: 125 });
+    expect(s().doc.network.segments[seg.id].diameterPin).toBe(true);
+    s().unpinSegmentDiameter(seg.id);
+    expect(s().doc.network.segments[seg.id].diameterPin).toBeUndefined();
+  });
+});

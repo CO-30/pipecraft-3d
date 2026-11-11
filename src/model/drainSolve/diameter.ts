@@ -3,7 +3,7 @@
  *  - 負荷単位の表（空気調和・衛生工学会 HASS 206 の排水横枝管の許容負荷単位）
  *  - 上流の器具の接続口・手で決めた管径（📌）のいちばん太いもの（下流ほど細くならない）
  *  - 大便器がつながる管は φ75 以上、建物の外（屋外・地中）は φ100 以上（下水道排水設備指針）
- * 器具につながっていない管・手で決めた管径（diameterPin）は変えない。
+ * 太くするだけで細くはしない。器具につながっていない管・手で決めた管径（diameterPin）は変えない。
  */
 import type { Doc } from '../doc';
 import { FIXTURE_CATALOG, isManhole, type FixtureType } from '../fixtures';
@@ -47,7 +47,8 @@ export function autoDiameters(doc: Doc): Doc {
       if (a.fixture && !s.diameterPin) {
         const pa = net.nodes[s.a].pos, pb = net.nodes[s.b].pos;
         const outdoor = !!lv && !insideBuilding(lv, { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 });
-        const d = Math.max(diameterForUnits(a.units), a.maxDia, a.toilet ? TOILET_MIN : 0, outdoor ? OUTDOOR_MIN : 0);
+        // 太くするだけで、細くはしない（描いた管径・以前の工事の管径を勝手に縮めない）
+        const d = Math.max(diameterForUnits(a.units), a.maxDia, a.toilet ? TOILET_MIN : 0, outdoor ? OUTDOOR_MIN : 0, s.diameter);
         if (d !== s.diameter) { segments[sid] = { ...s, diameter: d }; changed = true; }
       }
       const used = segments[sid].diameter;
