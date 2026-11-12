@@ -24,12 +24,9 @@ export function writeAsBuilt(app: Record<string, string> | undefined, patch: Par
 }
 
 const KINDS = /(縦断図|立面図|展開図|平面図|配管立図|系統図)/;
-/** 「排水設備 縦断図」→「排水設備 竣工図（縦断図）」。図の種類で始まる表題は全体を括弧に入れる */
+/** 「排水設備 縦断図」→「排水設備 竣工縦断図」（図の見出し・表題欄に収まるよう 2 字だけ足す）。種類の無い表題は「竣工図 …」 */
 export function asBuiltTitle(title: string): string {
-  const m = KINDS.exec(title);
-  if (!m) return `竣工図 ${title}`;
-  if (m.index === 0) return `竣工図（${title}）`;
-  return title.replace(KINDS, '竣工図（$1）');
+  return KINDS.test(title) ? title.replace(KINDS, '竣工$1') : `竣工図 ${title}`;
 }
 
 const measured = (doc: Doc, segId: string): number | undefined => {

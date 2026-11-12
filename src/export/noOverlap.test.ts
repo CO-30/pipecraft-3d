@@ -144,3 +144,28 @@ describe('水理計算書でも文字が重ならない', () => {
     });
   }
 });
+
+describe('竣工図の印を押しても文字が重ならない', () => {
+  for (const profile of PROFILES) {
+    test(`縦断図・展開図・立面図（${profile.name}）`, async () => {
+      const { stampAsBuilt } = await import('./asBuiltStamp');
+      const { asBuiltTitle } = await import('../model/asBuilt');
+      const { doc, outlet } = manyManholes();
+      const route = extractRoute(doc.network, outlet);
+      if (!('route' in route)) throw new Error('経路が取れない');
+      const iso = buildIsometric(doc, 'drain', profile);
+      const w = crowdedWater();
+      const sheets = [
+        renderProfileSheet(buildProfile(doc, route.route, profile, asBuiltTitle('排水設備 縦断図')), meta, iso),
+        renderIsoSheet(buildIsometric(w.doc, 'water', profile), profile, { ...meta, title: asBuiltTitle('立面図（展開図）') }),
+        renderRiserSheet(buildRiser(w.doc, w.out, profile, asBuiltTitle('給水装置 立面図')), meta),
+      ];
+      for (const sh of sheets) {
+        const r = stampAsBuilt(sh, '2026年11月12日');
+        expect(r.collided).toBe(false);
+        expect(sh.ops.some((o) => o.t === 'text' && o.s === '竣 工 図')).toBe(true);
+        expect(findTextOverlaps(sh)).toEqual([]);
+      }
+    });
+  }
+});

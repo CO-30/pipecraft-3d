@@ -35,6 +35,9 @@ describe('アイソメ図（立面図・展開図）', () => {
     expect(iso.lines).toHaveLength(2);
     expect(iso.lines.map((l) => l.label)).toEqual([`HI20×${((4000 - out.pos.x) / 1000).toFixed(1)}`, `HI20×${((p.pos.z - out.pos.z) / 1000).toFixed(1)}`]);
     expect(iso.lines[0].system).toBe('water');
+    // 竣工図: 長さの関数を渡すとその長さ（実測）で書く
+    const asBuilt = buildIsometric(doc, 'water', STANDARD_PROFILE, { lengthOf: (id) => (id === iso.lines[0].segId ? 4567 : 1000) });
+    expect(asBuilt.lines.map((l) => l.label)).toEqual(['HI20×4.6', 'HI20×1.0']);
     const labels = iso.points.map((pt) => pt.label);
     expect(labels).toContain('水道メーター');
     expect(labels).toContain('水栓（壁付）');
