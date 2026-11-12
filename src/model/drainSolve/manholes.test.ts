@@ -74,3 +74,29 @@ describe('マスの自動配置: 近すぎる所', () => {
     expect(near(placeManholes({ ...m.doc, network: b.net }, NAHA), -700, 1000)).toBe(false);
   });
 });
+
+describe('マスの自動配置: 範囲と後始末', () => {
+  it('only を渡すと、その点を含む系統だけ。配管を消して孤立した自動のマスは取り除く', () => {
+    const { doc, pub } = testSite();
+    const r = addPolyline(doc.network, [doc.network.nodes[pub].pos, v(-5700, 3000, -1000), v(-5700, 1000, -950)], S, { startNodeId: pub });
+    const d = { ...doc, network: r.net };
+    expect(placeManholes(d, NAHA, new Set(['なし']))).toBe(d);
+    const placed = placeManholes(d, NAHA, new Set(r.nodeIds));
+    const auto = autos(placed);
+    expect(auto.length).toBeGreaterThan(0);
+    // 配管を全部消す → 自動のマスは孤立 → 取り除く（公共ますは残す）
+    const bare = { ...placed, network: { nodes: Object.fromEntries(Object.entries(placed.network.nodes).filter(([, n]) => n.fixtureId)), segments: {} } };
+    const cleaned = placeManholes(bare, NAHA);
+    expect(autos(cleaned)).toHaveLength(0);
+    expect(Object.values(cleaned.fixtures).some((f) => f.type === 'publicSewage')).toBe(true);
+  });
+  it('分ける区間は同じ系統の区間だけ（重なる別の配管を分けない）', () => {
+    const { doc, pub } = testSite(-1200, -30700);
+    const r = addPolyline(doc.network, [doc.network.nodes[pub].pos, v(-700, 3000, -900)], S, { startNodeId: pub });
+    // 同じ平面位置を通る別の管（高さ違い・別系統の雨水）
+    const other = addPolyline(r.net, [v(-30000, 3000, -300), v(-1000, 3000, -300)], { system: 'drain', diameter: 100 });
+    const out = placeManholes({ ...doc, network: other.net }, NAHA, new Set(r.nodeIds));
+    const otherSegs = Object.values(out.network.segments).filter((s) => s.system === 'drain');
+    expect(otherSegs).toHaveLength(1);
+  });
+});

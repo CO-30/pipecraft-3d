@@ -8,8 +8,8 @@
 import type { Vec2 } from '../building';
 import type { Doc } from '../doc';
 import type { DrainRuleSet } from '../drainRules';
-import { isManhole, placeFixture, portNodes, type FixtureType } from '../fixtures';
-import { mergeNodes, splitSegment, type Segment, type Vec3 } from '../network';
+import { deleteFixture, isManhole, placeFixture, portNodes, type FixtureType } from '../fixtures';
+import { mergeNodes, segmentsAt, splitSegment, type Segment, type Vec3 } from '../network';
 import { isRiserLike, planLength } from '../slope';
 import { insideBuilding, underfloorLevels } from '../underfloorSlope';
 import { buildDrainTrees, type DrainTree } from './tree';
@@ -25,11 +25,20 @@ const SUPPRESS_R = 300;
 /** 既にあるマスからこれより近い所には置かない(mm)（排水をつなぐ案のマスと基礎の外の立ち下げの間など） */
 const MIN_GAP = 1000;
 
-export function placeManholes(doc: Doc, rules: DrainRuleSet): Doc {
+/**
+ * only: 編集で変わった点。渡すと、その点を含む系統だけに置く（開いただけの工事・関係ない系統には置かない）
+ */
+export function placeManholes(doc: Doc, rules: DrainRuleSet, only?: Set<string>): Doc {
   const lv = underfloorLevels(doc);
   if (!lv) return doc;
+  // 配管を消して孤立した自動のマス（どの接続口にも配管が無い）は取り除く
+  let base = doc;
+  for (const f of Object.values(doc.fixtures)) {
+    if (!isManhole(f.type) || !f.params?.auto) continue;
+    if (portNodes(base.network, f.id).every((n) => segmentsAt(base.network, n.id).length === 0)) base = deleteFixture(base, f.id);
+  }
   const suppressed = doc.site?.manholeSuppressed ?? [];
-  let cur = doc;
+  let cur = base;
   const blocked = (p: Vec2) => suppressed.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < SUPPRESS_R)
     || Object.values(cur.fixtures).some((f) => isManhole(f.type) && Math.hypot(f.x - p.x, f.y - p.y) < MIN_GAP);
   const fx = (d: Doc, id: string) => { const f = d.network.nodes[id]?.fixtureId; return f ? d.fixtures[f] : undefined; };
@@ -46,7 +55,7 @@ export function placeManholes(doc: Doc, rules: DrainRuleSet): Doc {
     const merged = mergeNodes(r.doc.network, port.id, nodeId);
     return merged === r.doc.network || !merged.nodes[port.id] || merged.nodes[nodeId] ? d : { ...r.doc, network: merged };
   };
-  const trees = () => buildDrainTrees(cur).filter((t) => isMh(cur, t.root));
+  const trees = () => buildDrainTrees(cur).filter((t) => isMh(cur, t.root) && (!only || t.order.some((id) => only.has(id))));
 
   // 1. 起点・曲がり・合流・管径が変わる所
   for (const t of trees()) {
@@ -122,10 +131,12 @@ export function placeManholes(doc: Doc, rules: DrainRuleSet): Doc {
       }
     }
     const type = typeFor(cur, t);
+    // 分けてよい区間: この系統の区間（分けたら新しい区間も足す）
+    const treeSegs = new Set(t.parent.values());
     for (const p of inserts) {
       if (blocked(p)) continue;
-      const seg = Object.values(cur.network.segments).find((s) => {
-        if ((s.system !== 'drain' && s.system !== 'sewage') || planLength(cur.network, s) < 1) return false;
+      const seg = [...treeSegs].map((id) => cur.network.segments[id]).find((s) => {
+        if (!s || planLength(cur.network, s) < 1) return false;
         const a = cur.network.nodes[s.a].pos, b = cur.network.nodes[s.b].pos;
         const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2, u = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / L2;
         return u > 0.001 && u < 0.999 && Math.hypot(a.x + (b.x - a.x) * u - p.x, a.y + (b.y - a.y) * u - p.y) < 1;
@@ -135,7 +146,7 @@ export function placeManholes(doc: Doc, rules: DrainRuleSet): Doc {
       const split = { ...cur, network: sp.net };
       const placed = placeAt(split, sp.nodeId, type);
       // 置けなければ分けたのも取りやめる
-      if (placed !== split) cur = placed;
+      if (placed !== split) { cur = placed; treeSegs.delete(seg.id); for (const id of sp.segmentIds) treeSegs.add(id); }
     }
   }
   return cur;

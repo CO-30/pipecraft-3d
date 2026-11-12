@@ -48,8 +48,23 @@ export const UNDER_FLOOR_HEIGHT = -300;
 let drainRulesOf: (doc: Doc) => DrainRuleSet = () => resolveDrainRules(STANDARD_PROFILE);
 export function setDrainRulesSource(fn: (doc: Doc) => DrainRuleSet) { drainRulesOf = fn; }
 /** 排水の管底高・勾配・マスの管底を計算し直す（配管・マス・建物・工事の設定が変わったとき） */
-export function solveDoc(doc: Doc): { doc: Doc; issues: DrainIssue[] } {
-  return solveDrain(doc, drainRulesOf(doc));
+export function solveDoc(doc: Doc, prev?: Doc | null): { doc: Doc; issues: DrainIssue[] } {
+  // マスの自動配置は、編集で変わった点を含む系統だけ（prev が無い＝開いた・ドラッグ中は置かない）
+  return solveDrain(doc, drainRulesOf(doc), { place: prev ? touchedNodes(prev, doc) : false });
+}
+/** 編集で増えた・平面で動いた点・マスを置いた／消した点と、増えた・管径が変わった区間の端 */
+function touchedNodes(prev: Doc, next: Doc): Set<string> {
+  const out = new Set<string>();
+  if (prev.network === next.network) return out;
+  for (const n of Object.values(next.network.nodes)) {
+    const o = prev.network.nodes[n.id];
+    if (!o || o.pos.x !== n.pos.x || o.pos.y !== n.pos.y || o.fixtureId !== n.fixtureId) out.add(n.id);
+  }
+  for (const sg of Object.values(next.network.segments)) {
+    const o = prev.network.segments[sg.id];
+    if (!o || o.diameter !== sg.diameter || o.a !== sg.a || o.b !== sg.b) { out.add(sg.a); out.add(sg.b); }
+  }
+  return out;
 }
 /** ヘッダーの出口の、設置面からの高さ(mm)（カタログの接続口 dz） */
 const HEADER_PORT_DZ = 100;
@@ -340,7 +355,7 @@ export const useStore = create<State>((set, get) => {
     let next = next0;
     // 排水: 平面ルート・属性・ピンから管底高を計算し直す（同じ履歴に入れる）
     if (next.network !== doc.network || next.fixtures !== doc.fixtures || next.building !== doc.building || next.site !== doc.site) {
-      const r = solveDoc(next);
+      const r = solveDoc(next, doc);
       next = r.doc;
       set({ drainIssues: r.issues });
     }
@@ -1134,8 +1149,8 @@ export const useStore = create<State>((set, get) => {
     endDrag: () => {
       const { dragBase, past } = get();
       if (!dragBase) return;
-      // 壁・角を動かすと床下・建物の内外が変わるので、終わりに排水を計算し直す
-      if (get().doc.building !== dragBase.building) liveSet(get().doc);
+      // 終わりに排水を計算し直す（ドラッグ中は置かなかったマスもここで。壁・角を動かすと床下・建物の内外が変わる）
+      if (get().doc !== dragBase) { const r = solveDoc(get().doc, dragBase); set({ doc: r.doc, drainIssues: r.issues }); }
       const doc = get().doc;
       const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}), ...(changed && lockedCount(doc.network) < lockedCount(dragBase.network) ? { notice: UNLOCK_NOTICE } : {}) });
