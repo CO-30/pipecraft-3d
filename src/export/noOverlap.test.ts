@@ -180,3 +180,14 @@ describe('見取図でも文字が重ならない', () => {
     }
   });
 });
+
+describe('材料集計表でも文字が重ならない', () => {
+  test('給水・給湯の床下ルート（3 つの分け方）', async () => {
+    const { supplyHouse } = await import('../model/testSupplyHouse');
+    const { routeSupplies } = await import('../model/supplyRoute');
+    const { materialSummary } = await import('../model/materialSummary');
+    const { renderMaterialSheets } = await import('./materialSheet');
+    const doc = routeSupplies(supplyHouse().doc).doc;
+    for (const axis of ['place', 'floor', 'status'] as const) for (const sh of renderMaterialSheets(materialSummary(doc, axis), { siteName: '共同住宅新築工事に伴う給排水衛生設備工事（第二期）その１ 追加工事を含む', date: meta.date })) expect(findTextOverlaps(sh)).toEqual([]);
+  });
+});
