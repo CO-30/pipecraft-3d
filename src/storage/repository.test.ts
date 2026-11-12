@@ -253,3 +253,37 @@ describe('全現場バックアップとプロファイル', () => {
     expect((await r.listProfiles()).map((p) => p.name)).toEqual(['正常']);
   });
 });
+
+describe('版（保存した時点）', () => {
+  it('残す・一覧（新しい順）・読み込む・消す。工事を消すと版も消える', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const p = sample();
+    await r.save(p);
+    const v1 = await r.saveVersion(p, '申請提出', 100);
+    await r.saveVersion({ ...p, name: '変更後' }, '施主確認', 200);
+    const list = await r.listVersions('p1');
+    expect(list.map((x) => x.name)).toEqual(['施主確認', '申請提出']);
+    expect(list[0]).toMatchObject({ projectId: 'p1', createdAt: 200 });
+    expect((await r.loadVersion(v1.id))?.network).toEqual(p.network);
+    await r.deleteVersion(v1.id);
+    expect(await r.listVersions('p1')).toHaveLength(1);
+    await r.delete('p1');
+    expect(await r.listVersions('p1')).toHaveLength(0);
+  });
+
+  it('工事ごとに 20 版まで。あふれたら古いものから消し、消した数を返す', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const p = sample();
+    for (let i = 0; i < 20; i++) await r.saveVersion(p, `v${i}`, i);
+    const res = await r.saveVersion(p, 'v20', 20);
+    expect(res.dropped).toBe(1);
+    const list = await r.listVersions('p1');
+    expect(list).toHaveLength(20);
+    expect(list.at(-1)!.name).toBe('v1');
+  });
+
+  it('壊れたデータは版にしない', async () => {
+    const r = new DexieProjectRepository(nextName());
+    await expect(r.saveVersion({ ...sample(), network: { nodes: {}, segments: { s: { id: 's', a: 'x', b: 'y', system: 'water', diameter: 20 } } } } as never, 'x', 1)).rejects.toThrow(InvalidProjectError);
+  });
+});

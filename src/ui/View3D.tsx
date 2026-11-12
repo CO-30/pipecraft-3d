@@ -7,6 +7,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Grid, Html } from '@react-three/drei';
 import { noteNumbers, notes3dZ } from '../model/notes';
+import { DIFF_COLOR, useCompare } from './useCompare';
 import * as THREE from 'three';
 import { useStore, type SelKind, type VisMode } from '../state/store';
 import type { Vec3 } from '../model/network';
@@ -149,7 +150,7 @@ const CAT_COLOR: Record<Box['category'], string> = {
   exteriorWall: '#e7e5e4', interiorWall: '#f5f5f4', floor: '#d6d3d1', ceiling: '#fafaf9', door: '#a16207', window: '#7dd3fc', member: '#a8a29e',
 };
 
-function Pipe({ a, b, radius, color, selected, traced = false, mode, onSelect, clip }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; traced?: boolean; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
+function Pipe({ a, b, radius, color, selected, traced = false, glow, mode, onSelect, clip }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; traced?: boolean; /** 比較の色（増えた・変わった） */ glow?: string; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
   const { pos, quat, len } = useMemo(() => {
     const va = toThree(a), vb = toThree(b);
     const dir = vb.clone().sub(va);
@@ -158,8 +159,8 @@ function Pipe({ a, b, radius, color, selected, traced = false, mode, onSelect, c
   if (mode === 'hide' || len < 1e-3) return null; // 曲げで縮めて長さ 0 になった区間
   return (
     <mesh position={pos} quaternion={quat} onClick={(e) => { e.stopPropagation(); onSelect(); }} renderOrder={2}>
-      <cylinderGeometry args={[selected ? radius * 1.6 : traced ? radius * 1.3 : radius, selected ? radius * 1.6 : traced ? radius * 1.3 : radius, len, 12]} />
-      <meshStandardMaterial color={selected ? SELECT_COLOR : color} emissive={selected ? SELECT_COLOR : traced ? TRACE_COLOR : '#000'} emissiveIntensity={selected ? 0.5 : traced ? 0.45 : 0}
+      <cylinderGeometry args={[selected ? radius * 1.6 : traced || glow ? radius * 1.3 : radius, selected ? radius * 1.6 : traced || glow ? radius * 1.3 : radius, len, 12]} />
+      <meshStandardMaterial color={selected ? SELECT_COLOR : color} emissive={selected ? SELECT_COLOR : glow ?? (traced ? TRACE_COLOR : '#000')} emissiveIntensity={selected ? 0.5 : glow ? 0.6 : traced ? 0.45 : 0}
         transparent={mode === 'ghost'} opacity={mode === 'ghost' ? 0.3 : 1} clippingPlanes={clip} />
     </mesh>
   );
@@ -239,6 +240,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const hiddenIds = useStore((s) => s.hiddenIds);
   const ghostIds = useStore((s) => s.ghostIds);
   const trace = useTrace();
+  const cmp = useCompare();
   const section = useStore((s) => s.section);
   const floorFilter = useStore((s) => s.floorFilter);
   const activeFloorId = useStore((s) => s.activeFloorId);
@@ -380,6 +382,9 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const pipeMode = vis.pipes;
   // 系統の強調中は、系統の外の管・器具を半透明に。系統の管は半透明の表示でもはっきり見せる（隠したものは隠したまま）
   const tracedMode = (inTrace: boolean, m: VisMode): VisMode => (!trace || m === 'hide' ? m : inTrace ? 'show' : 'ghost');
+  // 比較中は変わっていない管・器具を半透明に
+  const diffMode = (diff: boolean, m: VisMode): VisMode => (!cmp || m === 'hide' ? m : diff ? m : 'ghost');
+  const segGlow = (id: string) => (cmp?.addedSegs.has(id) ? DIFF_COLOR.added : cmp?.changedSegs.has(id) ? DIFF_COLOR.changed : undefined);
   return (
     <>
       <ambientLight intensity={0.75} />
@@ -420,16 +425,16 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
       })()}
       {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => (
         <Pipe clip={clip} key={s.id} {...(([a, b]) => ({ a, b }))(trimmedEnds(net, bendArcs, s.id))} radius={Math.max(0.025, s.diameter / 1500)}
-          color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} traced={!!trace?.segs.has(s.id)} mode={tracedMode(!!trace?.segs.has(s.id), pipeMode)}
+          color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} traced={!!trace?.segs.has(s.id)} glow={segGlow(s.id)} mode={diffMode(!!segGlow(s.id), tracedMode(!!trace?.segs.has(s.id), pipeMode))}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: s.id })} />
       ))}
       {Object.values(fixtures).filter((f) => floorFilter === 'all' || shownFloorIds.has(f.floorId)).map((f) => (
-        <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={tracedMode(!!trace?.fixtures.has(f.id), modeFor('fixtures', f.id))} />
+        <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={diffMode(!!(cmp?.addedFx.has(f.id) || cmp?.movedFx.has(f.id)), tracedMode(!!trace?.fixtures.has(f.id), modeFor('fixtures', f.id)))} />
       ))}
       {[...bendArcs.values()].filter((arc) => zIn(arc.corner.z)).map((arc) => {
         const sg = net.segments[arc.segs[0]];
         const selected = sel?.kind === 'segment' && arc.segs.includes(sel.id);
-        return <BendTube key={'bend' + arc.nodeId} arc={arc} clip={clip} mode={tracedMode(!!trace?.segs.has(arc.segs[0]), pipeMode)} traced={!!trace?.segs.has(arc.segs[0])} selected={selected} color={systemColor(sg.system)} radius={Math.max(0.025, sg.diameter / 1500)}
+        return <BendTube key={'bend' + arc.nodeId} arc={arc} clip={clip} mode={diffMode(!!segGlow(arc.segs[0]), tracedMode(!!trace?.segs.has(arc.segs[0]), pipeMode))} traced={!!trace?.segs.has(arc.segs[0])} selected={selected} color={systemColor(sg.system)} radius={Math.max(0.025, sg.diameter / 1500)}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: arc.segs[0] })} />;
       })}
       {/* 継手なしで曲げる角には玉を出さない（選んでいるときだけ出す） */}
@@ -447,6 +452,13 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
         </mesh>
       ))}
       <Notes3D zIn={zIn} />
+      {/* 比較: 版にあって今は無い管（赤の半透明） */}
+      {cmp && pipeMode !== 'hide' && cmp.segments.removed.map((id) => {
+        const on = cmp.target.doc.network, sg = on.segments[id];
+        const a = on.nodes[sg.a].pos, b = on.nodes[sg.b].pos;
+        if (!zIn(a.z) && !zIn(b.z)) return null;
+        return <Pipe key={'rm' + id} a={a} b={b} clip={clip} radius={Math.max(0.03, sg.diameter / 1300)} color={DIFF_COLOR.removed} selected={false} mode="ghost" onSelect={() => {}} />;
+      })}
     </>
   );
 }

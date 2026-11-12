@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyzeFittings } from '../model/fittings';
 import { noteNumbers } from '../model/notes';
+import { DIFF_COLOR, useCompare } from './useCompare';
 import { arcPoints, pbBendArcs, trimmedEnds } from '../model/pbBends';
 import { activeFloorElevation, isUnderFloor, useStore } from '../state/store';
 import { hitTestPlan, orthoSnap, simplify, type HitFilter, type Vec2 } from '../model/geometry';
@@ -96,6 +97,7 @@ export function PlanView() {
   const tool = useStore((s) => s.tool);
   const sel = useStore((s) => s.selection);
   const trace = useTrace();
+  const cmp = useCompare();
   const floorId = useStore((s) => s.activeFloorId);
   const dimFloor = useStore((s) => s.dimWizard?.floorId);
   const underFloor = useStore(isUnderFloor);
@@ -700,8 +702,16 @@ export function PlanView() {
         const p = toScreen(c);
         return <rect key={c.id} data-corner={c.id} x={p.x - 4} y={p.y - 4} width={8} height={8} fill={isSel('corner', c.id) ? SELECT_COLOR : '#fff'} stroke="#334155" />;
       })}
+      {/* 比較: 版のときの器具（なくなった＝赤、動いた・変わった＝灰の破線） */}
+      {cmp && Object.values(cmp.target.doc.fixtures).filter((f) => f.floorId === floorId && (!fixtures[f.id] || cmp.movedFx.has(f.id))).map((f) => {
+        const gone = !fixtures[f.id];
+        return <polygon key={'old' + f.id} data-diff-old={f.id} data-diff={gone ? 'removed' : 'from'} points={fixtureCorners(f).map(toScreen).map((p) => `${p.x},${p.y}`).join(' ')}
+          fill={gone ? 'rgba(220,38,38,0.08)' : 'none'} stroke={gone ? DIFF_COLOR.removed : '#64748b'} strokeWidth={2} strokeDasharray="6 4" pointerEvents="none" />;
+      })}
       {Object.values(fixtures).filter((f) => f.floorId === floorId).map((f) => {
         const pts = fixtureCorners(f).map(toScreen);
+        const fd = cmp ? (cmp.addedFx.has(f.id) ? 'added' : cmp.movedFx.has(f.id) ? 'changed' : null) : null;
+        const fxOp = (base: number) => (cmp && !fd ? 0.35 : base);
         const c = toScreen(f);
         const selected = isSel('fixture', f.id);
         if (isManhole(f.type)) {
@@ -709,8 +719,9 @@ export function PlanView() {
           const r = Math.max(8, (fixtureSize(f).w / 2) * vw.scale);
           const stroke = selected ? SELECT_COLOR : '#57534e';
           return (
-            <g key={f.id} data-fixture={f.id} data-type={f.type} data-trace={trace?.fixtures.has(f.id) ? '1' : undefined} opacity={trace && !trace.fixtures.has(f.id) ? 0.3 : 1}>
+            <g key={f.id} data-fixture={f.id} data-type={f.type} data-trace={trace?.fixtures.has(f.id) ? '1' : undefined} data-diff={fd ?? undefined} opacity={fxOp(trace && !trace.fixtures.has(f.id) ? 0.3 : 1)}>
               {trace?.fixtures.has(f.id) && <circle cx={c.x} cy={c.y} r={r + 6} fill="none" stroke={TRACE_COLOR} strokeWidth={4} opacity={0.6} />}
+              {fd && <circle cx={c.x} cy={c.y} r={r + 6} fill="none" stroke={DIFF_COLOR[fd]} strokeWidth={5} opacity={0.7} />}
               {f.params?.shape === 'square'
                 ? <rect x={c.x - r} y={c.y - r} width={r * 2} height={r * 2} fill={selected ? '#fde68a' : '#fafaf9'} stroke={stroke} strokeWidth={selected ? 3 : 1.5} />
                 : <circle cx={c.x} cy={c.y} r={r} fill={selected ? '#fde68a' : '#fafaf9'} stroke={stroke} strokeWidth={selected ? 3 : 1.5} />}
@@ -720,8 +731,9 @@ export function PlanView() {
         }
         const sz = fixtureSize(f);
         return (
-          <g key={f.id} data-fixture={f.id} data-type={f.type} data-trace={trace?.fixtures.has(f.id) ? '1' : undefined} data-under={(f.params?.mountZ ?? 0) < 0 ? '1' : undefined} opacity={trace && !trace.fixtures.has(f.id) ? 0.3 : (f.params?.mountZ ?? 0) < 0 ? 1 : dim} strokeDasharray={(f.params?.mountZ ?? 0) < 0 && !underFloor ? '5 3' : undefined}>
+          <g key={f.id} data-fixture={f.id} data-type={f.type} data-trace={trace?.fixtures.has(f.id) ? '1' : undefined} data-under={(f.params?.mountZ ?? 0) < 0 ? '1' : undefined} data-diff={fd ?? undefined} opacity={fxOp(trace && !trace.fixtures.has(f.id) ? 0.3 : (f.params?.mountZ ?? 0) < 0 ? 1 : dim)} strokeDasharray={(f.params?.mountZ ?? 0) < 0 && !underFloor ? '5 3' : undefined}>
             {trace?.fixtures.has(f.id) && <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={TRACE_COLOR} strokeWidth={7} opacity={0.5} strokeDasharray="none" />}
+            {fd && <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={DIFF_COLOR[fd]} strokeWidth={8} opacity={0.6} strokeDasharray="none" />}
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
             {/* 平面の記号（ローカル mm。y は上向き＝奥、回転は図面と同じ反時計回り） */}
             <g transform={`translate(${c.x} ${c.y}) scale(${vw.scale} ${-vw.scale}) rotate(${f.rotation})`} pointerEvents="none" data-symbol="1">
@@ -738,8 +750,10 @@ export function PlanView() {
         const a = toScreen(na), b = toScreen(nb);
         const selected = isSel('segment', s.id);
         const drop = dropHit?.type === 'segment' && dropHit.id === s.id;
+        const sd = cmp ? (cmp.addedSegs.has(s.id) ? 'added' : cmp.changedSegs.has(s.id) ? 'changed' : null) : null;
         return (
-          <g key={s.id} data-seg={s.id} data-trace={trace?.segs.has(s.id) ? '1' : undefined} opacity={!here ? 0.2 : trace && !trace.segs.has(s.id) ? 0.3 : 1}>
+          <g key={s.id} data-seg={s.id} data-trace={trace?.segs.has(s.id) ? '1' : undefined} data-diff={sd ?? undefined} opacity={!here ? 0.2 : (trace && !trace.segs.has(s.id)) || (cmp && !sd) ? 0.3 : 1}>
+            {sd && !selected && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={DIFF_COLOR[sd]} strokeWidth={13} strokeLinecap="round" opacity={0.5} />}
             {trace?.segs.has(s.id) && !selected && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={TRACE_COLOR} strokeWidth={13} strokeLinecap="round" opacity={0.45} />}
             {(selected || drop) && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={drop ? '#16a34a' : SELECT_COLOR} strokeWidth={14} strokeLinecap="round" opacity={0.6} />}
             {!selected && run?.has(s.id) && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={SELECT_COLOR} strokeWidth={9} strokeLinecap="round" opacity={0.25} />}
@@ -790,6 +804,14 @@ export function PlanView() {
             fill={isSel('node', n.id) ? SELECT_COLOR : drop ? '#16a34a' : n.kind === 'valve' ? '#f97316' : big ? '#111827' : portSys ? systemColor(portSys) : port ? '#0e7490' : '#fff'}
             stroke="#111827" strokeWidth={port ? 1.5 : 2} />
         );
+      })}
+      {/* 比較: 版にあって今は無い管（赤の破線） */}
+      {cmp && cmp.segments.removed.map((id) => {
+        const on = cmp.target.doc.network, sg = on.segments[id];
+        const pa = on.nodes[sg.a].pos, pb = on.nodes[sg.b].pos;
+        if (!onThisFloor(pa.z) && !onThisFloor(pb.z)) return null;
+        const a = toScreen(pa), b = toScreen(pb);
+        return <line key={'rm' + id} data-diff-old={id} data-diff="removed" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={DIFF_COLOR.removed} strokeWidth={4} strokeDasharray="8 5" strokeLinecap="round" opacity={0.85} pointerEvents="none" />;
       })}
       {showNotes && notes && Object.values(notes).filter((n) => n.floorId === floorId).sort((a, b) => (isSel('note', a.id) ? 1 : 0) - (isSel('note', b.id) ? 1 : 0)).map((n) => {
         const q = toScreen(n);

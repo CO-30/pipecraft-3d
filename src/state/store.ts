@@ -79,6 +79,13 @@ export type { Doc };
 export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay' | 'note';
 export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture' | 'member' | 'note';
 /** at: 区間をタップした位置（切断・バルブ挿入に使う） */
+/** 保存データ（工事・版）から編集データへ（階の無いメモは捨てる） */
+export function projectToDoc(p: ProjectData): Doc {
+  const notes = p.notes ? Object.fromEntries(Object.entries(p.notes).filter(([, n]) => p.building.floors.some((f) => f.id === n.floorId))) : undefined;
+  return { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {}, ...(notes ? { notes } : {}) };
+}
+/** 比べている版（保存した時点）。doc は版の中身 */
+export type CompareTarget = { id: string; name: string; createdAt: number; doc: Doc };
 export type Selection = { kind: SelKind; id: string; at?: Vec3 } | null;
 export type VisCategory = BoxCategory | 'pipes' | 'fixtures';
 /** 配管全体の複製でずらす量(mm) */
@@ -163,6 +170,11 @@ type State = {
   /** 系統をたどって強調している出発の手がかり（画面だけの状態。図面・元に戻すには入れない） */
   trace: TraceSeed | null;
   setTrace(segId: string | null): void;
+  /** 比べている版（画面だけの状態。図面・元に戻すには入れない） */
+  compare: CompareTarget | null;
+  setCompare(c: CompareTarget | null): void;
+  /** 版の中身に戻す（元に戻すで取り消せる） */
+  restoreProject(p: ProjectData): void;
   /** 図面・3D のメモを出す（表示だけ。保存しない） */
   showNotes: boolean;
   setShowNotes(on: boolean): void;
@@ -501,7 +513,7 @@ export const useStore = create<State>((set, get) => {
   const fixActiveFloor = (doc: Doc, preferred: string) =>
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
-    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], trace: null, pendingMerge: null,
+    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], trace: null, compare: null, pendingMerge: null,
     section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null, activeElevationId: null,
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1, dimWizard: null, underFloor: false,
   });
@@ -527,6 +539,14 @@ export const useStore = create<State>((set, get) => {
     visibility: defaultVisibility(),
     hiddenIds: [],
     ghostIds: [],
+    compare: null,
+    setCompare: (compare) => set({ compare }),
+    restoreProject: (p) => {
+      const next = projectToDoc(p);
+      const doc = get().doc;
+      commit(next, { selection: null, compare: null, trace: null, activeFloorId: next.building.floors.some((f) => f.id === get().activeFloorId) ? get().activeFloorId : next.building.floors[0]?.id ?? '' });
+      if (get().doc === doc) set({ compare: null });
+    },
     showNotes: true,
     setShowNotes: (showNotes) => set({ showNotes }),
     placeNoteAt: (p, target) => {
@@ -599,7 +619,7 @@ export const useStore = create<State>((set, get) => {
       const r = solveDoc({ underlays: {}, elevations: {}, site: {}, ...doc });
       set({ doc: r.doc, drainIssues: r.issues, meta, ...resetView(r.doc) });
     },
-    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null, trace: null }),
+    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null, trace: null, compare: null }),
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
