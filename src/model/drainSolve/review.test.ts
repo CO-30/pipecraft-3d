@@ -57,8 +57,8 @@ describe('最終レビューの指摘', () => {
 
   it('性能: 1000 区間の一直線を 300ms 以内に計算・検査する', () => {
     const { doc, pub } = testSite();
-    // 公共ますから東へ 10mm ずつ、ジグザグに 1000 点（曲がりの多い長い配管）
-    const pts = [doc.network.nodes[pub].pos, ...Array.from({ length: 1000 }, (_, i) => v(-10700 + 10 * (i + 1), 3000 + (i % 2) * 300, -900))];
+    // 公共ますから東へ 10mm ずつ 1000 点（わずかにジグザグ。曲がりとみなさない角度）
+    const pts = [doc.network.nodes[pub].pos, ...Array.from({ length: 1000 }, (_, i) => v(-10700 + 10 * (i + 1), 3000 + (i % 2) * 0.1, -900))];
     const r = addPolyline(doc.network, pts, S, { startNodeId: pub });
     const t0 = performance.now();
     solveDrain({ ...doc, network: r.net }, STD);

@@ -36,7 +36,9 @@ describe('排水の自動計算（ストア）', () => {
     const port = portNodes(s().doc.network, pub.id)[0];
     s().drawPolyline([port.pos, v(-500, 3000, -1000)], { startNodeId: port.id });
     const end = Object.values(s().doc.network.nodes).find((n) => n.pos.x === -500)!;
-    expect(end.pos.z).toBeCloseTo(-1300 + 9500 * 0.022, 1);
+    // 公共ますの手前（1m）に自動でマスが置かれ、その流入に落差 2cm
+    expect(Object.values(s().doc.fixtures).filter((f) => f.params?.auto)).toHaveLength(1);
+    expect(end.pos.z).toBeCloseTo(-1300 + 9500 * 0.022 + 20, 1);
     expect(s().drainIssues.some((i) => i.kind === 'unverifiedRule')).toBe(true);
   });
 
@@ -130,5 +132,31 @@ describe('管径の固定を外す（ストア）', () => {
     expect(s().doc.network.segments[seg.id].diameterPin).toBe(true);
     s().unpinSegmentDiameter(seg.id);
     expect(s().doc.network.segments[seg.id].diameterPin).toBeUndefined();
+  });
+});
+
+describe('マスの自動配置（ストア）', () => {
+  beforeEach(() => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: -10000, y: 3000 });
+  });
+  it('消した自動のマスは置き直さない。動かした自動のマスは使う人のもの', () => {
+    const pub = Object.values(s().doc.fixtures)[0];
+    const port = portNodes(s().doc.network, pub.id)[0];
+    s().drawPolyline([port.pos, v(-4000, 3000, -1000), v(-4000, 500, -1000)], { startNodeId: port.id });
+    const auto = () => Object.values(s().doc.fixtures).filter((f) => f.params?.auto);
+    const bend = auto().find((f) => f.x === -4000 && f.y === 3000)!;
+    expect(bend).toBeDefined();
+    s().select({ kind: 'fixture', id: bend.id });
+    s().deleteSelected();
+    expect(s().doc.site?.manholeSuppressed).toEqual([{ x: -4000, y: 3000 }]);
+    expect(auto().some((f) => f.x === -4000 && f.y === 3000)).toBe(false);
+    const other = auto()[0];
+    s().beginDrag(); s().dragFixture(other.id, { x: other.x - 200, y: other.y }); s().endDrag();
+    expect(s().doc.fixtures[other.id].params?.auto).toBeUndefined();
   });
 });

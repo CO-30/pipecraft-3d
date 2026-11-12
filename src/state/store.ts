@@ -1105,7 +1105,13 @@ export const useStore = create<State>((set, get) => {
       const ids = movable(base.network, [s.a, s.b]);
       if (ids.length) liveSet({ ...get().doc, network: translateNodes(base.network, ids, d) });
     },
-    dragFixture: (id, p) => { if (get().dragBase) liveSet(moveFixture(get().doc, id, p)); },
+    dragFixture: (id, p) => {
+      if (!get().dragBase) return;
+      const f = get().doc.fixtures[id];
+      // 自動で置いたマスを動かしたら、そのマスは使う人のもの（自動で扱わない）
+      const params = f?.params?.auto && isManhole(f.type) ? { auto: undefined } : undefined;
+      liveSet(moveFixture(get().doc, id, p, undefined, params));
+    },
     dropNode: (nodeId, target) => {
       const { network: net, fixtures } = get().doc;
       if (!get().dragBase || !target || !net.nodes[nodeId]) return;
@@ -1312,7 +1318,12 @@ export const useStore = create<State>((set, get) => {
       let next: Doc | null = null;
       if (sel.kind === 'segment') next = withNet(deleteSegment(network, sel.id));
       else if (sel.kind === 'node') next = withNet(deleteFitting(network, sel.id));
-      else if (sel.kind === 'fixture') next = deleteFixture(get().doc, sel.id);
+      else if (sel.kind === 'fixture') {
+        const f = get().doc.fixtures[sel.id];
+        next = deleteFixture(get().doc, sel.id);
+        // 自動で置いたマスを消したら、そこには自動で置き直さない
+        if (f && isManhole(f.type) && f.params?.auto) next = { ...next, site: { ...(next.site ?? {}), manholeSuppressed: [...(next.site?.manholeSuppressed ?? []), { x: f.x, y: f.y }] } };
+      }
       else if (sel.kind === 'wall') next = withBld(B.deleteWall(building, sel.id));
       else if (sel.kind === 'opening') next = withBld(B.deleteOpening(building, sel.id));
       else if (sel.kind === 'room') next = withBld(B.deleteRoom(building, sel.id));
