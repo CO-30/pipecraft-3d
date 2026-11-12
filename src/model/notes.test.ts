@@ -2,8 +2,8 @@ import { describe, expect, test } from 'vitest';
 import { createBuildingFromDims } from './building';
 import type { Doc } from './doc';
 import { FIXTURE_CATALOG, moveFixture, placeFixture, deleteFixture } from './fixtures';
-import { addPolyline, deleteSegment, emptyNetwork, insertValve } from './network';
-import { addNote, buildingNotePoint, noteNumbers, notes3dZ, notesText, removeNote, removeNotesOnFloor, syncNotes, updateNote } from './notes';
+import { addPolyline, cutSegment, deleteSegment, emptyNetwork, insertValve } from './network';
+import { addNote, buildingNotePoint, detachNote, targetFloorId, noteNumbers, notes3dZ, notesText, removeNote, removeNotesOnFloor, syncNotes, updateNote } from './notes';
 import { projectSchema } from './schema';
 import { defaultEstimate } from './estimate';
 
@@ -36,11 +36,69 @@ describe('メモ', () => {
     const n = addNote(d, { floorId: f1(d), x: 1500, y: 0, z: 300, text: 'ここ', target: { kind: 'segment', id: segId } }, 1);
     d = n.doc;
     const net = insertValve(d.network, segId, v(500, 0, 300))!.net;
-    d = syncNotes({ ...d, network: net });
+    d = syncNotes({ ...d, network: net }, d);
     const t = d.notes![n.id].target!;
     expect(t.id).not.toBe(segId);
     expect(d.network.segments[t.id]).toBeDefined();
     expect(d.notes![n.id]).toMatchObject({ x: 1500, y: 0, z: 300 });
+  });
+
+  test('切断（隙間ができる）でも、高さが少し変わっても、近い新しい区間に付き直す', () => {
+    const r = addPolyline(emptyNetwork(), [v(0, 0, 300), v(2000, 0, 300)], W);
+    const segId = Object.keys(r.net.segments)[0];
+    let d: Doc = { ...base(), network: r.net };
+    const n = addNote(d, { floorId: f1(d), x: 1000, y: 0, z: 300, text: 'x', target: { kind: 'segment', id: segId } }, 1);
+    d = n.doc;
+    const cut = cutSegment(d.network, segId, v(1000, 0, 300));
+    expect(cut).toBeTruthy();
+    const after = syncNotes({ ...d, network: cut!.net }, d);
+    const t = after.notes![n.id].target!;
+    expect(after.network.segments[t.id]).toBeDefined();
+    // 高さが 30mm ずれた新しい区間でも付き直す
+    const moved = { ...d, network: insertValve(d.network, segId, v(500, 0, 300))!.net };
+    const shifted = { ...moved, network: { ...moved.network, nodes: Object.fromEntries(Object.entries(moved.network.nodes).map(([k, nd]) => [k, { ...nd, pos: { ...nd.pos, z: nd.pos.z - 30 } }])) } };
+    expect(shifted.network.segments[syncNotes(shifted, d).notes![n.id].target!.id]).toBeDefined();
+  });
+
+  test('付けた先の配管が前から無いメモは、後から描いた別の管には付かない', () => {
+    const r = addPolyline(emptyNetwork(), [v(0, 0, 300), v(2000, 0, 300)], W);
+    const segId = Object.keys(r.net.segments)[0];
+    let d: Doc = { ...base(), network: r.net };
+    const n = addNote(d, { floorId: f1(d), x: 1000, y: 0, z: 300, text: 'x', target: { kind: 'segment', id: segId } }, 1);
+    d = n.doc;
+    const gone = syncNotes({ ...d, network: deleteSegment(d.network, segId) }, d);
+    const hot = addPolyline(gone.network, [v(1000, -500, 300), v(1000, 500, 300)], { system: 'hotWater', diameter: 13 }).net;
+    const after = syncNotes({ ...gone, network: hot }, gone);
+    expect(after.notes![n.id].target!.id).toBe(segId);
+  });
+
+  test('配管・接続口に付けたメモの階は、その配管の階（3D で 2 階の管を選んでも 2 階のメモ）', () => {
+    let d = base();
+    const f2 = d.building.floors[1];
+    const r = addPolyline(emptyNetwork(), [v(0, 0, f2.elevation + 300), v(2000, 0, f2.elevation + 300)], W);
+    const nodes = Object.fromEntries(Object.entries(r.net.nodes).map(([k, nd]) => [k, { ...nd, floorId: f2.id }]));
+    d = { ...d, network: { ...r.net, nodes } };
+    const segId = Object.keys(r.net.segments)[0];
+    expect(targetFloorId(d, { kind: 'segment', id: segId })).toBe(f2.id);
+    const n = addNote(d, { floorId: f1(d), x: 1000, y: 0, z: f2.elevation + 300, text: 'x', target: { kind: 'segment', id: segId } }, 1);
+    expect(syncNotes(n.doc).notes![n.id].floorId).toBe(f2.id);
+  });
+
+  test('付けた先から外すと、床より下にあったメモは床下のメモになる', () => {
+    const r = addPolyline(emptyNetwork(), [v(0, 0, -400), v(2000, 0, -400)], W);
+    const segId = Object.keys(r.net.segments)[0];
+    let d: Doc = { ...base(), network: r.net };
+    const n = addNote(d, { floorId: f1(d), x: 1000, y: 0, z: -400, text: 'x', target: { kind: 'segment', id: segId } }, 1);
+    d = detachNote(n.doc, n.id, { x: 1100, y: 50 }, 2);
+    expect(d.notes![n.id]).toMatchObject({ x: 1100, y: 50, under: true });
+    expect(d.notes![n.id].target).toBeUndefined();
+    expect(d.notes![n.id].z).toBeUndefined();
+  });
+
+  test('本文は 1000 字（UTF-16）で切り、絵文字を半分に割らない', () => {
+    const t = 'あ'.repeat(999) + '😀';
+    const n = addNote(base(), { floorId: 'x', x: 0, y: 0, text: t }, 1);
+    expect(n.doc.notes![n.id].text).toBe('あ'.repeat(999));
   });
 
   test('配管を動かすと、付けたメモは配管の上の一番近い所へついてくる', () => {

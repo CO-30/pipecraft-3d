@@ -34,16 +34,24 @@ export const NOTE_MAX_TEXT = 1000;
 /** 付けていないメモの 3D の高さ（床から）。床下で置いたものは床の下 */
 const FREE_Z = 1200, UNDER_Z = -300;
 
+/** 1000 字（UTF-16 の長さ、保存形式と同じ数え方）で切る。絵文字などを半分に割らない */
+export function clipNoteText(t: string): string {
+  if (t.length <= NOTE_MAX_TEXT) return t;
+  const c = t.slice(0, NOTE_MAX_TEXT);
+  const last = c.charCodeAt(c.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? c.slice(0, -1) : c;
+}
+
 export function addNote(doc: Doc, n: NewNote, now = Date.now()): { doc: Doc; id: string } {
   const id = newId('m');
-  const note: Note = { ...n, text: n.text.slice(0, NOTE_MAX_TEXT), id, createdAt: now };
+  const note: Note = { ...n, text: clipNoteText(n.text), id, createdAt: now };
   return { doc: { ...doc, notes: { ...(doc.notes ?? {}), [id]: note } }, id };
 }
 
 export function updateNote(doc: Doc, id: string, patch: Partial<Pick<Note, 'text' | 'done' | 'x' | 'y' | 'target' | 'z' | 'under' | 'floorId'>>, now = Date.now()): Doc {
   const cur = doc.notes?.[id];
   if (!cur) return doc;
-  const next: Note = { ...cur, ...patch, ...(patch.text !== undefined ? { text: patch.text.slice(0, NOTE_MAX_TEXT) } : {}), updatedAt: now };
+  const next: Note = { ...cur, ...patch, ...(patch.text !== undefined ? { text: clipNoteText(patch.text) } : {}), updatedAt: now };
   if ('target' in patch && !patch.target) { delete next.target; delete next.z; }
   if (patch.done === false) delete next.done;
   return { ...doc, notes: { ...doc.notes, [id]: next } };
@@ -74,7 +82,6 @@ function closestOnSegment(a: Vec3, b: Vec3, p: Vec3): Vec3 {
   const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * d.x + (p.y - a.y) * d.y + (p.z - a.z) * d.z) / len2)) : 0;
   return { x: a.x + d.x * t, y: a.y + d.y * t, z: a.z + d.z * t };
 }
-const dist = (p: Vec3, q: Vec3) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z);
 
 /** メモを付ける位置（配管: 指定した点に一番近い管の上、器具: 器具の上、接続口: その点）。付けた先が無い・建物の部材なら null */
 export function noteAnchor(doc: Doc, target: NoteTarget, near?: Vec3): Vec3 | null {
@@ -113,30 +120,74 @@ export function buildingNotePoint(b: Building, t: NoteTarget): { x: number; y: n
 }
 
 const FOLLOW = new Set<NoteTargetKind>(['segment', 'fixture', 'node']);
+/** 分けた・切った区間へ付け直す範囲: 平面で 60mm（切断の隙間 50mm を含む）、高さは 300mm まで */
+const REATTACH_XY = 60, REATTACH_Z = 300;
+
+/** 付けた先の階（配管・接続口は点の階、器具は器具の階、建物の部材はその階）。分からなければ undefined */
+export function targetFloorId(doc: Doc, t: NoteTarget): string | undefined {
+  const { network: net, building: b } = doc;
+  switch (t.kind) {
+    case 'fixture': return doc.fixtures[t.id]?.floorId;
+    case 'node': { const n = net.nodes[t.id]; return n?.fixtureId ? doc.fixtures[n.fixtureId]?.floorId ?? n.floorId : n?.floorId; }
+    case 'segment': { const s = net.segments[t.id]; return s ? net.nodes[s.a]?.floorId ?? net.nodes[s.b]?.floorId : undefined; }
+    case 'wall': return b.walls[t.id]?.floorId;
+    case 'room': return b.rooms[t.id]?.floorId;
+    case 'corner': return b.corners[t.id]?.floorId;
+    case 'member': return b.members?.[t.id]?.floorId;
+    case 'opening': { const o = b.openings[t.id]; return o ? b.walls[o.wallId]?.floorId : undefined; }
+  }
+}
+
+/** 消えた区間の代わり: この編集で増えた同じ種類の区間のうち、メモに一番近いもの */
+function reattachSegment(doc: Doc, prev: Doc, oldId: string, here: Vec3): string | null {
+  const old = prev.network.segments[oldId];
+  if (!old) return null; // 前から無い（この編集で消えたのではない）
+  let best: { id: string; d: number } | null = null;
+  for (const s of Object.values(doc.network.segments)) {
+    if (prev.network.segments[s.id] || s.system !== old.system) continue;
+    const c = closestOnSegment(doc.network.nodes[s.a].pos, doc.network.nodes[s.b].pos, here);
+    const dxy = Math.hypot(c.x - here.x, c.y - here.y);
+    if (dxy > REATTACH_XY || Math.abs(c.z - here.z) > REATTACH_Z) continue;
+    if (!best || dxy < best.d) best = { id: s.id, d: dxy };
+  }
+  return best?.id ?? null;
+}
 
 /**
- * 付けた先へ位置をそろえる。区間が分かれて消えていたら、メモの位置を通る区間に付け直す。
+ * 付けた先へ位置・階をそろえる。prev（編集の前）を渡すと、この編集で分けた・切った区間に付け直す。
  * 付けた先が消えていたら最後の位置に残す。変わらなければ同じ Doc を返す。
  */
-export function syncNotes(doc: Doc): Doc {
+export function syncNotes(doc: Doc, prev?: Doc): Doc {
   if (!doc.notes) return doc;
   let changed: Record<string, Note> | null = null;
   for (const n of Object.values(doc.notes)) {
     if (!n.target || !FOLLOW.has(n.target.kind)) continue;
     let target = n.target;
     const here: Vec3 = { x: n.x, y: n.y, z: n.z ?? 0 };
-    if (target.kind === 'segment' && !doc.network.segments[target.id] && n.z !== undefined) {
-      const next = Object.values(doc.network.segments).find((s) => dist(closestOnSegment(doc.network.nodes[s.a].pos, doc.network.nodes[s.b].pos, here), here) < 1);
-      if (next) target = { kind: 'segment', id: next.id };
+    if (target.kind === 'segment' && !doc.network.segments[target.id] && prev && n.z !== undefined) {
+      const next = reattachSegment(doc, prev, target.id, here);
+      if (next) target = { kind: 'segment', id: next };
     }
     const p = noteAnchor(doc, target, here);
     if (!p) continue;
-    const floorId = target.kind === 'fixture' ? doc.fixtures[target.id].floorId : n.floorId;
+    const floorId = targetFloorId(doc, target) ?? n.floorId;
     if (target === n.target && Math.abs(p.x - n.x) < 1e-6 && Math.abs(p.y - n.y) < 1e-6 && n.z !== undefined && Math.abs(p.z - n.z) < 1e-6 && floorId === n.floorId) continue;
     changed ??= { ...doc.notes };
     changed[n.id] = { ...n, target, x: p.x, y: p.y, z: p.z, floorId };
   }
   return changed ? { ...doc, notes: changed } : doc;
+}
+
+/** 付けた先から外して動かす。床より下にあったメモは床下のメモにする */
+export function detachNote(doc: Doc, id: string, p: { x: number; y: number }, now = Date.now()): Doc {
+  const n = doc.notes?.[id];
+  if (!n) return doc;
+  const elev = floorById(doc.building, n.floorId)?.elevation ?? 0;
+  const under = n.z !== undefined ? n.z < elev : !!n.under;
+  const next = updateNote(doc, id, { x: Math.round(p.x), y: Math.round(p.y), target: undefined }, now);
+  const m: Note = { ...next.notes![id] };
+  if (under) m.under = true; else delete m.under;
+  return { ...next, notes: { ...next.notes, [id]: m } };
 }
 
 /** 3D に出す高さ（付けた先があればその高さ、無ければ階の床から） */

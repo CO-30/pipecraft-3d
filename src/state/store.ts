@@ -44,7 +44,7 @@ import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
 import { applyDetour, findHits, markPenetration, type DetourStyle } from '../model/obstacles';
 import { addFaceMember, addFaceStair, bumpFace, deleteMember, faceWallAt, MEMBER_LABEL, updateMember, type FaceRect, type Member, type MemberKind } from '../model/members';
-import { addNote, buildingNotePoint, noteAnchor, removeNote, removeNotesOnFloor, syncNotes, updateNote, type Note, type NoteTarget } from '../model/notes';
+import { addNote, buildingNotePoint, detachNote, noteAnchor, removeNote, removeNotesOnFloor, syncNotes, targetFloorId, updateNote, type Note, type NoteTarget } from '../model/notes';
 import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineLoop, straightenOutline, type FixedEnd, type OutlineLengthResult } from '../model/sketch';
 
 /** 床下に描く高さの初期値（床から mm） */
@@ -381,7 +381,7 @@ export const useStore = create<State>((set, get) => {
     // 排水: 平面ルート・属性・ピンから管底高を計算し直す（同じ履歴に入れる）
     if (next.network !== doc.network || next.fixtures !== doc.fixtures || next.building !== doc.building || next.site !== doc.site) {
       const r = solveDoc(next, doc);
-      next = syncNotes(r.doc);
+      next = syncNotes(r.doc, doc);
       set({ drainIssues: r.issues });
     }
     if (next.notes === doc.notes && next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations && next.site === doc.site) return false;
@@ -484,7 +484,7 @@ export const useStore = create<State>((set, get) => {
   };
   const withBld = (building: Building): Doc => ({ ...get().doc, building });
   /** ドラッグ中: 排水の高さをその場で計算し直して表示（履歴には入れない） */
-  const liveSet = (doc: Doc) => { const r = solveDoc(doc); set({ doc: syncNotes(r.doc), drainIssues: r.issues }); };
+  const liveSet = (doc: Doc) => { const r = solveDoc(doc); set({ doc: syncNotes(r.doc, get().dragBase ?? undefined), drainIssues: r.issues }); };
   /** before に無かった区間に、自動の管種を付ける */
   const autoMat = (net: Network, before: Network): Network =>
     assignAutoMaterials(net, get().doc.building, Object.keys(net.segments).filter((id) => !before.segments[id]));
@@ -535,7 +535,7 @@ export const useStore = create<State>((set, get) => {
         ? { ...p, z: (doc.network.nodes[doc.network.segments[target.id].a].pos.z + doc.network.nodes[doc.network.segments[target.id].b].pos.z) / 2 } : undefined;
       const at = target ? noteAnchor(doc, target, near) : null;
       const under = isUnderFloor(get());
-      const r = addNote(doc, { floorId: get().activeFloorId, x: at?.x ?? Math.round(p.x), y: at?.y ?? Math.round(p.y), ...(at ? { z: at.z } : {}), ...(under ? { under } : {}), text: '', ...(target ? { target } : {}) });
+      const r = addNote(doc, { floorId: (target && targetFloorId(doc, target)) ?? get().activeFloorId, x: at?.x ?? Math.round(p.x), y: at?.y ?? Math.round(p.y), ...(at ? { z: at.z } : {}), ...(under ? { under } : {}), text: '', ...(target ? { target } : {}) });
       commit(r.doc, { selection: { kind: 'note', id: r.id }, tool: 'select' });
     },
     addNoteFromSelection: () => {
@@ -545,13 +545,7 @@ export const useStore = create<State>((set, get) => {
       const at = noteAnchor(doc, target, sel.at);
       const bp = at ? null : buildingNotePoint(doc.building, target);
       if (!at && !bp) return;
-      const floorId = sel.kind === 'fixture' ? doc.fixtures[sel.id].floorId
-        : sel.kind === 'wall' ? doc.building.walls[sel.id].floorId
-        : sel.kind === 'room' ? doc.building.rooms[sel.id].floorId
-        : sel.kind === 'member' ? doc.building.members?.[sel.id]?.floorId ?? activeFloorId
-        : sel.kind === 'corner' ? doc.building.corners[sel.id].floorId
-        : sel.kind === 'opening' ? doc.building.walls[doc.building.openings[sel.id].wallId]?.floorId ?? activeFloorId
-        : activeFloorId;
+      const floorId = targetFloorId(doc, target) ?? activeFloorId;
       const p = at ?? bp!;
       const r = addNote(doc, { floorId, x: p.x, y: p.y, ...(at ? { z: at.z } : {}), ...(!at && isUnderFloor(get()) ? { under: true } : {}), text: '', target });
       commit(r.doc, { selection: { kind: 'note', id: r.id } });
@@ -563,12 +557,15 @@ export const useStore = create<State>((set, get) => {
     },
     moveNote: (id, p) => {
       if (!get().doc.notes?.[id]) return;
-      commit(updateNote(get().doc, id, { x: Math.round(p.x), y: Math.round(p.y), target: undefined }));
+      commit(detachNote(get().doc, id, p));
     },
     dragNote: (id, p) => {
       const base = get().dragBase;
       if (!base?.notes?.[id]) return;
-      set({ doc: updateNote(get().doc, id, { x: Math.round(p.x), y: Math.round(p.y), target: undefined }, base.notes[id].updatedAt) });
+      const b = base.notes[id];
+      // 元の場所に戻したら動かしていない（付けた先も外さない・履歴を増やさない）
+      if (Math.round(p.x) === Math.round(b.x) && Math.round(p.y) === Math.round(b.y)) { set({ doc: { ...get().doc, notes: base.notes } }); return; }
+      set({ doc: detachNote(get().doc, id, p, b.updatedAt) });
     },
     removeNote: (id) => {
       if (!get().doc.notes?.[id]) return;
@@ -593,7 +590,7 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc0 = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {}, ...(p.notes ? { notes: p.notes } : {}) };
+      const doc0 = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {}, ...(p.notes ? { notes: Object.fromEntries(Object.entries(p.notes).filter(([, n]) => p.building.floors.some((f) => f.id === n.floorId))) } : {}) };
       // 排水の高さは保存された値を使わず、計算し直す（保存された z は計算結果の写し）
       const r = solveDoc(doc0);
       set({ doc: r.doc, drainIssues: r.issues, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(r.doc) });
@@ -1247,7 +1244,7 @@ export const useStore = create<State>((set, get) => {
       const { dragBase, past } = get();
       if (!dragBase) return;
       // 終わりに排水を計算し直す（ドラッグ中は置かなかったマスもここで。壁・角を動かすと床下・建物の内外が変わる）
-      if (get().doc !== dragBase) { const r = solveDoc(get().doc, dragBase); set({ doc: syncNotes(r.doc), drainIssues: r.issues }); }
+      if (get().doc !== dragBase) { const r = solveDoc(get().doc, dragBase); set({ doc: syncNotes(r.doc, dragBase), drainIssues: r.issues }); }
       const doc = get().doc;
       const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site || dragBase.notes !== doc.notes;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}), ...(changed && lockedCount(doc.network) < lockedCount(dragBase.network) ? { notice: UNLOCK_NOTICE } : {}) });

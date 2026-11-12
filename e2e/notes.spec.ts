@@ -35,8 +35,13 @@ test.describe('メモ', () => {
     await useTool(page, 'note');
     await tap(page, await planToScreen(page, 2000, 2000), touch);
     await expect(page.getByTestId('note-editor')).toBeVisible();
+    await expect(page.getByTestId('note-text')).toBeFocused(); // 置いたらすぐ書ける
     await page.getByTestId('note-text').fill('梁を避けて下から回す');
-    await page.getByTestId('note-text').blur();
+    // 書いたまま図面の空いた所をタップしても本文は残る
+    await tap(page, await planToScreen(page, 3000, 5500), touch);
+    await page.locator(`[data-testid="note-row"]`).count(); // 描画を待つ
+    expect((await notes(page))[0]?.text).toBe('梁を避けて下から回す');
+    await page.evaluate(() => { const st = (window as any).__pc.getState(); st.select({ kind: 'note', id: Object.keys(st.doc.notes)[0] }); });
     const n1 = (await notes(page))[0];
     expect(n1).toMatchObject({ text: '梁を避けて下から回す', x: 2000, y: 2000 });
     await expect(page.locator(`[data-note="${n1.id}"]`).first()).toBeVisible();
@@ -92,6 +97,13 @@ test.describe('メモ', () => {
     await page.getByTestId('note-add-sel').click();
     const id = (await notes(page))[0].id;
     await page.getByTestId('sel-clear').click();
+
+    // メモの道具でなぞる（図面を動かす）だけなら置かない
+    await useTool(page, 'note');
+    const a = await planToScreen(page, 2000, 2000);
+    await stroke(page, [a, { x: a.x + 80, y: a.y + 40 }], touch);
+    expect(await notes(page)).toHaveLength(1);
+    await useTool(page, 'select');
 
     // ピンの丸は指す点の少し上
     const p = await planToScreen(page, 6000, 3000);

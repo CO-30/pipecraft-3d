@@ -76,6 +76,26 @@ describe('共通ストア: メモ', () => {
     expect(s().selection).toBeNull();
   });
 
+  it('ピンをつかんで元の場所に戻すと履歴を増やさない', () => {
+    s().placeNoteAt({ x: 1000, y: 1000 });
+    const id = notes()[0].id;
+    const past = s().past.length;
+    s().beginDrag();
+    s().dragNote(id, { x: 1500, y: 1000 });
+    s().dragNote(id, { x: 1000, y: 1000 });
+    s().endDrag();
+    expect(s().past.length).toBe(past);
+  });
+
+  it('読み込んだメモの階が無ければ捨てる', () => {
+    s().placeNoteAt({ x: 10, y: 20 });
+    const p = s().toProjectData()!;
+    const bad = { ...p, notes: { ...p.notes, z9: { ...Object.values(p.notes!)[0], id: 'z9', floorId: 'no-floor' } } };
+    s().openProject(bad);
+    expect(notes().map((n) => n.id)).not.toContain('z9');
+    expect(notes()).toHaveLength(1);
+  });
+
   it('階を消すとその階のメモも消える', () => {
     const f2 = s().doc.building.floors[1].id;
     s().setActiveFloor(f2);

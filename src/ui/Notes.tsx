@@ -22,11 +22,17 @@ export function NoteEditor({ id }: { id: string }) {
   const [base, setBase] = useState(note?.text ?? '');
   if ((note?.text ?? '') !== base) { setBase(note?.text ?? ''); setText(note?.text ?? ''); }
   const ref = useRef<HTMLTextAreaElement>(null);
+  // 欄が消えるとき（図面をタップして選択が変わった等。blur は起きない）にも書いた本文を保存する
+  const typed = useRef(note?.text ?? ''), saved = useRef(note?.text ?? '');
+  useEffect(() => { typed.current = note?.text ?? ''; saved.current = note?.text ?? ''; }, [note?.text]);
+  useEffect(() => () => {
+    if (typed.current !== saved.current && useStore.getState().doc.notes?.[id]) useStore.getState().updateNote(id, { text: typed.current });
+  }, [id]);
   // 置いた直後（本文が空）はすぐ書けるように
   useEffect(() => { if (note && !note.text) ref.current?.focus({ preventScroll: true }); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!note) return null;
   const st = useStore.getState();
-  const save = () => { if (text !== note.text) st.updateNote(id, { text }); };
+  const save = () => { saved.current = text; if (text !== note.text) st.updateNote(id, { text }); };
   const missing = noteTargetMissing(doc, note);
   const tl = note.target && !missing ? noteTargetLabel(doc, note.target) : null;
   const floor = floorById(doc.building, note.floorId)?.name ?? '';
@@ -35,7 +41,7 @@ export function NoteEditor({ id }: { id: string }) {
       <div className="ptitle"><span className={`note-badge ${note.done ? 'done' : ''}`}>{num}</span> メモ <span className="muted small">{floor}{tl ? `・${tl}に付けています` : ''}</span></div>
       {missing && <div className="warn small" data-testid="note-target-missing">付けた先は消えています（メモは最後の場所に残しています）</div>}
       <textarea ref={ref} data-testid="note-text" className="note-text" rows={4} maxLength={NOTE_MAX_TEXT} placeholder="現場への指示・確認すること（例: 梁を避けて下から回す）"
-        value={text} onChange={(e) => setText(e.target.value)} onBlur={save} />
+        value={text} onChange={(e) => { setText(e.target.value); typed.current = e.target.value; }} onBlur={save} />
       <div className="row">
         <label className="field inline"><input type="checkbox" data-testid="note-done" checked={!!note.done} onChange={(e) => { save(); st.updateNote(id, { done: e.target.checked }); }} /> 済（対応した）</label>
         {tl && note.target && <button data-testid="note-select-target" onClick={() => { save(); st.select({ kind: note.target!.kind, id: note.target!.id }); }}>付けた先を選ぶ</button>}
