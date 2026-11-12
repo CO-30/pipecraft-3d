@@ -5,6 +5,7 @@
  * - 金額: 行ごとに 数量×単価 を円未満四捨五入。諸経費（率 or 金額）、消費税 = floor(小計×税率)。
  */
 import { findHits, penetrationsOf } from './obstacles';
+import { findPipeClashes } from './clash';
 import { MEMBER_LABEL } from './members';
 import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
@@ -162,7 +163,7 @@ export type QuoteLine = {
 };
 
 export type Issue = {
-  kind: 'confirmFitting' | 'lengthDiff' | 'approx' | 'noPrice' | 'obstacle' | 'sleeve';
+  kind: 'confirmFitting' | 'lengthDiff' | 'approx' | 'noPrice' | 'obstacle' | 'sleeve' | 'clash';
   target: { kind: 'node' | 'segment' | 'price'; id: string };
   message: string;
 };
@@ -246,6 +247,11 @@ export function computeEstimate(doc: Doc): Estimate {
 
   // --- 梁・軒などとのぶつかり・貫通 ---
   for (const h of findHits(doc)) issues.push({ kind: 'obstacle', target: { kind: 'segment', id: h.segId }, message: `配管が${MEMBER_LABEL[h.kind]}にぶつかっています。区間を選んで避け方（下をくぐる・45°・貫通）を選んでください` });
+  // --- 配管どうしの干渉 ---
+  for (const c of findPipeClashes(doc)) {
+    const A = net.segments[c.segA], B = net.segments[c.segB];
+    issues.push({ kind: 'clash', target: { kind: 'segment', id: c.segA }, message: `${SYSTEM_LABEL[A.system]}φ${A.diameter} と ${SYSTEM_LABEL[B.system]}φ${B.diameter} がぶつかっています（重なり ${Math.round(c.overlap)}mm）。高さかルートを変えてください` });
+  }
   for (const p of penetrationsOf(doc)) issues.push({ kind: 'sleeve', target: { kind: 'segment', id: p.segId }, message: `${MEMBER_LABEL[p.kind]}を貫通（スリーブ）: 構造の確認が必要です。スリーブの部材・単価は「その他」に入れてください` });
 
   // --- 部品判定（ノードごと） ---
