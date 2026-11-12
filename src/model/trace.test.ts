@@ -3,7 +3,7 @@ import { createBuildingFromDims } from './building';
 import type { Doc } from './doc';
 import { placeFixture, portNodes } from './fixtures';
 import { addPolyline, emptyNetwork, insertValve, type Network } from './network';
-import { traceSystem } from './trace';
+import { traceFrom, traceSeed, traceSystem } from './trace';
 
 const v = (x: number, y: number, z = 0) => ({ x, y, z });
 const W = { system: 'water' as const, diameter: 20 };
@@ -84,5 +84,37 @@ describe('系統をたどる', () => {
 
   test('無い区間は null', () => {
     expect(traceSystem(base(), 'nope')).toBeNull();
+  });
+
+  test('たどり始めた管を分けても（バルブ・分岐）、残った端からたどり続ける', () => {
+    const r0 = addPolyline(emptyNetwork(), [v(0, 0), v(2000, 0), v(2000, 2000)], W);
+    const seed = traceSeed(withNet(base(), r0.net), r0.segmentIds[0])!;
+    const net = insertValve(r0.net, r0.segmentIds[0], v(700, 0))!.net;
+    expect(net.segments[r0.segmentIds[0]]).toBeUndefined();
+    const t = traceFrom(withNet(base(), net), seed)!;
+    expect(t.segmentIds).toHaveLength(3);
+    expect(t.valveCount).toBe(1);
+  });
+
+  test('マス（1 つの点に汚水・雑排水）は通り抜け、通気は入れない。雨水だけなら雨水', () => {
+    let doc = base();
+    const f = doc.building.floors[0].id;
+    let r = placeFixture(doc, f, 'manholeSewage', { x: 0, y: -2000 }); doc = r.doc; const mh = r.fixtureId!;
+    const p = doc.network.nodes[port(doc, mh, 'pipe')];
+    let net = addPolyline(doc.network, [v(-3000, -2000, p.pos.z), p.pos], { system: 'drain', diameter: 75 }, { endNodeId: p.id }).net;
+    net = addPolyline(net, [p.pos, v(3000, -2000, p.pos.z - 50)], { system: 'sewage', diameter: 100 }, { startNodeId: p.id }).net;
+    const vent = addPolyline(net, [p.pos, v(0, -2000, 3000)], { system: 'vent', diameter: 50 }, { startNodeId: p.id });
+    doc = withNet(doc, vent.net);
+    const first = Object.values(doc.network.segments).find((s) => s.system === 'drain')!;
+    const t = traceSystem(doc, first.id)!;
+    expect(t.segmentIds).toHaveLength(2);
+    expect(t.counts).toEqual({ fixtures: 0, manholes: 1, equipment: 0 });
+    expect(t.label).toBe('排水（汚水・雑排水）');
+
+    let rd = base();
+    r = placeFixture(rd, rd.building.floors[0].id, 'manholeRain', { x: 0, y: 0 }); rd = r.doc;
+    const q = rd.network.nodes[port(rd, r.fixtureId!, 'pipe')];
+    const rain = addPolyline(rd.network, [v(-2000, 0, q.pos.z), q.pos], { system: 'drain', diameter: 100 }, { endNodeId: q.id });
+    expect(traceSystem(withNet(rd, rain.net), rain.segmentIds[0])!.label).toBe('雨水');
   });
 });

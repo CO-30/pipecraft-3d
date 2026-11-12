@@ -160,7 +160,7 @@ export function PropertyPanel() {
           }}>枝管ごと削除</button>
         </div>
         <DetachEnds segId={seg.id} />
-        <button data-testid="trace-system" onClick={() => st.setTrace(seg.id)} title="同じ系統につながる管・器具をまとめて強調し、長さ・器具の数を出します">🔗 この系統をたどる</button>
+        <button data-testid="trace-system" aria-label="この系統をたどる" onClick={() => st.setTrace(seg.id)} title="同じ系統につながる管・器具をまとめて強調し、長さ・器具の数を出します">🔗 この系統をたどる</button>
         <div className="subhead">つながった配管全体（{run.segmentIds.length}区間・{Math.round(runLen)}mm）</div>
         <div className="row">
           <button onClick={() => st.setRunHeightDelta(seg.id, -100)}>高さ−100</button>
@@ -960,7 +960,7 @@ export function SelectionBar() {
   );
 }
 
-const familyLabel = (f: SystemFamily) => (f === 'drain' ? '排水（汚水・雑排水）' : systemLabel(f));
+const familyLabel = (f: SystemFamily) => (f === 'drain' ? '排水' : systemLabel(f));
 
 /** 器具につながる系統ごとの「たどる」ボタン */
 function TraceButtons({ fixtureId }: { fixtureId: string }) {
@@ -970,22 +970,29 @@ function TraceButtons({ fixtureId }: { fixtureId: string }) {
   if (!seen.size) return null;
   return (
     <div className="row">{[...seen].map(([fam, segId]) => (
-      <button key={fam} data-testid={`trace-${fam}`} onClick={() => useStore.getState().setTrace(segId)}>🔗 {familyLabel(fam)}をたどる</button>
+      <button key={fam} data-testid={`trace-${fam}`} aria-label={`${familyLabel(fam)}の系統をたどる`} onClick={() => useStore.getState().setTrace(segId)}>🔗 {familyLabel(fam)}をたどる</button>
     ))}</div>
   );
 }
 
-/** 系統を強調しているときの帯: 系統の名前・管の長さ（口径別）・器具とバルブの数 */
+/** 系統を強調しているときの帯: 系統の名前・管の長さ（口径別）・器具・マス・設備・バルブの数 */
 export function TraceBar() {
   const t = useTrace();
-  if (!t) return null;
+  const inElevation = useStore((s) => !!s.activeElevationId);
+  if (!t || inElevation) return null;
   const m = (mm: number) => `${(mm / 1000).toFixed(1)}m`;
   const dias = t.byDiameter.map((d) => `φ${d.diameter} ${m(d.length)}`).join('・');
+  const c = t.counts;
+  const parts = [c.fixtures ? `器具 ${c.fixtures}` : '', c.manholes ? `マス ${c.manholes}` : '', c.equipment ? `メーター・ヘッダー等 ${c.equipment}` : '', t.valveCount ? `バルブ ${t.valveCount}` : ''].filter(Boolean);
   return (
-    <div className="sel-bar trace-bar" data-testid="trace-bar">
+    <div className="sel-bar trace-bar" data-testid="trace-bar" role="status" aria-live="polite">
       <i className="sys-dot" style={{ background: systemColor(t.family) }} />
-      <span title={dias}>系統: <b>{familyLabel(t.family)}</b> — 管 <b data-testid="trace-length">{m(t.totalLength)}</b>{t.byDiameter.length > 1 ? `（${dias}）` : ''}・器具 <b data-testid="trace-fixtures">{t.fixtureCount}</b>{t.valveCount ? `・バルブ ${t.valveCount}` : ''}</span>
-      <button data-testid="trace-clear" onClick={() => useStore.getState().setTrace(null)}>✕ 強調をやめる</button>
+      <span title={`長さは実測があれば実測（余長の割増は入れていません）。${dias}`}>
+        系統: <b data-testid="trace-label">{t.label}</b> — 管 <b data-testid="trace-length">{m(t.totalLength)}</b>
+        {t.byDiameter.length > 1 && <span className="trace-dias">（{dias}）</span>}
+        {parts.length > 0 && <>・<span data-testid="trace-counts">{parts.join('・')}</span></>}
+      </span>
+      <button data-testid="trace-clear" aria-label="系統の強調をやめる" onClick={() => useStore.getState().setTrace(null)}>✕ 強調をやめる</button>
     </div>
   );
 }

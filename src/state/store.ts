@@ -2,6 +2,7 @@
  * 共通ストア。2D/3D の両ビューはここだけを読み書きする（データの二重管理なし）。
  * 建物と配管は1つの Doc として、1本の Undo/Redo 履歴で管理する。
  */
+import { traceSeed, type TraceSeed } from '../model/trace';
 import { create } from 'zustand';
 import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
@@ -158,8 +159,8 @@ type State = {
   /** 個別に非表示/半透明にした要素ID */
   hiddenIds: string[];
   ghostIds: string[];
-  /** 系統をたどって強調している出発の区間（画面だけの状態。図面・元に戻すには入れない） */
-  trace: string | null;
+  /** 系統をたどって強調している出発の手がかり（画面だけの状態。図面・元に戻すには入れない） */
+  trace: TraceSeed | null;
   setTrace(segId: string | null): void;
   dragBase: Doc | null;
   revision: number;
@@ -513,7 +514,7 @@ export const useStore = create<State>((set, get) => {
     hiddenIds: [],
     ghostIds: [],
     trace: null,
-    setTrace: (trace) => set({ trace }),
+    setTrace: (segId) => set({ trace: segId ? traceSeed(get().doc, segId) : null }),
     dragBase: null,
     revision: 0,
     pendingMerge: null,

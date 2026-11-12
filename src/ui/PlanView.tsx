@@ -694,7 +694,8 @@ export function PlanView() {
         const here = segHere(id);
         const selected = isSel('segment', id);
         return (
-          <g key={'r' + id} data-riser={id} opacity={here ? 1 : 0.2} pointerEvents="none">
+          <g key={'r' + id} data-riser={id} data-trace={trace?.segs.has(id) ? '1' : undefined} opacity={!here ? 0.2 : trace && !trace.segs.has(id) ? 0.3 : 1} pointerEvents="none">
+            {trace?.segs.has(id) && <circle cx={p.x} cy={p.y} r={16} fill="none" stroke={TRACE_COLOR} strokeWidth={6} opacity={0.5} />}
             <circle cx={p.x} cy={p.y} r={12} fill="none" stroke={selected ? SELECT_COLOR : systemColor(s.system)} strokeWidth={3} />
             <text x={p.x + 14} y={p.y - 10} fontSize={10} fill="#334155">立管</text>
           </g>

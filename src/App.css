@@ -293,7 +293,9 @@ header .lbl { margin-left: 2px; }
 .trace-bar { background: #f5f3ff; border-color: #c4b5fd; }
 .trace-bar > span { white-space: normal; line-height: 1.4; }
 /* 図の下に浮かべる（パネルを下へ送っても見える。左上の案内と重ならない） */
-.views > .trace-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; width: auto; z-index: 5; box-shadow: 0 2px 8px rgba(15,23,42,0.15); }
+.views > .trace-bar { position: absolute; left: 8px; right: 8px; bottom: 24px; width: auto; z-index: 5; box-shadow: 0 2px 8px rgba(15,23,42,0.15); pointer-events: none; }
+.views > .trace-bar button { pointer-events: auto; }
+
 .vis-presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .vis-presets button { padding: 0 4px; font-size: 13px; }
 .vis-details summary { cursor: pointer; font-size: 13px; color: #475569; padding: 6px 0; }

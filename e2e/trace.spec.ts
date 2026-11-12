@@ -38,7 +38,7 @@ test.describe('系統をたどる', () => {
     const bar = page.getByTestId('trace-bar');
     await expect(bar).toBeInViewport(); // パネルを下へ送っていても見える
     await expect(bar).toContainText('給水');
-    await expect(page.getByTestId('trace-fixtures')).toHaveText('1');
+    await expect(page.getByTestId('trace-counts')).toHaveText('器具 1');
     const len = Number((await page.getByTestId('trace-length').textContent())!.replace('m', ''));
     expect(len).toBeGreaterThan(5.0);
     for (const id of s.water) await expect(page.locator(`[data-seg="${id}"]`)).toHaveAttribute('data-trace', '1');
@@ -65,13 +65,23 @@ test.describe('系統をたどる', () => {
     expect(await trace(page)).toBeNull();
   });
 
-  test('たどり始めた管を消すと強調も消える', async ({ page }) => {
+  test('たどり始めた管にバルブを入れても強調は続く。消すと消え、工事を閉じても消える', async ({ page }) => {
     await createProject(page, '系統2');
     const s = site();
     await page.evaluate((x) => { const st = (window as any).__pc.getState(); st.newDoc(x, st.meta); }, s.doc);
+    await page.evaluate((id) => { const st = (window as any).__pc.getState(); st.setTrace(id); st.select({ kind: 'segment', id }); }, s.water[0]);
+    await page.getByTestId('add-valve').click();
+    await expect(page.getByTestId('trace-bar')).toContainText('給水');
+    await expect(page.getByTestId('trace-counts')).toContainText('バルブ 1');
+
     await page.evaluate((id) => { const st = (window as any).__pc.getState(); st.setTrace(id); }, s.hot);
     await expect(page.getByTestId('trace-bar')).toContainText('給湯');
     await page.evaluate((id) => { const st = (window as any).__pc.getState(); st.select({ kind: 'segment', id }); st.deleteSelected(); }, s.hot);
     await expect(page.getByTestId('trace-bar')).toHaveCount(0);
+
+    await page.evaluate((id) => (window as any).__pc.getState().setTrace(id), s.water[1]);
+    await expect(page.getByTestId('trace-bar')).toBeVisible();
+    await page.evaluate(() => (window as any).__pc.getState().closeProject());
+    expect(await trace(page)).toBeNull();
   });
 });
