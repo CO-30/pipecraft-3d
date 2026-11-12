@@ -41,6 +41,8 @@ export function feedbackContext(): Record<string, unknown> {
 }
 
 let started = false;
+/** 部品が届く前の記録（起動直後の「画面: ホーム」など）。届いたら書き出す */
+const early: { kind: 'log' | 'error'; text: string }[] = [];
 /** 部品が読み込まれていれば初期化する（何度呼んでもよい） */
 export function initFeedback(): FeedbackWidgetApi | null {
   const fw = feedbackWidget();
@@ -48,10 +50,16 @@ export function initFeedback(): FeedbackWidgetApi | null {
   if (!started) {
     started = true;
     fw.init({ app: FEEDBACK_APP, version: typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中', endpoint: FEEDBACK_URL, getContext: feedbackContext });
+    for (const e of early.splice(0)) { try { if (e.kind === 'log') fw.log(e.text); else fw.logError(e.text); } catch { /* 記録できなくても止めない */ } }
   }
   return fw;
 }
+function record(kind: 'log' | 'error', text: string) {
+  if (!started) { if (early.length < 20) early.push({ kind, text }); return; }
+  try { const fw = feedbackWidget(); if (kind === 'log') fw?.log(text); else fw?.logError(text); } catch { /* 記録できなくてもアプリは止めない */ }
+}
 
+const LOAD_TIMEOUT_MS = 15000;
 let loading: Promise<FeedbackWidgetApi | null> | null = null;
 /** 部品を読み込んで初期化する。読み込めない（電波が無い）ときは null */
 export function loadFeedback(): Promise<FeedbackWidgetApi | null> {
@@ -61,23 +69,23 @@ export function loadFeedback(): Promise<FeedbackWidgetApi | null> {
     const s = document.createElement('script');
     s.src = FEEDBACK_SCRIPT;
     s.async = true;
-    s.onload = () => resolve(initFeedback());
-    s.onerror = () => { loading = null; s.remove(); resolve(null); }; // 次に開いたときにもう一度試す
+    const fail = () => { clearTimeout(timer); loading = null; s.remove(); resolve(null); }; // 次に開いたときにもう一度試す
+    // 電波が弱い・つながったまま返事が無いときも、いつまでも空欄にしない
+    const timer = setTimeout(fail, LOAD_TIMEOUT_MS);
+    s.onload = () => { clearTimeout(timer); resolve(initFeedback()); };
+    s.onerror = fail;
     document.head.appendChild(s);
   });
   return loading;
 }
 
 /** 画面の切り替えなどを記録（部品が無ければ何もしない） */
-export function fbLog(a: string): void {
-  try { if (started) feedbackWidget()?.log(a); } catch { /* 記録できなくてもアプリは止めない */ }
-}
+export function fbLog(a: string): void { record('log', a); }
 
 /**
  * 画面に出したエラーを記録。「：」「:」「（」より前の文だけ（後ろにファイル名やサーバーの文言が入ることがあるため）
  */
 export function fbError(message: string): void {
   const t = String(message || '').split(/[:：（(\n]/)[0].trim().slice(0, 40);
-  if (!t) return;
-  try { if (started) feedbackWidget()?.logError('表示: ' + t); } catch { /* 同上 */ }
+  if (t) record('error', '表示: ' + t);
 }

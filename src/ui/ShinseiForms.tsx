@@ -151,7 +151,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
               <label key={f.id} className="field" title={f.hint}>
                 {f.label}{f.unverified ? <span className="badge warn" title="実例から取った値です。自治体に確認してください">要確認</span> : null}
                 {f.kind === 'choice'
-                  ? <select data-testid={`app-${f.id}`} value={values[f.id] ?? ''} onChange={(e) => setValue(f.id, e.target.value)}>
+                  ? <select data-testid={`app-${f.id}`} data-fb-skip value={values[f.id] ?? ''} onChange={(e) => setValue(f.id, e.target.value)}>
                       <option value="">（未選択）</option>
                       {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>

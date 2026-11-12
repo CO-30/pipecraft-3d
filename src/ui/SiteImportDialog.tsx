@@ -81,7 +81,7 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
         </div>
         {places && places.length === 0 && <p className="muted">見つかりませんでした。番地まで入れるか、緯度・経度で指定してください。</p>}
         {places && places.length > 1 && !place && (
-          <ul className="plist">{places.map((p, i) => <li key={i}><button className="pmain" data-testid="site-place" onClick={() => void choose(p)}>{p.title}</button></li>)}</ul>
+          <ul className="plist">{places.map((p, i) => <li key={i}><button className="pmain" data-testid="site-place" data-fb="住所の候補を選ぶ" onClick={() => void choose(p)}>{p.title}</button></li>)}</ul>
         )}
         {place && (
           <>

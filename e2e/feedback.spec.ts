@@ -20,6 +20,22 @@ async function intercept(page: Page) {
   return posts;
 }
 
+/** 画面の中で、目印の文字が見えるボタン・リンク・選択肢・チェックの名前に、固定の記録名か「記録しない」印があるか */
+async function unprotected(page: Page, mark: string) {
+  return page.evaluate((m) => {
+    const bad: string[] = [];
+    for (const el of Array.from(document.querySelectorAll('button,a,[role=button],[role=tab],summary,label,select'))) {
+      const text = (el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '');
+      if (!text.includes(m)) continue;
+      if (el.closest('[data-fb-skip]')) continue;
+      const own = el.matches('label') ? el.querySelector('input,select') : el;
+      if (own?.getAttribute('data-fb') || el.getAttribute('data-fb')) continue;
+      bad.push(el.outerHTML.slice(0, 120));
+    }
+    return bad;
+  }, mark);
+}
+
 test.describe('要望欄', () => {
   test('入力欄に目印を入れて操作してから送っても、送信内容に目印・金額が入らない', async ({ page }) => {
     const posts = await intercept(page);
@@ -40,8 +56,10 @@ test.describe('要望欄', () => {
     await page.keyboard.press('Escape');
     await page.getByTestId('back-home').click();
     await page.getByTestId('search').fill(MARK);
+    expect(await unprotected(page, MARK)).toEqual([]);
     await page.getByTestId('project-item').first().locator('.pmain').click();
     await expect(page.getByTestId('project-name')).toContainText(MARK);
+    expect(await unprotected(page, MARK)).toEqual([]);
 
     // 作業画面の「？」から送る（返信先は空・本文は目印なし）
     await page.getByTestId('open-help-editor').click();
@@ -60,6 +78,7 @@ test.describe('要望欄', () => {
     expect(p.context.画面).toBe('作業');
     const acts = p.log.map((l: any) => l.a);
     expect(acts).toContain('押した: 工事を開く');
+    expect(acts).toContain('画面: ホーム'); // 部品が届く前の記録も残る
     expect(acts).toContain('画面: 作業');
     expect(acts).toContain('画面: 積算');
     const all = JSON.stringify(p);
