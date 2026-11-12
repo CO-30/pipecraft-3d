@@ -22,7 +22,10 @@ export function stampAsBuilt(sheet: Sheet, dateText: string): { collided: boolea
   const edges = (x: number, y: number, ww: number, hh: number) => segs.push({ x1: x, y1: y, x2: x + ww, y2: y }, { x1: x + ww, y1: y, x2: x + ww, y2: y + hh }, { x1: x, y1: y + hh, x2: x + ww, y2: y + hh }, { x1: x, y1: y, x2: x, y2: y + hh });
   for (const o of sheet.ops) {
     if (o.t === 'text') { if (o.s.trim()) hard.push(...textRects(o, 1.2)); }
-    else if (o.t === 'image') hard.push({ x1: o.x, y1: o.y, x2: o.x + o.w, y2: o.y + o.h });
+    else if ((o as { t: string }).t === 'image') { // 画像命令（見取図の地図。#58）。型が無いブランチでも動くように
+      const im = o as unknown as { x: number; y: number; w: number; h: number };
+      hard.push({ x1: im.x, y1: im.y, x2: im.x + im.w, y2: im.y + im.h });
+    }
     else if (o.t === 'line') segs.push(o);
     else if (o.t === 'rect') { if (!(o.w > W * 0.8 && o.h > H * 0.8)) edges(o.x, o.y, o.w, o.h); }
     else if (o.t === 'circle') edges(o.cx - o.r, o.cy - o.r, o.r * 2, o.r * 2);

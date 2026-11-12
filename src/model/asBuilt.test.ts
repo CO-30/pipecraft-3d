@@ -28,7 +28,7 @@ describe('竣工の設定', () => {
 });
 
 describe('asBuiltTitle', () => {
-  test('図の種類の前に「竣工」'), () => {
+  test('図の種類の前に「竣工」', () => {
     expect(asBuiltTitle('排水設備 縦断図')).toBe('排水設備 竣工縦断図');
     expect(asBuiltTitle('給水装置 立面図')).toBe('給水装置 竣工立面図');
     expect(asBuiltTitle('立面図（展開図）')).toBe('竣工立面図（展開図）');
