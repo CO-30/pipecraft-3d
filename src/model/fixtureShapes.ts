@@ -102,21 +102,22 @@ export function fixtureParts(t: FixtureType, w: number, d: number, h: number): P
         C(0, cy, h * 0.45, w * 0.45, h * 0.1, 'ceramic', 'z', ry), // 便器の縁
         C(0, cy, h * 0.505, w * 0.45, h * 0.01, 'plastic', 'z', ry), // 便座
         C(0, cy - ry * 0.08, h * 0.512, w * 0.27, h * 0.006, 'basin', 'z', ry * 0.6), // 水
-        B(0, D - td / 2, h * 0.725, w * 0.9, td, h * 0.55, 'ceramic'), // タンク
-        B(0, D - td / 2, h - 12, w * 0.92, td, 24, 'plastic'), // タンクのふた
+        B(0, D - td / 2, (h * 0.4 + h - 24) / 2, w * 0.9, td - 6, h * 0.6 - 24, 'ceramic'), // タンク（便器の後ろに載る）
+        B(0, D - td / 2, h - 12, w * 0.92, td, 24, 'plastic'), // タンクのふた（少し張り出す）
+        B(0, D - td - 15, h * 0.45, w * 0.5, 36, h * 0.06, 'ceramic'), // 便器とタンクのつなぎ
       ];
     }
     case 'washbasin':
       return [
         B(0, 0, (h - 40) / 2, w, d, h - 40, 'cabinet'), B(0, 0, h - 20, w, d, 40, 'counter'),
-        C(0, -d * 0.05, h - 1, w * 0.3, 2, 'basin', 'z', d * 0.3),
+        C(0, -d * 0.05, h + 1, w * 0.3, 2, 'basin', 'z', d * 0.3),
         C(0, D - 60, h + 120, 16, 240, 'metal'), C(0, D - 60 - 70, h + 225, 10, 140, 'metal', 'y'), S(0, D - 60, h + 250, 16, 'metal'),
       ];
     case 'kitchen': {
       const s = sinkOf(w, d), sx = stoveX(w);
       return [
         B(0, 0, (h - 40) / 2, w, d, h - 40, 'cabinet'), B(0, 0, h - 20, w, d, 40, 'counter'),
-        B(s.x, s.cy, h - 1, s.w, s.d, 2, 'basin'),
+        B(s.x, s.cy, h + 1, s.w, s.d, 2, 'basin'),
         C(s.x, D - 70, h + 140, 18, 280, 'metal'), C(s.x, D - 70 - 90, h + 265, 12, 180, 'metal', 'y'),
         B(sx, 0, h + 4, 600, d * 0.8, 8, 'dark'),
         C(sx - 150, -d * 0.12, h + 11, 70, 6, 'metal'), C(sx + 150, -d * 0.12, h + 11, 70, 6, 'metal'), C(sx, d * 0.2, h + 11, 55, 6, 'metal'),
@@ -125,7 +126,7 @@ export function fixtureParts(t: FixtureType, w: number, d: number, h: number): P
     case 'bathtub': {
       const t2 = Math.min(80, d * 0.12);
       return [
-        B(0, 0, 30, w, d, 60, 'ceramic'),
+        B(0, 0, 30, w - t2 * 2, d - t2 * 2, 60, 'ceramic'),
         B(0, -D + t2 / 2, h / 2, w, t2, h, 'ceramic'), B(0, D - t2 / 2, h / 2, w, t2, h, 'ceramic'),
         B(-W + t2 / 2, 0, h / 2, t2, d - t2 * 2, h, 'ceramic'), B(W - t2 / 2, 0, h / 2, t2, d - t2 * 2, h, 'ceramic'),
         C(-W + t2 + 80, 0, 61, 30, 2, 'metal'),
@@ -147,25 +148,26 @@ export function fixtureParts(t: FixtureType, w: number, d: number, h: number): P
       ];
     case 'waterHeater':
       return [
-        B(0, 0, h / 2, w, d, h, 'plastic'),
+        B(0, 2, h / 2, w, d - 4, h, 'plastic'),
         B(0, -D + 3, h * 0.55, w * 0.8, 6, h * 0.5, 'counter'),
         B(0, -D + 5, h * 0.88, w * 0.5, 10, h * 0.08, 'dark'),
       ];
     case 'waterMeter':
       return [
-        C(0, 0, h * 0.45, Math.min(d * 0.35, h * 0.4), w, 'metal', 'x'),
+        C(0, 0, h * 0.5, Math.min(d * 0.35, h * 0.4), w, 'metal', 'x'), // 胴（接続口の高さ）
         C(0, 0, h * 0.8, Math.min(55, d * 0.3), h * 0.3, 'glass'),
       ];
     case 'pump':
-      return [B(0, 0, 30, w, d, 60, 'concrete'), C(0, 0, h * 0.3, w * 0.35, h * 0.35, 'metal'), C(0, 0, h * 0.72, w * 0.28, h * 0.5, 'plastic')];
+      return [B(0, 0, 30, w, d, 60, 'concrete'), C(0, 0, h * 0.3, w * 0.35, h * 0.35, 'metal'), C(0, 0, h * 0.72, w * 0.28, h * 0.5, 'plastic'),
+        C(-(W - w * 0.15), 0, h * 0.3, Math.min(30, h * 0.1), w * 0.3, 'metal', 'x'), C(W - w * 0.15, 0, h * 0.3, Math.min(30, h * 0.1), w * 0.3, 'metal', 'x')]; // 吸込・吐出の口
     case 'panel':
-      return [B(0, 0, h / 2, w, d, h, 'plastic'), B(0, -D + 5, h / 2, w * 0.9, 10, h * 0.9, 'counter')];
+      return [B(0, 2, h / 2, w, d - 4, h, 'plastic'), B(0, -D + 5, h / 2, w * 0.9, 10, h * 0.9, 'counter')];
     case 'outlet':
-      return [B(0, 0, h / 2, w, d, h, 'plastic'), B(-12, -D + 1, h * 0.6, 6, 2, 18, 'dark'), B(12, -D + 1, h * 0.6, 6, 2, 18, 'dark')];
+      return [B(0, 1, h / 2, w, d - 2, h, 'plastic'), B(-12, -D + 1, h * 0.6, 6, 2, 18, 'dark'), B(12, -D + 1, h * 0.6, 6, 2, 18, 'dark')];
     case 'light':
       return [C(0, 0, h * 0.8, w * 0.3, h * 0.4, 'counter'), C(0, 0, h * 0.3, W, h * 0.6, 'ceramic')]; // 台座・白いかさ
     case 'aircon':
-      return [B(0, 0, h / 2, w, d, h, 'plastic'), B(0, -D + 4, h * 0.2, w * 0.85, 8, h * 0.12, 'dark')];
+      return [B(0, 2, h / 2, w, d - 4, h, 'plastic'), B(0, -D + 4, h * 0.2, w * 0.85, 8, h * 0.12, 'dark')];
     case 'faucet':
       return [
         C(0, D - 10, h / 2, Math.min(W, h / 2 - 1), 20, 'metal', 'y'),
@@ -175,9 +177,10 @@ export function fixtureParts(t: FixtureType, w: number, d: number, h: number): P
       ];
     case 'mixFaucet':
       return [
-        C(0, D - 40, h * 0.6, 25, w - 40, 'metal', 'x'),
-        C(-(W - 30), D - 40, h * 0.6, 30, 40, 'metal', 'x'), C(W - 30, D - 40, h * 0.6, 30, 40, 'metal', 'x'),
-        C(0, -30, h * 0.45, 10, d - 60, 'metal', 'y'),
+        C(0, D - 40, h * 0.5, 25, w - 40, 'metal', 'x'),
+        C(-(W - 30), D - 40, h * 0.5, 30, 40, 'metal', 'x'), C(W - 30, D - 40, h * 0.5, 30, 40, 'metal', 'x'),
+        C(-(W - 50), D - 12, h * 0.5, 12, 24, 'metal', 'y'), C(W - 50, D - 12, h * 0.5, 12, 24, 'metal', 'y'), // 壁への脚（接続口）
+        C(0, -30, h * 0.4, 10, d - 60, 'metal', 'y'),
         C(0, -D + 12, h * 0.25, 8, h * 0.3, 'metal'),
       ];
     case 'outdoorFaucet':

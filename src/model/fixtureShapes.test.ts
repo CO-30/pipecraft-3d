@@ -65,6 +65,39 @@ describe('器具の 3D の形', () => {
       }
     });
   }
+  test('どの器具も、部品どうしが同じ向きの面を同じ平面で重ねない（3D で面がちらつかない）', () => {
+    const faces = (p: Part3D) => {
+      const [x0, y0, z0, x1, y1, z1] = bounds3D(p);
+      // 箱は 6 面、z 向きの円柱は上下のふただけ（側面は曲面）
+      const all: { axis: 0 | 1 | 2; at: number; dir: 1 | -1 }[] = [{ axis: 2, at: z0, dir: -1 }, { axis: 2, at: z1, dir: 1 }];
+      if (p.k === 'box') all.push({ axis: 0, at: x0, dir: -1 }, { axis: 0, at: x1, dir: 1 }, { axis: 1, at: y0, dir: -1 }, { axis: 1, at: y1, dir: 1 });
+      if (p.k === 'sphere' || (p.k === 'cyl' && p.axis && p.axis !== 'z')) return [];
+      return all.filter((f) => !(f.axis === 2 && f.dir === -1 && Math.abs(f.at) < 0.01)); // 床に置いた底は見えない
+    };
+    const overlap = (a: number[], b: number[], axis: number) => [0, 1, 2].filter((k) => k !== axis).every((k) => Math.min(a[k + 3], b[k + 3]) - Math.max(a[k], b[k]) > 0.5);
+    for (const t of TYPES) {
+      const { w, d, h } = FIXTURE_CATALOG[t].size;
+      const parts = fixtureParts(t, w, d, h);
+      for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+        const A = parts[i], B = parts[j], ba = bounds3D(A), bb = bounds3D(B);
+        for (const fa of faces(A)) for (const fb of faces(B)) {
+          if (fa.axis === fb.axis && fa.dir === fb.dir && Math.abs(fa.at - fb.at) < 0.01 && overlap(ba, bb, fa.axis)) {
+            throw new Error(`${FIXTURE_CATALOG[t].label}: 部品 ${i} と ${j} が軸 ${fa.axis} の ${fa.at} で重なる`);
+          }
+        }
+      }
+    }
+  });
+  test('ポンプ・メーター・混合水栓の形が接続口まで届く（管が宙に浮かない）', () => {
+    for (const t of ['pump', 'waterMeter', 'mixFaucet'] as const) {
+      const { w, d, h } = FIXTURE_CATALOG[t].size;
+      const parts = fixtureParts(t, w, d, h);
+      for (const port of FIXTURE_CATALOG[t].ports) {
+        const near = parts.some((p) => { const [x0, y0, z0, x1, y1, z1] = bounds3D(p); return port.dx >= x0 - 2 && port.dx <= x1 + 2 && port.dy >= y0 - 2 && port.dy <= y1 + 2 && port.dz >= z0 - 2 && port.dz <= z1 + 2; });
+        expect(near, `${t} ${port.id}`).toBe(true);
+      }
+    }
+  });
   test('トイレ: タンクは奥で高く、便器は手前', () => {
     const { w, d, h } = FIXTURE_CATALOG.toilet.size;
     const parts = fixtureParts('toilet', w, d, h);

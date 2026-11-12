@@ -112,7 +112,9 @@ const MAT_STYLE: Record<Mat, { color: string; metalness?: number; roughness?: nu
 };
 function PartMaterial({ mat, selected, ghost, clip }: { mat: Mat; selected: boolean; ghost: boolean; clip: THREE.Plane[] }) {
   const m = MAT_STYLE[mat];
-  return <meshStandardMaterial color={m.color} metalness={m.metalness ?? 0} roughness={m.roughness ?? 0.7} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.45 : 0}
+  // 選んだ器具は色そのものを選択色へ寄せる（白い陶器でも分かるように）
+  const color = useMemo(() => (selected ? new THREE.Color(m.color).lerp(new THREE.Color(SELECT_COLOR), 0.75) : new THREE.Color(m.color)), [m.color, selected]);
+  return <meshStandardMaterial color={color} metalness={m.metalness ?? 0} roughness={m.roughness ?? 0.7} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.25 : 0}
     transparent={ghost} opacity={ghost ? 0.3 : 1} depthWrite={!ghost} clippingPlanes={clip} />;
 }
 /** 部品 1 つ。ローカル mm（x 右・y 奥・z 上）→ three（x・z・−y、m） */

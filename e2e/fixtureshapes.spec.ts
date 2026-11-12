@@ -48,4 +48,9 @@ test('器具は 2D で平面の記号、3D で部品の組み合わせ', async (
   for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -300); await page.waitForTimeout(60); }
   await page.waitForTimeout(600);
   await page.screenshot({ path: evidence('fixtureshapes-02b-3d-zoom'), clip: { x: v.x, y: v.y, width: v.width, height: v.height } });
+  // 選んだ器具（白いトイレ）が選択色で分かる
+  const toiletId = Object.values(d.fixtures).find((x) => x.type === 'toilet')!.id;
+  await page.evaluate((id) => (window as any).__pc.getState().select({ kind: 'fixture', id }), toiletId);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: evidence('fixtureshapes-03-3d-selected'), clip: { x: v.x, y: v.y, width: v.width, height: v.height } });
 });
