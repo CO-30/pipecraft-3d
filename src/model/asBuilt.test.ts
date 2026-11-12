@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { drainHouse as crowdedDrain } from './testDrainHouse';
 import { STANDARD_PROFILE } from './municipality';
 import { buildProfile, extractRoute } from './profileDrawing';
-import { applyMeasuredToProfile, asBuiltTitle, measuredLengthOf, readAsBuilt, unmeasuredSegments, writeAsBuilt } from './asBuilt';
+import { applyMeasuredToProfile, approxSegments, asBuiltTitle, measuredLengthOf, readAsBuilt, suspiciousMeasured, unmeasuredSegments, writeAsBuilt } from './asBuilt';
 import type { Doc } from './doc';
 
 function withMeasured(doc: Doc, m: Record<string, number>, approx: string[] = []): Doc {
@@ -84,5 +84,37 @@ describe('展開図の長さ・未実測の区間', () => {
     expect(len(ids[0])).toBe(777);
     expect(len(ids[2])).toBeGreaterThan(0);
     expect(unmeasuredSegments(d2, ids)).toEqual(ids.slice(2));
+  });
+});
+
+describe('レビュー指摘', () => {
+  test('勾配の注意を実測の勾配で出し直す（緩くなれば足し、直れば消す）', () => {
+    const { doc, outlet } = crowdedDrain();
+    const base = profileOf(doc, outlet);
+    const target = base.segments.filter((s) => s.slope !== null).at(-1)!;
+    const k = base.segments.indexOf(target);
+    expect(base.warnings.some((w) => w.segId === target.segId)).toBe(false);
+    const long = withMeasured(doc, { [target.segId]: 60000 });
+    const a = applyMeasuredToProfile(profileOf(long, outlet), long).model;
+    expect(a.warnings.filter((w) => w.segId === target.segId).map((w) => w.kind)).toEqual(['minSlope']);
+    expect(a.warnings.find((w) => w.segId === target.segId)!.message).toContain(`区間 ${k + 1}:`);
+    // 図面では緩い（古い注意あり）→ 実測で足りる → 消える
+    const stale = { ...profileOf(doc, outlet) };
+    stale.warnings = [...stale.warnings, { kind: 'minSlope' as const, segId: target.segId, message: '古い' }];
+    const short = withMeasured(doc, { [target.segId]: 3000 });
+    expect(applyMeasuredToProfile(stale, short).model.warnings.some((w) => w.segId === target.segId)).toBe(false);
+  });
+  test('図面の長さとかけ離れた実測（単位の間違いなど）・按分の概算を見つける', () => {
+    const { doc } = crowdedDrain();
+    const ids = Object.keys(doc.network.segments);
+    const d2 = withMeasured(doc, { [ids[0]]: 6.5, [ids[1]]: 1, [ids[2]]: 400 }, [ids[2]]);
+    const len = { [ids[0]]: 6000, [ids[1]]: 1.5, [ids[2]]: 350 };
+    expect(suspiciousMeasured(d2, ids, len)).toEqual([ids[0]]); // 1.5mm の区間は比べない（立管など）
+    expect(approxSegments(d2, ids)).toEqual([ids[2]]);
+  });
+  test('ありえない竣工日は読まない', () => {
+    expect(readAsBuilt({ 'shunko.date': '2026-13-01' }).date).toBeUndefined();
+    expect(readAsBuilt({ 'shunko.date': '2026-02-31' }).date).toBeUndefined();
+    expect(readAsBuilt({ 'shunko.date': '2026-02-28' }).date).toBe('2026-02-28');
   });
 });

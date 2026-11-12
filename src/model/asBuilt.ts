@@ -4,8 +4,8 @@
  * 縦断図は profileDrawing を変えずに、できたモデルを差し替える（排水の作業と衝突させないため）。
  */
 import type { Doc } from './doc';
-import { formatSlope } from './municipality';
-import type { ProfileModel } from './profileDrawing';
+import { formatSlope, minSlopeFor } from './municipality';
+import type { ProfileModel, ProfileWarning } from './profileDrawing';
 
 export type AsBuiltSettings = { on: boolean; date: string | undefined };
 
@@ -13,13 +13,21 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function readAsBuilt(app: Record<string, string> | undefined): AsBuiltSettings {
   const d = app?.['shunko.date'];
-  return { on: app?.['shunko.on'] === '1', date: d && ISO_DATE.test(d) ? d : undefined };
+  return { on: app?.['shunko.on'] === '1', date: d && validDate(d) ? d : undefined };
+}
+
+/** YYYY-MM-DD で、実在する日（2026-02-31 などは不可） */
+function validDate(d: string): boolean {
+  if (!ISO_DATE.test(d)) return false;
+  const [y, m, day] = d.split('-').map(Number);
+  const t = new Date(y, m - 1, day);
+  return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === day;
 }
 
 export function writeAsBuilt(app: Record<string, string> | undefined, patch: Partial<AsBuiltSettings>): Record<string, string> {
   const out = { ...(app ?? {}) };
   if ('on' in patch) { if (patch.on) out['shunko.on'] = '1'; else delete out['shunko.on']; }
-  if ('date' in patch) { if (patch.date && ISO_DATE.test(patch.date)) out['shunko.date'] = patch.date; else delete out['shunko.date']; }
+  if ('date' in patch) { if (patch.date && validDate(patch.date)) out['shunko.date'] = patch.date; else delete out['shunko.date']; }
   return out;
 }
 
@@ -51,6 +59,19 @@ export function unmeasuredSegments(doc: Doc, segIds: string[]): string[] {
   return segIds.filter((id) => doc.network.segments[id] && measured(doc, id) === undefined);
 }
 
+/** 按分した概算の実測長の区間 */
+export function approxSegments(doc: Doc, segIds: string[]): string[] {
+  return segIds.filter((id) => measured(doc, id) !== undefined && doc.network.segments[id]?.measuredApprox);
+}
+
+/** 実測が図面の長さの半分未満・2 倍超の区間（mm と m の入れ違いなど）。図面で 100mm 未満の区間は比べない */
+export function suspiciousMeasured(doc: Doc, segIds: string[], modelLen: Record<string, number>): string[] {
+  return segIds.filter((id) => {
+    const m = measured(doc, id), L = modelLen[id];
+    return m !== undefined && L !== undefined && L >= 100 && (m < L * 0.5 || m > L * 2);
+  });
+}
+
 /**
  * 縦断図のモデルの延長を実測にする。追加距離を積み直し、勾配＝落差÷実測。立管（延長 1mm 未満）は触らない。
  * 元のモデルは変えない。unmeasured: 実測の無い区間（立管を除く）
@@ -67,11 +88,20 @@ export function applyMeasuredToProfile(model: ProfileModel, doc: Doc): { model: 
     const slope = (up.invertLevel - (down.invertIn ?? down.invertLevel)) / m;
     return { ...s, distance: m, slope, slopeText: slope < -1e-9 ? '逆勾配' : formatSlope(slope, fmt) };
   });
+  // 勾配の注意（逆勾配・最小勾配）は、延長を変えた区間だけ出し直す
+  const changed = new Set(segments.filter((s, k) => s !== model.segments[k]).map((s) => s.segId));
+  const warnings: ProfileWarning[] = model.warnings.filter((w) => !(w.segId && changed.has(w.segId) && (w.kind === 'minSlope' || w.kind === 'reverseSlope')));
+  segments.forEach((s, k) => {
+    if (!changed.has(s.segId) || s.slope === null) return;
+    if (s.slope < -1e-9) { warnings.push({ kind: 'reverseSlope', segId: s.segId, message: `区間 ${k + 1}: 逆勾配（下流のほうが高い）` }); return; }
+    const need = minSlopeFor(model.profile, s.diameter);
+    if (need !== undefined && s.slope + 1e-9 < need) warnings.push({ kind: 'minSlope', segId: s.segId, message: `区間 ${k + 1}: φ${s.diameter} の最小勾配 ${formatSlope(need, fmt)} より緩い（${formatSlope(s.slope, fmt)}・実測）` });
+  });
   let cum = model.nodes[0]?.cumDistance ?? 0;
   const nodes = model.nodes.map((n, k) => {
     if (k === 0) return n;
     cum += segments[k - 1]?.distance ?? 0;
     return { ...n, cumDistance: cum };
   });
-  return { model: { ...model, segments, nodes }, unmeasured };
+  return { model: { ...model, segments, nodes, warnings }, unmeasured };
 }

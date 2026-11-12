@@ -27,7 +27,7 @@ import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { renderSuiriSheets } from '../export/suiriSheet';
 import { SuiriPanel } from './SuiriPanel';
 import { AsBuiltPanel } from './AsBuiltPanel';
-import { applyMeasuredToProfile, asBuiltTitle, measuredLengthOf, readAsBuilt, unmeasuredSegments, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
+import { applyMeasuredToProfile, approxSegments, asBuiltTitle, suspiciousMeasured, measuredLengthOf, readAsBuilt, unmeasuredSegments, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
 import { stampAsBuilt } from '../export/asBuiltStamp';
 import { dateJa } from '../export/report';
 
@@ -84,7 +84,17 @@ const geometricLength = (doc: ReturnType<typeof useStore.getState>['doc']) => me
 
 export type ShinseiBuild = { sheets: Sheet[]; svg: string; warnings: string[]; error: string | null; kind: Kind;
   /** 竣工図: 図に出ている区間（実測長の一覧に出す）と図面の長さ */
-  asBuilt?: { segIds: string[]; unmeasured: number; modelLen: Record<string, number> } };
+  asBuilt?: { segIds: string[]; unmeasured: number; modelLen: Record<string, number>; labels: Record<string, string>; /** この図には長さを書かない（立面図） */ noLengths?: boolean } };
+
+/** 竣工図の注意: 未入力・図面とかけ離れた実測（単位の入れ違いなど）・按分の概算 */
+function asBuiltNotes(doc: ReturnType<typeof useStore.getState>['doc'], segIds: string[], modelLen: Record<string, number>, labels: Record<string, string>, unmeasured: number): string[] {
+  const out: string[] = [];
+  if (unmeasured) out.push(`実測長が未入力の区間が ${unmeasured} あります（その区間は図面の長さで描いています）`);
+  for (const id of suspiciousMeasured(doc, segIds, modelLen)) out.push(`${labels[id] ?? '区間'}: 実測 ${Math.round(doc.network.segments[id].measuredLength! * 10) / 10}mm が図面 ${Math.round(modelLen[id])}mm と大きく違います（単位は mm）`);
+  const approx = approxSegments(doc, segIds);
+  if (approx.length) out.push(`区間を分けたときに長さの比で分けた概算の実測長が ${approx.length} 区間あります（測り直すと正確になります）`);
+  return out;
+}
 
 export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const doc = useStore((s) => s.doc);
@@ -175,20 +185,29 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       const unmeasured = new Set<string>();
       const drawn = ab ? models.map((m) => { const x = applyMeasuredToProfile(m, doc); x.unmeasured.forEach((u) => unmeasured.add(u)); return x.model; }) : models;
       const sheets = drawn.map((m, i) => renderProfileSheet(m, { siteName, date }, i === 0 ? iso : undefined));
-      const warnings = models.flatMap((m) => m.warnings.map((w) => w.message));
-      if (ab) {
-        // 縦断図に載る排水の展開図（沖縄市）の区間も一覧に入れる（長さを書くため）
-        if (iso) {
-          const geo = geometricLength(doc);
-          for (const l of iso.lines) if (!(l.segId in modelLen)) modelLen[l.segId] = geo(l.segId);
-          unmeasuredSegments(doc, iso.lines.map((l) => l.segId)).forEach((u) => unmeasured.add(u));
-        }
-        if (unmeasured.size) warnings.unshift(`実測長が未入力の区間が ${unmeasured.size} あります（その区間は図面の長さで描いています）`);
-        return { sheets, svg: '', warnings, error: null, kind, asBuilt: { segIds: Object.keys(modelLen), unmeasured: unmeasured.size, modelLen } };
-      }
+      // 注意は描いたモデルから（竣工図では勾配の注意を実測で出し直している）
+      const warnings = drawn.flatMap((m) => m.warnings.map((w) => w.message));
       if (iso && iso.lines.length === 0) warnings.push('排水の立面図（展開図）を描く配管がないため、縦断図だけを出しています');
       for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）は図に含めていません。別の下流端を選んで別に作図してください`);
       if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
+      if (ab) {
+        // 一覧の名前: 「枝1 区間2 NO.1→NO.2」（注意の「区間 n」と同じ番号）
+        const labels: Record<string, string> = {};
+        models.forEach((m, mi) => m.segments.forEach((sg, k) => {
+          if (sg.distance < 1) return;
+          const nm = (n: (typeof m.nodes)[number] | undefined) => n?.manhole?.name ?? '点';
+          labels[sg.segId] = `${mi > 0 ? `枝${mi} ` : ''}区間${k + 1} ${nm(m.nodes[k])}→${nm(m.nodes[k + 1])}`;
+        }));
+        // 縦断図に載る排水の展開図（沖縄市）の区間も一覧に入れる（長さを書くため）
+        if (iso) {
+          const geo = geometricLength(doc);
+          for (const l of iso.lines) if (!(l.segId in modelLen)) { modelLen[l.segId] = geo(l.segId); labels[l.segId] = '展開図'; }
+          unmeasuredSegments(doc, iso.lines.map((l) => l.segId)).forEach((u) => unmeasured.add(u));
+        }
+        const segIds = Object.keys(modelLen);
+        warnings.unshift(...asBuiltNotes(doc, segIds, modelLen, labels, unmeasured.size));
+        return { sheets, svg: '', warnings, error: null, kind, asBuilt: { segIds, unmeasured: unmeasured.size, modelLen, labels } };
+      }
       return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings, error: null, kind };
     }
     if (!rootId) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
@@ -201,10 +220,12 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       if (asBuilt.on) {
         const ids = iso.lines.map((l) => l.segId);
         const un = unmeasuredSegments(doc, ids);
-        if (un.length) warnings.push(`実測長が未入力の区間が ${un.length} あります（その区間は図面の長さで描いています）`);
         if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
         const geo = geometricLength(doc);
-        return { sheets: [sheet], svg: '', warnings, error: null, kind, asBuilt: { segIds: ids, unmeasured: un.length, modelLen: Object.fromEntries(ids.map((id) => [id, geo(id)])) } };
+        const modelLen = Object.fromEntries(ids.map((id) => [id, geo(id)]));
+        const labels = Object.fromEntries(iso.lines.map((l, i) => [l.segId, `区間${i + 1} ${l.label.replace(/×[\d.]+$/, '')}`]));
+        warnings.push(...asBuiltNotes(doc, ids, modelLen, labels, un.length));
+        return { sheets: [sheet], svg: '', warnings, error: null, kind, asBuilt: { segIds: ids, unmeasured: un.length, modelLen, labels } };
       }
       if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
       return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
@@ -213,14 +234,9 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     const sheet = renderRiserSheet(m, { siteName, date });
     const warnings = [...m.warnings];
     if (asBuilt.on) {
-      // 立面図は長さを書かない（表題と印だけ）。実測の一覧には図の区間を出す
-      const ids: string[] = [];
-      const walk = (n: RiserModel['root']) => { for (const e of n.children) { ids.push(e.segId); walk(e.to); } };
-      walk(m.root);
-      const un = unmeasuredSegments(doc, ids);
+      // 立面図は長さを書かない（表題と印だけ）。実測の一覧は出さない
       if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-      const geo = geometricLength(doc);
-      return { sheets: [sheet], svg: '', warnings, error: null, kind, asBuilt: { segIds: ids, unmeasured: un.length, modelLen: Object.fromEntries(ids.map((id) => [id, geo(id)])) } };
+      return { sheets: [sheet], svg: '', warnings, error: null, kind, asBuilt: { segIds: [], unmeasured: 0, modelLen: {}, labels: {}, noLengths: true } };
     }
     if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
     return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
@@ -320,7 +336,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           </label>
         )}
         {(kind === 'profile' || kind === 'riser') && (
-          <AsBuiltPanel settings={asBuilt} onChange={setAsBuilt} segIds={built.asBuilt?.segIds ?? []} unmeasured={built.asBuilt?.unmeasured ?? 0} modelLength={(id) => built.asBuilt?.modelLen[id] ?? 0} />
+          <AsBuiltPanel settings={asBuilt} onChange={setAsBuilt} segIds={built.asBuilt?.segIds ?? []} unmeasured={built.asBuilt?.unmeasured ?? 0} modelLength={(id) => built.asBuilt?.modelLen[id] ?? 0} labels={built.asBuilt?.labels ?? {}} noLengths={!!built.asBuilt?.noLengths} />
         )}
         {kind !== 'forms' && <div className="seg-btns small">
           <button onClick={() => setZoom((z) => Math.max(0.25, z / 1.25))} aria-label="縮小">−</button>

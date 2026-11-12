@@ -43,7 +43,7 @@ export function stampAsBuilt(sheet: Sheet, dateText: string): { collided: boolea
       const box: Rect = { x1: x, y1: y, x2: x + w, y2: y + h };
       for (const r of hard) if (hit(box, r)) cost += 1000;
       if (best && cost >= best.cost) continue;
-      for (const s of segs) if (segHitsRect(s, box)) cost += 25;
+      for (const s of segs) if (segHitsRect(s, box)) cost += 200; // 白い枠で図の線を隠さないよう、線の少ない所を強く選ぶ
       if (!best || cost < best.cost) best = { x, y, cost };
     }
   }

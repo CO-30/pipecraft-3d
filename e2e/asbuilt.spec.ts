@@ -37,6 +37,20 @@ test.describe('竣工図', () => {
     await expect.poll(() => page.evaluate((id) => (window as any).__pc.getState().doc.network.segments[id].measuredLength, segId)).toBe(6500);
     await expect(page.getByTestId('asbuilt-unmeasured')).toHaveText(String(before - 1));
     await expect(preview).toContainText('6.500');
+    // 一覧は区間の番号とマスで見分けられる
+    await expect(page.getByTestId('asbuilt-list')).toContainText('区間');
+    await expect(page.getByTestId('asbuilt-list')).toContainText('→');
+    // m のつもりで 6.5 と入れる → 図面とかけ離れていると注意（単位は mm）
+    const first = inputs.first();
+    await first.fill('6.5'); await first.press('Enter');
+    await expect(page.getByTestId('shinsei-warnings')).toContainText('大きく違います（単位は mm）');
+    await first.fill(''); await first.press('Enter');
+    await expect(page.getByTestId('shinsei-warnings')).not.toContainText('大きく違います');
+    // 全部入れても一覧は閉じない
+    const n = await inputs.count();
+    for (let i = 0; i < n; i++) { const el = inputs.nth(i); if ((await el.inputValue()) === '') { await el.fill('350'); await el.press('Enter'); } }
+    await expect(page.getByTestId('asbuilt-unmeasured')).toHaveText('0');
+    await expect(page.getByTestId('asbuilt-list')).toHaveAttribute('open', '');
     await page.getByTestId('asbuilt-date').fill('2026-11-30');
     await expect(preview).toContainText('竣工 2026年11月30日');
     await page.screenshot({ path: evidence('asbuilt-01-profile') });
@@ -53,6 +67,11 @@ test.describe('竣工図', () => {
       expect(dl.suggestedFilename()).toMatch(/竣工縦断図.*\.pdf$/);
       if (test.info().project.name === 'pc-chrome') await dl.saveAs('test-evidence/pc-chrome-asbuilt-02.pdf');
     }
+
+    // 竣工図でも、ふだんの注意（この端末に無い自治体プロファイル）は出る
+    await page.evaluate(() => (window as any).__pc.getState().updateSite({ municipalityProfileId: 'user-missing' }));
+    await expect(page.getByTestId('shinsei-warnings')).toContainText('この端末に見つからない');
+    await page.evaluate(() => (window as any).__pc.getState().updateSite({ municipalityProfileId: 'standard' }));
 
     // やめると申請図に戻る（実測長は残る）
     await page.getByTestId('asbuilt-on').uncheck();
