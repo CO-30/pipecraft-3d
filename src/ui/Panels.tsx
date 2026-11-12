@@ -137,6 +137,7 @@ export function PropertyPanel() {
           {SYSTEMS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         <label className="field inline">口径<select data-testid="seg-diameter" value={seg.diameter} onChange={(e) => st.updateSegment(seg.id, { diameter: Number(e.target.value) })}>
           {[...new Set([...DIAMETERS, seg.diameter])].sort((x, y) => x - y).map((d) => <option key={d} value={d}>φ{d}</option>)}</select></label>
+        {seg.diameterPin && <button className="small" data-testid="seg-diameter-unpin" title="手で決めた管径の固定を外します。自動はつながる器具から太くするだけで、細くはしません" onClick={() => st.unpinSegmentDiameter(seg.id)}>📌 管径を自動に戻す</button>}
         <MaterialField id={seg.id} value={seg.material ?? ''} />
         <SystemColor system={seg.system} />
         <NumField label="長さ" value={segmentLength(net, seg.id)} min={1} testId="seg-length" onCommit={(v) => st.setSegmentLength(seg.id, v)} />

@@ -106,3 +106,29 @@ describe('最終レビューの指摘（ストア）', () => {
     expect(s().past.length).toBe(before + 1);
   });
 });
+
+describe('管径の自動決定（ストア）', () => {
+  it('排水に切り替えると細い口径にしない。区間の管径を手で決めると固定（📌）', () => {
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    s().setDrawAttrs({ system: 'drain' });
+    expect(s().drawAttrs.diameter).toBe(50);
+    s().setDrawAttrs({ system: 'sewage', diameter: 75 });
+    expect(s().drawAttrs.diameter).toBe(75);
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const seg = Object.values(s().doc.network.segments)[0];
+    s().updateSegment(seg.id, { diameter: 125 });
+    expect(s().doc.network.segments[seg.id]).toMatchObject({ diameter: 125, diameterPin: true });
+  });
+});
+
+describe('管径の固定を外す（ストア）', () => {
+  it('unpinSegmentDiameter で diameterPin が外れる', () => {
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([v(4000, 2000, -300), v(300, 2000, -300)]);
+    const seg = Object.values(s().doc.network.segments).at(-1)!;
+    s().updateSegment(seg.id, { diameter: 125 });
+    expect(s().doc.network.segments[seg.id].diameterPin).toBe(true);
+    s().unpinSegmentDiameter(seg.id);
+    expect(s().doc.network.segments[seg.id].diameterPin).toBeUndefined();
+  });
+});

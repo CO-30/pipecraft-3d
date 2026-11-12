@@ -304,7 +304,8 @@ export function moveNode(net: Network, nodeId: string, pos: Vec3): Network {
 
 const sameAttrs = (s: Segment, t: Segment) =>
   s.system === t.system && s.diameter === t.diameter && s.material === t.material && (s.extraRate ?? 0) === (t.extraRate ?? 0)
-  && s.support === t.support && s.substrate === t.substrate && s.slope === t.slope && s.face === t.face;
+  && s.support === t.support && s.substrate === t.substrate && s.slope === t.slope && s.face === t.face
+  && !!s.slopePin === !!t.slopePin && !!s.diameterPin === !!t.diameterPin && !!s.slopeLocked === !!t.slopeLocked;
 
 /**
  * 指定ノードが「同じ属性の2区間がほぼ完全に一直線につながるだけの点」なら、2区間を1本に結合する。

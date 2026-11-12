@@ -126,6 +126,8 @@ type State = {
   applyDrainFix(issueIndex: number, fixIndex: number): void;
   /** 点の管底高の固定を外して自動に戻す */
   unpinNodeHeight(nodeId: string): void;
+  /** 区間の管径の固定を外して自動に戻す（自動は太くするだけ） */
+  unpinSegmentDiameter(segId: string): void;
   /** 床下で器具の接続口から描き始めた: 接続口から床下まで立て管を下ろし、そこから points を描く（履歴は 1 件） */
   drawFromPortDown(portNodeId: string, points: Vec3[], opts?: { endNodeId?: string; endSegId?: string }): void;
   orthoSnap: boolean;
@@ -526,6 +528,8 @@ export const useStore = create<State>((set, get) => {
       const cur = get().drawAttrs;
       const next = { ...cur, ...a };
       if (a.system && a.system !== cur.system && !('material' in a)) delete next.material;
+      // 排水に切り替えたとき、給水の細い口径のままにしない（器具につながれば管径は自動で決まる）
+      if (a.system && a.system !== cur.system && a.diameter === undefined && (a.system === 'drain' || a.system === 'sewage') && next.diameter < 40) next.diameter = a.system === 'sewage' ? 100 : 50;
       set({ drawAttrs: next });
     },
     setDrawHeight: (drawHeight) => set({ drawHeight }),
@@ -533,6 +537,12 @@ export const useStore = create<State>((set, get) => {
     applyDrainFix: (i, j) => {
       const fix = get().drainIssues[i]?.fixes[j];
       if (fix) commit(fix.apply(get().doc), { notice: `${fix.label}。高さを計算し直しました` });
+    },
+    unpinSegmentDiameter: (segId) => {
+      const net = get().doc.network, sg = net.segments[segId];
+      if (!sg?.diameterPin) return;
+      const { diameterPin: _p, ...rest } = sg;
+      commit(withNet({ ...net, segments: { ...net.segments, [segId]: rest } }));
     },
     unpinNodeHeight: (nodeId) => {
       const n = get().doc.network.nodes[nodeId];
@@ -873,7 +883,9 @@ export const useStore = create<State>((set, get) => {
       const net = get().doc.network;
       const s = net.segments[segId];
       if (!s || (patch.diameter !== undefined && !(patch.diameter > 0))) return;
-      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch } } }));
+      // 排水の管径を手で決めたら固定（📌。自動で変えない）
+      const pin = patch.diameter !== undefined && patch.diameter !== s.diameter && (s.system === 'drain' || s.system === 'sewage') ? { diameterPin: true } : {};
+      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch, ...pin } } }));
     },
     activeUnderlayId: null,
     showUnderlays: true,
