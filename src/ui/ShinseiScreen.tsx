@@ -20,8 +20,14 @@ import { outletCandidates } from '../model/outlets';
 import { ShinseiForms } from './ShinseiForms';
 import { NumField } from './Panels';
 import { ProfileSettingsDialog } from './ProfileSettingsDialog';
+import { calcSupply } from '../model/hydraulics/calc';
+import { readSuiriSettings, writeSuiriSettings, type SuiriSettings } from '../model/hydraulics/settings';
+import { suggestDiameters } from '../model/hydraulics/suggest';
+import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
+import { renderSuiriSheets } from '../export/suiriSheet';
+import { SuiriPanel } from './SuiriPanel';
 
-type Kind = 'profile' | 'riser' | 'forms';
+type Kind = 'profile' | 'riser' | 'forms' | 'suiri';
 const PROFILE_TITLE = '排水設備 縦断図';
 const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
@@ -75,6 +81,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
   const updateSite = useStore((s) => s.updateSite);
+  const updateSegments = useStore((s) => s.updateSegments);
   const profiles = useProfiles();
   const [kind, setKind] = useState<Kind>('profile');
   const [outlet, setOutlet] = useState<string>('');
@@ -110,8 +117,21 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const branches = useMemo(() => (outletId ? branchPoints(doc.network, outletId, pick) : []), [doc, outletId, pick]);
   const siteName = meta?.name ?? '現場';
 
+  // 水理計算（給水の口径決定）。設定は site.application の suiri.*
+  const suiriSettings: SuiriSettings = useMemo(() => readSuiriSettings(doc.site?.application), [doc.site?.application]);
+  const suiriRules = useMemo(() => resolveSupplyRules({ profileName: profile.id === 'standard' ? undefined : profile.name, address: meta?.address }), [profile.id, profile.name, meta?.address]);
+  const suiri = useMemo(() => (kind === 'suiri' ? calcSupply(doc, suiriRules, suiriSettings) : null), [kind, doc, suiriRules, suiriSettings]);
+  const suiriSuggest = useMemo(() => (suiri && !('error' in suiri) && !suiri.ok ? suggestDiameters(doc, suiriRules, suiriSettings) : null), [suiri, doc, suiriRules, suiriSettings]);
+  const setSuiri = (patch: Partial<SuiriSettings>) => updateSite({ application: writeSuiriSettings(doc.site?.application, patch) });
+
   const built: ShinseiBuild = useMemo(() => {
     if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
+    if (kind === 'suiri') {
+      if (!suiri) return { sheets: [], svg: '', warnings: [], error: null, kind };
+      if ('error' in suiri) return { sheets: [], svg: '', warnings: [], error: suiri.error, kind };
+      const sheets = renderSuiriSheets(suiri, { siteName, date });
+      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: [...suiri.unverified.map((u) => `要確認: ${u}`), ...suiri.warnings], error: null, kind };
+    }
     if (kind === 'profile') {
       if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
       const r = extractRoute(doc.network, outletId, pick);
@@ -152,13 +172,13 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     const warnings = [...m.warnings];
     if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
     return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
-  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date]);
+  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri]);
 
   const download = async (fmt: 'pdf' | 'svg') => {
     setBusy(fmt); setErr('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${kind === 'profile' ? '縦断図' : '立面図'}_${dateStamp(new Date())}`;
+      const base = `${safeName(siteName)}_${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'svg') {
         // 枝が別図のときは、ページを縦に並べた 1 つの SVG
         downloadBytes(new TextEncoder().encode(sheetsToSvg(built.sheets)), `${base}.svg`, 'image/svg+xml');
@@ -180,7 +200,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       <header>
         <button className="back" data-testid="close-shinsei" onClick={onClose}>‹ 図面へ</button>
         <strong>申請図面</strong>
-        <span className="muted small">配管データから縦断図・立面図を自動で作ります</span>
+        <span className="muted small">配管データから縦断図・立面図・水理計算書を自動で作ります</span>
         <span className="grow" />
         <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms'} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
         <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms'} onClick={() => download('svg')}>SVG</button>
@@ -201,9 +221,13 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <div className="seg-btns">
           <button data-testid="shinsei-kind-profile" className={kind === 'profile' ? 'on' : ''} onClick={() => setKind('profile')}>排水縦断図</button>
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
+          <button data-testid="shinsei-kind-suiri" className={kind === 'suiri' ? 'on' : ''} onClick={() => setKind('suiri')}>水理計算書</button>
           <button data-testid="shinsei-kind-forms" className={kind === 'forms' ? 'on' : ''} onClick={() => setKind('forms')}>申請書</button>
         </div>
-        {kind === 'forms' ? null : kind === 'profile' ? (
+        {kind === 'forms' ? null : kind === 'suiri' ? (
+          <SuiriPanel calc={suiri && !('error' in suiri) ? suiri : null} rules={suiriRules} settings={suiriSettings} onChange={setSuiri} suggestion={suiriSuggest}
+            onApply={() => suiriSuggest && updateSegments(Object.fromEntries(suiriSuggest.changes.map((c) => [c.segId, { diameter: c.to }])))} />
+        ) : kind === 'profile' ? (
           <>
             <label className="field inline">下流端（公共マスなど）
               <select data-testid="shinsei-outlet" value={outletId} onChange={(e) => { setOutlet(e.target.value); setChoice({}); }}>

@@ -210,6 +210,8 @@ type State = {
   rotateFixture(id: string): void;
   setNodeHeight(nodeId: string, z: number): void;
   updateSegment(segId: string, patch: Partial<SegmentAttrs>): void;
+  /** 複数の区間をまとめて変える（1 回の取り消しで戻る）。水理計算の口径の提案を反映する */
+  updateSegments(patches: Record<string, Partial<SegmentAttrs>>): void;
   deleteSelectedBranch(): void;
 
   /** 画面に短く出すお知らせ（つなげない配管など）。表示専用 */
@@ -856,6 +858,14 @@ export const useStore = create<State>((set, get) => {
       const s = net.segments[segId];
       if (!s || (patch.diameter !== undefined && !(patch.diameter > 0))) return;
       commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, ...patch } } }));
+    },
+    updateSegments: (patches) => {
+      const net = get().doc.network;
+      const entries = Object.entries(patches).filter(([id]) => net.segments[id]);
+      if (!entries.length || entries.some(([, p]) => p.diameter !== undefined && !(p.diameter > 0))) return;
+      const segments = { ...net.segments };
+      for (const [id, p] of entries) segments[id] = { ...segments[id], ...p };
+      commit(withNet({ ...net, segments }));
     },
     activeUnderlayId: null,
     showUnderlays: true,
