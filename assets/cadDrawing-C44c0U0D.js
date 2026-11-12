@@ -1,0 +1,1 @@
+var e=4e5;function t(e,t){let n=e.bounds,r=Math.max(n.maxX-n.minX,0),i=Math.max(n.maxY-n.minY,0),a=Math.max(2,Math.max(r,i)*.03),o=r+a*2,s=i+a*2,c=Math.max(o,s)/t;return{widthPx:Math.max(1,Math.round(o/c)),heightPx:Math.max(1,Math.round(s/c)),paperMmPerPx:c,mmPerPx:c*e.scale,toPx:(e,t)=>({x:(e-n.minX+a)/c,y:(n.maxY+a-t)/c})}}export{t as n,e as t};
