@@ -1,0 +1,194 @@
+/** 排水の自動計算（ストア）: 描く・つなぐ・固定する・戻す */
+import { beforeEach, describe, expect, it } from 'vitest';
+import { setDrainRulesSource, useStore } from './store';
+import { createBuildingFromDims } from '../model/building';
+import { emptyNetwork } from '../model/network';
+import { resolveDrainRules } from '../model/drainRules';
+import { STANDARD_PROFILE } from '../model/municipality';
+import { portNodes } from '../model/fixtures';
+
+const s = () => useStore.getState();
+const v = (x: number, y: number, z: number) => ({ x, y, z });
+const zs = () => Object.values(s().doc.network.nodes).filter((n) => !n.fixtureId).map((n) => n.pos.z).sort((a, b) => a - b);
+
+describe('排水の自動計算（ストア）', () => {
+  beforeEach(() => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+  });
+
+  it('床下に描くと、外壁に近い端（床下から出る所）が土間、器具の方が 2/100 で高くなる。1 回で戻せる', () => {
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const [lo, hi] = zs();
+    expect(lo).toBe(-550);
+    expect(hi).toBeCloseTo(-550 + 3700 * 0.02, 1);
+    s().undo();
+    expect(Object.keys(s().doc.network.nodes)).toHaveLength(0);
+  });
+
+  it('公共ますへつなぐと屋外は公共ますから上がり、検査が更新される', () => {
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: -10000, y: 3000 });
+    const pub = Object.values(s().doc.fixtures)[0];
+    s().updateFixtureParams(pub.id, { invertZ: -1300 });
+    const port = portNodes(s().doc.network, pub.id)[0];
+    s().drawPolyline([port.pos, v(-500, 3000, -1000)], { startNodeId: port.id });
+    const end = Object.values(s().doc.network.nodes).find((n) => n.pos.x === -500)!;
+    // 公共ますの手前（1m）に自動でマスが置かれ、その流入に落差 2cm
+    expect(Object.values(s().doc.fixtures).filter((f) => f.params?.auto)).toHaveLength(1);
+    expect(end.pos.z).toBeCloseTo(-1300 + 9500 * 0.022 + 20, 1);
+    expect(s().drainIssues.some((i) => i.kind === 'unverifiedRule')).toBe(true);
+  });
+
+  it('区間の勾配を固定すると計算し直しても変わらず、外すと既定に戻る。点の高さは手で決めると固定（📌）', () => {
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const seg = Object.values(s().doc.network.segments)[0];
+    s().setSegmentSlope(seg.id, 30);
+    expect(zs()[1]).toBeCloseTo(-550 + 3700 / 30, 1);
+    s().setSegmentSlopeLocked(seg.id, false);
+    expect(zs()[1]).toBeCloseTo(-550 + 3700 * 0.02, 1);
+    const hiNode = Object.values(s().doc.network.nodes).find((n) => Math.abs(n.pos.x - 4000) < 1)!;
+    s().setNodeHeight(hiNode.id, -400);
+    expect(s().doc.network.nodes[hiNode.id]).toMatchObject({ zPin: true, pos: { z: -400 } });
+    s().drawPolyline([v(4000, 1000, -300), v(300, 1000, -300)]); // 別の配管を描いても固定は残る
+    expect(s().doc.network.nodes[hiNode.id].pos.z).toBe(-400);
+    s().unpinNodeHeight(hiNode.id);
+    expect(s().doc.network.nodes[hiNode.id].pos.z).toBeCloseTo(-550 + 3700 * 0.02, 1);
+  });
+});
+
+describe('排水の自動計算（読み込み）', () => {
+  it('保存された排水の z を書き換えても、開くと計算どおりに戻る', () => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const p = s().toProjectData()!;
+    const nodes = Object.fromEntries(Object.entries(p.network.nodes).map(([id, n]) => [id, { ...n, pos: { ...n.pos, z: -100 } }]));
+    s().openProject({ ...p, network: { ...p.network, nodes } });
+    const [lo, hi] = zs();
+    expect(lo).toBe(-550);
+    expect(hi).toBeCloseTo(-550 + 3700 * 0.02, 1);
+  });
+});
+
+describe('最終レビューの指摘（ストア）', () => {
+  beforeEach(() => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+  });
+  it('取り消し・やり直しで検査も計算し直す', () => {
+    s().drawPolyline([v(-500, 3000, -900), v(-5000, 3000, -900)]);
+    expect(s().drainIssues.length).toBeGreaterThan(0);
+    s().undo();
+    expect(s().drainIssues).toEqual([]);
+    s().redo();
+    expect(s().drainIssues.length).toBeGreaterThan(0);
+  });
+  it('「勾配を固定」を外すと slopePin も外れる', () => {
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const seg = Object.values(s().doc.network.segments)[0];
+    useStore.setState({ doc: { ...s().doc, network: { ...s().doc.network, segments: { ...s().doc.network.segments, [seg.id]: { ...seg, slope: 0.03, slopePin: true } } } } });
+    s().setSegmentSlopeLocked(seg.id, false);
+    expect(s().doc.network.segments[seg.id].slopePin).toBeUndefined();
+  });
+  it('排水の点を上下にドラッグすると、その高さで固定（📌）。動かさずに離すと履歴は増えない', () => {
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const n = Object.values(s().doc.network.nodes).find((x) => Math.abs(x.pos.x - 4000) < 1)!;
+    const before = s().past.length;
+    s().beginDrag(); s().dragNode(n.id, n.pos); s().endDrag();
+    expect(s().past.length).toBe(before);
+    s().beginDrag(); s().dragNode(n.id, { ...n.pos, z: -200 }); s().endDrag();
+    expect(s().doc.network.nodes[n.id]).toMatchObject({ zPin: true, pos: { z: -200 } });
+    expect(s().past.length).toBe(before + 1);
+  });
+});
+
+describe('管径の自動決定（ストア）', () => {
+  it('排水に切り替えると細い口径にしない。区間の管径を手で決めると固定（📌）', () => {
+    s().setDrawAttrs({ system: 'water', diameter: 20 });
+    s().setDrawAttrs({ system: 'drain' });
+    expect(s().drawAttrs.diameter).toBe(50);
+    s().setDrawAttrs({ system: 'sewage', diameter: 75 });
+    expect(s().drawAttrs.diameter).toBe(75);
+    s().drawPolyline([v(4000, 3000, -300), v(300, 3000, -300)]);
+    const seg = Object.values(s().doc.network.segments)[0];
+    s().updateSegment(seg.id, { diameter: 125 });
+    expect(s().doc.network.segments[seg.id]).toMatchObject({ diameter: 125, diameterPin: true });
+  });
+});
+
+describe('管径の固定を外す（ストア）', () => {
+  it('unpinSegmentDiameter で diameterPin が外れる', () => {
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([v(4000, 2000, -300), v(300, 2000, -300)]);
+    const seg = Object.values(s().doc.network.segments).at(-1)!;
+    s().updateSegment(seg.id, { diameter: 125 });
+    expect(s().doc.network.segments[seg.id].diameterPin).toBe(true);
+    s().unpinSegmentDiameter(seg.id);
+    expect(s().doc.network.segments[seg.id].diameterPin).toBeUndefined();
+  });
+});
+
+describe('マスの自動配置（ストア）', () => {
+  beforeEach(() => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: -10000, y: 3000 });
+  });
+  it('消した自動のマスは置き直さない。動かした自動のマスは使う人のもの', () => {
+    const pub = Object.values(s().doc.fixtures)[0];
+    const port = portNodes(s().doc.network, pub.id)[0];
+    s().drawPolyline([port.pos, v(-4000, 3000, -1000), v(-4000, 500, -1000)], { startNodeId: port.id });
+    const auto = () => Object.values(s().doc.fixtures).filter((f) => f.params?.auto);
+    const bend = auto().find((f) => f.x === -4000 && f.y === 3000)!;
+    expect(bend).toBeDefined();
+    s().select({ kind: 'fixture', id: bend.id });
+    s().deleteSelected();
+    expect(s().doc.site?.manholeSuppressed).toEqual([{ x: -4000, y: 3000 }]);
+    expect(auto().some((f) => f.x === -4000 && f.y === 3000)).toBe(false);
+    const other = auto()[0];
+    s().beginDrag(); s().dragFixture(other.id, { x: other.x - 200, y: other.y }); s().endDrag();
+    expect(s().doc.fixtures[other.id].params?.auto).toBeUndefined();
+  });
+});
+
+describe('マスの自動配置とドラッグ（ストア）', () => {
+  beforeEach(() => {
+    setDrainRulesSource(() => resolveDrainRules(STANDARD_PROFILE));
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600 } }, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().setFixtureType('publicSewage');
+    s().placeFixtureAt({ x: -10000, y: 3000 });
+  });
+  it('点をドラッグしている間はマスを置かず、離したときに置く（動かし続けられる）', () => {
+    const pub = Object.values(s().doc.fixtures)[0];
+    const port = portNodes(s().doc.network, pub.id)[0];
+    s().drawPolyline([port.pos, v(-5000, 3000, -1000), v(-500, 3000, -1000)], { startNodeId: port.id });
+    const mid = Object.values(s().doc.network.nodes).find((n) => !n.fixtureId && n.pos.x === -5000)!;
+    s().beginDrag();
+    for (const y of [3500, 4000, 4500]) s().dragNode(mid.id, { ...mid.pos, y });
+    expect(s().doc.network.nodes[mid.id]?.pos.y).toBe(4500);
+    s().endDrag();
+    expect(Object.values(s().doc.fixtures).some((f) => f.params?.auto && f.x === -5000 && f.y === 4500)).toBe(true);
+  });
+  it('開いただけではマスを置かない', () => {
+    const pub = Object.values(s().doc.fixtures)[0];
+    const port = portNodes(s().doc.network, pub.id)[0];
+    s().drawPolyline([port.pos, v(-5000, 3000, -1000), v(-5000, 500, -1000)], { startNodeId: port.id });
+    const p = s().toProjectData()!;
+    const fixtures = Object.fromEntries(Object.entries(p.fixtures).filter(([, f]) => !f.params?.auto));
+    const nodes = Object.fromEntries(Object.entries(p.network.nodes).map(([id, n]) => [id, n.fixtureId && !fixtures[n.fixtureId] ? (({ fixtureId: _f, portId: _p, fixedKind: _k, ...r }) => r)(n) : n]));
+    s().openProject({ ...p, fixtures, network: { ...p.network, nodes } });
+    expect(Object.values(s().doc.fixtures).filter((f) => f.params?.auto)).toHaveLength(0);
+  });
+});

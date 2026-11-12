@@ -583,17 +583,18 @@ describe('申請図面: 現場設定と勾配固定', () => {
     expect(s().doc.site).toEqual({ designGL: -450, municipalityProfileId: 'standard' });
   });
 
-  it('setSegmentSlope は 1/n を比率で保存し下流端を下げる。固定中に上流端の高さを変えると下流端が追従', () => {
+  it('setSegmentSlope は 1/n を比率で保存して固定（📌）。高さは自動計算: 両端の差 = 勾配 × 長さ。固定を外すと屋内の最小勾配', () => {
     s().setDrawAttrs({ system: 'drain', diameter: 100 });
     s().drawPolyline([v(0, 0, 0), v(5000, 0, 0)]);
     const seg = Object.values(net().segments)[0];
+    const dz = () => Math.abs(net().nodes[seg.a].pos.z - net().nodes[seg.b].pos.z);
+    expect(dz()).toBeCloseTo(50, 5); // 床上の排水 φ100 は屋内の最小勾配 1/100
     s().setSegmentSlope(seg.id, 50);
     expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
-    expect(net().nodes[seg.b].pos.z).toBeCloseTo(-100, 5);
-    s().setNodeHeight(seg.a, 300);
-    expect(net().nodes[seg.b].pos.z).toBeCloseTo(200, 5);
+    expect(dz()).toBeCloseTo(100, 5);
     s().setSegmentSlopeLocked(seg.id, false);
     expect(net().segments[seg.id].slopeLocked).toBe(false);
+    expect(dz()).toBeCloseTo(50, 5);
   });
 
   it('openProject は site を読み、無ければ空', () => {
@@ -616,7 +617,7 @@ describe('マス', () => {
     const before = s().past.length;
     s().updateFixtureParams(f.id, { invertZ: -900, diameter: 350 });
     expect(net().nodes[port.id].pos.z).toBe(-900);
-    expect(s().doc.fixtures[f.id].params).toEqual({ invertZ: -900, diameter: 350 });
+    expect(s().doc.fixtures[f.id].params).toEqual({ invertZ: -900, diameter: 350, invertPin: true }); // 手で入れた管底は固定（📌）
     expect(s().past.length).toBe(before + 1);
   });
   it('マスにつながる排水区間の下流端はマス側（高さに関係なく）', () => {
@@ -662,7 +663,9 @@ describe('マス間の勾配', () => {
     expect(s().doc.fixtures[m1.id].params?.invertZ).toBeCloseTo(-960, 5);
     expect(net().segments[seg.id]).toMatchObject({ slope: 0.02, slopeLocked: true });
     expect(s().past.length).toBe(before + 1);
-    expect(s().notice).toBeNull();
+    // 先に手で入れた上流のマスの管底は、後から決めた勾配を優先して固定を外す
+    expect(s().doc.fixtures[m1.id].params?.invertPin).toBeUndefined();
+    expect(s().notice).toContain('固定（📌）を外しました');
   });
 });
 
@@ -690,23 +693,18 @@ describe('設計GL の変更', () => {
 });
 
 describe('勾配固定が保てないとき', () => {
-  it('固定区間の下流端を手で動かすと固定が外れ、お知らせが出る。勾配設定後の点の移動は連鎖する', () => {
+  it('勾配を固定した区間が続くとき、上流ほど高く、勾配どおり。点の高さを手で決めると固定（📌）', () => {
     s().setDrawAttrs({ system: 'drain', diameter: 100 });
     s().drawPolyline([v(0, 0, 0), v(4000, 0, 0), v(7000, 0, 0)]);
     const [s1, s2] = Object.values(net().segments);
-    const a = s1.a, b = s1.b, c = s2.b;
-    s().setSegmentSlope(s1.id, 100); // b = -40
-    s().setSegmentSlope(s2.id, 100); // c = -70
-    expect(net().nodes[c].pos.z).toBeCloseTo(-70, 5);
-    s().setSegmentSlope(s1.id, 50); // b = -80 → 連鎖で c = -110
-    expect(net().nodes[b].pos.z).toBeCloseTo(-80, 5);
-    expect(net().nodes[c].pos.z).toBeCloseTo(-110, 5);
-    s().clearNotice();
-    s().setNodeHeight(b, -50); // 下流端を手で動かす → s1 の固定が外れる、s2 は追従
-    expect(net().segments[s1.id].slopeLocked).toBe(false);
-    expect(net().nodes[c].pos.z).toBeCloseTo(-80, 5);
-    expect(s().notice).toContain('固定を外しました');
-    void a;
+    s().setSegmentSlope(s1.id, 100);
+    s().setSegmentSlope(s2.id, 50);
+    const z = (id: string) => net().nodes[id].pos.z;
+    const L1 = Math.abs(z(s1.a) - z(s1.b)), L2 = Math.abs(z(s2.a) - z(s2.b));
+    expect(L1).toBeCloseTo(40, 5);
+    expect(L2).toBeCloseTo(60, 5);
+    s().setNodeHeight(s1.b, -50);
+    expect(net().nodes[s1.b]).toMatchObject({ zPin: true, pos: { z: -50 } });
   });
 });
 

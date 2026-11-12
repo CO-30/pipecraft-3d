@@ -74,7 +74,7 @@ test.describe('申請図面', () => {
     await page.getByTestId('seg-slope-input').fill('50');
     await page.getByTestId('seg-slope-input').press('Enter');
     await expect(page.getByTestId('seg-slope')).toContainText('1/50');
-    await expect(page.getByTestId('seg-slope')).toContainText('🔒');
+    await expect(page.getByTestId('seg-slope')).toContainText('📌');
     await expect(page.getByTestId('seg-slope-lock')).toBeChecked();
     // 公共マスの管底高は固定なので、上流（汚水マス側）の端が上がる
     const d2 = await doc(page);
@@ -113,12 +113,12 @@ test.describe('申請図面', () => {
     await page.getByTestId('pf-name').fill('那覇市（仮）');
     await page.getByTestId('pf-unverified').fill('土被りの最小値');
     await page.getByTestId('pf-save').click();
-    // 同梱 7 件（standard＋南部 6 自治体）＋複製 1 件
-    await expect(page.locator('[data-testid^="profile-row-"]')).toHaveCount(8);
+    // 同梱 8 件（standard＋南部 7 自治体）＋複製 1 件
+    await expect(page.locator('[data-testid^="profile-row-"]')).toHaveCount(9);
     await page.screenshot({ path: evidence('shinsei-06-profiles') });
     await page.getByTestId('profile-close').click();
     const sel = page.getByTestId('shinsei-profile');
-    await expect(sel.locator('option')).toHaveCount(8);
+    await expect(sel.locator('option')).toHaveCount(9);
     await sel.selectOption({ label: '那覇市（仮）（要確認あり）' });
     await expect(page.getByTestId('shinsei-preview')).toContainText('要確認: 土被りの最小値');
     // 保存されたプロファイルと現場の選択は再読み込み後も残る
@@ -129,7 +129,7 @@ test.describe('申請図面', () => {
     await page.getByTestId('project-item').first().locator('.pmain').click();
     await expect(page.getByTestId('editor')).toBeVisible();
     await page.getByTestId('open-shinsei').click();
-    await expect(page.getByTestId('shinsei-profile').locator('option')).toHaveCount(8);
+    await expect(page.getByTestId('shinsei-profile').locator('option')).toHaveCount(9);
     await expect(page.getByTestId('shinsei-profile')).toHaveValue(/^mp_/);
     // 同梱の自治体プロファイルを選ぶと「要確認」が図面に出る
     await page.getByTestId('shinsei-profile').selectOption('itoman');

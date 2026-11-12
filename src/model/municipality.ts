@@ -3,6 +3,7 @@
  * 自治体ごとの違いをコードを変えずに吸収する。同梱は `standard`（下水道協会方式を参考にした標準）のみ。
  * 個別自治体は公開の手引きを確認してから追加し、確認できなかった項目は `unverified` に入れて図面に「要確認」と出す。
  */
+import { cityUnverifiedDrainage, drainageSchema, NAHA_DRAINAGE } from './drainRules';
 import { z } from 'zod';
 import { newId } from './id';
 
@@ -66,6 +67,8 @@ export const municipalityProfileSchema = z.object({
     /** 右上の受付欄（沖縄市: 受付番号・水道番号・縮尺）。空なら描かない。省略可 */
     headerFields: z.array(z.string()).default([]),
   }),
+  /** 排水の決まり（勾配・土かぶり・ます）。値ごとに状態と出典。省略時は国の基準＋一般値（未確認） */
+  drainage: drainageSchema.optional(),
   /** 図面の色分け（申請書の指示: 新設・増設＝赤、既設＝青、公共下水道＝黒）。省略時は既定 */
   colors: z.object({
     newWork: colorSchema.default('#d91e18'),
@@ -164,12 +167,22 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
   }),
   municipal({
     id: 'naha', name: '那覇市',
+    drainage: NAHA_DRAINAGE,
     source: { title: '那覇市上下水道局「排水設備情報」「給水工事情報」。図面の様式は公開されていない（指定工事店の様式のみ）。責任技術者は沖縄県下水道協会の資格', url: 'https://www.city.naha.okinawa.jp/water/business/haisui.html', checkedAt: '2026-11-10' },
-    unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ', '色分け', ...COMMON_UNVERIFIED],
+    unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ', '色分け', 'ますの記号', '表題欄の項目', '勾配の書き方（1/100・‰・%）'],
+    // 最小勾配・土かぶりは那覇市下水道条例施行規程で確認（2026-11-12）
+    profileTable: { ...STANDARD_PROFILE.profileTable, minSlopeByDiameter: { 75: 100 / 3, 100: 50, 125: 100 / 1.7, 150: 100 / 1.5, 200: 100 / 1.2, 250: 100 }, minCover: 200 },
   }),
   municipal({
     id: 'tomigusuku', name: '豊見城市',
+    drainage: cityUnverifiedDrainage('豊見城市 上下水道部 下水道担当。条例・施行規程の本文は未入手'),
     source: { title: '豊見城市 上下水道部。図面の様式は公開されていない（補助金の規程のみ確認）', url: 'https://www.city.tomigusuku.lg.jp/', checkedAt: '2026-11-10' },
+    unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ', '色分け', ...COMMON_UNVERIFIED],
+  }),
+  municipal({
+    id: 'ginowan', name: '宜野湾市',
+    drainage: cityUnverifiedDrainage('宜野湾市上下水道局 下水道施設課 098-892-4156'),
+    source: { title: '宜野湾市。下水道条例・施行規程の本文はネットで見つからなかった（2026-11-12）。問い合わせ先は沖縄県「宜野湾市の下水道」', url: 'https://www.pref.okinawa.jp/machizukuri/suido/1012453/1022435/1003450/1022437/1003461.html', checkedAt: '2026-11-12' },
     unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ', '色分け', ...COMMON_UNVERIFIED],
   }),
   municipal({
