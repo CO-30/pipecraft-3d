@@ -1,6 +1,8 @@
 /**
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
+import { AddNoteButton, NoteEditor } from './Notes';
+import { noteNumbers } from '../model/notes';
 import { isUnderfloorDrain, underfloorLevels } from '../model/underfloorSlope';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -120,6 +122,7 @@ export function PropertyPanel() {
   const st = useStore.getState();
   const { building: b, network: net } = doc;
 
+  if (sel?.kind === 'note' && doc.notes?.[sel.id]) return <NoteEditor key={sel.id} id={sel.id} />;
   if (sel?.kind === 'segment' && net.segments[sel.id]) {
     const seg = net.segments[sel.id];
     const preview = branchDeletionPreview(net, seg.id);
@@ -725,6 +728,7 @@ const TOOL_HELP: Record<Tool, string> = {
   room: '対角にドラッグして部屋を作ります', split: '部屋を横切るように線を引くと2つに分かれます', door: '壁をタップしてドアを付けます', window: '壁をタップして窓を付けます',
   fixture: '種類を選んで図面をタップすると器具を置きます',
   underlay: '下敷き（図面・写真・航空写真）を読み込み、ドラッグで位置を合わせます',
+  note: '図面をタップした所にメモを置きます（配管・器具の上をタップするとそれに付き、動かすとついてきます）',
 };
 
 export function FloorBar({ compact = false }: { compact?: boolean }) {
@@ -870,7 +874,7 @@ function SectionControls() {
 
 /** いつも見える道具（スマホでも横にはみ出さない数） */
 const MAIN_TOOLS: { id: Tool; icon: string; label: string }[] = [
-  { id: 'select', icon: '👆', label: '選択' }, { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'pipe', icon: '〰️', label: '配管' },
+  { id: 'select', icon: '👆', label: '選択' }, { id: 'fixture', icon: '🚽', label: '器具' }, { id: 'pipe', icon: '〰️', label: '配管' }, { id: 'note', icon: '📝', label: 'メモ' },
 ];
 /** 「建物」を押すと出る道具 */
 const BUILD_TOOLS: { id: Tool; icon: string; label: string }[] = [
@@ -950,11 +954,13 @@ export function SelectionBar() {
   else if (sel.kind === 'opening' && b.openings[sel.id]) label = b.openings[sel.id].type === 'door' ? 'ドア' : '窓';
   else if (sel.kind === 'room' && b.rooms[sel.id]) label = `部屋「${b.rooms[sel.id].name}」`;
   else if (sel.kind === 'member') label = '梁・軒・バルコニー・階段';
+  else if (sel.kind === 'note' && doc.notes?.[sel.id]) label = `メモ ${noteNumbers(doc.notes).get(sel.id)}`;
   else return null;
   return (
     <div className="sel-bar" data-testid="sel-bar">
       {color && <i className="sys-dot" style={{ background: color }} />}
       <span>選択中: <b>{label}</b></span>
+      <AddNoteButton />
       <button data-testid="sel-clear" onClick={() => useStore.getState().select(null)}>✕ 選択をやめる</button>
     </div>
   );

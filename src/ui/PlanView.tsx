@@ -4,6 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyzeFittings } from '../model/fittings';
+import { noteNumbers } from '../model/notes';
 import { arcPoints, pbBendArcs, trimmedEnds } from '../model/pbBends';
 import { activeFloorElevation, isUnderFloor, useStore } from '../state/store';
 import { hitTestPlan, orthoSnap, simplify, type HitFilter, type Vec2 } from '../model/geometry';
@@ -29,6 +30,8 @@ type Gesture =
   | { kind: 'dragNode'; nodeId: string; startPx: Vec2 }
   | { kind: 'dragSeg'; segId: string; start: Vec2 }
   | { kind: 'dragFixture'; fixtureId: string; offset: Vec2 }
+  | { kind: 'dragNote'; noteId: string; offset: Vec2; startPx: Vec2; moving: boolean }
+  | { kind: 'tapNote'; startPx: Vec2 }
   | { kind: 'dragCorner'; cornerId: string }
   | { kind: 'dragWall'; wallId: string; start: Vec2 }
   | { kind: 'dragUnderlay'; id: string; start: Vec2 }
@@ -36,6 +39,19 @@ type Gesture =
   | { kind: 'pinch'; dist: number; mid: Vec2; view: ViewT };
 
 const HIT_PX = 22; // 指で押しやすいヒット半径
+/** メモのピン: 指す点から少し上に丸（番号）を出す。丸を指で押せる半径 */
+const NOTE_PIN_DY = -20, NOTE_HIT_PX = 18;
+/** 吹き出しの本文: 1 行 17 字・5 行まで（あふれたら …） */
+function wrapNote(text: string): string[] {
+  const out: string[] = [];
+  for (const para of text.split('\n')) {
+    const chars = [...para];
+    if (!chars.length) { out.push(''); continue; }
+    for (let i = 0; i < chars.length; i += 17) out.push(chars.slice(i, i + 17).join(''));
+  }
+  while (out.length && !out[out.length - 1].trim()) out.pop();
+  return out.length > 5 ? [...out.slice(0, 4), out[4].slice(0, 15) + '…'] : out;
+}
 const GRID_SNAP = 50; // 壁・部屋の座標を50mm単位に丸める
 const snapGrid = (p: Vec2): Vec2 => ({ x: Math.round(p.x / GRID_SNAP) * GRID_SNAP, y: Math.round(p.y / GRID_SNAP) * GRID_SNAP });
 /** 縦の区間（立て管）か（平面上の長さがほぼ0） */
@@ -87,6 +103,8 @@ export function PlanView() {
   const levelSite = useStore((s) => s.doc.site);
   const underRange = useMemo(() => (underFloor ? underfloorText(levelSummary(levelBuilding, levelSite)) : null), [underFloor, levelBuilding, levelSite]);
   const svgRef = useRef<SVGSVGElement>(null);
+  /** メモを置いた直後（タッチの互換 mousedown で入力欄のフォーカスを外さない） */
+  const justPlaced = useRef(false);
   const [view, setView] = useState<ViewT | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [stroke, setStroke] = useState<Vec2[] | null>(null);
@@ -97,6 +115,9 @@ export function PlanView() {
   const activeUnderlayId = useStore((s) => s.activeUnderlayId);
   const scalePick = useStore((s) => s.scalePick);
   const fixtures = useStore((s) => s.doc.fixtures);
+  const notes = useStore((s) => s.doc.notes);
+  const showNotes = useStore((s) => s.showNotes);
+  const noteNums = useMemo(() => noteNumbers(notes), [notes]);
   useColors((c) => c.overrides);
   const bendArcs = useMemo(() => pbBendArcs(net, analyzeFittings(net, fixtures)), [net, fixtures]);
   const [dropHit, setDropHit] = useState<ReturnType<typeof hitTestPlan>>(null);
@@ -173,6 +194,18 @@ export function PlanView() {
     return fs.find((f) => pointInPolygon(w, fixtureCorners(f)))
       ?? fs.map((f) => ({ f, d: Math.hypot(f.x - w.x, f.y - w.y) })).filter((x) => x.d <= tol).sort((p, q) => p.d - q.d)[0]?.f;
   };
+  /** メモがこの図（床上／床下）の範囲か。付けた先があればその高さ、無ければ置いた図 */
+  const noteInRange = (n: { z?: number; under?: boolean }) => (n.z !== undefined ? zRange(n.z, n.z) : !!n.under === underFloor);
+  /** メモのピンのヒット（画面上の距離。選んでいるメモを優先。範囲外の薄いピンは選んでいる時だけ） */
+  const hitNote = (p: Vec2): string | null => {
+    const st0 = useStore.getState();
+    if (!st0.showNotes) return null;
+    const s0 = st0.selection;
+    const ns = Object.values(st0.doc.notes ?? {}).filter((n) => n.floorId === floorId && (noteInRange(n) || (s0?.kind === 'note' && s0.id === n.id)))
+      .map((n) => { const q = toScreen(n); return { n, d: Math.hypot(q.x - p.x, q.y + NOTE_PIN_DY - p.y) }; })
+      .filter((x) => x.d <= NOTE_HIT_PX).sort((a, b) => a.d - b.d);
+    return (ns.find((x) => s0?.kind === 'note' && s0.id === x.n.id) ?? ns[0])?.n.id ?? null;
+  };
   if (import.meta.env.MODE === 'e2e') {
     (window as unknown as { __plan: unknown }).__plan = {
       toScreen: (x: number, y: number) => {
@@ -203,6 +236,24 @@ export function PlanView() {
     const w = toWorld(p);
     const b = st.doc.building;
 
+    // メモのピンは配管・器具より手前（選んで・ドラッグで動かす）
+    if (st.tool === 'select' || st.tool === 'note') {
+      const nid = hitNote(p);
+      if (nid) {
+        const n = st.doc.notes![nid];
+        if (st.pendingMerge) st.cancelMerge();
+        st.select({ kind: 'note', id: nid });
+        if (st.tool === 'note') st.setTool('select');
+        st.beginDrag();
+        gesture.current = { kind: 'dragNote', noteId: nid, offset: { x: n.x - w.x, y: n.y - w.y }, startPx: p, moving: false };
+        return;
+      }
+    }
+    if (st.tool === 'note') {
+      // 指を離したときに置く（つまむ・動かすだけなら置かない）
+      gesture.current = { kind: 'tapNote', startPx: p };
+      return;
+    }
     if (st.tool === 'fixture') {
       const f = hitFixture(w);
       if (f) st.select({ kind: 'fixture', id: f.id });
@@ -378,6 +429,15 @@ export function PlanView() {
     } else if (g.kind === 'dragSeg') {
       const w = toWorld(p);
       st.dragSegment(g.segId, { x: Math.round((w.x - g.start.x) / GRID_SNAP) * GRID_SNAP, y: Math.round((w.y - g.start.y) / GRID_SNAP) * GRID_SNAP, z: 0 });
+    } else if (g.kind === 'tapNote') {
+      // 動かしたら図面を動かす操作に切り替える（メモは置かない）
+      if (Math.hypot(p.x - g.startPx.x, p.y - g.startPx.y) >= 8) gesture.current = { kind: 'pan', last: p };
+    } else if (g.kind === 'dragNote') {
+      // 指のぶれで付けた先から外れないよう、少し動かしてから動かし始める
+      if (!g.moving && Math.hypot(p.x - g.startPx.x, p.y - g.startPx.y) < 8) return;
+      g.moving = true;
+      const w = toWorld(p);
+      st.dragNote(g.noteId, { x: w.x + g.offset.x, y: w.y + g.offset.y });
     } else if (g.kind === 'dragFixture') {
       const w = toWorld(p);
       st.dragFixture(g.fixtureId, snapGrid({ x: w.x + g.offset.x, y: w.y + g.offset.y }));
@@ -414,6 +474,17 @@ export function PlanView() {
       return;
     }
     gesture.current = null;
+    if (g?.kind === 'tapNote') {
+      // 配管・器具の上ならそれに付ける（動かすとついてくる）。器具の接続口（器具の中の点）なら器具に付ける
+      const w = toWorld(local(e));
+      const ph = hitPipe(w);
+      const portOf = ph?.type === 'node' ? st.doc.network.nodes[ph.id]?.fixtureId : undefined;
+      const fx = ph && !portOf ? undefined : portOf ? st.doc.fixtures[portOf] : hitFixture(w);
+      st.placeNoteAt(w, fx ? { kind: 'fixture', id: fx.id } : ph ? { kind: ph.type === 'node' ? 'node' : 'segment', id: ph.id } : undefined);
+      // 続くタッチの互換 mousedown で入力欄のカーソルが外れないように
+      justPlaced.current = e.pointerType !== 'mouse';
+      return;
+    }
     if (g?.kind === 'dragNode') {
       // 端点を別の配管のノード・区間の上で離すと接続（ドラッグと合わせて履歴1件）
       const up = local(e);
@@ -537,6 +608,7 @@ export function PlanView() {
   return (
     <svg ref={svgRef} data-testid="plan" className="plan"
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel}
+      onMouseDown={(e) => { if (justPlaced.current) { e.preventDefault(); justPlaced.current = false; } }}
       onWheel={(e) => {
         const p = { x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY };
         const scale = Math.min(2, Math.max(0.005, vw.scale * Math.exp(-e.deltaY * 0.001)));
@@ -717,6 +789,29 @@ export function PlanView() {
           <circle key={n.id} data-node={n.id} data-kind={n.kind} data-port-system={portSys} cx={p.x} cy={p.y} r={drop ? 10 : big ? 7 : port ? 7 : 5} opacity={op}
             fill={isSel('node', n.id) ? SELECT_COLOR : drop ? '#16a34a' : n.kind === 'valve' ? '#f97316' : big ? '#111827' : portSys ? systemColor(portSys) : port ? '#0e7490' : '#fff'}
             stroke="#111827" strokeWidth={port ? 1.5 : 2} />
+        );
+      })}
+      {showNotes && notes && Object.values(notes).filter((n) => n.floorId === floorId).sort((a, b) => (isSel('note', a.id) ? 1 : 0) - (isSel('note', b.id) ? 1 : 0)).map((n) => {
+        const q = toScreen(n);
+        const selected = isSel('note', n.id);
+        // 床下の図／床上の図の範囲外は薄く（付けた先があればその高さ、無ければ置いた図）
+        const inRange = noteInRange(n);
+        const lines = selected ? wrapNote(n.text) : [];
+        const bw = 230, bh = 10 + Math.max(1, lines.length) * 16;
+        const bx = Math.min(Math.max(4, q.x + 16), W - bw - 4), by = Math.max(4, q.y + NOTE_PIN_DY - bh - 14);
+        return (
+          <g key={n.id} data-note={n.id} data-done={n.done ? '1' : undefined} opacity={inRange || selected ? 1 : 0.4}>
+            <line x1={q.x} y1={q.y} x2={q.x} y2={q.y + NOTE_PIN_DY} stroke="#713f12" strokeWidth={2} />
+            <circle cx={q.x} cy={q.y} r={2.5} fill="#713f12" />
+            <circle cx={q.x} cy={q.y + NOTE_PIN_DY} r={11} fill={n.done ? '#e2e8f0' : '#facc15'} stroke={selected ? SELECT_COLOR : '#713f12'} strokeWidth={selected ? 3 : 1.5} />
+            <text x={q.x} y={q.y + NOTE_PIN_DY + 4} fontSize={11} fontWeight={700} textAnchor="middle" fill={n.done ? '#64748b' : '#422006'} pointerEvents="none">{noteNums.get(n.id)}</text>
+            {selected && (
+              <g data-testid="note-balloon" pointerEvents="none">
+                <rect x={bx} y={by} width={bw} height={bh} rx={6} fill="#fffbeb" stroke="#d97706" strokeWidth={1.5} />
+                {(lines.length ? lines : ['（本文を書いてください）']).map((t, i) => <text key={i} x={bx + 8} y={by + 18 + i * 16} fontSize={12} fill={lines.length ? '#422006' : '#a16207'}>{t}</text>)}
+              </g>
+            )}
+          </g>
         );
       })}
       {strokePath && <path d={strokePath} fill="none" stroke="#111827" strokeDasharray="6 4" strokeWidth={2} />}

@@ -64,7 +64,7 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .views { position: relative; min-height: 0; display: grid; }
 .views.split { grid-template-columns: 1fr 1fr; }
 .plan { width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; background: #fafafa; display: block; }
-.view3d { position: relative; width: 100%; height: 100%; min-height: 0; touch-action: none; background: #eef2f7; }
+.view3d { position: relative; width: 100%; height: 100%; min-height: 0; touch-action: none; background: #eef2f7; isolation: isolate; /* 3D のメモの札を表示シートより下に */ }
 .view3d canvas { touch-action: none; }
 .overlay { position: absolute; left: 8px; top: 6px; font-size: 12px; color: #6b7280; pointer-events: none; }
 .sheet { position: absolute; right: 6px; top: 6px; z-index: 5; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 8px; max-height: 80%; overflow: auto; }
@@ -404,3 +404,24 @@ header .lbl { margin-left: 2px; }
 /* 申請画面の図の種類: 文字は折らず、ボタンごと 2 段に並べる（スマホで 1 字ずつ縦に折れず、全部見える） */
 .shinsei-kinds { max-width: 100%; flex-wrap: wrap; row-gap: 4px; }
 .shinsei-kinds button { white-space: nowrap; flex: none; }
+
+/* ⑨ メモ */
+.note-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; background: #facc15; color: #422006; border: 1.5px solid #713f12; font-weight: 700; font-size: 12px; box-sizing: border-box; flex: none; }
+.note-badge.done { background: #e2e8f0; color: #64748b; border-color: #94a3b8; }
+.note-text { width: 100%; box-sizing: border-box; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid #cbd5e1; resize: vertical; min-height: 88px; }
+.note-editor .row { flex-wrap: wrap; gap: 8px; align-items: center; }
+.note-editor .field.inline, .notes-list .field.inline { margin: 0; min-height: 36px; }
+.notes-list { margin-top: 8px; }
+.notes-list > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.notes-list .row { flex-wrap: wrap; gap: 10px; }
+.notes-list ul { list-style: none; margin: 4px 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.notes-list li button { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; min-height: 44px; padding: 6px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 4px; }
+.notes-list li button.on, .notes-list li button.on:hover { border-color: #d97706; background: #fffbeb; color: #1f2937; }
+.notes-list li button.done .note-row-text { color: #94a3b8; text-decoration: line-through; }
+.note-row-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.note-row-text small { display: block; color: #64748b; font-size: 11px; }
+.note-done-mark { color: #16a34a; font-weight: 700; }
+.note-tag { display: inline-flex; align-items: center; gap: 4px; min-width: 26px; min-height: 26px; padding: 2px 6px; border-radius: 13px; background: #facc15; color: #422006; border: 2px solid #713f12; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.note-tag.done { background: #e2e8f0; color: #64748b; border-color: #94a3b8; }
+.note-tag.on, .note-tag.on:hover { background: #fde047; color: #422006; border-color: #d97706; outline: 3px solid #f59e0b; }
+.note-tag-text { font-weight: 400; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }

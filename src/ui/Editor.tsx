@@ -5,6 +5,7 @@ import { ElevationView } from './ElevationView';
 const View3D = lazy(() => import('./View3D').then((m) => ({ default: m.View3D })));
 import { useStore } from '../state/store';
 import { totalLength } from '../model/network';
+import { NotesList } from './Notes';
 import { FloorBar, PropertyPanel, SelectionBar, Toolbar, TraceBar, VisibilityPanel } from './Panels';
 import type { SaveState } from './autosave';
 import { EstimateBar, EstimateScreen, type EstTab } from './EstimateScreen';
@@ -71,13 +72,14 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
             <FloorBar />
             <h3>表示</h3>
             <VisibilityPanel compact />
+            <NotesList />
           </aside>
         )}
         <main className={`views ${eff}`}>
           {eff !== '3d' && (elevId ? <ElevationView key={elevId} /> : <PlanView />)}
           {eff !== '3d' && !elevId && <PlanCoach onFacade={() => setFacadeOpen(true)} />}
           {eff !== '2d' && <Suspense fallback={<div className="view3d loading">3D を準備中…</div>}><View3D /></Suspense>}
-          {!isWide && showVis && <div className="sheet"><VisibilityPanel /></div>}
+          {!isWide && showVis && <div className="sheet"><VisibilityPanel /><NotesList /></div>}
           <TraceBar />
         </main>
         {isWide && (
