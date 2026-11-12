@@ -29,6 +29,8 @@ input, select { min-height: 40px; font-size: 16px; padding: 0 8px; border: 1px s
 .home-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 .search { width: 100%; margin-bottom: 10px; }
 .msg { background: #ecfdf5; color: #065f46; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; }
+/* 共通の要望欄（feedback-widget.js）の .msg はアプリの .msg と別物。部品の見た目に戻す */
+.fbw .msg { background: none; color: inherit; padding: 0; border-radius: 0; margin: 8px 0 0; }
 .empty { color: #6b7280; text-align: center; padding: 30px 0; }
 .plist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .plist li { border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px; background: #fff; }

@@ -88,7 +88,7 @@ export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string
         <ul className="plist">
           {filtered.map((p) => (
             <li key={p.id} data-testid="project-item">
-              <button className="pmain" onClick={() => onOpen(p.id)}>
+              <button className="pmain" data-fb="工事を開く" onClick={() => onOpen(p.id)}>
                 <span className="pname">{p.name}</span>
                 <span className="pmeta">{p.address ? `${p.address}・` : ''}更新 {fmt(p.updatedAt)}</span>
               </button>

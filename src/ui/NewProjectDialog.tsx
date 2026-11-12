@@ -84,7 +84,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
             {files.length > 0 && (
               <ul className="file-list" data-testid="np-file-list">
                 {files.map((f) => (
-                  <li key={`${f.name}:${f.size}`}>{f.name} <button type="button" className="linkish" aria-label={`${f.name} を外す`} onClick={() => setV({ ...v, files: files.filter((x) => x !== f) })}>外す</button></li>
+                  <li key={`${f.name}:${f.size}`}>{f.name} <button type="button" className="linkish" data-fb="図面ファイルを外す" aria-label={`${f.name} を外す`} onClick={() => setV({ ...v, files: files.filter((x) => x !== f) })}>外す</button></li>
                 ))}
               </ul>
             )}
