@@ -20,7 +20,7 @@ export async function searchAddress(q: string): Promise<Place[]> {
     .map((x) => ({ lon: x.geometry!.coordinates![0], lat: x.geometry!.coordinates![1], title: x.properties?.title ?? '' }));
 }
 
-function loadTile(url: string): Promise<HTMLImageElement | null> {
+export function loadTile(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';

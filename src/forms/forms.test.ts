@@ -199,6 +199,16 @@ describe('下水道排水設備計画確認申請書（PDF）', () => {
     expect(added(2)).toBe(true);
     expect(added(3)).toBe(false);
   });
+  test('見取図を渡すと 4 面に地図の画像ごと描かれる', async () => {
+    const { renderLocationSheet, MAP_PX } = await import('../export/locationSheet');
+    const { PDFDict, PDFName } = await import('pdf-lib');
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const location = renderLocationSheet({ map: { href: PNG, wPx: MAP_PX.w, hPx: MAP_PX.h, mpp: 1.07 }, siteName: '現場', address: '沖縄市美里5-28-2', date: new Date(2026, 10, 12) });
+    const pdf = await PDFDocument.load(await buildSewerApplication(sewerTpl(), font(), { date: '2026-11-12' }, contractor, { location }));
+    const p4 = pdf.getPages()[3];
+    expect(p4.node.Contents() instanceof PDFArray).toBe(true);
+    expect(p4.node.Resources()?.lookup(PDFName.of('XObject'), PDFDict)?.keys().length).toBeGreaterThanOrEqual(1);
+  });
   test('フォントに無い字（髙・﨑）は置き換えて例外にせず、missing に集める', async () => {
     const vals = { date: '2026-11-10', applicantName: '髙橋 﨑夫', applicantAddress: '沖縄市' };
     const missing = new Set<string>();

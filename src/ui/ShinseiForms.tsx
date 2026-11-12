@@ -8,6 +8,7 @@ import { repo } from '../storage/instance';
 import type { MunicipalityProfile } from '../model/municipality';
 import { EMPTY_CONTRACTOR, todayIso, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
 import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS, waterSheetFor } from '../forms/formSets';
+import type { Sheet } from '../export/sheet';
 
 const CONTRACTOR_FIELDS: { id: keyof Contractor; label: string; hint?: string }[] = [
   { id: 'name', label: '商号又は名称' },
@@ -84,12 +85,18 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         if (notes.length) setMsg(notes.join('。'));
       } else if (what === 'sewer') {
         const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
-        const sheets = drainageSheetsFor(doc, profile, siteName, date);
+        const sheets: { profile?: Sheet; iso?: Sheet; location?: Sheet } = { ...drainageSheetsFor(doc, profile, siteName, date) };
+        const { buildLocationSheet } = await import('../import/locationMap');
+        const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress ?? '', date });
+        if (loc?.mapOk) sheets.location = loc.sheet;
         const missing = new Set<string>();
         downloadBytes(await buildSewerApplication(tpl, font, vals, contractor, sheets, { missing }), `${base}_下水道排水設備計画確認申請書.pdf`, 'application/pdf');
         const notes: string[] = [];
         if (!sheets.profile) notes.push('排水の配管が無いため、2・3 面の図面は空欄です');
         else if (profile.paper.orientation === 'landscape') notes.push('プロファイルの用紙が横のため、2・3 面の図は小さくなります（A4 縦のプロファイルを使うと読みやすくなります）');
+        if (!loc) notes.push('4 面の見取図は空欄です（申請図面の「見取図」で工事場所を決めると貼られます）');
+        else if (!loc.mapOk) notes.push(`4 面の見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
+        else notes.push(...loc.notes);
         if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}（出力後に手で直してください）`);
         setMsg(notes.join('。'));
       } else {
