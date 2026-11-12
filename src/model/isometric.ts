@@ -25,7 +25,8 @@ export function isoProject(p: Vec3): { x: number; y: number } {
 
 const inKind = (kind: IsoKind, s: SystemType) => (kind === 'water' ? s === 'water' || s === 'hotWater' : isDrain(s));
 
-export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityProfile): IsoModel {
+/** lengthOf: 区間の長さ（mm）。竣工図では実測長を渡す。既定は配管の 3D の長さ */
+export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityProfile, opts: { lengthOf?: (segId: string) => number } = {}): IsoModel {
   const net = doc.network;
   void profile; // 今は体裁に依存しない（将来 記号などに使う）
   const lines: IsoLine[] = [];
@@ -35,7 +36,7 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     const a = net.nodes[s.a], b = net.nodes[s.b];
     if (!a || !b) continue;
     const pa = isoProject(a.pos), pb = isoProject(b.pos);
-    const len = Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y, b.pos.z - a.pos.z);
+    const len = opts.lengthOf ? opts.lengthOf(s.id) : Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y, b.pos.z - a.pos.z);
     lines.push({ segId: s.id, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, label: `${drawingMaterial(s.material) || (isDrain(s.system) ? 'VU' : 'HI')}${s.diameter}×${(len / 1000).toFixed(1)}`, system: s.system, ...(s.existing ? { existing: true } : {}) });
     used.add(s.a); used.add(s.b);
   }

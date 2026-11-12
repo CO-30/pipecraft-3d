@@ -389,3 +389,9 @@ header .lbl { margin-left: 2px; }
 .import-report ul.cands input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
 .drop-pipes { align-items: flex-end; margin-bottom: 8px; }
 .build-stamp { margin-top: 16px; text-align: center; font-size: 11px; color: #9ca3af; }
+/* 竣工図: 実測長の一覧 */
+.asbuilt-list { flex-basis: 100%; }
+.asbuilt-list summary { cursor: pointer; font-weight: 600; }
+.asbuilt-list ol { margin: 4px 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.asbuilt-list li > * { margin-right: 8px; }
+.asbuilt-list li { display: flex; flex-wrap: wrap; align-items: center; }
