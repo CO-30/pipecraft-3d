@@ -36,6 +36,14 @@ const INSET = 150;
 const PIPE_GAP = 60;
 /** マスを 1 つ増やすことを、配管何 mm 分の遠回りと同じとみるか（近くのマスへ合流する方を選ぶ） */
 const MANHOLE_COST = 3000;
+/** 使う人が汚水マスを置いてあるときの、新しいマスを足す重み（置いたマスへ床下で集める） */
+const MANHOLE_COST_PLACED = 8000;
+/** 置いたマスから外壁までがこれより遠ければ、そのマスの出口は作らない(mm) */
+const HOLE_REACH = 3000;
+/** 置いたマスから作る出口の数（近い順） */
+const MAX_HOLE_EXITS = 2;
+/** 手で置いた汚水マス（公共マス・雨水マスは除く）。床下から出す先にする */
+const PLACED_TYPES = new Set(['manholeSewage', 'manholeTrap', 'manholeInvert']);
 /** 先の排水管から離す距離(mm) */
 const BUSY_GAP = 40;
 const FAR = 100_000;
@@ -58,8 +66,8 @@ export const DEFAULT_COVER = 200;
 const OUTDOOR_SLOPE: [number, number][] = [[75, 0.03], [100, 0.02], [125, 0.017], [150, 0.015], [200, 0.012]];
 export const outdoorSlope = (d: number) => OUTDOOR_SLOPE.find(([k]) => d <= k)?.[1] ?? 0.01;
 export { outerDiameter } from './slope';
-/** 基礎の外面から、地中へ下ろす立て管の芯までの離れ(mm) */
-const OUT_GAP = 100;
+/** 基礎の内側の面から、立ち下げてスリーブ（KSA）へ入る点までの離れ(mm) */
+const KSA_IN = 10;
 
 type Line = { a: Vec2; b: Vec2; t: number; exterior?: boolean };
 
@@ -123,7 +131,37 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   };
 
   /** 出口: wall の外の m へ、向き n（壁に直角・外向き）。foot は壁芯の上の点。cost は直線で出たときの目安（近い順） */
-  type Exit = { wall: Line; foot: Vec2; m: Vec2; n: Vec2; cost: number };
+  type Exit = { wall: Line; foot: Vec2; m: Vec2; n: Vec2; cost: number; hole?: Hole };
+  /**
+   * 置いたマスの出口: マスに直角に向かい合う外周の壁の点（器具の真横でなくてよい）。
+   * マスから壁まで HOLE_REACH 以内で、壁の点からマスまでの間に壁・基礎が無いもの
+   */
+  const holeExits = (p: Vec3): Exit[] => {
+    const out: Exit[] = [];
+    for (const h of placedHoles) {
+      let best: Exit | null = null;
+      for (const w of walls) {
+        if (!w.exterior) continue;
+        const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
+        if (L < 1) continue;
+        const u = { x: (w.b.x - w.a.x) / L, y: (w.b.y - w.a.y) / L };
+        if (Math.abs(u.x) > 1e-6 && Math.abs(u.y) > 1e-6) continue;
+        const s0 = (h.x - w.a.x) * u.x + (h.y - w.a.y) * u.y;
+        if (s0 < 0 || s0 > L) continue;
+        const foot = { x: w.a.x + u.x * s0, y: w.a.y + u.y * s0 };
+        const d = Math.hypot(h.x - foot.x, h.y - foot.y);
+        if (d < w.t / 2 + CLEAR || d > HOLE_REACH) continue;
+        const n = { x: (h.x - foot.x) / d, y: (h.y - foot.y) / d };
+        if (inside({ x: foot.x + n.x * (w.t / 2 + 200), y: foot.y + n.y * (w.t / 2 + 200) })) continue; // 壁の内側にあるマス
+        const start = { x: foot.x + n.x * (w.t / 2 + 1), y: foot.y + n.y * (w.t / 2 + 1) };
+        if (blockers.some((k) => k !== w && crosses(start, h, k.a, k.b))) continue;
+        const cost = Math.abs(p.x - foot.x) + Math.abs(p.y - foot.y);
+        if (!best || d < Math.hypot(h.x - best.foot.x, h.y - best.foot.y)) best = { wall: w, foot, m: { x: h.x, y: h.y }, n, cost, hole: h };
+      }
+      if (best) out.push(best);
+    }
+    return out.sort((a, b) => a.cost - b.cost).slice(0, MAX_HOLE_EXITS);
+  };
   const exitsFor = (p: Vec3): Exit[] => {
     if (!inside(p)) return [];
     const out: Exit[] = [];
@@ -159,10 +197,11 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const underfloor = (a: Vec3, c: Vec3) => { const L = Math.hypot(a.x - c.x, a.y - c.y); return L >= 1 && Math.abs(a.z - c.z) <= FLATISH * L && a.z > gl && c.z > gl; };
   const cover = rules.cover ?? DEFAULT_COVER;
   const slopeOf = (d: number) => Math.max(outdoorSlope(d), rules.slopeFor?.(d) ?? 0);
-  /** 出口の外で地中へ下ろす点（基礎の外面 + OUT_GAP）と、そこからマスまでの水平距離 */
+  /** 基礎の中（内側の面の近く）で地中へ下ろす点と、そこからマスまでの水平距離 */
   const dropOf = (plan: Plan): { x: Vec2; d: number } => {
     const face = Math.max(plan.exit.wall.t, ...extFoot.filter((f) => pointSeg(plan.exit.foot, f.a, f.b) < f.t / 2 + 50).map((f) => f.t)) / 2;
-    const k = plan.exit.wall.t / 2 + INSET + face + OUT_GAP;
+    // 基礎貫通スリーブ（前澤 KSA）の形: 基礎の内側の面のすぐ内で立ち下げ、地中で基礎を抜けて外へ（外に配管を出さない）
+    const k = plan.exit.wall.t / 2 + INSET - face - KSA_IN;
     const x = { x: Math.round(plan.eIn.x + plan.exit.n.x * k), y: Math.round(plan.eIn.y + plan.exit.n.y * k) };
     return { x, d: Math.hypot(plan.hp.x - x.x, plan.hp.y - x.y) };
   };
@@ -181,6 +220,8 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   let buriedCount = 0;
   const holes: Hole[] = Object.values(doc.fixtures)
     .filter((f) => isManhole(f.type) && f.type !== 'manholeRain' && f.type !== 'publicRain').map((f) => ({ id: f.id, x: f.x, y: f.y }));
+  /** 使う人が置いた汚水マス（このボタンで置いたマスは含めない） */
+  const placedHoles: Hole[] = Object.values(doc.fixtures).filter((f) => PLACED_TYPES.has(f.type)).map((f) => ({ id: f.id, x: f.x, y: f.y }));
   /** この出口で使えるマス: 出口の壁の外側にあり、出口から MERGE_MM 以内で、その位置に置けることを確かめたもの。近い順 */
   const holeFor = (e: Exit): Hole | undefined => holes
     .map((h) => ({ h, out: (h.x - e.foot.x) * e.n.x + (h.y - e.foot.y) * e.n.y, d: Math.hypot(h.x - e.m.x, h.y - e.m.y) }))
@@ -212,8 +253,8 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const planFor = (p: Vec3, net: Doc['network']): Plan | null => {
     const goals: RouteGoal[] = [], info: GoalInfo[] = [];
     const add = (g: Omit<RouteGoal, 'tag'>, gi: GoalInfo) => { goals.push({ ...g, tag: info.length }); info.push(gi); };
-    for (const exit of exitsFor(p).slice(0, MAX_EXITS)) {
-      const hole = holeFor(exit);
+    for (const exit of [...holeExits(p), ...exitsFor(p).slice(0, MAX_EXITS)]) {
+      const hole = exit.hole ?? holeFor(exit);
       const hp = hole ? { x: hole.x, y: hole.y } : { x: Math.round(exit.m.x), y: Math.round(exit.m.y) };
       const u = { x: -exit.n.y, y: exit.n.x };
       const along = (hp.x - exit.foot.x) * u.x + (hp.y - exit.foot.y) * u.y;
@@ -241,7 +282,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
         }
       }
       // 合流できる所が無ければ外周の内側の点へ外向きに（その先は外壁を直角に貫通してマスへ。先の配管があればマスの真上で合流）
-      if (!joins) add({ a: eIn, b: eIn, dir: dirOf(exit.n), extra: Math.hypot(hp.x - eIn.x, hp.y - eIn.y) + (hole ? 0 : MANHOLE_COST) }, { ...base, kind: 'eIn' });
+      if (!joins) add({ a: eIn, b: eIn, dir: dirOf(exit.n), extra: Math.hypot(hp.x - eIn.x, hp.y - eIn.y) + (hole ? 0 : placedHoles.length ? MANHOLE_COST_PLACED : MANHOLE_COST) }, { ...base, kind: 'eIn' });
     }
     if (!goals.length) return null;
     // 先にある同じ高さの排水管の上は通らない・横切らない（重ねない）
@@ -358,6 +399,8 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     // 貫通の数: この配管で新しく引いた水平の区間が横切る立上り（外周の立上りを含む）
     const flat = pts.filter((q) => Math.abs(q.z - p.z) < 1);
     for (let i = 1; i < flat.length; i++) sleeves += sleevesOn(flat[i - 1], flat[i], p.z);
+    // 外周の基礎は地中で抜ける（基礎貫通スリーブ 1 か所）
+    if (under && drop && extFoot.some((f) => pointSeg(plan.exit.foot, f.a, f.b) < f.t / 2 + 50) && pts.some((q) => Math.hypot(q.x - under.x, q.y - under.y) < 1 && Math.abs(q.z - under.z) < 1)) sleeves++;
   }
   // 床下: 起点（基礎を出て地中へ下ろす点）の管底を土間に置き、器具の方へ 2/100（足りなければ 1.5/100、自治体の最小勾配が急ならそれ）で上げる
   const uf = slopeUnderfloor(cur, { slopeFor: rules.slopeFor }, touched);

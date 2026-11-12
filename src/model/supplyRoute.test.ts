@@ -87,7 +87,9 @@ describe('給水・給湯を床下でつなぐ（案）', () => {
     const under = segs.filter((s) => net.nodes[s.a].pos.z === UNDERFLOOR_Z && net.nodes[s.b].pos.z === UNDERFLOOR_Z && inHouse(net.nodes[s.a].pos) && inHouse(net.nodes[s.b].pos));
     expect(under.length).toBeGreaterThan(0);
     expect(under.every((s) => isPB(s.material))).toBe(true);
-    const buried = segs.filter((s) => net.nodes[s.a].pos.z < -611 && net.nodes[s.b].pos.z < -611);
+    // 地中で基礎貫通スリーブ（KSS）を通る所は PB のまま、基礎の外で HIVP に替える
+    const away = (p: { x: number; y: number }) => p.x < -400 || p.x > 8400 || p.y < -400 || p.y > 6400;
+    const buried = segs.filter((s) => net.nodes[s.a].pos.z < -611 && net.nodes[s.b].pos.z < -611 && (away(net.nodes[s.a].pos) || away(net.nodes[s.b].pos)));
     expect(buried.length).toBeGreaterThan(0);
     expect(buried.every((s) => s.material === 'HIVP')).toBe(true);
   });

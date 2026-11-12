@@ -110,6 +110,8 @@ export const estimateSchema = z.object({
     tapeRoll: z.number().finite().positive(),
     glueCan: z.number().finite().positive(),
   }).optional(),
+  /** 基礎貫通スリーブ（後から追加したため省略可） */
+  kisoSleeve: z.object({ enabled: z.boolean(), antiTermite: z.boolean() }).optional(),
   client: z.string().optional(),
   title: z.string().optional(),
   issuer: z.string().optional(),

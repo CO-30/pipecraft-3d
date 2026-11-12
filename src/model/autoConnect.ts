@@ -21,6 +21,8 @@ const YARD_CLEAR = 300;
 const AROUND = 700;
 /** 曲がりにマスを置けるよう、曲がりのある道では 1m より短い区間を避ける */
 const MIN_LEG = 1000, SHORT_LEG_COST = 3000;
+/** 方眼の道探しの間隔・まわりの余白・曲がり 1 回の重み(mm) */
+const GRID = 250, GRID_PAD = 2500, TURN_COST = 1500;
 /** 管種は付けない（屋外の管の自動の管種を、画面の側で付ける） */
 const YARD_PIPE = { system: 'sewage' as const, diameter: 100 };
 
@@ -99,7 +101,63 @@ export function connectYard(doc: Doc): YardResult {
       const cost = legs.reduce((x, y) => x + y, 0) + (pts.length > 2 ? legs.filter((l) => l < MIN_LEG).length * SHORT_LEG_COST : 0);
       if (!best || cost < best.cost) best = { pts, cost };
     }
-    return best?.pts ?? null;
+    return best?.pts ?? gridRoute(a, c);
+  };
+  /**
+   * 方眼の道探し（直線・L 字・箱を回る道でつなげないとき。凹んだ形の建物、マスが建物のへこみにある、など）。
+   * a を通る GRID 間隔の方眼で、建物の中・外壁の近くを避けて縦横に進み、c と縦か横にそろった所からまっすぐ c へ。曲がりは少なく
+   */
+  const gridRoute = (a: Vec3, c: Vec3): Vec3[] | null => {
+    if (!box) return null;
+    const z = (a.z + c.z) / 2;
+    const x0 = Math.min(box.x0, a.x, c.x) - GRID_PAD, x1 = Math.max(box.x1, a.x, c.x) + GRID_PAD;
+    const y0 = Math.min(box.y0, a.y, c.y) - GRID_PAD, y1 = Math.max(box.y1, a.y, c.y) + GRID_PAD;
+    const i0 = Math.floor((x0 - a.x) / GRID), i1 = Math.ceil((x1 - a.x) / GRID), j0 = Math.floor((y0 - a.y) / GRID), j1 = Math.ceil((y1 - a.y) / GRID);
+    const NI = i1 - i0 + 1, NJ = j1 - j0 + 1;
+    if (NI * NJ > 200_000) return null;
+    const pos = (i: number, j: number) => ({ x: a.x + (i + i0) * GRID, y: a.y + (j + j0) * GRID, z });
+    const okCell = new Int8Array(NI * NJ).fill(-1);
+    const cellOk = (i: number, j: number) => {
+      const k = j * NI + i;
+      if (okCell[k] < 0) { const q = pos(i, j); okCell[k] = Math.hypot(q.x - a.x, q.y - a.y) < 400 || !blocked(q) ? 1 : 0; }
+      return okCell[k] === 1;
+    };
+    const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+    const N = NI * NJ * 4;
+    const dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1);
+    const heap: [number, number][] = [];
+    const push = (d: number, s: number) => { heap.push([d, s]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop()!; if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+    const si = -i0, sj = -j0;
+    for (let d = 0; d < 4; d++) { const s0 = (sj * NI + si) * 4 + d; dist[s0] = 0; push(0, s0); }
+    let goal = -1;
+    while (heap.length) {
+      const [d, st] = pop();
+      if (d > dist[st]) continue;
+      const cell = st >> 2, dir = st & 3, i = cell % NI, j = (cell / NI) | 0;
+      const q = pos(i, j);
+      // c とそろっていて、まっすぐ行ける
+      if ((Math.abs(q.x - c.x) < 1 || Math.abs(q.y - c.y) < 1) && legOk(q, c, [a, c])) { goal = st; break; }
+      for (let nd = 0; nd < 4; nd++) {
+        const ni = i + DIRS[nd][0], nj = j + DIRS[nd][1];
+        if (ni < 0 || nj < 0 || ni >= NI || nj >= NJ || !cellOk(ni, nj)) continue;
+        const ns = (nj * NI + ni) * 4 + nd, nd2 = d + GRID + (nd !== dir && d > 0 ? TURN_COST : 0);
+        if (nd2 < dist[ns]) { dist[ns] = nd2; prev[ns] = st; push(nd2, ns); }
+      }
+    }
+    if (goal < 0) return null;
+    const cells: Vec3[] = [];
+    for (let st = goal; st >= 0; st = prev[st]) { const cell = st >> 2; cells.push(pos(cell % NI, (cell / NI) | 0)); if (prev[st] < 0) break; }
+    cells.reverse();
+    const pts: Vec3[] = [a, ...cells.slice(1), c].filter((p, i, arr) => i === 0 || Math.hypot(p.x - arr[i - 1].x, p.y - arr[i - 1].y) >= 1);
+    // まっすぐ並んだ点を除く
+    const out: Vec3[] = [pts[0]];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const p0 = out[out.length - 1], p1 = pts[i], p2 = pts[i + 1];
+      if (Math.abs((p1.x - p0.x) * (p2.y - p1.y) - (p1.y - p0.y) * (p2.x - p1.x)) > 1e-6) out.push(p1);
+    }
+    out.push(pts[pts.length - 1]);
+    return out.every((p, i) => i === 0 || legOk(out[i - 1], p, [a, c])) ? out : null;
   };
 
   let net = doc.network;

@@ -22,6 +22,8 @@ export const UNDERFLOOR_Z = -300;
 const HEADER_MOUNT = -400;
 /** 給水・給湯口を床下へ下ろす器具（屋外の水栓・機器どうしをつなぐものは除く） */
 const SUPPLY_TYPES = new Set<FixtureType>(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet']);
+/** 基礎の内側の面から、スリーブ（KSS）から床下へ立ち上げる点までの離れ(mm) */
+const KSS_IN = 10;
 const WALL_GAP = 80, INSET = 150, OUT_GAP = 100, PIPE_GAP = 60, BUSY_GAP = 40, CORNER = 300, HEADER_IN = 600, FAR = 100_000;
 /** ヘッダーの周りに空けておく幅(mm)。長さの方向は少しだけ（入口へは長さの方向から入る） */
 const HEADER_CLEAR_LONG = 20, HEADER_CLEAR_WIDE = 60;
@@ -77,7 +79,8 @@ function overlapRun(p: Vec2, q: Vec2, a: Vec2, b: Vec2, gap: number): number {
 const DIR: Record<0 | 1 | 2 | 3, Vec2> = { 0: { x: 1, y: 0 }, 1: { x: 0, y: 1 }, 2: { x: -1, y: 0 }, 3: { x: 0, y: -1 } };
 const dirOf = (v: Vec2): 0 | 1 | 2 | 3 => (Math.abs(v.x) >= Math.abs(v.y) ? (v.x >= 0 ? 0 : 2) : v.y >= 0 ? 1 : 3);
 
-type Entry = { eIn: Vec2; eOut: Vec2; n: Vec2 };
+/** eIn: 床下の入口、eOut: 基礎の外（地中で近づく点）、rise: 基礎の中で立ち上げる点（基礎貫通スリーブ KSS の形）、n: 外向き */
+type Entry = { eIn: Vec2; eOut: Vec2; rise: Vec2; n: Vec2 };
 
 export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyRouteResult {
   const none = (error?: string): SupplyRouteResult => ({ doc, pipes: 0, headers: 0, sleeves: 0, crossings: 0, valves: 0, connected: { water: 0, hot: 0 }, notes: [], ...(error ? { error } : {}) });
@@ -176,13 +179,14 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
         const face = Math.max(w.t, ...extFoot.filter((f) => pointSeg(foot, f.a, f.b) < f.t / 2 + 50).map((f) => f.t)) / 2;
         const eIn = { x: Math.round(foot.x - nn.x * (w.t / 2 + INSET)), y: Math.round(foot.y - nn.y * (w.t / 2 + INSET)) };
         const eOut = { x: Math.round(foot.x + nn.x * (face + OUT_GAP)), y: Math.round(foot.y + nn.y * (face + OUT_GAP)) };
+        const rise = { x: Math.round(foot.x - nn.x * (face + KSS_IN)), y: Math.round(foot.y - nn.y * (face + KSS_IN)) };
         if (!roomy(eIn) || footAt(eIn) || inHeader(eIn)) continue;
         // 外から入口へ: 壁と平行に進んでから直角に（途中で別の外壁を横切る道は採らない）
         const k = (p.x - eOut.x) * nn.x + (p.y - eOut.y) * nn.y;
         const corner = { x: eOut.x + nn.x * k, y: eOut.y + nn.y * k };
         if (extWalls.some((x) => x !== w && (crosses(p, corner, x.a, x.b) || crosses(corner, eOut, x.a, x.b)))) continue;
         const cost = Math.abs(p.x - eOut.x) + Math.abs(p.y - eOut.y);
-        if (!best || cost < best.cost) best = { eIn, eOut, n: nn, cost };
+        if (!best || cost < best.cost) best = { eIn, eOut, rise, n: nn, cost };
         break;
       }
     }
@@ -344,7 +348,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
     if (!feedNode) {
       if (!free(meterOut) || !meterEntry) return false;
       const c = cornerOf(meterOut.pos, meterEntry);
-      const ids = path([meterOut.pos, at(meterOut.pos, burialZ), at(c, burialZ), at(meterEntry.eOut, burialZ), at(meterEntry.eOut), at(meterEntry.eIn)], attrs('water', 20), meterOut.id);
+      // 地中で基礎を抜け、基礎の中で床下へ立ち上げる（基礎貫通スリーブ KSS の形。外に管を出さない）
+      const ids = path([meterOut.pos, at(meterOut.pos, burialZ), at(c, burialZ), at(meterEntry.rise, burialZ), at(meterEntry.rise), at(meterEntry.eIn)], attrs('water', 20), meterOut.id);
       sleeves++;
       pipes++;
       feedNode = ids.at(-1)!;
@@ -361,7 +366,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
     const e = entryFor(port.pos);
     if (!e) return null;
     const c = cornerOf(port.pos, e);
-    const ids = path([port.pos, at(c, port.pos.z), at(e.eOut, port.pos.z), at(e.eOut), at(e.eIn)], a, port.id);
+    // 口から地中へ下ろし、地中で基礎を抜けて基礎の中で床下へ立ち上げる（KSS の形）
+    const ids = path([port.pos, at(port.pos, burialZ), at(c, burialZ), at(e.rise, burialZ), at(e.rise), at(e.eIn)], a, port.id);
     sleeves++;
     pipes++;
     return { id: ids.at(-1)!, e };

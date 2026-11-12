@@ -143,6 +143,7 @@ export function buildDrawing(doc: Doc, est: Estimate = computeEstimate(doc)): Dr
     parts.push({ group: '支持金具・ビス', name: SUPPORT_CODE[kind] ? `[${SUPPORT_CODE[kind]}] ${l.name}` : l.name, spec: l.spec, qty: l.count, unit: l.unit, note: l.note });
   }
   for (const l of est.consumables) parts.push({ group: '消耗品', name: l.name, spec: l.spec, qty: l.count, unit: l.unit, note: l.note });
+  for (const l of est.kiso) parts.push({ group: '基礎貫通スリーブ', name: l.name, spec: l.spec, qty: l.count, unit: l.unit, note: l.note });
   const fx = new Map<string, number>();
   for (const x of Object.values(doc.fixtures)) fx.set(FIXTURE_CATALOG[x.type].label, (fx.get(FIXTURE_CATALOG[x.type].label) ?? 0) + 1);
   for (const [name, n] of fx) parts.push({ group: '器具', name, spec: '', qty: n, unit: '台', note: '' });

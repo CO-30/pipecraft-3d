@@ -8,6 +8,8 @@ import { addPolyline, segmentsAt, type Network } from './network';
 import { closestPoints } from './clash';
 import { supplyHouse } from './testSupplyHouse';
 import { testSite } from './drainSolve/testSite';
+import { addFloor, addWall, emptyBuilding, type Building } from './building';
+import { emptyDoc } from '../state/store';
 
 /** 点 a から排水・汚水の管だけでたどれる点 */
 function drainReach(net: Network, a: string): Set<string> {
@@ -166,5 +168,25 @@ describe('まとめてつなぐ（レビューの指摘）', () => {
     const teeAtVent = fits.filter((f) => segmentsAt(r.doc.network, f.nodeId).some((s) => s.system === 'vent') && segmentsAt(r.doc.network, f.nodeId).length === 3);
     expect(teeAtVent.length).toBe(2);
     expect(teeAtVent.every((f) => !f.needsConfirm)).toBe(true);
+  });
+});
+
+describe('公共マスまで必ず届く（2026-11-12）', () => {
+  test('コの字の建物のへこみにあるマスでも、建物の周りを回って反対側の公共マスへ（建物の中を通さない）', () => {
+    const f = addFloor(emptyBuilding(), { height: 2900 });
+    let b: Building = { ...f.b, foundation: { slabTop: -550 } };
+    const P = [{ x: 0, y: 0 }, { x: 10000, y: 0 }, { x: 10000, y: 8000 }, { x: 7000, y: 8000 }, { x: 7000, y: 3000 }, { x: 3000, y: 3000 }, { x: 3000, y: 8000 }, { x: 0, y: 8000 }];
+    for (let i = 0; i < P.length; i++) b = addWall(b, f.floorId, P[i], P[(i + 1) % P.length], { kind: 'exterior' }).b;
+    let doc: Doc = { ...emptyDoc(), building: b, site: { designGL: -600 } };
+    const pub = placeFixture(doc, f.floorId, 'publicSewage', { x: 5000, y: -3000 }, 0, { invertZ: -1300 }); doc = pub.doc;
+    const mh = placeFixture(doc, f.floorId, 'manholeSewage', { x: 5000, y: 5000 }); doc = mh.doc;
+    const r = connectYard(doc);
+    expect(r.connected).toBe(1);
+    expect(drainReach(r.doc.network, port(r.doc, pub.fixtureId!)).has(port(r.doc, mh.fixtureId!))).toBe(true);
+    const inU = (x: number, y: number) => (x > 0 && x < 10000 && y > 0 && y < 3000) || (x > 0 && x < 3000 && y > 0 && y < 8000) || (x > 7000 && x < 10000 && y > 0 && y < 8000);
+    for (const sg of Object.values(r.doc.network.segments)) {
+      const p = r.doc.network.nodes[sg.a].pos, q = r.doc.network.nodes[sg.b].pos;
+      for (let k = 0; k <= 20; k++) expect(inU(p.x + ((q.x - p.x) * k) / 20, p.y + ((q.y - p.y) * k) / 20)).toBe(false);
+    }
   });
 });
