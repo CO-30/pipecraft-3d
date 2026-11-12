@@ -26,6 +26,9 @@ import { suggestDiameters } from '../model/hydraulics/suggest';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { renderSuiriSheets } from '../export/suiriSheet';
 import { SuiriPanel } from './SuiriPanel';
+import { sleeveSchedule } from '../model/sleeves';
+import { renderSleeveSheets } from '../export/sleeveSheet';
+import { findPipeClashes } from '../model/clash';
 import { AsBuiltPanel } from './AsBuiltPanel';
 import { applyMeasuredToProfile, approxSegments, asBuiltTitle, suspiciousMeasured, measuredLengthOf, readAsBuilt, unmeasuredSegments, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
 import { stampAsBuilt } from '../export/asBuiltStamp';
@@ -35,7 +38,7 @@ import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } fro
 import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
 import type { LocationBuild } from '../import/locationMap';
 
-type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori';
+type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve';
 const PROFILE_TITLE = '排水設備 縦断図';
 const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
@@ -187,6 +190,16 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
 
   const built0: ShinseiBuild = useMemo(() => {
     if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
+    if (kind === 'sleeve') {
+      // スリーブ表: 配管が構造（基礎・梁・壁・床）を通る所。干渉があれば知らせる（積算の要確認から場所へ移動できる）
+      const rows = sleeveSchedule(doc);
+      const clashes = findPipeClashes(doc).length;
+      const notes = clashes ? [`配管どうしの干渉が ${clashes} か所あります（積算の「要確認」から場所へ移動できます）`] : [];
+      if (!rows.length) return { sheets: [], svg: '', warnings: notes, error: 'スリーブ（配管が基礎・梁・壁・床を通る所）はありません', kind };
+      const { sheets, collisions } = renderSleeveSheets(doc, rows, { siteName, date });
+      if (collisions) notes.push('位置図の番号の札が重なっている所があります。表の No. で確かめてください');
+      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: notes, error: null, kind };
+    }
     if (kind === 'mitori') {
       if (mapSettings.lat === undefined) return { sheets: [], svg: '', warnings: [], error: '工事場所が決まっていません。住所を入れて「探す」を押してください（緯度,経度でも指定できます）', kind };
       // 新しい地図ができるまでは前の見取図を出したまま「読み込んでいます」（出力は新しい地図ができてから）
@@ -303,7 +316,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     setBusy(fmt); setErr('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : '立面図'}_${dateStamp(new Date())}`;
+      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'sleeve' ? 'スリーブ表' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'svg') {
         // 枝が別図のときは、ページを縦に並べた 1 つの SVG
         downloadBytes(new TextEncoder().encode(sheetsToSvg(built.sheets)), `${base}.svg`, 'image/svg+xml');
@@ -343,14 +356,15 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
             ? <span className="badge warn" data-testid="shinsei-gl-tentative" title="未入力のため仮の地盤高で描きます">仮</span>
             : <button className="linkish small" data-testid="shinsei-gl-clear" onClick={() => updateSite({ designGL: undefined })}>未入力に戻す</button>}
         </span>
-        <div className="seg-btns">
+        <div className="seg-btns shinsei-kinds" role="group" aria-label="図の種類">
           <button data-testid="shinsei-kind-profile" className={kind === 'profile' ? 'on' : ''} onClick={() => setKind('profile')}>排水縦断図</button>
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
           <button data-testid="shinsei-kind-suiri" className={kind === 'suiri' ? 'on' : ''} onClick={() => setKind('suiri')}>水理計算書</button>
+          <button data-testid="shinsei-kind-sleeve" className={kind === 'sleeve' ? 'on' : ''} onClick={() => setKind('sleeve')}>スリーブ表</button>
           <button data-testid="shinsei-kind-mitori" className={kind === 'mitori' ? 'on' : ''} onClick={() => setKind('mitori')}>見取図</button>
           <button data-testid="shinsei-kind-forms" className={kind === 'forms' ? 'on' : ''} onClick={() => setKind('forms')}>申請書</button>
         </div>
-        {kind === 'forms' ? null : kind === 'mitori' ? (
+        {kind === 'forms' || kind === 'sleeve' ? null : kind === 'mitori' ? (
           <LocationPanel settings={mapSettings} defaultQuery={siteAddress} onChange={setMap} />
         ) : kind === 'suiri' ? (
           <SuiriPanel calc={suiri && !('error' in suiri) ? suiri : null} rules={suiriRules} settings={suiriSettings} onChange={setSuiri} suggestion={suiriSuggest}
