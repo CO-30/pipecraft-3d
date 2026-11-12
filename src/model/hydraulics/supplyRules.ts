@@ -24,6 +24,8 @@ export type SupplyRules = {
   mainDrop: RuleVal;
   /** 引込（配水管〜メーター）を描いていないときの延長 m */
   serviceLength: RuleVal;
+  /** 屋外の給水管の埋設深さ（GL から管まで）mm */
+  burial: RuleVal;
   /** 引込の器具（配水管の側から順に） */
   serviceItems: EquivItem[];
   notes: { text: string; status: RuleStatus; source: string }[];
@@ -88,6 +90,7 @@ const base = (): SupplyRules => ({
   maxVelocity: { v: 2, status: 'general', source: SOURCES.kawasaki },
   mainDrop: { v: 0.9, status: 'general', source: SOURCES.chiba },
   serviceLength: { v: 3, status: 'general', source: SOURCES.shishin },
+  burial: { v: 300, status: 'general', source: '器具の真下に配管を落とす（屋外は GL から 300）と同じ値' },
   serviceItems: ['tap', 'stopValve', 'meter', 'checkValve'],
   notes: [],
 });
@@ -102,6 +105,7 @@ export function resolveSupplyRules(input: { profileName?: string; address?: stri
   r.designPressure = { v: 0.15, status: 'unknown', source: `${city}: 設計水圧は未確認（${where}に確認）。一般値 0.15MPa で計算` };
   if (city === '宜野湾市') {
     r.designPressure.source = '宜野湾市: 規程に設計水圧の数値なし（上下水道局に確認）。一般値 0.15MPa で計算';
+    r.burial = { v: 600, status: 'ok', source: SOURCES.ginowan };
     r.notes.push(
       { text: 'メーターの上流に鍵付き伸縮止水栓、下流に逆流防止の器具（第10条）', status: 'ok', source: SOURCES.ginowan },
       { text: '給水管の埋設深度 0.6m 以上（第7条）', status: 'ok', source: SOURCES.ginowan },
