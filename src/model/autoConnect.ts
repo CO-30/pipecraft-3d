@@ -8,108 +8,151 @@ import { dropFixturePipes } from './dropPipes';
 import { routeDrainsOut, type DrainRules } from './drainRoute';
 import { localToPlan, portNodes, type FixtureType } from './fixtures';
 import { addPolyline, segmentsAt, splitSegment, type Network, type Vec3 } from './network';
+import { closestPoints } from './clash';
 import { routeSupplies } from './supplyRoute';
 import { distToOutline, insideBuilding, underfloorLevels } from './underfloorSlope';
 
 /** 汚水の系統のマス（雨水は別の系統なのでつながない） */
 const SEWAGE_MANHOLES = new Set<FixtureType>(['manholeSewage', 'manholeInvert', 'manholeTrap']);
+const RAIN = new Set<FixtureType>(['manholeRain', 'publicRain']);
 /** 屋外の管を外壁（芯）から離す距離 mm */
 const YARD_CLEAR = 300;
-const YARD_PIPE = { system: 'sewage' as const, diameter: 100, material: 'VU' };
+/** 建物の周りを回る道: 外壁の外側この距離を通る mm */
+const AROUND = 700;
+/** 曲がりにマスを置けるよう、曲がりのある道では 1m より短い区間を避ける */
+const MIN_LEG = 1000, SHORT_LEG_COST = 3000;
+/** 管種は付けない（屋外の管の自動の管種を、画面の側で付ける） */
+const YARD_PIPE = { system: 'sewage' as const, diameter: 100 };
 
 const isDrainSys = (s: string) => s === 'drain' || s === 'sewage';
 
-/** 排水・汚水の管でつながっている点ごとのまとまりの番号 */
+/** 排水・汚水の管でつながっている点ごとのまとまりの番号（隣の表を 1 回作る） */
 function drainComponents(net: Network): Map<string, number> {
+  const adj = new Map<string, string[]>();
+  for (const s of Object.values(net.segments)) {
+    if (!isDrainSys(s.system)) continue;
+    (adj.get(s.a) ?? adj.set(s.a, []).get(s.a)!).push(s.b);
+    (adj.get(s.b) ?? adj.set(s.b, []).get(s.b)!).push(s.a);
+  }
   const comp = new Map<string, number>();
   let k = 0;
   for (const start of Object.keys(net.nodes)) {
     if (comp.has(start)) continue;
     comp.set(start, ++k);
     const st = [start];
-    while (st.length) {
-      const n = st.pop()!;
-      for (const s of segmentsAt(net, n)) {
-        if (!isDrainSys(s.system)) continue;
-        for (const m of [s.a, s.b]) if (!comp.has(m)) { comp.set(m, k); st.push(m); }
-      }
-    }
+    while (st.length) for (const m of adj.get(st.pop()!) ?? []) if (!comp.has(m)) { comp.set(m, k); st.push(m); }
   }
   return comp;
 }
+
+const pointSeg = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+  const t = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2)) : 0;
+  return Math.hypot(a.x + dx * t - p.x, a.y + dy * t - p.y);
+};
 
 export type YardResult = { doc: Doc; connected: number; pipes: number; notes: string[] };
 
 /**
  * 屋外: 公共汚水マスにつながっていない汚水マス（のまとまり）を、つながっている所の一番近いものへ、
- * 直線か L 字（縦横）で建物の外を通してつなぐ。何度呼んでも増えない。
+ * 直線・L 字・建物の周りを回る道（縦横）で建物の外を通してつなぐ。何度呼んでも増えない。
  */
 export function connectYard(doc: Doc): YardResult {
-  const notes: string[] = [];
   const pubs = Object.values(doc.fixtures).filter((f) => f.type === 'publicSewage');
   const holes = Object.values(doc.fixtures).filter((f) => SEWAGE_MANHOLES.has(f.type));
-  if (!holes.length) return { doc, connected: 0, pipes: 0, notes };
+  if (!holes.length) return { doc, connected: 0, pipes: 0, notes: [] };
   if (!pubs.length) return { doc, connected: 0, pipes: 0, notes: ['公共汚水マスが無いので、外のマスどうしはつないでいません（器具の「マス（排水）」から公共汚水マスを置いてください）'] };
+  const notes: string[] = [];
   const lv = underfloorLevels(doc);
-  /** 屋外の道として使えるか: 建物の中・外壁の近くを通らない（端のマスの近くは除く） */
+  const b = doc.building;
+  const base = [...b.floors].sort((x, y) => Math.abs(x.elevation) - Math.abs(y.elevation))[0];
+  const ext = Object.values(b.walls).filter((w) => w.kind === 'exterior' && w.floorId === base?.id && b.corners[w.a] && b.corners[w.b]).map((w) => [b.corners[w.a], b.corners[w.b]] as const);
+  /** 建物の中・外壁の近くか（外壁が 1 周つながっていなければ、外壁の線からの距離だけで見る） */
+  const blocked = (x: { x: number; y: number }) => (lv && lv.outline.length
+    ? insideBuilding(lv, x) || distToOutline(lv, x) < YARD_CLEAR
+    : ext.some(([a, c]) => pointSeg(x, a, c) < YARD_CLEAR));
   const legOk = (p: Vec3, q: Vec3, ends: Vec3[]) => {
-    if (!lv || !lv.outline.length) return true;
+    if (!ext.length && !(lv && lv.outline.length)) return true;
     const L = Math.hypot(q.x - p.x, q.y - p.y), n = Math.max(1, Math.ceil(L / 100));
     for (let i = 0; i <= n; i++) {
       const x = { x: p.x + ((q.x - p.x) * i) / n, y: p.y + ((q.y - p.y) * i) / n };
-      if (ends.some((e) => Math.hypot(e.x - x.x, e.y - x.y) < 400)) continue;
-      if (insideBuilding(lv, x) || distToOutline(lv, x) < YARD_CLEAR) return false;
+      // 端のマスのすぐそば（外壁から 300mm 未満に置いたマス）は除く。ただし建物の中は不可
+      if (ends.some((e) => Math.hypot(e.x - x.x, e.y - x.y) < 400) && !(lv && lv.outline.length && insideBuilding(lv, x) && distToOutline(lv, x) > 1)) continue;
+      if (blocked(x)) return false;
     }
     return true;
   };
-  /** a → b の道（直線か L 字の 2 通り）のうち使える一番短いもの */
-  const route = (a: Vec3, b: Vec3): Vec3[] | null => {
-    const z = (a.z + b.z) / 2;
-    const cands: Vec3[][] = [[a, b]];
-    if (Math.abs(a.x - b.x) > 1 && Math.abs(a.y - b.y) > 1) cands.push([a, { x: b.x, y: a.y, z }, b], [a, { x: a.x, y: b.y, z }, b]);
-    for (const c of cands) if (c.every((p, i) => i === 0 || legOk(c[i - 1], p, [a, b]))) return c;
-    return null;
+  const xs = ext.flatMap(([a, c]) => [a.x, c.x]), ys = ext.flatMap(([a, c]) => [a.y, c.y]);
+  const box = xs.length ? { x0: Math.min(...xs) - AROUND, x1: Math.max(...xs) + AROUND, y0: Math.min(...ys) - AROUND, y1: Math.max(...ys) + AROUND } : null;
+  /** a → b の道の候補（直線・L 字 2 通り・建物の周りを回る 4 通り）のうち、使える一番安いもの */
+  const route = (a: Vec3, c: Vec3): Vec3[] | null => {
+    const z = (a.z + c.z) / 2;
+    const P = (x: number, y: number) => ({ x, y, z });
+    const cands: Vec3[][] = [[a, c]];
+    if (Math.abs(a.x - c.x) > 1 && Math.abs(a.y - c.y) > 1) cands.push([a, P(c.x, a.y), c], [a, P(a.x, c.y), c]);
+    if (box) cands.push([a, P(a.x, box.y1), P(c.x, box.y1), c], [a, P(a.x, box.y0), P(c.x, box.y0), c], [a, P(box.x0, a.y), P(box.x0, c.y), c], [a, P(box.x1, a.y), P(box.x1, c.y), c]);
+    let best: { pts: Vec3[]; cost: number } | null = null;
+    for (const c0 of cands) {
+      const pts = c0.filter((p, i) => i === 0 || Math.hypot(p.x - c0[i - 1].x, p.y - c0[i - 1].y) >= 1);
+      if (pts.length < 2 || !pts.every((p, i) => i === 0 || legOk(pts[i - 1], p, [a, c]))) continue;
+      const legs = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y));
+      const cost = legs.reduce((x, y) => x + y, 0) + (pts.length > 2 ? legs.filter((l) => l < MIN_LEG).length * SHORT_LEG_COST : 0);
+      if (!best || cost < best.cost) best = { pts, cost };
+    }
+    return best?.pts ?? null;
   };
 
   let net = doc.network;
-  let comp = drainComponents(net);
   const portOf = (fid: string) => portNodes(net, fid)[0];
-  const pubComps = new Set(pubs.map((f) => portOf(f.id)).filter(Boolean).map((p) => comp.get(p.id)!));
   let connected = 0, pipes = 0;
-  for (;;) {
+  const bad = new Set<string>();
+  for (let guard = 0; guard < holes.length * 3 + 3; guard++) {
+    const comp = drainComponents(net);
+    const pubComps = new Set(pubs.map((f) => portOf(f.id)).filter(Boolean).map((p) => comp.get(p.id)!));
+    // 雨水マス・公共雨水マスとつながったまとまりは雨水の系統（汚水へつながない）
+    const rainComps = new Set(Object.values(doc.fixtures).filter((f) => RAIN.has(f.type)).map((f) => portOf(f.id)).filter(Boolean).map((p) => comp.get(p.id)!));
     const ports = holes.map((f) => portOf(f.id)).filter(Boolean);
     const linked = [...pubs.map((f) => portOf(f.id)).filter(Boolean), ...ports.filter((p) => pubComps.has(comp.get(p.id)!))];
-    const loose = ports.filter((p) => !pubComps.has(comp.get(p.id)!));
+    const loose = ports.filter((p) => !pubComps.has(comp.get(p.id)!) && !rainComps.has(comp.get(p.id)!));
     if (!loose.length) break;
     let best: { from: string; to: string; pts: Vec3[]; len: number } | null = null;
     for (const u of loose) for (const c of linked) {
+      if (bad.has(`${u.id}|${c.id}`)) continue;
+      if (Math.hypot(u.pos.x - c.pos.x, u.pos.y - c.pos.y) < 1) { bad.add(`${u.id}|${c.id}`); continue; }
       const pts = route(u.pos, c.pos);
-      if (!pts) continue;
+      if (!pts) { bad.add(`${u.id}|${c.id}`); continue; }
       const len = pts.reduce((a, p, i) => (i ? a + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
       if (!best || len < best.len - 1) best = { from: u.id, to: c.id, pts, len };
     }
     if (!best) { notes.push(`外の汚水マス ${loose.length} 個は、建物を避けて公共マスへつなぐ道が見つかりませんでした（配管の道具でつないでください）`); break; }
     const before = comp.get(best.from)!;
     const r = addPolyline(net, best.pts, YARD_PIPE, { startNodeId: best.from, endNodeId: best.to });
+    if (!r.segmentIds.length) { bad.add(`${best.from}|${best.to}`); continue; }
     net = r.net;
     pipes += r.segmentIds.length;
     connected += ports.filter((p) => comp.get(p.id) === before).length;
-    comp = drainComponents(net);
-    pubComps.clear();
-    for (const f of pubs) { const p = portOf(f.id); if (p) pubComps.add(comp.get(p.id)!); }
   }
   return { doc: net === doc.network ? doc : { ...doc, network: net }, connected, pipes, notes };
 }
 
 /** 通気弁を付ける器具（キャビネットの中に付けられるもの） */
 const VENT_FIXTURES = new Set<FixtureType>(['kitchen', 'washbasin']);
-/** トラップから 300mm 以内（メーカーの施工説明）: 排水口から下へ 150mm にチーズ、横へ 100mm・上へ 300mm で通気弁 */
-const VENT_TEE = 150, VENT_OUT = 100, VENT_UP = 300;
+/** トラップから 300mm 以内（メーカーの施工説明）: 排水口から下へ 150mm にチーズ、横へ出して上へ 300mm で通気弁 */
+const VENT_TEE = 150, VENT_UP = 300;
+/** 横へ出す長さの候補と、ほかの管・接続口から離す距離（管の芯どうし） */
+const VENT_OUTS = [100, 150, 200], VENT_GAP = 80;
 
-/** キッチン・洗面台の排水口の下に通気弁。もう付いていれば足さない */
-export function addVentValves(doc: Doc): { doc: Doc; valves: number } {
+/** 線分 p-q と点 r の距離（3D） */
+const pointSeg3 = (r: Vec3, p: Vec3, q: Vec3) => closestPoints(p, q, r, { ...r, x: r.x + 1e-6 }).dist;
+
+/**
+ * キッチン・洗面台の排水口の下に通気弁。排水が外へつながっている（落とした立て管の下が続いている）ときだけ。
+ * 横へ出す向きは、給水・給湯の管や接続口に重ならない向きを選ぶ。もう付いていれば足さない
+ */
+export function addVentValves(doc: Doc): { doc: Doc; valves: number; notes: string[] } {
   let net = doc.network;
   let valves = 0;
+  const notes: string[] = [];
   for (const f of Object.values(doc.fixtures)) {
     if (!VENT_FIXTURES.has(f.type)) continue;
     const port = portNodes(net, f.id).find((n) => n.portId === 'drain');
@@ -120,22 +163,38 @@ export function addVentValves(doc: Doc): { doc: Doc; valves: number } {
     for (let i = 0; i < 2; i++) for (const n of [...near]) for (const s of segmentsAt(net, n)) { near.add(s.a); near.add(s.b); }
     if ([...near].some((n) => segmentsAt(net, n).some((s) => s.system === 'vent'))) continue;
     const o = net.nodes[seg.a === port.id ? seg.b : seg.a];
+    // 外へつながっていない排水は、あとで「排水を外の桝までつなぐ」が落とした立て管を見つけられるよう、そのままにする
+    if (segmentsAt(net, o.id).length < 2) { notes.push(`${f.type === 'kitchen' ? 'キッチン' : '洗面台'}の排水がまだ外へつながっていないので、通気弁は付けていません`); continue; }
     const L = Math.hypot(o.pos.x - port.pos.x, o.pos.y - port.pos.y, o.pos.z - port.pos.z);
     if (L < 40) continue;
     const t = Math.min(VENT_TEE, L / 2) / L;
     const at = { x: port.pos.x + (o.pos.x - port.pos.x) * t, y: port.pos.y + (o.pos.y - port.pos.y) * t, z: port.pos.z + (o.pos.z - port.pos.z) * t };
+    // 横へ出す向き: 器具の右・左・奥・手前の順に、給水・給湯などの管と接続口から VENT_GAP 以上離れる所
+    const p0 = localToPlan(f, 0, 0);
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => { const q = localToPlan(f, dx, dy); return { x: q.x - p0.x, y: q.y - p0.y }; });
+    const others = Object.values(net.segments).filter((s) => s.id !== seg.id);
+    const otherPorts = portNodes(net, f.id).filter((n) => n.id !== port.id).map((n) => n.pos);
+    let path: Vec3[] | null = null;
+    for (const out of VENT_OUTS) {
+      for (const d of dirs) {
+        const side = { x: at.x + d.x * out, y: at.y + d.y * out, z: at.z };
+        const top = { ...side, z: side.z + VENT_UP };
+        const legs: [Vec3, Vec3][] = [[{ x: at.x + d.x * 40, y: at.y + d.y * 40, z: at.z }, side], [side, top]];
+        const clear = legs.every(([a, c]) => others.every((s) => closestPoints(a, c, net.nodes[s.a].pos, net.nodes[s.b].pos).dist >= VENT_GAP)
+          && otherPorts.every((r) => pointSeg3(r, a, c) >= VENT_GAP));
+        if (clear) { path = [at, side, top]; break; }
+      }
+      if (path) break;
+    }
+    if (!path) { notes.push(`${f.type === 'kitchen' ? 'キッチン' : '洗面台'}の通気弁は、ほかの管と重ならない向きが無いので付けていません`); continue; }
     const sp = splitSegment(net, seg.id, at);
-    const tee = sp.net.nodes[sp.nodeId].pos;
-    // 器具の右（器具の向きの +x）へ出す
-    const p0 = localToPlan(f, 0, 0), p1 = localToPlan(f, 1, 0);
-    const d = { x: p1.x - p0.x, y: p1.y - p0.y };
-    const side = { x: tee.x + d.x * VENT_OUT, y: tee.y + d.y * VENT_OUT, z: tee.z };
-    const r = addPolyline(sp.net, [tee, side, { ...side, z: side.z + VENT_UP }], { system: 'vent', diameter: seg.diameter, material: seg.material }, { startNodeId: sp.nodeId });
+    const r = addPolyline(sp.net, [sp.net.nodes[sp.nodeId].pos, path[1], path[2]], { system: 'vent', diameter: seg.diameter, material: seg.material }, { startNodeId: sp.nodeId });
     const top = r.nodeIds[r.nodeIds.length - 1];
-    net = { ...r.net, nodes: { ...r.net.nodes, [top]: { ...r.net.nodes[top], fitting: { type: 'aav', degree: 1 } } } };
+    // チーズは排水と通気の分岐（部品は確定。積算の要確認にしない）、先は通気弁
+    net = { ...r.net, nodes: { ...r.net.nodes, [sp.nodeId]: { ...r.net.nodes[sp.nodeId], fitting: { type: 'tee', degree: 3 } }, [top]: { ...r.net.nodes[top], fitting: { type: 'aav', degree: 1 } } } };
     valves++;
   }
-  return { doc: valves ? { ...doc, network: net } : doc, valves };
+  return { doc: valves ? { ...doc, network: net } : doc, valves, notes };
 }
 
 export type AutoConnectResult = {
@@ -146,9 +205,9 @@ export type AutoConnectResult = {
 };
 
 /** まとめてつなぐ（1〜5）。何度呼んでも増えない */
-export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number } = {}): AutoConnectResult {
+export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number } = {}): AutoConnectResult {
   const summary: string[] = [];
-  const d1 = dropFixturePipes(doc);
+  const d1 = dropFixturePipes(doc, opts.dropDepth);
   const d2 = routeDrainsOut(d1.doc, undefined, opts.drainRules ?? {});
   const d3 = connectYard(d2.doc);
   const s = routeSupplies(d3.doc, opts.burial !== undefined ? { burial: opts.burial } : {});
@@ -163,6 +222,7 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
   else if (s.pipes || s.headers) summary.push(`給水 ${s.connected.water} 本・給湯 ${s.connected.hot} 本をヘッダーでつなぎました${s.headers ? `（ヘッダーを ${s.headers} 台）` : ''}${s.valves ? `・止水栓 ${s.valves} 個` : ''}`);
   if (!s.error) summary.push(...s.notes);
   if (v.valves) summary.push(`通気弁を ${v.valves} 個（キッチン・洗面台の排水口の下）`);
+  summary.push(...v.notes);
   return {
     doc: v.doc,
     dropped: d1.pipes, drains: d2.pipes, newManholes: d2.manholes, yard: d3.connected,

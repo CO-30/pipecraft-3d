@@ -415,7 +415,14 @@ function DropPipes() {
           const p = resolveProfile(st.doc.site?.municipalityProfileId, useProfiles.getState().user);
           const supply = resolveSupplyRules({ profileName: p.id === 'standard' ? undefined : p.name, address: st.meta?.address });
           useStore.setState({ notice: '汚水・水・湯をまとめてつないでいます…' });
-          setTimeout(() => useStore.getState().autoConnectAll({ drainRules: { cover: p.profileTable.minCover, slopeFor: (d) => minSlopeFor(p, d) }, supply }), 30);
+          setTimeout(() => {
+            try {
+              // 床下へ落とす深さは下の入力欄の値（正しくなければ既定の 300mm）
+              useStore.getState().autoConnectAll({ drainRules: { cover: p.profileTable.minCover, slopeFor: (d) => minSlopeFor(p, d) }, supply, dropDepth: ok ? v : undefined });
+            } catch (e) {
+              useStore.setState({ notice: `つなげませんでした: ${(e as Error).message}。1 つずつのボタンで試してください` });
+            }
+          }, 30);
         }}>🔗 汚水・水・湯をまとめてつなぐ（案）</button>
       </div>
       <div className="muted small">器具・マス・公共汚水マス・メーター（ヘッダー）を置いてから押すと、床下に落として、排水は公共マスまで、給水・給湯はヘッダーで、止水栓・通気弁も入れてつなぎます。下のボタンで 1 つずつもできます。</div>

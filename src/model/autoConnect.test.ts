@@ -4,7 +4,8 @@ import type { Doc } from './doc';
 import { analyzeFittings } from './fittings';
 import { placeFixture, portNodes } from './fixtures';
 import { dropFixturePipes } from './dropPipes';
-import { segmentsAt, type Network } from './network';
+import { addPolyline, segmentsAt, type Network } from './network';
+import { closestPoints } from './clash';
 import { supplyHouse } from './testSupplyHouse';
 import { testSite } from './drainSolve/testSite';
 
@@ -56,9 +57,9 @@ describe('屋外: マスどうし・公共マスまでつなぐ', () => {
 describe('通気弁', () => {
   test('キッチン・洗面台の排水口の下に通気弁（トイレには付けない）。2 回押しても 1 つずつ。積算では通気弁', () => {
     const h = supplyHouse();
-    const d0 = dropFixturePipes(h.doc).doc;
-    const r = addVentValves(d0);
-    expect(r.valves).toBe(2);
+    const pub = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 }).doc;
+    const r = autoConnect(pub);
+    expect(r.vents).toBe(2);
     const aav = analyzeFittings(r.doc.network, r.doc.fixtures).filter((f) => f.type === 'aav');
     expect(aav).toHaveLength(2);
     expect(addVentValves(r.doc).valves).toBe(0);
@@ -84,5 +85,86 @@ describe('まとめて自動でつなぐ', () => {
     expect(r.summary.length).toBeGreaterThan(0);
     const again = autoConnect(r.doc);
     expect(Object.keys(again.doc.network.segments).length).toBe(Object.keys(r.doc.network.segments).length);
+  });
+});
+
+describe('まとめてつなぐ（レビューの指摘）', () => {
+  const withPub = (x: number, y: number) => { const h = supplyHouse(); const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x, y }, 0, { invertZ: -1300 }); return { h, doc: p.doc, pub: p.fixtureId! }; };
+
+  test('公共マスが家の反対側（道路側）にあっても、建物の周りを回ってつなぐ', () => {
+    const { h, doc, pub } = withPub(3000, -2500);
+    const r = autoConnect(doc);
+    const reach = drainReach(r.doc.network, port(r.doc, pub));
+    for (const [fid, pid] of [[h.ids.toilet, 'sewage'], [h.ids.kitchen, 'drain'], [h.ids.washbasin, 'drain']] as const) expect(reach.has(port(r.doc, fid, pid))).toBe(true);
+    for (const s of Object.values(r.doc.network.segments)) {
+      if (s.system !== 'sewage' && s.system !== 'drain') continue;
+      const p = r.doc.network.nodes[s.a].pos, q = r.doc.network.nodes[s.b].pos;
+      if (p.z > -650 || q.z > -650) continue; // 床下の管は除く（屋外の地中の管だけ見る）
+      for (let k = 1; k < 10; k++) {
+        const x = p.x + ((q.x - p.x) * k) / 10, y = p.y + ((q.y - p.y) * k) / 10;
+        expect(x > 150 && x < 7850 && y > 150 && y < 5850).toBe(false);
+      }
+    }
+  });
+
+  test('公共マスと同じ所に置いたマスでも止まらない（つなげない組は飛ばす）', () => {
+    const t = testSite(-1200, -4000);
+    const d = placeFixture(t.doc, t.floorId, 'manholeSewage', { x: -4000, y: 3000 }, 0, { invertZ: -1200 }).doc;
+    const t0 = Date.now();
+    connectYard(d);
+    expect(Date.now() - t0).toBeLessThan(3000);
+  });
+
+  test('外壁が 1 周つながっていなくても、建物の中を通さない', () => {
+    const t = testSite(-1200, -4000);
+    const walls = { ...t.doc.building.walls };
+    delete walls[Object.keys(walls)[1]]; // 東の壁が無い
+    let doc: Doc = { ...t.doc, building: { ...t.doc.building, walls } };
+    doc = placeFixture(doc, t.floorId, 'manholeSewage', { x: 8800, y: 3000 }).doc;
+    const r = connectYard(doc);
+    for (const s of Object.values(r.doc.network.segments)) {
+      const p = r.doc.network.nodes[s.a].pos, q = r.doc.network.nodes[s.b].pos;
+      for (let k = 1; k < 10; k++) {
+        const x = p.x + ((q.x - p.x) * k) / 10, y = p.y + ((q.y - p.y) * k) / 10;
+        expect(x > 300 && x < 7700 && y > 300 && y < 5700).toBe(false);
+      }
+    }
+  });
+
+  test('雨水の系統（公共雨水マスにつながったマス）は汚水につながない', () => {
+    const t = testSite(-1200, -4000);
+    let doc = t.doc;
+    const rp = placeFixture(doc, t.floorId, 'publicRain', { x: 4000, y: -3000 }, 0, { invertZ: -1200 }); doc = rp.doc;
+    const tr = placeFixture(doc, t.floorId, 'manholeTrap', { x: 4000, y: -1000 }); doc = tr.doc;
+        doc = { ...doc, network: addPolyline(doc.network, [portNodes(doc.network, tr.fixtureId!)[0].pos, portNodes(doc.network, rp.fixtureId!)[0].pos], { system: 'drain', diameter: 100 }, { startNodeId: portNodes(doc.network, tr.fixtureId!)[0].id, endNodeId: portNodes(doc.network, rp.fixtureId!)[0].id }).net };
+    expect(connectYard(doc).connected).toBe(0);
+  });
+
+  test('通気弁の管は給水・給湯の管や口に重ならない（50mm 以上離す）', () => {
+    const { doc } = withPub(-3000, 1000);
+    const r = autoConnect(doc);
+    const net = r.doc.network;
+        const vents = Object.values(net.segments).filter((s) => s.system === 'vent');
+    expect(vents.length).toBeGreaterThan(0);
+    for (const v of vents) for (const o of Object.values(net.segments)) {
+      if (o.system === 'vent' || o.system === 'drain' || o.system === 'sewage') continue;
+      const c = closestPoints(net.nodes[v.a].pos, net.nodes[v.b].pos, net.nodes[o.a].pos, net.nodes[o.b].pos);
+      expect(c.dist).toBeGreaterThanOrEqual(50);
+    }
+  });
+
+  test('外へ出ていない排水には通気弁を付けない（あとで外へ出せなくならないように）', () => {
+    const h = supplyHouse();
+    const r = addVentValves(dropFixturePipes(h.doc).doc);
+    expect(r.valves).toBe(0);
+  });
+
+  test('通気弁のチーズは「要確認」にしない', () => {
+    const { doc } = withPub(-3000, 1000);
+    const r = autoConnect(doc);
+    const fits = analyzeFittings(r.doc.network, r.doc.fixtures);
+    const teeAtVent = fits.filter((f) => segmentsAt(r.doc.network, f.nodeId).some((s) => s.system === 'vent') && segmentsAt(r.doc.network, f.nodeId).length === 3);
+    expect(teeAtVent.length).toBe(2);
+    expect(teeAtVent.every((f) => !f.needsConfirm)).toBe(true);
   });
 });

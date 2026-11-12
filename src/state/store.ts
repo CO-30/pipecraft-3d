@@ -254,7 +254,7 @@ type State = {
   /** 給水・給湯を床下のヘッダーでつなぐ（案）。つないだ本数を返す。rules: 自治体の給水の値（埋設深さ・水理計算） */
   routeSupplies(rules?: SupplyRules): number;
   /** 汚水・水・湯をまとめてつなぐ（落とす → 排水を外へ → 屋外でマス・公共マスまで → 給水・給湯 → 通気弁）。元に戻す 1 回で全部戻る。足した管の数 */
-  autoConnectAll(opts?: { drainRules?: DrainRules; supply?: SupplyRules }): number;
+  autoConnectAll(opts?: { drainRules?: DrainRules; supply?: SupplyRules; dropDepth?: number }): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -913,11 +913,18 @@ export const useStore = create<State>((set, get) => {
     autoConnectAll: (opts = {}) => {
       const doc = get().doc;
       const rules = opts.supply ?? resolveSupplyRules({ address: get().meta?.address });
-      const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v });
-      const added = Object.keys(r.doc.network.segments).filter((id) => !doc.network.segments[id]).length;
-      if (r.doc === doc || !added) { set({ notice: ['つなぐものがありません（器具・マスはもうつながっています）', ...r.summary].join('。') }); return 0; }
-      commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: [...r.summary, '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].join('。') });
-      return added;
+      const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v, dropDepth: opts.dropDepth });
+      const added = Object.keys(r.doc.network.segments).filter((id) => !doc.network.segments[id]);
+      if (r.doc === doc || !added.length) { set({ notice: ['新しくつなぐ配管はありませんでした', ...r.summary].join('。') }); return 0; }
+      // 管種の付いていない新しい管に、屋内・屋外の自動の管種（ほかのボタンと同じ）
+      const noMat = added.filter((id) => !r.doc.network.segments[id].material);
+      const net = assignAutoMaterials(r.doc.network, r.doc.building, noMat);
+      const c = r.supplies ? calcSupply({ ...r.doc, network: net }, rules, readSuiriSettings(r.doc.site?.application)) : null;
+      const verdict = !c ? '' : 'error' in c ? `水理計算: できませんでした（${c.error}）` : `水理計算: ${c.ok ? '適当' : '不適当（申請画面の「水理計算書」で口径の提案を使ってください）'}`;
+      commit({ ...r.doc, network: tagNodeFloors(net, r.doc.building.floors, get().activeFloorId) }, { selection: null });
+      const issues = get().drainIssues.length;
+      set({ notice: [...r.summary, verdict, issues ? `排水の注意が ${issues} 件あります（積算の「要確認」から場所へ移動できます）` : '', '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].filter(Boolean).join('。') });
+      return added.length;
     },
     placeFixtureAt: (p) => {
       const { doc, activeFloorId, fixtureType } = get();
