@@ -109,7 +109,7 @@ test('床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。�
   }
 });
 
-test('床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配がつき、レベルバンドで支持する', async ({ page }) => {
+test('床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配が自動でつき、レベルバンドで支持する', async ({ page }) => {
   await freshApp(page);
   await createProject(page, '床下排水テスト'); // 8000 × 6000 の家（基礎伏図なし → 土間は床から 500 下とみなす）
   await show(page, '2D');
@@ -121,12 +121,10 @@ test('床下: 排水を描くと床下から出る所（土間）を起点に器
   await page.getByTestId('underfloor-chip').click();
   await page.getByTestId('tool-pipe').click();
   await page.getByTestId('draw-system').selectOption('drain');
-  await expect(page.getByTestId('auto-underfloor-slope')).toBeChecked();
 
   let d = await doc(page);
   const port = Object.values(d.network.nodes as Record<string, any>).find((n) => n.portId === 'drain')!;
   await strokeMm(page, [[port.pos.x, port.pos.y], [port.pos.x, 1000], [300, 1000]], touch);
-  await expect(page.getByTestId('notice')).toContainText('土間');
   d = await doc(page);
   const nodes = Object.values(d.network.nodes as Record<string, any>).filter((n) => !n.fixtureId);
   const exit = nodes.find((n) => Math.abs(n.pos.x - 300) < 1)!;
@@ -142,8 +140,6 @@ test('床下: 排水を描くと床下から出る所（土間）を起点に器
   await page.evaluate((id) => (window as any).__pc.getState().select({ kind: 'segment', id }), seg.id);
   await expect(page.getByTestId('seg-underfloor')).toContainText('土間から管底 0〜');
   await expect(page.getByTestId('seg-support')).toContainText('自動（レベルバンド）');
-  await page.getByTestId('underfloor-slope').click();
-  await expect(page.getByTestId('notice')).toContainText('土間');
 
   await page.getByTestId('open-estimate').click();
   await page.getByTestId('tab-parts').click();

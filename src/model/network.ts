@@ -38,6 +38,8 @@ export type PipeNode = {
   groundLevel?: number;
   /** 落差桝: 流入側の管底が pos.z（流出側の管底）より高い分(mm)。マスの params.drop から同期 */
   dropIn?: number;
+  /** 排水: 使う人が手で固定した管底高（自動計算で変えない） */
+  zPin?: boolean;
 };
 
 export type SystemType =
@@ -70,6 +72,10 @@ export type Segment = SegmentAttrs & {
   slope?: number;
   /** 勾配固定: 上流端の高さが変わったら下流端を勾配から再計算する（下流端を手で動かすと解除） */
   slopeLocked?: boolean;
+  /** 排水: 使う人が手で固定した勾配（自動計算で変えない。slopeLocked も同じ意味に読む） */
+  slopePin?: boolean;
+  /** 排水: 使う人が手で固定した管径 */
+  diameterPin?: boolean;
 
   /** 支持金具（未指定 = 自動） */
   support?: 'saddle' | 'levelBand' | 'tBracket' | 'none';
@@ -298,7 +304,8 @@ export function moveNode(net: Network, nodeId: string, pos: Vec3): Network {
 
 const sameAttrs = (s: Segment, t: Segment) =>
   s.system === t.system && s.diameter === t.diameter && s.material === t.material && (s.extraRate ?? 0) === (t.extraRate ?? 0)
-  && s.support === t.support && s.substrate === t.substrate && s.slope === t.slope && s.face === t.face;
+  && s.support === t.support && s.substrate === t.substrate && s.slope === t.slope && s.face === t.face
+  && !!s.slopePin === !!t.slopePin && !!s.diameterPin === !!t.diameterPin && !!s.slopeLocked === !!t.slopeLocked;
 
 /**
  * 指定ノードが「同じ属性の2区間がほぼ完全に一直線につながるだけの点」なら、2区間を1本に結合する。
