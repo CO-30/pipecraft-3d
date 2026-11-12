@@ -33,6 +33,17 @@ export type SiteResult = { items: { type: SiteItem['type']; x: number; y: number
 export type PlacedCandidate = FixtureCandidate & { floorId: string };
 export type PlanSetResult = { building: Building; designGL?: number; plans: PlanPlacement[]; fixtures: PlacedCandidate[]; report: ImportReport; site?: SiteResult };
 
+/** 配置図の記号と平面図の文字が同じ器具とみなす距離(mm)。文字は記号のすぐ横に書かれる */
+const SITE_SAME_MM = 2500;
+/**
+ * 配置図で記号から置く器具（立水栓など）と同じ物を、平面図の文字から重ねて候補に出さない。
+ * 記号の方が正しい位置なので、近くの同じ種類の文字の候補を除く（離れていれば別の器具として残す）
+ */
+export function dropSiteDuplicates(fixtures: PlacedCandidate[], site: SiteResult | undefined): PlacedCandidate[] {
+  if (!site?.items.length) return fixtures;
+  return fixtures.filter((c) => !site.items.some((i) => i.type === c.type && Math.hypot(i.x - c.x, i.y - c.y) < SITE_SAME_MM));
+}
+
 /** 図面から建物を作れないとき（使う人にそのまま見せる文） */
 export class PlanReadError extends Error {
   override name = 'PlanReadError';
@@ -225,11 +236,13 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     check.push('外壁・内壁の区別は目安です。開口部は外壁なら窓・内壁ならドアとして標準の高さで入れています（玄関・掃き出し窓は選んで直してください）。斜めの壁・曲がった壁は読み取りません');
   }
 
-  if (fixtures.length) {
+  // 器具の候補の数（配置図を読んだあと、配置図で置いた物と重なる候補を除いて数え直す）
+  const countLine = (list: PlacedCandidate[]) => {
     const count = new Map<string, number>();
-    for (const c of fixtures) count.set(FIXTURE_CATALOG[c.type].label, (count.get(FIXTURE_CATALOG[c.type].label) ?? 0) + 1);
-    found.push(`器具の候補 ${fixtures.length} 個（${[...count].map(([k, n]) => (n > 1 ? `${k}×${n}` : k)).join('・')}）`);
-  }
+    for (const c of list) count.set(FIXTURE_CATALOG[c.type].label, (count.get(FIXTURE_CATALOG[c.type].label) ?? 0) + 1);
+    return `器具の候補 ${list.length} 個（${[...count].map(([k, n]) => (n > 1 ? `${k}×${n}` : k)).join('・')}）`;
+  };
+  const countAt = fixtures.length ? found.push(countLine(fixtures)) - 1 : -1;
 
   // 高さの基準と基礎
   const gl = heights.glToFl !== undefined && heights.glToFl <= 3000 ? heights.glToFl : undefined;
@@ -307,5 +320,10 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (r.kind === 'detail') note(r, false, '展開図は読み取りません（器具の高さは標準値です）');
     else if (r.kind === 'unknown') note(r, false, '図面の種類が分かりませんでした（図面名の文字が読めない PDF）');
   }
-  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures, report: { sheets, found, check }, ...(site ? { site } : {}) };
+  const kept = dropSiteDuplicates(fixtures, site);
+  if (countAt >= 0) {
+    if (kept.length) found[countAt] = countLine(kept);
+    else found.splice(countAt, 1);
+  }
+  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures: kept, report: { sheets, found, check }, ...(site ? { site } : {}) };
 }
