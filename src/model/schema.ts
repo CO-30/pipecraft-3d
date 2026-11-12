@@ -168,6 +168,21 @@ export const siteSchema = z.object({
   application: z.record(z.string(), z.string()).optional(),
 });
 
+/** 図面・3D のメモ（v5 の途中で追加したため省略可） */
+export const noteSchema = z.object({
+  id: z.string().min(1),
+  floorId: z.string().min(1),
+  x: z.number().finite(),
+  y: z.number().finite(),
+  z: z.number().finite().optional(),
+  under: z.boolean().optional(),
+  text: z.string().max(1000),
+  done: z.boolean().optional(),
+  target: z.object({ kind: z.enum(['segment', 'fixture', 'node', 'wall', 'room', 'opening', 'member', 'corner']), id: z.string().min(1) }).optional(),
+  createdAt: z.number(),
+  updatedAt: z.number().optional(),
+});
+
 export const SCHEMA_VERSION = 5;
 
 export const projectSchema = z.object({
@@ -185,6 +200,7 @@ export const projectSchema = z.object({
   /** 立面（外壁の写真と取付）。v5 の途中で追加したため省略可 */
   elevations: z.record(z.string(), elevationSchema).optional(),
   site: siteSchema.optional(),
+  notes: z.record(z.string(), noteSchema).optional(),
   /** 書き出し時にだけ付く、使用中の自治体プロファイル本体（読み込み時に取り出して保存する。DB には残さない） */
   bundledProfile: z.unknown().optional(),
 });

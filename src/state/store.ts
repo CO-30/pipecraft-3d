@@ -44,6 +44,7 @@ import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
 import { applyDetour, findHits, markPenetration, type DetourStyle } from '../model/obstacles';
 import { addFaceMember, addFaceStair, bumpFace, deleteMember, faceWallAt, MEMBER_LABEL, updateMember, type FaceRect, type Member, type MemberKind } from '../model/members';
+import { addNote, buildingNotePoint, noteAnchor, removeNote, removeNotesOnFloor, syncNotes, updateNote, type Note, type NoteTarget } from '../model/notes';
 import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineLoop, straightenOutline, type FixedEnd, type OutlineLengthResult } from '../model/sketch';
 
 /** 床下に描く高さの初期値（床から mm） */
@@ -75,8 +76,8 @@ function touchedNodes(prev: Doc, next: Doc): Set<string> {
 const HEADER_PORT_DZ = 100;
 
 export type { Doc };
-export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay';
-export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture' | 'member';
+export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay' | 'note';
+export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture' | 'member' | 'note';
 /** at: 区間をタップした位置（切断・バルブ挿入に使う） */
 export type Selection = { kind: SelKind; id: string; at?: Vec3 } | null;
 export type VisCategory = BoxCategory | 'pipes' | 'fixtures';
@@ -162,6 +163,18 @@ type State = {
   /** 系統をたどって強調している出発の手がかり（画面だけの状態。図面・元に戻すには入れない） */
   trace: TraceSeed | null;
   setTrace(segId: string | null): void;
+  /** 図面・3D のメモを出す（表示だけ。保存しない） */
+  showNotes: boolean;
+  setShowNotes(on: boolean): void;
+  /** 道具「メモ」で平面図をタップした所に置く（target があればそれに付ける）。置いたらメモを選んで道具は選択へ */
+  placeNoteAt(p: Vec2, target?: NoteTarget): void;
+  /** 選んでいるものにメモを付ける */
+  addNoteFromSelection(): void;
+  updateNote(id: string, patch: Partial<Pick<Note, 'text' | 'done'>>): void;
+  /** メモを動かす（付けた先から外れる）。dragNote は beginDrag〜endDrag の間 */
+  moveNote(id: string, p: Vec2): void;
+  dragNote(id: string, p: Vec2): void;
+  removeNote(id: string): void;
   dragBase: Doc | null;
   revision: number;
   /** 結合待ちの部屋（次にタップした部屋と結合する） */
@@ -368,10 +381,10 @@ export const useStore = create<State>((set, get) => {
     // 排水: 平面ルート・属性・ピンから管底高を計算し直す（同じ履歴に入れる）
     if (next.network !== doc.network || next.fixtures !== doc.fixtures || next.building !== doc.building || next.site !== doc.site) {
       const r = solveDoc(next, doc);
-      next = r.doc;
+      next = syncNotes(r.doc);
       set({ drainIssues: r.issues });
     }
-    if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations && next.site === doc.site) return false;
+    if (next.notes === doc.notes && next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations && next.site === doc.site) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
     // 新しく描いた・動かした配管が梁・軒などにぶつかったらお知らせ
     if (next.network !== doc.network && next.building.members && Object.keys(next.building.members).length) {
@@ -427,6 +440,7 @@ export const useStore = create<State>((set, get) => {
       for (const f of Object.values(doc.fixtures)) if (f.floorId === removedFloorId) doc = deleteFixture(doc, f.id);
       if (doc.underlays) doc = { ...doc, underlays: Object.fromEntries(Object.entries(doc.underlays).filter(([, u]) => u.floorId !== removedFloorId)) };
       if (doc.elevations) doc = { ...doc, elevations: Object.fromEntries(Object.entries(doc.elevations).filter(([, e]) => e.floorId !== removedFloorId)) };
+      doc = removeNotesOnFloor(doc, removedFloorId);
     }
     const network = followFloors(doc.network, doc.building.floors, nextBld.floors);
     const next = syncAllFixturePorts({ ...doc, building: nextBld, network });
@@ -470,7 +484,7 @@ export const useStore = create<State>((set, get) => {
   };
   const withBld = (building: Building): Doc => ({ ...get().doc, building });
   /** ドラッグ中: 排水の高さをその場で計算し直して表示（履歴には入れない） */
-  const liveSet = (doc: Doc) => { const r = solveDoc(doc); set({ doc: r.doc, drainIssues: r.issues }); };
+  const liveSet = (doc: Doc) => { const r = solveDoc(doc); set({ doc: syncNotes(r.doc), drainIssues: r.issues }); };
   /** before に無かった区間に、自動の管種を付ける */
   const autoMat = (net: Network, before: Network): Network =>
     assignAutoMaterials(net, get().doc.building, Object.keys(net.segments).filter((id) => !before.segments[id]));
@@ -513,6 +527,54 @@ export const useStore = create<State>((set, get) => {
     visibility: defaultVisibility(),
     hiddenIds: [],
     ghostIds: [],
+    showNotes: true,
+    setShowNotes: (showNotes) => set({ showNotes }),
+    placeNoteAt: (p, target) => {
+      const doc = get().doc;
+      const near = target?.kind === 'segment' && doc.network.segments[target.id]
+        ? { ...p, z: (doc.network.nodes[doc.network.segments[target.id].a].pos.z + doc.network.nodes[doc.network.segments[target.id].b].pos.z) / 2 } : undefined;
+      const at = target ? noteAnchor(doc, target, near) : null;
+      const under = isUnderFloor(get());
+      const r = addNote(doc, { floorId: get().activeFloorId, x: at?.x ?? Math.round(p.x), y: at?.y ?? Math.round(p.y), ...(at ? { z: at.z } : {}), ...(under ? { under } : {}), text: '', ...(target ? { target } : {}) });
+      commit(r.doc, { selection: { kind: 'note', id: r.id }, tool: 'select' });
+    },
+    addNoteFromSelection: () => {
+      const { selection: sel, doc, activeFloorId } = get();
+      if (!sel || sel.kind === 'note') return;
+      const target: NoteTarget = { kind: sel.kind, id: sel.id };
+      const at = noteAnchor(doc, target, sel.at);
+      const bp = at ? null : buildingNotePoint(doc.building, target);
+      if (!at && !bp) return;
+      const floorId = sel.kind === 'fixture' ? doc.fixtures[sel.id].floorId
+        : sel.kind === 'wall' ? doc.building.walls[sel.id].floorId
+        : sel.kind === 'room' ? doc.building.rooms[sel.id].floorId
+        : sel.kind === 'member' ? doc.building.members?.[sel.id]?.floorId ?? activeFloorId
+        : sel.kind === 'corner' ? doc.building.corners[sel.id].floorId
+        : sel.kind === 'opening' ? doc.building.walls[doc.building.openings[sel.id].wallId]?.floorId ?? activeFloorId
+        : activeFloorId;
+      const p = at ?? bp!;
+      const r = addNote(doc, { floorId, x: p.x, y: p.y, ...(at ? { z: at.z } : {}), ...(!at && isUnderFloor(get()) ? { under: true } : {}), text: '', target });
+      commit(r.doc, { selection: { kind: 'note', id: r.id } });
+    },
+    updateNote: (id, patch) => {
+      const cur = get().doc.notes?.[id];
+      if (!cur || Object.entries(patch).every(([k, v]) => (cur as Record<string, unknown>)[k] === v || (k === 'done' && !v && !cur.done))) return;
+      commit(updateNote(get().doc, id, patch));
+    },
+    moveNote: (id, p) => {
+      if (!get().doc.notes?.[id]) return;
+      commit(updateNote(get().doc, id, { x: Math.round(p.x), y: Math.round(p.y), target: undefined }));
+    },
+    dragNote: (id, p) => {
+      const base = get().dragBase;
+      if (!base?.notes?.[id]) return;
+      set({ doc: updateNote(get().doc, id, { x: Math.round(p.x), y: Math.round(p.y), target: undefined }, base.notes[id].updatedAt) });
+    },
+    removeNote: (id) => {
+      if (!get().doc.notes?.[id]) return;
+      const sel = get().selection;
+      commit(removeNote(get().doc, id), sel?.kind === 'note' && sel.id === id ? { selection: null } : {});
+    },
     trace: null,
     setTrace: (segId) => set({ trace: segId ? traceSeed(get().doc, segId) : null }),
     dragBase: null,
@@ -531,7 +593,7 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc0 = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {} };
+      const doc0 = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {}, ...(p.notes ? { notes: p.notes } : {}) };
       // 排水の高さは保存された値を使わず、計算し直す（保存された z は計算結果の写し）
       const r = solveDoc(doc0);
       set({ doc: r.doc, drainIssues: r.issues, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(r.doc) });
@@ -544,7 +606,7 @@ export const useStore = create<State>((set, get) => {
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
-      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {}, elevations: doc.elevations ?? {}, site: doc.site ?? {} };
+      return { schemaVersion: SCHEMA_VERSION, ...meta, updatedAt: Date.now(), building: doc.building, network: doc.network, fixtures: doc.fixtures, estimate: doc.estimate ?? defaultEstimate(), underlays: doc.underlays ?? {}, elevations: doc.elevations ?? {}, site: doc.site ?? {}, ...(doc.notes && Object.keys(doc.notes).length ? { notes: doc.notes } : {}) };
     },
     renameProject: (name, address) => {
       const m = get().meta;
@@ -1185,9 +1247,9 @@ export const useStore = create<State>((set, get) => {
       const { dragBase, past } = get();
       if (!dragBase) return;
       // 終わりに排水を計算し直す（ドラッグ中は置かなかったマスもここで。壁・角を動かすと床下・建物の内外が変わる）
-      if (get().doc !== dragBase) { const r = solveDoc(get().doc, dragBase); set({ doc: r.doc, drainIssues: r.issues }); }
+      if (get().doc !== dragBase) { const r = solveDoc(get().doc, dragBase); set({ doc: syncNotes(r.doc), drainIssues: r.issues }); }
       const doc = get().doc;
-      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site;
+      const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site || dragBase.notes !== doc.notes;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}), ...(changed && lockedCount(doc.network) < lockedCount(dragBase.network) ? { notice: UNLOCK_NOTICE } : {}) });
     },
 
@@ -1366,6 +1428,7 @@ export const useStore = create<State>((set, get) => {
       if (!sel) return;
       const { building, network } = get().doc;
       let next: Doc | null = null;
+      if (sel.kind === 'note') { get().removeNote(sel.id); return; }
       if (sel.kind === 'segment') next = withNet(deleteSegment(network, sel.id));
       else if (sel.kind === 'node') next = withNet(deleteFitting(network, sel.id));
       else if (sel.kind === 'fixture') {

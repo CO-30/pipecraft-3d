@@ -5,7 +5,8 @@
  */
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+import { OrbitControls, Grid, Html } from '@react-three/drei';
+import { noteNumbers, notes3dZ } from '../model/notes';
 import * as THREE from 'three';
 import { useStore, type SelKind, type VisMode } from '../state/store';
 import type { Vec3 } from '../model/network';
@@ -445,6 +446,33 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
           <meshStandardMaterial clippingPlanes={clip} color={sel?.kind === 'node' && sel.id === n.id ? SELECT_COLOR : n.kind === 'tee' || n.kind === 'cross' ? '#111827' : n.kind === 'valve' ? '#f97316' : n.fixtureId ? portColor(n) : '#f9fafb'} />
         </mesh>
       ))}
+      <Notes3D zIn={zIn} />
+    </>
+  );
+}
+
+/** メモの札（番号）。いつも手前に見え、タップで選べる */
+function Notes3D({ zIn }: { zIn: (z: number) => boolean }) {
+  const doc = useStore((s) => s.doc);
+  const show = useStore((s) => s.showNotes);
+  const sel = useStore((s) => s.selection);
+  const nums = useMemo(() => noteNumbers(doc.notes), [doc.notes]);
+  if (!show || !doc.notes) return null;
+  return (
+    <>
+      {Object.values(doc.notes).map((n) => {
+        const z = notes3dZ(doc, n);
+        if (!zIn(z)) return null;
+        const selected = sel?.kind === 'note' && sel.id === n.id;
+        return (
+          <Html key={n.id} position={toThree({ x: n.x, y: n.y, z })} center zIndexRange={[30, 10]}>
+            <button type="button" className={`note-tag ${n.done ? 'done' : ''} ${selected ? 'on' : ''}`} data-testid="note-tag" data-note={n.id}
+              aria-label={`メモ ${nums.get(n.id)}`} onClick={() => useStore.getState().select({ kind: 'note', id: n.id })}>
+              {n.done && '✓'}{nums.get(n.id)}{selected && n.text.trim() && <span className="note-tag-text">{n.text.trim().split('\n')[0].slice(0, 24)}</span>}
+            </button>
+          </Html>
+        );
+      })}
     </>
   );
 }
