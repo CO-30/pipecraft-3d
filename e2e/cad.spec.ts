@@ -68,8 +68,11 @@ test.describe('Jw_cad 図面の取り込み', () => {
     await useTool(page, 'underlay');
     await page.getByTestId('ul-cad-file').setInputFiles({ name: 'こわれた.jww', mimeType: '', buffer: Buffer.from('これは図面ではありません') });
     await expect(page.getByRole('alert')).toContainText('Jw_cad の図面（.jww）ではない');
+    // DXF は読める。中身の無い DXF は「線や文字が無い」と知らせる。DWG は DXF に保存し直すよう案内
     await page.getByTestId('ul-cad-file').setInputFiles({ name: '図面.dxf', mimeType: '', buffer: Buffer.from('0\nSECTION\n') });
-    await expect(page.getByRole("alert")).toContainText("対応していません");
+    await expect(page.getByRole("alert")).toContainText("線や文字が見つかりませんでした");
+    await page.getByTestId('ul-cad-file').setInputFiles({ name: '図面.dwg', mimeType: '', buffer: Buffer.from('AC1027') });
+    await expect(page.getByRole("alert")).toContainText("DXF");
     await page.getByTestId("ul-cad-file").setInputFiles({ name: "古い.jwc", mimeType: "", buffer: Buffer.from("x") });
     await expect(page.getByRole("alert")).toContainText("Jw_cad");
     await expect(page.locator('[data-underlay]')).toHaveCount(0);
