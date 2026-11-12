@@ -47,3 +47,19 @@ describe('用紙描画', () => {
     expect(svg).toContain('免責');
   });
 });
+
+describe('画像（image 命令）', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  test('SVG に <image> が出る。data:image の PNG/JPEG 以外は出さない', () => {
+    const svg = sheetToSvg({ width: 210, height: 297, ops: [{ t: 'image', x: 10, y: 20, w: 100, h: 80, href: PNG }, { t: 'image', x: 0, y: 0, w: 1, h: 1, href: 'javascript:alert(1)' }] });
+    expect(svg).toContain(`<image x="10" y="20" width="100" height="80" href="${PNG}" preserveAspectRatio="none"/>`);
+    expect(svg).not.toContain('javascript');
+  });
+  test('PDF に画像が埋め込まれる', async () => {
+    const { PDFDict, PDFName } = await import('pdf-lib');
+    const bytes = await sheetsToPdf([{ width: 210, height: 297, ops: [{ t: 'image', x: 10, y: 20, w: 100, h: 80, href: PNG }] }], font());
+    const page = (await PDFDocument.load(bytes)).getPage(0);
+    const xo = page.node.Resources()?.lookup(PDFName.of('XObject'), PDFDict);
+    expect(xo?.keys().length).toBe(1);
+  });
+});

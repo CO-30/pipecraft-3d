@@ -26,8 +26,12 @@ import { suggestDiameters } from '../model/hydraulics/suggest';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { renderSuiriSheets } from '../export/suiriSheet';
 import { SuiriPanel } from './SuiriPanel';
+import { LocationPanel } from './LocationPanel';
+import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } from '../model/locationMap';
+import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
+import type { LocationBuild } from '../import/locationMap';
 
-type Kind = 'profile' | 'riser' | 'forms' | 'suiri';
+type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori';
 const PROFILE_TITLE = '排水設備 縦断図';
 const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
@@ -124,8 +128,47 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const suiriSuggest = useMemo(() => (suiri && !('error' in suiri) && !suiri.ok ? suggestDiameters(doc, suiriRules, suiriSettings) : null), [suiri, doc, suiriRules, suiriSettings]);
   const setSuiri = (patch: Partial<SuiriSettings>) => updateSite({ application: writeSuiriSettings(doc.site?.application, patch) });
 
+  // 見取図（案内図）。場所と縮尺は site.application の mitori.*、地図はその都度取り込む（端末のメモリだけ）
+  const mapSettings: MapSettings = useMemo(() => readMapSettings(doc.site?.application), [doc.site?.application]);
+  const setMap = (patch: Partial<MapSettings>) => updateSite({ application: writeMapSettings(doc.site?.application, patch) });
+  const siteAddress = doc.site?.application?.siteAddress || meta?.address || '';
+  const [mitori, setMitori] = useState<{ key: string; build: LocationBuild | null; loading: boolean }>({ key: '', build: null, loading: false });
+  const mitoriKey = kind === 'mitori' ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
+  useEffect(() => {
+    if (!mitoriKey) return;
+    let live = true;
+    setMitori((m) => ({ ...m, key: mitoriKey, loading: true }));
+    void import('../import/locationMap').then(({ buildLocationSheet }) => buildLocationSheet(doc.site?.application, { siteName, address: siteAddress, date }))
+      .then((build) => { if (live) setMitori({ key: mitoriKey, build, loading: false }); })
+      .catch((e) => { console.error('見取図', e); if (live) setMitori({ key: mitoriKey, build: null, loading: false }); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mitoriKey が場所・縮尺・表記をまとめて持つ
+  }, [mitoriKey]);
+  /** 見取図のプレビューをタップ → その点を新しい工事場所（地図の中心）にする。いま表示している地図の中心から測る（読み込み中の連打で二重に動かない） */
+  const tapMap = (e: React.MouseEvent<HTMLDivElement>) => {
+    const shown = mitori.build;
+    if (kind !== 'mitori' || !shown?.mapOk) return;
+    const svg = (e.target as Element).closest('svg');
+    if (!svg) return;
+    const r = svg.getBoundingClientRect();
+    const mx = ((e.clientX - r.left) / r.width) * 210, my = ((e.clientY - r.top) / r.height) * 297;
+    const F = MAP_FRAME;
+    if (mx < F.x || mx > F.x + F.w || my < F.y || my > F.y + F.h) return;
+    const p = offsetLatLon(shown.center, shown.zoom, (mx - (F.x + F.w / 2)) * (MAP_PX.w / F.w), (my - (F.y + F.h / 2)) * (MAP_PX.h / F.h));
+    setMap({ lat: Math.round(p.lat * 1e7) / 1e7, lon: Math.round(p.lon * 1e7) / 1e7 });
+  };
+
   const built: ShinseiBuild = useMemo(() => {
     if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
+    if (kind === 'mitori') {
+      if (mapSettings.lat === undefined) return { sheets: [], svg: '', warnings: [], error: '工事場所が決まっていません。住所を入れて「探す」を押してください（緯度,経度でも指定できます）', kind };
+      // 新しい地図ができるまでは前の見取図を出したまま「読み込んでいます」（出力は新しい地図ができてから）
+      const loading = mitori.loading || mitori.key !== mitoriKey;
+      const b = mitori.build;
+      if (!b) return { sheets: [], svg: '', warnings: [loading ? '地図を読み込んでいます…' : '見取図を作れませんでした'], error: null, kind };
+      const notes = b.mapOk ? b.notes : [...b.notes, '地図が無いため、枠だけの見取図です（手で書き込んで使えます）'];
+      return { sheets: loading ? [] : [b.sheet], svg: sheetToSvg(b.sheet), warnings: loading ? ['地図を読み込んでいます…'] : notes, error: null, kind };
+    }
     if (kind === 'suiri') {
       if (!suiri) return { sheets: [], svg: '', warnings: [], error: null, kind };
       if ('error' in suiri) return { sheets: [], svg: '', warnings: [], error: suiri.error, kind };
@@ -172,13 +215,13 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     const warnings = [...m.warnings];
     if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
     return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
-  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri]);
+  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, mapSettings.lat, mitori, mitoriKey]);
 
   const download = async (fmt: 'pdf' | 'svg') => {
     setBusy(fmt); setErr('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : '立面図'}_${dateStamp(new Date())}`;
+      const base = `${safeName(siteName)}_${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'svg') {
         // 枝が別図のときは、ページを縦に並べた 1 つの SVG
         downloadBytes(new TextEncoder().encode(sheetsToSvg(built.sheets)), `${base}.svg`, 'image/svg+xml');
@@ -202,8 +245,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <strong>申請図面</strong>
         <span className="muted small">配管データから縦断図・立面図・水理計算書を自動で作ります</span>
         <span className="grow" />
-        <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms'} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
-        <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms'} onClick={() => download('svg')}>SVG</button>
+        <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
+        <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('svg')}>SVG</button>
       </header>
       <div className="shinsei-controls">
         <label className="field inline">自治体プロファイル
@@ -222,9 +265,12 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           <button data-testid="shinsei-kind-profile" className={kind === 'profile' ? 'on' : ''} onClick={() => setKind('profile')}>排水縦断図</button>
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
           <button data-testid="shinsei-kind-suiri" className={kind === 'suiri' ? 'on' : ''} onClick={() => setKind('suiri')}>水理計算書</button>
+          <button data-testid="shinsei-kind-mitori" className={kind === 'mitori' ? 'on' : ''} onClick={() => setKind('mitori')}>見取図</button>
           <button data-testid="shinsei-kind-forms" className={kind === 'forms' ? 'on' : ''} onClick={() => setKind('forms')}>申請書</button>
         </div>
-        {kind === 'forms' ? null : kind === 'suiri' ? (
+        {kind === 'forms' ? null : kind === 'mitori' ? (
+          <LocationPanel settings={mapSettings} defaultQuery={siteAddress} onChange={setMap} />
+        ) : kind === 'suiri' ? (
           <SuiriPanel calc={suiri && !('error' in suiri) ? suiri : null} rules={suiriRules} settings={suiriSettings} onChange={setSuiri} suggestion={suiriSuggest}
             onApply={() => suiriSuggest && updateSegments(Object.fromEntries(suiriSuggest.changes.map((c) => [c.segId, { diameter: c.to }])))} />
         ) : kind === 'profile' ? (
@@ -267,8 +313,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           {built.warnings.map((w, i) => <li key={i} className="warn">⚠ {w}</li>)}
         </ul>
       )}
-      {kind === 'forms' ? <div className="shinsei-preview forms"><ShinseiForms profile={profile} siteName={siteName} date={date} /></div> : <div className="shinsei-preview" data-testid="shinsei-preview">
-        <div className="shinsei-pages" style={{ width: `${zoom * 100}%` }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
+      {kind === 'forms' ? <div className="shinsei-preview forms"><ShinseiForms profile={profile} siteName={siteName} date={date} /></div> : <div className={`shinsei-preview${kind === 'mitori' ? ' mitori' : ''}`} data-testid="shinsei-preview" onClick={tapMap}>
+        <div className="shinsei-pages" style={{ width: `${zoom * 100}%`, ...(kind === 'mitori' ? { maxWidth: 760 * zoom } : {}) }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
     </div>
