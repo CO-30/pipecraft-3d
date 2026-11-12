@@ -19,6 +19,7 @@ import { underlayCorners } from '../model/underlay';
 import { pointInRing } from '../model/geo';
 import { memberCorners, membersOf, stairSteps } from '../model/members';
 import { findConnectCandidate } from '../model/connect';
+import { useTrace, TRACE_COLOR } from './useTrace';
 
 type ViewT = { scale: number; ox: number; oy: number }; // px/mm, 画面上の原点位置
 type Gesture =
@@ -78,6 +79,7 @@ export function PlanView() {
   const net = useStore((s) => s.doc.network);
   const tool = useStore((s) => s.tool);
   const sel = useStore((s) => s.selection);
+  const trace = useTrace();
   const floorId = useStore((s) => s.activeFloorId);
   const dimFloor = useStore((s) => s.dimWizard?.floorId);
   const underFloor = useStore(isUnderFloor);
@@ -635,7 +637,8 @@ export function PlanView() {
           const r = Math.max(8, (fixtureSize(f).w / 2) * vw.scale);
           const stroke = selected ? SELECT_COLOR : '#57534e';
           return (
-            <g key={f.id} data-fixture={f.id} data-type={f.type}>
+            <g key={f.id} data-fixture={f.id} data-type={f.type} data-trace={trace?.fixtures.has(f.id) ? '1' : undefined} opacity={trace && !trace.fixtures.has(f.id) ? 0.3 : 1}>
+              {trace?.fixtures.has(f.id) && <circle cx={c.x} cy={c.y} r={r + 6} fill="none" stroke={TRACE_COLOR} strokeWidth={4} opacity={0.6} />}
               {f.params?.shape === 'square'
                 ? <rect x={c.x - r} y={c.y - r} width={r * 2} height={r * 2} fill={selected ? '#fde68a' : '#fafaf9'} stroke={stroke} strokeWidth={selected ? 3 : 1.5} />
                 : <circle cx={c.x} cy={c.y} r={r} fill={selected ? '#fde68a' : '#fafaf9'} stroke={stroke} strokeWidth={selected ? 3 : 1.5} />}
@@ -645,7 +648,8 @@ export function PlanView() {
         }
         const sz = fixtureSize(f);
         return (
-          <g key={f.id} data-fixture={f.id} data-type={f.type} data-under={(f.params?.mountZ ?? 0) < 0 ? '1' : undefined} opacity={(f.params?.mountZ ?? 0) < 0 ? 1 : dim} strokeDasharray={(f.params?.mountZ ?? 0) < 0 && !underFloor ? '5 3' : undefined}>
+          <g key={f.id} data-fixture={f.id} data-type={f.type} data-trace={trace?.fixtures.has(f.id) ? '1' : undefined} data-under={(f.params?.mountZ ?? 0) < 0 ? '1' : undefined} opacity={trace && !trace.fixtures.has(f.id) ? 0.3 : (f.params?.mountZ ?? 0) < 0 ? 1 : dim} strokeDasharray={(f.params?.mountZ ?? 0) < 0 && !underFloor ? '5 3' : undefined}>
+            {trace?.fixtures.has(f.id) && <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={TRACE_COLOR} strokeWidth={7} opacity={0.5} strokeDasharray="none" />}
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
             {/* 平面の記号（ローカル mm。y は上向き＝奥、回転は図面と同じ反時計回り） */}
             <g transform={`translate(${c.x} ${c.y}) scale(${vw.scale} ${-vw.scale}) rotate(${f.rotation})`} pointerEvents="none" data-symbol="1">
@@ -663,7 +667,8 @@ export function PlanView() {
         const selected = isSel('segment', s.id);
         const drop = dropHit?.type === 'segment' && dropHit.id === s.id;
         return (
-          <g key={s.id} data-seg={s.id} opacity={here ? 1 : 0.2}>
+          <g key={s.id} data-seg={s.id} data-trace={trace?.segs.has(s.id) ? '1' : undefined} opacity={!here ? 0.2 : trace && !trace.segs.has(s.id) ? 0.3 : 1}>
+            {trace?.segs.has(s.id) && !selected && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={TRACE_COLOR} strokeWidth={13} strokeLinecap="round" opacity={0.45} />}
             {(selected || drop) && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={drop ? '#16a34a' : SELECT_COLOR} strokeWidth={14} strokeLinecap="round" opacity={0.6} />}
             {!selected && run?.has(s.id) && <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={SELECT_COLOR} strokeWidth={9} strokeLinecap="round" opacity={0.25} />}
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={systemColor(s.system)} strokeWidth={Math.max(3, s.diameter * vw.scale * 3)} strokeLinecap="round" />
@@ -679,7 +684,7 @@ export function PlanView() {
         const selected = arc.segs.some((id) => isSel('segment', id));
         return (
           <path key={'bend' + arc.nodeId} data-bend={arc.nodeId} d={pts.map((q, i) => `${i ? 'L' : 'M'}${q.x},${q.y}`).join(' ')} fill="none" pointerEvents="none"
-            opacity={segHere(arc.segs[0]) ? 1 : 0.2} stroke={selected ? SELECT_COLOR : systemColor(s.system)} strokeWidth={Math.max(3, s.diameter * vw.scale * 3)} strokeLinecap="round" />
+            opacity={!segHere(arc.segs[0]) ? 0.2 : trace && !trace.segs.has(arc.segs[0]) ? 0.3 : 1} stroke={selected ? SELECT_COLOR : systemColor(s.system)} strokeWidth={Math.max(3, s.diameter * vw.scale * 3)} strokeLinecap="round" />
         );
       })}
       {Object.keys(net.segments).filter((id) => isVertical(net, id)).map((id) => {

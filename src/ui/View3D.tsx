@@ -21,6 +21,7 @@ import { fixtureParts, type Mat, type Part3D } from '../model/fixtureShapes';
 import { photoPlane } from '../model/facadePhoto';
 import { OUTSIDE_RGB } from '../model/homography';
 import type { Elevation } from '../model/elevation';
+import { useTrace } from './useTrace';
 
 /**
  * 立面の写真を 3D の外壁の表面に貼る（タップは後ろの壁へ通す）。
@@ -236,6 +237,7 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const vis = useStore((s) => s.visibility);
   const hiddenIds = useStore((s) => s.hiddenIds);
   const ghostIds = useStore((s) => s.ghostIds);
+  const trace = useTrace();
   const section = useStore((s) => s.section);
   const floorFilter = useStore((s) => s.floorFilter);
   const activeFloorId = useStore((s) => s.activeFloorId);
@@ -375,6 +377,8 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   };
 
   const pipeMode = vis.pipes;
+  // 系統の強調中は、系統の外の管・器具を半透明に
+  const tracedMode = (inTrace: boolean, m: VisMode): VisMode => (trace && !inTrace && m === 'show' ? 'ghost' : m);
   return (
     <>
       <ambientLight intensity={0.75} />
@@ -415,16 +419,16 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
       })()}
       {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => (
         <Pipe clip={clip} key={s.id} {...(([a, b]) => ({ a, b }))(trimmedEnds(net, bendArcs, s.id))} radius={Math.max(0.025, s.diameter / 1500)}
-          color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} mode={pipeMode}
+          color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} mode={tracedMode(!!trace?.segs.has(s.id), pipeMode)}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: s.id })} />
       ))}
       {Object.values(fixtures).filter((f) => floorFilter === 'all' || shownFloorIds.has(f.floorId)).map((f) => (
-        <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={modeFor('fixtures', f.id)} />
+        <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={tracedMode(!!trace?.fixtures.has(f.id), modeFor('fixtures', f.id))} />
       ))}
       {[...bendArcs.values()].filter((arc) => zIn(arc.corner.z)).map((arc) => {
         const sg = net.segments[arc.segs[0]];
         const selected = sel?.kind === 'segment' && arc.segs.includes(sel.id);
-        return <BendTube key={'bend' + arc.nodeId} arc={arc} clip={clip} mode={pipeMode} selected={selected} color={systemColor(sg.system)} radius={Math.max(0.025, sg.diameter / 1500)}
+        return <BendTube key={'bend' + arc.nodeId} arc={arc} clip={clip} mode={tracedMode(!!trace?.segs.has(arc.segs[0]), pipeMode)} selected={selected} color={systemColor(sg.system)} radius={Math.max(0.025, sg.diameter / 1500)}
           onSelect={() => useStore.getState().select({ kind: 'segment', id: arc.segs[0] })} />;
       })}
       {/* 継手なしで曲げる角には玉を出さない（選んでいるときだけ出す） */}
