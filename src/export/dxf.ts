@@ -19,27 +19,20 @@ function aci(hex: string | undefined): number {
   for (const [n, R, G, B] of ACI) { const d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2; if (d < bd) { bd = d; best = n; } }
   return best;
 }
-const f = (n: number) => (Math.round(n * 1000) / 1000).toString();
+const f = (n: number) => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 : 0).toString();
 
 export function sheetsToDxf(sheets: Sheet[]): { bytes: Uint8Array; notes: string[]; missing: Set<string> } {
-  const out: string[] = [];
-  const g = (code: number, v: string | number) => { out.push(String(code), typeof v === 'number' ? f(v) : v); };
+  let out: string[] = [];
+  const g = (code: number, v: string | number) => { out.push(String(code), typeof v === 'number' ? f(v) : v.replace(/[\r\n]+/g, ' ')); };
   let images = 0;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const ext = (x: number, y: number) => { if (!Number.isFinite(x) || !Number.isFinite(y)) return; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
 
-  // ヘッダ・表（線種・画層・文字スタイル）
-  g(0, 'SECTION'); g(2, 'HEADER'); g(9, '$ACADVER'); g(1, 'AC1009'); g(9, '$DWGCODEPAGE'); g(3, 'ANSI_932'); g(0, 'ENDSEC');
-  g(0, 'SECTION'); g(2, 'TABLES');
-  g(0, 'TABLE'); g(2, 'LTYPE'); g(70, '2');
-  g(0, 'LTYPE'); g(2, 'CONTINUOUS'); g(70, '0'); g(3, 'Solid line'); g(72, '65'); g(73, '0'); g(40, 0);
-  g(0, 'LTYPE'); g(2, 'DASHED'); g(70, '0'); g(3, '__ __ __'); g(72, '65'); g(73, '2'); g(40, 3); g(49, 2); g(49, -1);
-  g(0, 'ENDTAB');
-  g(0, 'TABLE'); g(2, 'LAYER'); g(70, '1'); g(0, 'LAYER'); g(2, '0'); g(70, '0'); g(62, '7'); g(6, 'CONTINUOUS'); g(0, 'ENDTAB');
-  g(0, 'TABLE'); g(2, 'STYLE'); g(70, '1'); g(0, 'STYLE'); g(2, 'STANDARD'); g(70, '0'); g(40, 0); g(41, 1); g(50, 0); g(71, '0'); g(42, 2.5); g(3, 'txt'); g(4, ''); g(0, 'ENDTAB');
-  g(0, 'ENDSEC');
-
+  // 図形を先に作る（範囲 $EXTMIN/$EXTMAX をヘッダに書くため）
   g(0, 'SECTION'); g(2, 'ENTITIES');
   let ox = 0;
   for (const sh of sheets) {
+    ext(ox, 0); ext(ox + sh.width, sh.height);
     const X = (x: number) => ox + x, Y = (y: number) => sh.height - y;
     const head = (type: string, color?: string, dash?: boolean) => { g(0, type); g(8, '0'); g(62, String(aci(color))); if (dash) g(6, 'DASHED'); };
     const poly = (pts: [number, number][], closed: boolean, color?: string, dash?: boolean) => {
@@ -68,6 +61,23 @@ export function sheetsToDxf(sheets: Sheet[]): { bytes: Uint8Array; notes: string
     ox += sh.width + GAP;
   }
   g(0, 'ENDSEC'); g(0, 'EOF');
+  const body = out;
+  out = [];
+  if (!Number.isFinite(x0)) { x0 = y0 = 0; x1 = y1 = 0; }
+
+  // ヘッダ・表（線種・画層・文字スタイル）
+  g(0, 'SECTION'); g(2, 'HEADER'); g(9, '$ACADVER'); g(1, 'AC1009'); g(9, '$DWGCODEPAGE'); g(3, 'ANSI_932');
+  g(9, '$EXTMIN'); g(10, x0); g(20, y0); g(30, 0); g(9, '$EXTMAX'); g(10, x1); g(20, y1); g(30, 0);
+  g(0, 'ENDSEC');
+  g(0, 'SECTION'); g(2, 'TABLES');
+  g(0, 'TABLE'); g(2, 'LTYPE'); g(70, '2');
+  g(0, 'LTYPE'); g(2, 'CONTINUOUS'); g(70, '0'); g(3, 'Solid line'); g(72, '65'); g(73, '0'); g(40, 0);
+  g(0, 'LTYPE'); g(2, 'DASHED'); g(70, '0'); g(3, '__ __ __'); g(72, '65'); g(73, '2'); g(40, 3); g(49, 2); g(49, -1);
+  g(0, 'ENDTAB');
+  g(0, 'TABLE'); g(2, 'LAYER'); g(70, '1'); g(0, 'LAYER'); g(2, '0'); g(70, '0'); g(62, '7'); g(6, 'CONTINUOUS'); g(0, 'ENDTAB');
+  g(0, 'TABLE'); g(2, 'STYLE'); g(70, '1'); g(0, 'STYLE'); g(2, 'STANDARD'); g(70, '0'); g(40, 0); g(41, 1); g(50, 0); g(71, '0'); g(42, 2.5); g(3, 'txt'); g(4, 'extfont2.shx'); g(0, 'ENDTAB');
+  g(0, 'ENDSEC');
+  out.push(...body);
 
   const missing = new Set<string>();
   const bytes = encodeSjis(out.join('\r\n') + '\r\n', missing);

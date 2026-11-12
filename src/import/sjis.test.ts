@@ -13,4 +13,12 @@ describe('Shift_JIS への符号化', () => {
     expect(dec(encodeSjis('𠮷野😀', miss))).toBe('?野?');
     expect([...miss].sort()).toEqual(['𠮷', '😀'].sort());
   });
+
+  test('図面で使う記号（−〜‖—¢£¬）も CP932 の字にする（? にしない）', () => {
+    const miss = new Set<string>();
+    const b = encodeSjis('GL(−600) 1〜2 ‖ — ¢£¬', miss);
+    expect([...miss]).toEqual([]);
+    expect(Array.from(b.subarray(3, 5))).toEqual([0x81, 0x7c]);
+  });
 });
+

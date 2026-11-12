@@ -45,4 +45,15 @@ describe('DXF の書き出し（R12・Shift_JIS）', () => {
     expect(Number(val(lines[1], 10))).toBeCloseTo(297 + 20, 3);
     expect(notes.join('')).toContain('画像');
   });
+
+  test('日本語の大フォント・図の範囲（$EXTMIN/$EXTMAX）・NaN と改行は書かない', () => {
+    const bad: Sheet = { width: 100, height: 50, ops: [{ t: 'line', x1: NaN, y1: 0, x2: 10, y2: 0 }, { t: 'text', x: 5, y: 5, s: '一行目\n二行目', size: 3 }] };
+    const s = text(sheetsToDxf([sheet, bad]).bytes);
+    expect(s).toContain('extfont2.shx');
+    expect(s).toContain('$EXTMIN');
+    expect(s).toContain('$EXTMAX');
+    expect(s).not.toContain('NaN');
+    expect(s).toContain('一行目 二行目');
+  });
 });
+

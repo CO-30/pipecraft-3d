@@ -5,6 +5,12 @@
  */
 let table: Map<string, number[]> | null = null;
 
+/** Unicode の別の字形で入ってくる記号を CP932 の字にそろえる（全角マイナス・波ダッシュ・ダッシュ等） */
+const ALIAS: Record<string, number[]> = {
+  '\u2212': [0x81, 0x7c], '\u301c': [0x81, 0x60], '\u2016': [0x81, 0x61], '\u2014': [0x81, 0x5c],
+  '\u00a2': [0x81, 0x91], '\u00a3': [0x81, 0x92], '\u00ac': [0x81, 0xca],
+};
+
 function build(): Map<string, number[]> {
   const m = new Map<string, number[]>();
   const dec = new TextDecoder('shift_jis');
@@ -25,7 +31,7 @@ export function encodeSjis(s: string, missing?: Set<string>): Uint8Array {
   for (const ch of s) {
     const c = ch.codePointAt(0)!;
     if (c < 0x80) { out.push(c); continue; }
-    const b = table.get(ch);
+    const b = ALIAS[ch] ?? table.get(ch);
     if (b) out.push(...b);
     else { out.push(0x3f); missing?.add(ch); }
   }

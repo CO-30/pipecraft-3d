@@ -29,9 +29,9 @@ function pairs(text: string): Pair[] {
   const l = text.split(/\r\n|\r|\n/);
   const out: Pair[] = [];
   for (let i = 0; i + 1 < l.length; i += 2) {
-    const c = Number(l[i].trim());
-    if (!Number.isFinite(c)) { i--; continue; } // ずれた行を読み飛ばして合わせる
-    out.push([c, l[i + 1].replace(/\s+$/, '')]);
+    const t = l[i].trim();
+    if (!/^-?\d+$/.test(t)) { i--; continue; } // 空行・ずれた行を読み飛ばして合わせる
+    out.push([Number(t), l[i + 1].replace(/\s+$/, '')]);
   }
   return out;
 }
@@ -58,7 +58,13 @@ export function mtextLines(s: string): string[] {
 /** 文字の幅の見積もり（全角 1・半角 0.6 × 高さ） */
 const widthOf = (s: string, h: number) => [...s].reduce((a, ch) => a + (ch.charCodeAt(0) < 0x2000 ? 0.6 : 1), 0) * h;
 
+const MAX_COPIES = 2000; // 配列挿入の数の上限
+const MIRROR: M = [-1, 0, 0, 1, 0, 0];
+
 export function parseDxf(bytes: Uint8Array): CadDrawing {
+  if (new TextDecoder('latin1').decode(bytes.subarray(0, 18)) === 'AutoCAD Binary DXF') {
+    throw new Error('バイナリ形式の DXF は読めません。CAD で「ASCII（テキスト）形式」の DXF に保存し直してください');
+  }
   const P = pairs(decode(bytes));
   // セクションに分ける
   const sections = new Map<string, Pair[]>();
@@ -128,14 +134,16 @@ export function parseDxf(bytes: Uint8Array): CadDrawing {
     texts.push({ x: a.x * unit, y: a.y * unit, h: h * sx * unit, w: h * sx * unit, angle: angDeg + rot, content });
   };
 
-  const draw = (ents: Ent[], m: M, depth: number) => {
+  const draw = (ents: Ent[], m0: M, depth: number) => {
     for (const e of ents) {
       const p = e.p;
       if (num(p, 67) === 1) continue; // ペーパー空間
       const layer = str(p, 8);
       if (layer && hidden.has(layer)) continue;
+      // 押し出し方向が裏（下から見た図形）は、図形の座標系（OCS）の x が逆向き。LINE 等は世界座標なので関係しない
+      const m = num(p, 230, 1) < 0 ? mul(m0, MIRROR) : m0;
       switch (e.type) {
-        case 'LINE': add(m, num(p, 10), num(p, 20), num(p, 11), num(p, 21)); break;
+        case 'LINE': add(m0, num(p, 10), num(p, 20), num(p, 11), num(p, 21)); break;
         case 'LWPOLYLINE': {
           const vs: { x: number; y: number; b: number }[] = [];
           for (const [c, v] of p) {
@@ -177,6 +185,7 @@ export function parseDxf(bytes: Uint8Array): CadDrawing {
           break;
         }
         case 'TEXT': case 'ATTRIB': {
+          if (e.type === 'ATTRIB' && num(p, 70) & 1) break; // 見えない属性
           const h = num(p, 40, 2.5), content = plain(str(p, 1) ?? ''), ang = num(p, 50);
           const ha = num(p, 72), va = num(p, 73);
           let x = num(p, 10), y = num(p, 20);
@@ -215,9 +224,17 @@ export function parseDxf(bytes: Uint8Array): CadDrawing {
           if (!b) break;
           if (e.type === 'DIMENSION') { draw(b.ents, m, depth + 1); break; }
           const sx = num(p, 41, 1), sy = num(p, 42, 1), r = (num(p, 50) * Math.PI) / 180;
-          const t: M = [Math.cos(r) * sx, Math.sin(r) * sx, -Math.sin(r) * sy, Math.cos(r) * sy, num(p, 10), num(p, 20)];
           const base: M = [1, 0, 0, 1, -b.base.x, -b.base.y];
-          draw(b.ents, mul(m, mul(t, base)), depth + 1);
+          // 配列の挿入：列 70 × 行 71、間隔 44・45（挿入の向きに回した方向へずらす）
+          const cols = Math.max(1, num(p, 70, 1)), rows = Math.max(1, num(p, 71, 1));
+          const cs = num(p, 44), rs = num(p, 45), cos = Math.cos(r), sin = Math.sin(r);
+          let copies = 0;
+          for (let ri = 0; ri < rows; ri++) for (let ci = 0; ci < cols; ci++) {
+            if (++copies > MAX_COPIES) break;
+            const dx = ci * cs, dy = ri * rs;
+            const t: M = [cos * sx, sin * sx, -sin * sy, cos * sy, num(p, 10) + dx * cos - dy * sin, num(p, 20) + dx * sin + dy * cos];
+            draw(b.ents, mul(m, mul(t, base)), depth + 1);
+          }
           break;
         }
         case 'SEQEND': case 'VERTEX': case 'POINT': case 'ATTDEF': case 'VIEWPORT': break;
@@ -233,11 +250,48 @@ export function parseDxf(bytes: Uint8Array): CadDrawing {
   draw(entitiesOf(sections.get('ENTITIES') ?? []), ID, 0);
   if (skipped.has('HATCH') || skipped.has('SOLID') || skipped.has('IMAGE')) notes.push('塗りつぶし・画像は取り込んでいません（線と文字だけ）');
 
-  const xs = [...lines.flatMap((l) => [l.x1, l.x2]), ...texts.map((t) => t.x)];
-  const ys = [...lines.flatMap((l) => [l.y1, l.y2]), ...texts.map((t) => t.y)];
-  const empty = xs.length === 0;
-  const bounds = empty ? { minX: 0, minY: 0, maxX: 0, maxY: 0 } : { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+  const empty = lines.length === 0 && texts.length === 0;
+  const bounds = empty ? { minX: 0, minY: 0, maxX: 0, maxY: 0 } : boundsOf(lines, texts, notes);
   return { lines, texts, bounds, scale: 1, scales: [1], notes, empty };
+}
+
+/**
+ * 図の範囲。文字は書いた幅と高さまで入れる。消し忘れなど遠く離れた少しの図形は外す
+ * （端から 2% ずつの点の範囲の 2 倍より外にあり、外すのが 2% 以下のとき）。点が多くても落ちないよう配列で数える。
+ */
+function boundsOf(lines: CadLine[], texts: CadText[], notes: string[]) {
+  const n = lines.length * 2 + texts.length * 4;
+  const xs = new Float64Array(n), ys = new Float64Array(n);
+  let k = 0;
+  for (const l of lines) { xs[k] = l.x1; ys[k++] = l.y1; xs[k] = l.x2; ys[k++] = l.y2; }
+  for (const t of texts) {
+    const r = (t.angle * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r), w = widthOf(t.content, t.h), h = t.h;
+    for (const [u, v] of [[0, 0], [w, 0], [0, h], [w, h]]) { xs[k] = t.x + u * c - v * s; ys[k++] = t.y + u * s + v * c; }
+  }
+  const range = (a: Float64Array) => {
+    const sorted = Float64Array.from(a).sort();
+    const q = (f: number) => sorted[Math.min(sorted.length - 1, Math.floor(f * (sorted.length - 1)))];
+    const lo = q(0.02), hi = q(0.98), span = Math.max(hi - lo, 1);
+    return [lo - span * 2, hi + span * 2];
+  };
+  const [ax, bx] = range(xs), [ay, by] = range(ys);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, kept = 0;
+  for (let i = 0; i < n; i++) {
+    if (xs[i] < ax || xs[i] > bx || ys[i] < ay || ys[i] > by) continue;
+    kept++;
+    if (xs[i] < minX) minX = xs[i]; if (xs[i] > maxX) maxX = xs[i];
+    if (ys[i] < minY) minY = ys[i]; if (ys[i] > maxY) maxY = ys[i];
+  }
+  if (kept < n && kept >= n * 0.98) {
+    notes.push(`遠く離れた所にある図形（${n - kept} 点）を除いて図の範囲を決めました`);
+    return { minX, minY, maxX, maxY };
+  }
+  minX = minY = Infinity; maxX = maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (xs[i] < minX) minX = xs[i]; if (xs[i] > maxX) maxX = xs[i];
+    if (ys[i] < minY) minY = ys[i]; if (ys[i] > maxY) maxY = ys[i];
+  }
+  return { minX, minY, maxX, maxY };
 }
 
 /** 0 の組で区切った図形の並び。POLYLINE は続く VERTEX を中に持つ */

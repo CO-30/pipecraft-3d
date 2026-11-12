@@ -70,4 +70,43 @@ describe('DXF の読み込み', () => {
   test('線も文字も無ければ空', () => {
     expect(parseDxf(utf8(dxf([], []))).empty).toBe(true);
   });
+
+  test('大きな図面（7 万本の線）でも落ちない', () => {
+    const ents: string[] = [];
+    for (let i = 0; i < 70000; i++) ents.push('0', 'LINE', '8', '0', '10', String(i % 1000), '20', String(Math.floor(i / 1000) * 10), '11', String((i % 1000) + 5), '21', String(Math.floor(i / 1000) * 10));
+    const d = parseDxf(utf8(dxf([], ents)));
+    expect(d.lines).toHaveLength(70000);
+    expect(d.bounds.maxX).toBeGreaterThan(1000);
+  });
+  test('押し出し方向が裏（230 = -1）の円・ブロックは左右反転した位置', () => {
+    const d = parseDxf(utf8(dxf([], ['0', 'CIRCLE', '8', '0', '10', '100', '20', '0', '40', '10', '230', '-1'])));
+    const xs = d.lines.map((l) => l.x1);
+    expect(Math.max(...xs)).toBeLessThan(-80);
+  });
+  test('遠くに離れた図形（消し忘れ）は範囲に入れない。文字の広がりは入れる', () => {
+    const L = (x1: number, y1: number, x2: number, y2: number) => ['0', 'LINE', '8', '0', '10', String(x1), '20', String(y1), '11', String(x2), '21', String(y2)];
+    const ents = [...L(0, 0, 9100, 0), ...L(9100, 0, 9100, 7280), ...L(9100, 7280, 0, 7280), ...L(0, 7280, 0, 0)];
+    for (let i = 0; i < 200; i++) ents.push(...L(100 + i * 40, 100, 100 + i * 40, 7000));
+    ents.push(...L(1_000_000, 0, 1_000_100, 0), '0', 'TEXT', '8', '0', '10', '8900', '20', '3000', '40', '300', '1', '洗面所');
+    const d = parseDxf(utf8(dxf([], ents)));
+    expect(d.bounds.maxX).toBeLessThan(20000);
+    expect(d.bounds.maxX).toBeGreaterThan(9100); // 右端の文字の分
+    expect(d.notes.join('')).toContain('離れた');
+  });
+  test('配列の挿入（列・行）と、見えない属性文字', () => {
+    const d = parseDxf(utf8(dxf([], [
+      '0', 'INSERT', '8', '0', '2', 'B', '10', '0', '20', '0', '70', '3', '71', '2', '44', '1000', '45', '500',
+      '0', 'ATTRIB', '8', '0', '10', '0', '20', '0', '40', '100', '1', 'かくし', '70', '1',
+    ], ['0', 'BLOCK', '8', '0', '2', 'B', '70', '0', '10', '0', '20', '0', '0', 'LINE', '8', '0', '10', '0', '20', '0', '11', '100', '21', '0', '0', 'ENDBLK'])));
+    expect(d.lines).toHaveLength(6);
+    expect(d.texts).toHaveLength(0);
+  });
+  test('バイナリ形式の DXF は、テキスト形式で保存し直すよう案内', () => {
+    expect(() => parseDxf(utf8('AutoCAD Binary DXF\r\n\x1a\0'))).toThrow('テキスト');
+  });
+  test('空行が混じっても読める', () => {
+    const d = parseDxf(utf8(['0', 'SECTION', '2', 'ENTITIES', '', '0', 'LINE', '8', '0', '10', '0', '20', '0', '11', '10', '21', '0', '0', 'ENDSEC', '0', 'EOF'].join('\n')));
+    expect(d.lines).toHaveLength(1);
+  });
 });
+
