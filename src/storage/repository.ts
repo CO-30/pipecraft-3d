@@ -29,7 +29,7 @@ export interface ProjectRepository {
 
 /** 版（保存した時点）。端末の中だけ（工事の書き出しには入れない） */
 export interface VersionRepository {
-  saveVersion(p: ProjectData, name: string, now?: number): Promise<{ id: string; dropped: number }>;
+  saveVersion(p: ProjectData, name: string, now?: number, opts?: { auto?: boolean; keep?: string }): Promise<{ id: string; dropped: string[] }>;
   listVersions(projectId: string): Promise<VersionSummary[]>;
   loadVersion(id: string): Promise<ProjectData | undefined>;
   deleteVersion(id: string): Promise<void>;
@@ -54,9 +54,11 @@ export const BACKUP_FORMAT = 'pipecraft-backup';
 type Row = { id: string; name: string; address?: string; createdAt: number; updatedAt: number; json: string; backupJson?: string };
 type ProfileRow = { id: string; name: string; json: string };
 type SettingRow = { key: string; json: string };
-type VersionRow = { id: string; projectId: string; name: string; createdAt: number; json: string };
+/** 版の一覧の行（中身は versionData に分けて、一覧では読まない） */
+type VersionRow = { id: string; projectId: string; name: string; createdAt: number; bytes: number; auto?: boolean };
+type VersionDataRow = { id: string; json: string };
 /** 版（保存した時点）の一覧の 1 行 */
-export type VersionSummary = { id: string; projectId: string; name: string; createdAt: number; bytes: number };
+export type VersionSummary = { id: string; projectId: string; name: string; createdAt: number; bytes: number; /** 自動で残した版（戻す前）。あふれたら先に消す */ auto?: boolean };
 /** 工事ごとの版の上限（あふれたら古いものから消す） */
 export const MAX_VERSIONS = 20;
 
@@ -65,12 +67,13 @@ class PipeCraftDB extends Dexie {
   profiles!: Table<ProfileRow, string>;
   settings!: Table<SettingRow, string>;
   versions!: Table<VersionRow, string>;
+  versionData!: Table<VersionDataRow, string>;
   constructor(name: string) {
     super(name);
     this.version(1).stores({ projects: 'id, updatedAt, name' });
     this.version(2).stores({ projects: 'id, updatedAt, name', profiles: 'id, name' });
     this.version(3).stores({ projects: 'id, updatedAt, name', profiles: 'id, name', settings: 'key' });
-    this.version(4).stores({ projects: 'id, updatedAt, name', profiles: 'id, name', settings: 'key', versions: 'id, projectId, createdAt' });
+    this.version(4).stores({ projects: 'id, updatedAt, name', profiles: 'id, name', settings: 'key', versions: 'id, projectId, createdAt', versionData: 'id' });
   }
 }
 
@@ -171,41 +174,60 @@ export class DexieProjectRepository implements ProjectRepository, ProfileReposit
   }
 
   async delete(id: string): Promise<void> {
-    await this.db.transaction('rw', this.db.projects, this.db.versions, async () => {
+    await this.db.transaction('rw', this.db.projects, this.db.versions, this.db.versionData, async () => {
       await this.db.projects.delete(id);
-      await this.db.versions.where('projectId').equals(id).delete();
+      const ids = (await this.db.versions.where('projectId').equals(id).primaryKeys()) as string[];
+      await this.db.versions.bulkDelete(ids);
+      await this.db.versionData.bulkDelete(ids);
     });
   }
 
-  /** 今の状態を版にする（壊れたデータは InvalidProjectError）。上限を超えたら古いものから消し、消した数を返す */
-  async saveVersion(p: ProjectData, name: string, now = Date.now()): Promise<{ id: string; dropped: number }> {
-    const json = JSON.stringify(p);
+  /**
+   * 今の状態を版にする（壊れたデータは InvalidProjectError）。下敷きの画像・外壁の写真は入れない（小さく保つ。戻しても今のまま）。
+   * 上限を超えたら、自動で残した版（auto）から、次に古いものから消す。keep の版は消さない。消した版の id を返す
+   */
+  async saveVersion(p: ProjectData, name: string, now = Date.now(), opts: { auto?: boolean; keep?: string } = {}): Promise<{ id: string; dropped: string[] }> {
+    const slim: ProjectData = {
+      ...p,
+      underlays: {},
+      ...(p.elevations ? { elevations: Object.fromEntries(Object.entries(p.elevations).map(([k, e]) => { const x = { ...e }; delete x.photo; return [k, x]; })) } : {}),
+    };
+    delete (slim as { bundledProfile?: unknown }).bundledProfile;
+    const json = JSON.stringify(slim);
     parseProject(json);
     const id = `v-${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    let dropped = 0;
-    await this.db.transaction('rw', this.db.versions, async () => {
-      await this.db.versions.put({ id, projectId: p.id, name, createdAt: now, json });
+    let dropped: string[] = [];
+    await this.db.transaction('rw', this.db.versions, this.db.versionData, async () => {
+      await this.db.versions.put({ id, projectId: p.id, name, createdAt: now, bytes: json.length, ...(opts.auto ? { auto: true } : {}) });
+      await this.db.versionData.put({ id, json });
       const all = await this.db.versions.where('projectId').equals(p.id).sortBy('createdAt');
-      const extra = all.slice(0, Math.max(0, all.length - MAX_VERSIONS));
-      dropped = extra.length;
-      if (extra.length) await this.db.versions.bulkDelete(extra.map((x) => x.id));
+      const over = all.length - MAX_VERSIONS;
+      if (over > 0) {
+        const cand = all.filter((v) => v.id !== id && v.id !== opts.keep);
+        dropped = [...cand.filter((v) => v.auto), ...cand.filter((v) => !v.auto)].slice(0, over).map((v) => v.id);
+        await this.db.versions.bulkDelete(dropped);
+        await this.db.versionData.bulkDelete(dropped);
+      }
     });
     return { id, dropped };
   }
 
-  /** 版の一覧（新しい順） */
+  /** 版の一覧（新しい順）。中身は読まない */
   async listVersions(projectId: string): Promise<VersionSummary[]> {
     const rows = await this.db.versions.where('projectId').equals(projectId).sortBy('createdAt');
-    return rows.reverse().map(({ id, projectId: pid, name, createdAt, json }) => ({ id, projectId: pid, name, createdAt, bytes: json.length }));
+    return rows.reverse().map(({ id, projectId: pid, name, createdAt, bytes, auto }) => ({ id, projectId: pid, name, createdAt, bytes, ...(auto ? { auto } : {}) }));
   }
 
   async loadVersion(id: string): Promise<ProjectData | undefined> {
-    const row = await this.db.versions.get(id);
+    const row = await this.db.versionData.get(id);
     return row ? parseProject(row.json) : undefined;
   }
 
   async deleteVersion(id: string): Promise<void> {
-    await this.db.versions.delete(id);
+    await this.db.transaction('rw', this.db.versions, this.db.versionData, async () => {
+      await this.db.versions.delete(id);
+      await this.db.versionData.delete(id);
+    });
   }
 
   async duplicate(id: string, newName: string): Promise<ProjectData> {

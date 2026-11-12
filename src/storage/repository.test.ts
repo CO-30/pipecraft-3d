@@ -271,12 +271,38 @@ describe('版（保存した時点）', () => {
     expect(await r.listVersions('p1')).toHaveLength(0);
   });
 
+  it('あふれたら自動で残した版（戻す前）から消す。戻している版は消さない', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const p = sample();
+    const first = await r.saveVersion(p, '申請提出', 0);
+    for (let i = 1; i < 19; i++) await r.saveVersion(p, `v${i}`, i);
+    await r.saveVersion(p, '戻す前', 19, { auto: true });
+    const res = await r.saveVersion(p, '戻す前2', 20, { auto: true, keep: first.id });
+    expect(res.dropped).toEqual([expect.any(String)]);
+    const names = (await r.listVersions('p1')).map((x) => x.name);
+    expect(names).toContain('申請提出');
+    expect(names).not.toContain('戻す前');
+    // 自動の版が無ければ古いもの（keep 以外）から
+    const r2 = await r.saveVersion(p, 'v20', 21, { keep: first.id });
+    expect(r2.dropped).toHaveLength(1);
+    expect((await r.listVersions('p1')).map((x) => x.name)).toContain('申請提出');
+  });
+
+  it('下敷きの画像・外壁の写真は版に入れない（小さく保つ）。一覧は中身を読まずに大きさを出す', async () => {
+    const r = new DexieProjectRepository(nextName());
+    const p = { ...sample(), underlays: { u1: { id: 'u1', floorId: sample().building.floors[0].id, kind: 'image', label: '平面図', src: 'data:image/png;base64,' + 'A'.repeat(50000), widthPx: 100, heightPx: 100, center: { x: 0, y: 0 }, mmPerPx: 10, rotation: 0, opacity: 0.5, scaled: true } } } as never;
+    const v = await r.saveVersion(p, 'x', 1);
+    const back = await r.loadVersion(v.id);
+    expect(back?.underlays).toEqual({});
+    expect((await r.listVersions('p1'))[0].bytes).toBeLessThan(20000);
+  });
+
   it('工事ごとに 20 版まで。あふれたら古いものから消し、消した数を返す', async () => {
     const r = new DexieProjectRepository(nextName());
     const p = sample();
     for (let i = 0; i < 20; i++) await r.saveVersion(p, `v${i}`, i);
     const res = await r.saveVersion(p, 'v20', 20);
-    expect(res.dropped).toBe(1);
+    expect(res.dropped).toHaveLength(1);
     const list = await r.listVersions('p1');
     expect(list).toHaveLength(20);
     expect(list.at(-1)!.name).toBe('v1');

@@ -150,7 +150,7 @@ const CAT_COLOR: Record<Box['category'], string> = {
   exteriorWall: '#e7e5e4', interiorWall: '#f5f5f4', floor: '#d6d3d1', ceiling: '#fafaf9', door: '#a16207', window: '#7dd3fc', member: '#a8a29e',
 };
 
-function Pipe({ a, b, radius, color, selected, traced = false, glow, mode, onSelect, clip }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; traced?: boolean; /** 比較の色（増えた・変わった） */ glow?: string; mode: VisMode; onSelect: () => void; clip: THREE.Plane[] }) {
+function Pipe({ a, b, radius, color, selected, traced = false, glow, mode, onSelect, clip }: { a: Vec3; b: Vec3; radius: number; color: string; selected: boolean; traced?: boolean; /** 比較の色（増えた・変わった） */ glow?: string; mode: VisMode; onSelect?: () => void; clip: THREE.Plane[] }) {
   const { pos, quat, len } = useMemo(() => {
     const va = toThree(a), vb = toThree(b);
     const dir = vb.clone().sub(va);
@@ -158,7 +158,7 @@ function Pipe({ a, b, radius, color, selected, traced = false, glow, mode, onSel
   }, [a, b]);
   if (mode === 'hide' || len < 1e-3) return null; // 曲げで縮めて長さ 0 になった区間
   return (
-    <mesh position={pos} quaternion={quat} onClick={(e) => { e.stopPropagation(); onSelect(); }} renderOrder={2}>
+    <mesh position={pos} quaternion={quat} onClick={onSelect ? (e) => { e.stopPropagation(); onSelect(); } : undefined} raycast={onSelect ? undefined : () => null} renderOrder={2}>
       <cylinderGeometry args={[selected ? radius * 1.6 : traced || glow ? radius * 1.3 : radius, selected ? radius * 1.6 : traced || glow ? radius * 1.3 : radius, len, 12]} />
       <meshStandardMaterial color={selected ? SELECT_COLOR : color} emissive={selected ? SELECT_COLOR : glow ?? (traced ? TRACE_COLOR : '#000')} emissiveIntensity={selected ? 0.5 : glow ? 0.6 : traced ? 0.45 : 0}
         transparent={mode === 'ghost'} opacity={mode === 'ghost' ? 0.3 : 1} clippingPlanes={clip} />
@@ -453,11 +453,13 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
       ))}
       <Notes3D zIn={zIn} />
       {/* 比較: 版にあって今は無い管（赤の半透明） */}
-      {cmp && pipeMode !== 'hide' && cmp.segments.removed.map((id) => {
-        const on = cmp.target.doc.network, sg = on.segments[id];
-        const a = on.nodes[sg.a].pos, b = on.nodes[sg.b].pos;
+      {cmp && pipeMode !== 'hide' && [
+        ...cmp.segments.removed.map((id) => { const on = cmp.target.doc.network, sg = on.segments[id]; return { key: 'rm' + id, a: on.nodes[sg.a].pos, b: on.nodes[sg.b].pos, d: sg.diameter }; }),
+        ...cmp.segments.removedParts.map((r, i) => ({ key: `rp${r.oldId}-${i}`, a: r.a, b: r.b, d: cmp.target.doc.network.segments[r.oldId]?.diameter ?? 20 })),
+      ].map(({ key, a, b, d }) => {
         if (!zIn(a.z) && !zIn(b.z)) return null;
-        return <Pipe key={'rm' + id} a={a} b={b} clip={clip} radius={Math.max(0.03, sg.diameter / 1300)} color={DIFF_COLOR.removed} selected={false} mode="ghost" onSelect={() => {}} />;
+        // 選べない（後ろの物を選ぶ邪魔をしない）
+        return <Pipe key={key} a={a} b={b} clip={clip} radius={Math.max(0.03, d / 1300)} color={DIFF_COLOR.removed} selected={false} mode="ghost" />;
       })}
     </>
   );

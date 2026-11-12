@@ -30,4 +30,14 @@ describe('共通ストア: 版の比較・戻す', () => {
     s().undo();
     expect(Object.keys(s().doc.network.segments)).toHaveLength(2);
   });
+
+  it('版には下敷きが無いので、戻しても今の下敷きはそのまま。隠した要素の指定は消す', () => {
+    s().drawPolyline([v(0, 0), v(2000, 0)]);
+    const p = { ...s().toProjectData()!, underlays: {} };
+    const u = { id: 'u1', floorId: s().doc.building.floors[0].id, kind: 'image' as const, label: '平面図', src: 'data:image/png;base64,AAAA', widthPx: 10, heightPx: 10, center: { x: 0, y: 0 }, mmPerPx: 10, rotation: 0, opacity: 0.5, scaled: true };
+    useStore.setState({ doc: { ...s().doc, underlays: { u1: u } }, hiddenIds: ['x'] });
+    s().restoreProject(p);
+    expect(s().doc.underlays?.u1).toBeDefined();
+    expect(s().hiddenIds).toEqual([]);
+  });
 });
