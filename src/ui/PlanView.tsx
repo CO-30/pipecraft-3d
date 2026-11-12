@@ -12,6 +12,7 @@ import { floorById, roomArea, wallLength } from '../model/building';
 import { pointInPolygon } from '../model/roomOps';
 import { connectedComponent, segmentLength, segmentsAt, type Network } from '../model/network';
 import { FIXTURE_CATALOG, fixtureCorners, fixtureSize, isManhole, MANHOLE_SHORT, portSystem } from '../model/fixtures';
+import { planSymbol, type Fill2D, type Prim2D } from '../model/fixtureShapes';
 import { levelSummary, underfloorText } from '../model/levels';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { underlayCorners } from '../model/underlay';
@@ -642,10 +643,15 @@ export function PlanView() {
             </g>
           );
         }
+        const sz = fixtureSize(f);
         return (
           <g key={f.id} data-fixture={f.id} data-type={f.type} data-under={(f.params?.mountZ ?? 0) < 0 ? '1' : undefined} opacity={(f.params?.mountZ ?? 0) < 0 ? 1 : dim} strokeDasharray={(f.params?.mountZ ?? 0) < 0 && !underFloor ? '5 3' : undefined}>
             <polygon points={pts.map((p) => `${p.x},${p.y}`).join(' ')} fill={selected ? '#fde68a' : '#ecfeff'} stroke={selected ? SELECT_COLOR : '#0e7490'} strokeWidth={selected ? 3 : 1.5} />
-            <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize={11} fill="#0e7490" pointerEvents="none">{FIXTURE_CATALOG[f.type].label}</text>
+            {/* 平面の記号（ローカル mm。y は上向き＝奥、回転は図面と同じ反時計回り） */}
+            <g transform={`translate(${c.x} ${c.y}) scale(${vw.scale} ${-vw.scale}) rotate(${f.rotation})`} pointerEvents="none" data-symbol="1">
+              {planSymbol(f.type, sz.w, sz.d).map((p, i) => <SymbolPrim key={i} p={p} selected={selected} />)}
+            </g>
+            <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize={10} fill="#0e7490" stroke="#fff" strokeWidth={3} paintOrder="stroke" strokeDasharray="none" pointerEvents="none">{FIXTURE_CATALOG[f.type].label}</text>
           </g>
         );
       })}
@@ -733,3 +739,13 @@ export function PlanView() {
   );
 }
 
+const SYMBOL_FILL: Record<Fill2D, string> = { body: '#f8fafc', basin: '#dbeafe', dark: '#94a3b8', metal: '#cbd5e1', none: 'none' };
+/** 器具の平面の記号の 1 つの形（線の太さは拡大しても同じ） */
+function SymbolPrim({ p, selected }: { p: Prim2D; selected: boolean }) {
+  const stroke = selected ? '#b45309' : '#0e7490';
+  const common = { stroke, strokeWidth: 1, vectorEffect: 'non-scaling-stroke' as const };
+  if (p.k === 'line') return <line x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} {...common} />;
+  const fill = selected && p.fill === 'body' ? '#fde68a' : SYMBOL_FILL[p.fill];
+  if (p.k === 'ellipse') return <ellipse cx={p.cx} cy={p.cy} rx={p.rx} ry={p.ry} fill={fill} {...common} />;
+  return <rect x={p.x} y={p.y} width={p.w} height={p.h} rx={p.r} ry={p.r} fill={fill} {...common} />;
+}

@@ -17,6 +17,7 @@ import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { analyzeFittings } from '../model/fittings';
 import { arcPoints, pbBendArcs, trimmedEnds, type BendArc } from '../model/pbBends';
 import { portSystem, fixtureBaseZ, fixtureSize, groundZAt, isManhole, type Fixture } from '../model/fixtures';
+import { fixtureParts, type Mat, type Part3D } from '../model/fixtureShapes';
 import { photoPlane } from '../model/facadePhoto';
 import { OUTSIDE_RGB } from '../model/homography';
 import type { Elevation } from '../model/elevation';
@@ -70,7 +71,7 @@ function FacadePhoto({ el, mode, clip }: { el: Elevation; mode: VisMode; clip: T
   );
 }
 
-/** 器具の簡易3D形状（箱）。表示モードと選択強調つき */
+/** 器具の 3D の形（種類ごとの部品の組み合わせ）。マスは地中の円柱・角柱。表示モードと選択強調つき */
 function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; selected: boolean; clip: THREE.Plane[] }) {
   const floor = useStore((s) => s.doc.building.floors.find((x) => x.id === f.floorId));
   const site = useStore((s) => s.doc.site);
@@ -78,16 +79,61 @@ function FixtureMesh({ f, mode, selected, clip }: { f: Fixture; mode: VisMode; s
   if (mode === 'hide' || !floor) return null;
   const manhole = isManhole(f.type);
   const { w, d, h } = fixtureSize(f, building, site);
-  // マスは地面（GL）から下へ埋まる
-  const z = manhole ? groundZAt(building, site, f) - h / 2 : fixtureBaseZ(f, floor) + h / 2;
   const ghost = mode === 'ghost';
+  const select = (e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); useStore.getState().select({ kind: 'fixture', id: f.id }); };
+  if (manhole) {
+    // マスは地面（GL）から下へ埋まる。上にふた
+    const z = groundZAt(building, site, f) - h / 2;
+    return (
+      <group name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} onClick={select}>
+        <mesh renderOrder={1} raycast={ghost ? () => null : undefined}>
+          {f.params?.shape !== 'square' ? <cylinderGeometry args={[w / 2000, w / 2000, h / 1000, 24]} /> : <boxGeometry args={[w / 1000, h / 1000, d / 1000]} />}
+          <PartMaterial mat="concrete" selected={selected} ghost={ghost} clip={clip} />
+        </mesh>
+        <mesh position={[0, h / 2000 + 0.005, 0]} renderOrder={1} raycast={ghost ? () => null : undefined}>
+          {f.params?.shape !== 'square' ? <cylinderGeometry args={[w / 2000 * 0.9, w / 2000 * 0.9, 0.01, 24]} /> : <boxGeometry args={[w / 1000 * 0.9, 0.01, d / 1000 * 0.9]} />}
+          <PartMaterial mat="dark" selected={selected} ghost={ghost} clip={clip} />
+        </mesh>
+      </group>
+    );
+  }
+  const parts = fixtureParts(f.type, w, d, h);
   return (
-    <mesh name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} renderOrder={1}
-      onClick={(e) => { e.stopPropagation(); useStore.getState().select({ kind: 'fixture', id: f.id }); }}
-      raycast={ghost ? () => null : undefined}>
-      {manhole && f.params?.shape !== 'square' ? <cylinderGeometry args={[w / 2000, w / 2000, h / 1000, 24]} /> : <boxGeometry args={[w / 1000, h / 1000, d / 1000]} />}
-      <meshStandardMaterial color={selected ? SELECT_COLOR : manhole ? '#d6d3d1' : '#e0f2fe'} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.3 : 0}
-        transparent={ghost} opacity={ghost ? 0.3 : 1} clippingPlanes={clip} />
+    <group name={`fixture-${f.id}`} position={toThree({ x: f.x, y: f.y, z: fixtureBaseZ(f, floor) })} rotation={[0, (f.rotation * Math.PI) / 180, 0]} onClick={select}>
+      {parts.map((p, i) => <PartMesh key={i} p={p} selected={selected} ghost={ghost} clip={clip} />)}
+    </group>
+  );
+}
+
+const MAT_STYLE: Record<Mat, { color: string; metalness?: number; roughness?: number }> = {
+  ceramic: { color: '#f8fafc', roughness: 0.25 }, counter: { color: '#e5e7eb', roughness: 0.5 }, cabinet: { color: '#d8c8ad', roughness: 0.8 },
+  metal: { color: '#cbd5e1', metalness: 0.8, roughness: 0.3 }, dark: { color: '#374151', roughness: 0.6 }, plastic: { color: '#f1f5f9', roughness: 0.6 },
+  basin: { color: '#bfdbfe', roughness: 0.2 }, glass: { color: '#94a3b8', metalness: 0.2, roughness: 0.15 }, concrete: { color: '#a8a29e', roughness: 0.95 },
+};
+function PartMaterial({ mat, selected, ghost, clip }: { mat: Mat; selected: boolean; ghost: boolean; clip: THREE.Plane[] }) {
+  const m = MAT_STYLE[mat];
+  // 選んだ器具は色そのものを選択色へ寄せる（白い陶器でも分かるように）
+  const color = useMemo(() => (selected ? new THREE.Color(m.color).lerp(new THREE.Color(SELECT_COLOR), 0.75) : new THREE.Color(m.color)), [m.color, selected]);
+  return <meshStandardMaterial color={color} metalness={m.metalness ?? 0} roughness={m.roughness ?? 0.7} emissive={selected ? SELECT_COLOR : '#000'} emissiveIntensity={selected ? 0.25 : 0}
+    transparent={ghost} opacity={ghost ? 0.3 : 1} depthWrite={!ghost} clippingPlanes={clip} />;
+}
+/** 部品 1 つ。ローカル mm（x 右・y 奥・z 上）→ three（x・z・−y、m） */
+function PartMesh({ p, selected, ghost, clip }: { p: Part3D; selected: boolean; ghost: boolean; clip: THREE.Plane[] }) {
+  const pos: [number, number, number] = [p.x / 1000, p.z / 1000, -p.y / 1000];
+  const ray = ghost ? () => null : undefined;
+  if (p.k === 'box') return (
+    <mesh position={pos} renderOrder={1} raycast={ray}><boxGeometry args={[p.w / 1000, p.h / 1000, p.d / 1000]} /><PartMaterial mat={p.mat} selected={selected} ghost={ghost} clip={clip} /></mesh>
+  );
+  if (p.k === 'sphere') return (
+    <mesh position={pos} renderOrder={1} raycast={ray}><sphereGeometry args={[p.r / 1000, 16, 12]} /><PartMaterial mat={p.mat} selected={selected} ghost={ghost} clip={clip} /></mesh>
+  );
+  // 円柱は three の y 軸（上）向き。x 軸向きは z 回りに、y（奥）向きは x 回りに 90° 回す。楕円は奥行き方向を伸ばす
+  const rot: [number, number, number] = p.axis === 'x' ? [0, 0, Math.PI / 2] : p.axis === 'y' ? [Math.PI / 2, 0, 0] : [0, 0, 0];
+  const scale: [number, number, number] = p.ry !== undefined && (p.axis ?? 'z') === 'z' ? [1, 1, p.ry / p.r] : [1, 1, 1];
+  return (
+    <mesh position={pos} rotation={rot} scale={scale} renderOrder={1} raycast={ray}>
+      <cylinderGeometry args={[p.r / 1000, p.r / 1000, p.h / 1000, 28]} />
+      <PartMaterial mat={p.mat} selected={selected} ghost={ghost} clip={clip} />
     </mesh>
   );
 }
