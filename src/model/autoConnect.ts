@@ -9,7 +9,8 @@ import { routeDrainsOut, type DrainRules } from './drainRoute';
 import { localToPlan, portNodes, type FixtureType } from './fixtures';
 import { addPolyline, segmentsAt, splitSegment, type Network, type Vec3 } from './network';
 import { closestPoints } from './clash';
-import { routeSupplies } from './supplyRoute';
+import { routeSupplies, type HeaderMode } from './supplyRoute';
+import { headerQuestion, type Question } from './question';
 import { distToOutline, insideBuilding, underfloorLevels } from './underfloorSlope';
 
 /** 汚水の系統のマス（雨水は別の系統なのでつながない） */
@@ -260,15 +261,19 @@ export type AutoConnectResult = {
   dropped: number; drains: number; newManholes: number; yard: number; supplies: number; headers: number; valves: number; vents: number;
   /** 画面に出す知らせ（順に） */
   summary: string[];
+  /** 使う人に聞くこと（ヘッダーを置くか など）。無ければ空 */
+  questions: Question[];
 };
 
 /** まとめてつなぐ（1〜5）。何度呼んでも増えない */
-export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number } = {}): AutoConnectResult {
+export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number; headers?: HeaderMode } = {}): AutoConnectResult {
+  // ヘッダーはできるだけ足さない（分岐でつなぎ、どうしても通せない所があるときだけ聞く）
+  const headers = opts.headers ?? 'avoid';
   const summary: string[] = [];
   const d1 = dropFixturePipes(doc, opts.dropDepth);
   const d2 = routeDrainsOut(d1.doc, undefined, opts.drainRules ?? {});
   const d3 = connectYard(d2.doc);
-  const s = routeSupplies(d3.doc, opts.burial !== undefined ? { burial: opts.burial } : {});
+  const s = routeSupplies(d3.doc, { headers, ...(opts.burial !== undefined ? { burial: opts.burial } : {}) });
   const d4 = s.error ? d3.doc : s.doc;
   const v = addVentValves(d4);
   if (d1.pipes) summary.push(`器具の真下に配管を ${d1.pipes} 本落としました`);
@@ -277,7 +282,10 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
   if (d3.connected) summary.push(`外の汚水マス ${d3.connected} 個を公共汚水マスまでつなぎました（勾配・曲がりのマスは自動）`);
   summary.push(...d3.notes);
   if (s.error) summary.push(`給水・給湯: ${s.error}`);
-  else if (s.pipes || s.headers) summary.push(`給水 ${s.connected.water} 本・給湯 ${s.connected.hot} 本をヘッダーでつなぎました${s.headers ? `（ヘッダーを ${s.headers} 台）` : ''}${s.valves ? `・止水栓 ${s.valves} 個` : ''}`);
+  else if (s.pipes || s.headers) {
+    const how = s.headers ? `ヘッダーでつなぎました（ヘッダーを ${s.headers} 台）` : headers === 'avoid' ? '床下で枝分かれ（チーズ）させてつなぎました（ヘッダーは使っていません）' : 'ヘッダーでつなぎました';
+    summary.push(`給水 ${s.connected.water} 本・お湯 ${s.connected.hot} 本を${how}${s.valves ? `・止水栓 ${s.valves} 個` : ''}`);
+  }
   if (!s.error) summary.push(...s.notes);
   if (v.valves) summary.push(`通気弁を ${v.valves} 個（キッチン・洗面台の排水口の下）`);
   summary.push(...v.notes);
@@ -286,5 +294,6 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
     dropped: d1.pipes, drains: d2.pipes, newManholes: d2.manholes, yard: d3.connected,
     supplies: s.error ? 0 : s.pipes, headers: s.error ? 0 : s.headers, valves: s.error ? 0 : s.valves, vents: v.valves,
     summary,
+    questions: [s.needHeader ? headerQuestion(s.needHeader) : null].filter((q): q is Question => !!q),
   };
 }

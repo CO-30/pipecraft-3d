@@ -60,8 +60,8 @@ export const KISO_PRODUCTS: KisoProduct[] = [
 
 /** 給水用のさや管の内径（mm）。管と保温がこれより太ければ 75 */
 const KSS_BORE: Record<number, number> = { 50: 56, 75: 83 };
-/** 品番の H とモデルの高さの差がこれを超えたら「要確認」(mm) */
-export const H_TOLERANCE = 30;
+/** 品番の H とモデルの高さの差がこれを超えたら「要確認」(mm)。パッキンの位置で 2cm、フレキ管を外へ 3cm まで出せる（カタログ P.2・P.10） */
+export const H_TOLERANCE = 50;
 /** 立上りの幅（スリーブ用 VU 管の長さの目安）(mm) */
 const FOOT_W = 150;
 
@@ -76,6 +76,14 @@ export function pickKsa(diameter: number, H: number, antiTermite = false): KisoP
   return c.sort((a, b) => Math.abs(a.H - H) - Math.abs(b.H - H) || a.H - b.H)[0] ?? null;
 }
 
+/** 排水: その口径で選べる KSA の高さ H（標準・深基礎。小さい順） */
+export function ksaHeights(diameter: number, antiTermite = false): number[] {
+  const size = ksaSize(diameter);
+  return size ? KISO_PRODUCTS.filter((p) => p.use === 'drain' && p.size === size && p.antiTermite === antiTermite).map((p) => p.H).sort((a, b) => a - b) : [];
+}
+/** 給水用 KSS の高さ H（内径 56 の 50 の物。小さい順） */
+export const KSS_HEIGHTS = [230, 430];
+
 /** 給水・給湯: 管の外径（保温込み）と立ち上げの高さから KSS。深い（330mm 以上）は深基礎 90L */
 export function pickKss(od: number, H: number, antiTermite = false): KisoProduct | null {
   const deep = H >= 330;
@@ -86,15 +94,15 @@ export function pickKss(od: number, H: number, antiTermite = false): KisoProduct
   return c.sort((a, b) => a.size - b.size)[0] ?? KISO_PRODUCTS.find((p) => p.code === 'KSS45L75×280H')!;
 }
 
-/** スリーブの点（区間の端）からの、縦の区間の高さ（区間が基礎を抜けた先で、基礎の内側で上がる・下がる高さ） */
-export function riseAt(net: Network, seg: Segment): number {
+/** スリーブの点（区間の端）からの、縦の区間の高さ（区間が基礎を抜けた先で、基礎の内側で上がる・下がる高さ）。capZ より上は数えない */
+export function riseAt(net: Network, seg: Segment, capZ = Infinity): number {
   let best = 0;
   for (const nid of [seg.a, seg.b]) {
     const n = net.nodes[nid];
     for (const t of segmentsAt(net, nid)) {
       if (t.id === seg.id) continue;
       const o = net.nodes[t.a === nid ? t.b : t.a];
-      if (Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 && o.pos.z > n.pos.z) best = Math.max(best, o.pos.z - n.pos.z);
+      if (Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 && o.pos.z > n.pos.z) best = Math.max(best, Math.min(o.pos.z, capZ) - n.pos.z);
     }
   }
   return Math.round(best);
@@ -128,11 +136,14 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
   const checks: KisoCheck[] = [];
   const vu = new Map<number, { len: number; rows: number[] }>();
   const floorZ = Math.min(...doc.building.floors.map((f) => f.elevation));
+  // スリーブの床下の口は土間（スラブ天端）。その上は床下の配管なので H に入れない
+  const slab = doc.building.foundation?.slabTop;
+  const capZ = slab !== undefined ? floorZ + slab : Infinity;
   for (const r of rows) {
     if (r.part !== 'footingOuter' && r.part !== 'footing') continue;
     const seg = net.segments[r.segId];
     if (!seg) continue;
-    const H = riseAt(net, seg);
+    const H = riseAt(net, seg, capZ);
     // 外周の基礎で、基礎の内側で立ち上がる（地中を抜ける）所はメーカーのスリーブ
     const p = r.part === 'footingOuter' && H >= 80 && r.point.z < floorZ
       ? (isDrain(r) ? pickKsa(r.diameter, H, opts.antiTermite) : isSupply(r) ? pickKss(r.od + (r.system === 'hotWater' ? 20 : 0), H, opts.antiTermite) : null)
@@ -146,7 +157,7 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
       it.count++;
       it.rows.push(r.no);
       if (Math.abs(p.H - H) > H_TOLERANCE) {
-        checks.push({ segId: r.segId, message: `基礎貫通スリーブ ${p.code} の高さ H${p.H} と図の高さ ${H}mm が ${Math.abs(p.H - H)}mm 違います。地中の管の深さを直すか、メーカーに合う品番を問い合わせてください（スリーブ表 No.${r.no}）` });
+        checks.push({ segId: r.segId, message: `基礎貫通スリーブ ${p.code} の高さ H${p.H} と図の高さ ${H}mm が ${Math.abs(p.H - H)}mm 違います。パッキンの位置（2cm）とフレキ管の出し（3cm）では合わせきれません。地中の管・マスの深さを直すか、長さを調整できる普及型（KSA-E）やメーカーに合う品番を問い合わせてください（スリーブ表 No.${r.no}）` });
       }
       continue;
     }

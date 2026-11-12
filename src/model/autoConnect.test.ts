@@ -190,3 +190,32 @@ describe('公共マスまで必ず届く（2026-11-12）', () => {
     }
   });
 });
+
+describe('ヘッダーはできるだけ足さない（2026-11-12）', () => {
+  test('まとめてつなぐではヘッダーを置かずに枝分かれでつなぎ、聞くことは無い', () => {
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    const r = autoConnect(p.doc);
+    expect(r.headers).toBe(0);
+    expect(r.questions).toEqual([]);
+    expect(r.summary.join()).toContain('ヘッダーは使っていません');
+  });
+  test('ヘッダーの質問ははじめての人にも分かる言葉で、理由と答えごとの説明がある', async () => {
+    const { headerQuestion } = await import('./question');
+    expect(headerQuestion({ water: 0, hot: 0 })).toBeNull();
+    const q = headerQuestion({ water: 1, hot: 2 })!;
+    expect(q.title).toContain('ヘッダー');
+    expect(q.why).toContain('給水 1 か所・お湯 2 か所');
+    expect(q.options.map((o) => o.value)).toEqual(['use', 'skip']);
+    for (const o of q.options) expect(o.hint.length).toBeGreaterThan(5);
+  });
+  test('質問に「置く」と答えると、ヘッダーでつなぐ（use）で続きを実行する', async () => {
+    const { useStore } = await import('../state/store');
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    useStore.setState({ doc: p.doc, question: { id: 'header', title: 't', why: 'w', options: [] } });
+    useStore.getState().answerQuestion('use');
+    expect(useStore.getState().question).toBeNull();
+    expect(Object.values(useStore.getState().doc.fixtures).some((f) => f.type === 'waterHeader')).toBe(true);
+  });
+});

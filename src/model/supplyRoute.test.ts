@@ -7,7 +7,8 @@ import { isPB } from './materials';
 import { routeSupplies, UNDERFLOOR_Z } from './supplyRoute';
 import { supplyHouse } from './testSupplyHouse';
 import { dropFixturePipes } from './dropPipes';
-import { placeFixture, moveFixture } from './fixtures';
+import { placeFixture, moveFixture, portNodes } from './fixtures';
+import { segmentsAt } from './network';
 import { addPolyline } from './network';
 import { createBuildingFromDims, deleteWall } from './building';
 
@@ -228,5 +229,34 @@ describe('条件を変える', () => {
     const r = routeSupplies(h.doc, { burial: resolveSupplyRules({ address: '宜野湾市' }).burial.v });
     const zs = Object.values(r.doc.network.nodes).map((n) => n.pos.z);
     expect(Math.min(...zs)).toBe(-611 - 600);
+  });
+});
+
+describe('ヘッダーを使わず分岐でつなぐ（2026-11-12）', () => {
+  const h = supplyHouse();
+  const r = routeSupplies(h.doc, { headers: 'avoid' });
+  test('ヘッダーを置かずに、給水・給湯の器具がすべてつながる（チーズで分岐）', () => {
+    expect(r.error).toBeUndefined();
+    expect(r.headers).toBe(0);
+    expect(Object.values(r.doc.fixtures).some((f) => f.type === 'waterHeader' || f.type === 'hotWaterHeader')).toBe(false);
+    expect(r.needHeader).toEqual({ water: 0, hot: 0 });
+    for (const [fid, pid] of [[h.ids.kitchen, 'water'], [h.ids.kitchen, 'hot'], [h.ids.washbasin, 'water'], [h.ids.washbasin, 'hot'], [h.ids.toilet, 'water']] as const) {
+      const n = portNodes(r.doc.network, fid).find((x) => x.portId === pid)!;
+      expect(segmentsAt(r.doc.network, n.id).length).toBeGreaterThan(0);
+    }
+    // 分岐の点（3 本が集まる点）がある
+    const deg = new Map<string, number>();
+    for (const s of Object.values(r.doc.network.segments)) if (s.system === 'water') for (const n of [s.a, s.b]) deg.set(n, (deg.get(n) ?? 0) + 1);
+    expect([...deg.values()].some((d) => d === 3)).toBe(true);
+  });
+  test('2 つ以上の器具へ流れる床下の管は φ20、器具だけへの管は φ13', () => {
+    const under = Object.values(r.doc.network.segments).filter((s) => s.system === 'water' && r.doc.network.nodes[s.a].pos.z === UNDERFLOOR_Z && r.doc.network.nodes[s.b].pos.z === UNDERFLOOR_Z);
+    expect(under.some((s) => s.diameter === 20)).toBe(true);
+    expect(under.some((s) => s.diameter === 13)).toBe(true);
+  });
+  test('床下の管どうしを平行に重ねない・もう一度押しても増えない', () => {
+    expect(overlaps(r.doc)).toEqual([]);
+    const again = routeSupplies(r.doc, { headers: 'avoid' });
+    expect(again.pipes).toBe(0);
   });
 });

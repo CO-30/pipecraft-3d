@@ -26,7 +26,7 @@ describe('積算に入れる基礎貫通スリーブ', () => {
   /** 南の外周の基礎（y=0）の内側で立ち下げ、地中で基礎を抜けて外へ */
   function withExit(dia: number, drop: number, system: 'sewage' | 'water' = 'sewage'): Doc {
     const h = supplyHouse();
-    const z = -450;
+    const z = -550; // 土間（スラブ天端）
     const net = addPolyline(h.doc.network, [{ x: 2000, y: 1500, z }, { x: 2000, y: 55, z }, { x: 2000, y: 55, z: z - drop }, { x: 2000, y: -700, z: z - drop - 15 }], { system, diameter: dia }).net;
     return { ...h.doc, network: net };
   }

@@ -11,10 +11,11 @@ import type { Vec2 } from './building';
 import { wallsOnFloor } from './building';
 import type { Doc } from './doc';
 import { FIXTURE_CATALOG, fixtureCorners, groundZ, placeFixture, portNodes, type Fixture, type FixtureType } from './fixtures';
-import { findFloorRoute, ROUTE_STEP, type RouteGoal } from './floorRoute';
+import { findFloorRoute, ROUTE_STEP, type RouteGoal, type RouteResult } from './floorRoute';
 import { assignAutoMaterials } from './materials';
+import { KSS_HEIGHTS } from './kisoSleeve';
 import { membersOf } from './members';
-import { addPolyline, addRiser, insertValve, segmentsAt, type PipeNode, type SegmentAttrs, type SystemType, type Vec3 } from './network';
+import { addPolyline, addRiser, insertValve, segmentsAt, splitSegment, type PipeNode, type SegmentAttrs, type SystemType, type Vec3 } from './network';
 
 /** 床下の配管の高さ（1 階の床から mm） */
 export const UNDERFLOOR_Z = -300;
@@ -49,7 +50,15 @@ export type SupplyRouteResult = {
   connected: { water: number; hot: number };
   notes: string[];
   error?: string;
+  /** ヘッダーを使わない（分岐でつなぐ）ときに、つなげなかった器具の数。ヘッダーを置くか聞くのに使う */
+  needHeader?: { water: number; hot: number };
 };
+
+/**
+ * ヘッダーの使い方。use: 床下のヘッダーでつなぐ（足りなければ置く）。
+ * avoid: ヘッダーを置かず、引込（給湯は給湯器の出口）から床下の管を分岐（チーズ）でつなぐ。置いてあるヘッダーは使う
+ */
+export type HeaderMode = 'use' | 'avoid';
 
 type Line = { a: Vec2; b: Vec2; t: number; exterior?: boolean };
 function crosses(p: Vec2, q: Vec2, a: Vec2, b: Vec2): boolean {
@@ -82,7 +91,7 @@ const dirOf = (v: Vec2): 0 | 1 | 2 | 3 => (Math.abs(v.x) >= Math.abs(v.y) ? (v.x
 /** eIn: 床下の入口、eOut: 基礎の外（地中で近づく点）、rise: 基礎の中で立ち上げる点（基礎貫通スリーブ KSS の形）、n: 外向き */
 type Entry = { eIn: Vec2; eOut: Vec2; rise: Vec2; n: Vec2 };
 
-export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyRouteResult {
+export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: HeaderMode } = {}): SupplyRouteResult {
   const none = (error?: string): SupplyRouteResult => ({ doc, pipes: 0, headers: 0, sleeves: 0, crossings: 0, valves: 0, connected: { water: 0, hot: 0 }, notes: [], ...(error ? { error } : {}) });
   const b = doc.building;
   const base = b.floors.slice().sort((p, q) => p.elevation - q.elevation)[0];
@@ -116,7 +125,11 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
   const zU = base.elevation + UNDERFLOOR_Z;
   const roomy = memo((q) => inside(q) && extWalls.every((w) => pointSeg(q, w.a, w.b) >= w.t / 2 + WALL_GAP) && extFoot.every((f) => pointSeg(q, f.a, f.b) >= f.t / 2 + WALL_GAP));
   const footAt = memo((q) => inFoot.some((f) => zU > f.z0 && zU < f.z1 && pointSeg(q, f.a, f.b) < f.t / 2 + PIPE_GAP));
-  const burialZ = groundZ(b, doc.site) - (opts.burial ?? 300);
+  const burialZ0 = groundZ(b, doc.site) - (opts.burial ?? 300);
+  // 基礎貫通スリーブ（前澤 KSS）: 床下の口は土間。外の口（土間 − H）が埋設の深さより深くなる一番浅い品番に、地中の管の深さを合わせる
+  const slabZ = b.foundation?.slabTop !== undefined ? base.elevation + b.foundation.slabTop : undefined;
+  const kssH = slabZ !== undefined && extFoot.length ? KSS_HEIGHTS.find((H) => slabZ - H <= burialZ0) : undefined;
+  const burialZ = kssH !== undefined ? slabZ! - kssH : burialZ0;
 
   let cur = doc;
   const newSegs: string[] = [];
@@ -204,6 +217,10 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
    */
   const routeUnder = (from: Vec2, to: Vec2, dirs: (0 | 1 | 2 | 3)[] = [0, 1, 2, 3]): Vec2[] | null => {
     if (dist2(from, to) < 1) return [from, to];
+    return routeGoals(from, dirs.map((dir, tag) => ({ a: to, b: to, dir, tag })))?.points ?? null;
+  };
+  /** 床下の点 from から、いくつかの終点（点・線）の一番近いものへ。先の管とは平行に重ねない */
+  const routeGoals = (from: Vec2, goals: RouteGoal[]): RouteResult | null => {
     // 先の管を向き・位置で分けておき、近い所だけ調べる（毎回すべてを見ない）
     const hb = new Map<number, [Vec2, Vec2][]>(), vb = new Map<number, [Vec2, Vec2][]>();
     const B = 50;
@@ -227,13 +244,12 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
     const edgeOk = (q: Vec2, r: Vec2) => !busyNear(q, r);
     const hs = headerRects();
     const nearStart = (q: Vec2) => dist2(q, from) < 2 * ROUTE_STEP;
-    const goals: RouteGoal[] = dirs.map((dir, tag) => ({ a: to, b: to, dir, tag }));
     const r = findFloorRoute({ start: from, allowed: (q) => nearStart(q) || (roomy(q) && !inHeader(q, hs)), footing: footAt, edgeOk, goals, bounds });
     if (!r) return null;
     // 方眼に合わせた最後の 1 本も含めて、重ならないことを確かめ直す
     for (let i = 0; i + 1 < r.points.length; i++) if (busyNear(r.points[i], r.points[i + 1])) return null;
     crossings += r.crossings;
-    return r.points;
+    return r;
   };
 
   /** 床下の点 fromId から口 toId へ（終点が床下でなければ、真下まで来てから立ち上げ・立ち下げ） */
@@ -344,9 +360,10 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
   let feedNode: string | null = meterEntry
     ? Object.values(cur.network.nodes).find((n) => dist2(n.pos, meterEntry.eIn) < 1 && Math.abs(n.pos.z - zU) < 1 && segmentsAt(cur.network, n.id).some((s) => s.system === 'water'))?.id ?? null
     : null;
-  const feedWater = (inNode: PipeNode, f: Fixture): boolean => {
+  /** 引込の床下の入口の点（無ければメーターから引く） */
+  const ensureFeed = (): string | null => {
     if (!feedNode) {
-      if (!free(meterOut) || !meterEntry) return false;
+      if (!free(meterOut) || !meterEntry) return null;
       const c = cornerOf(meterOut.pos, meterEntry);
       // 地中で基礎を抜け、基礎の中で床下へ立ち上げる（基礎貫通スリーブ KSS の形。外に管を出さない）
       const ids = path([meterOut.pos, at(meterOut.pos, burialZ), at(c, burialZ), at(meterEntry.rise, burialZ), at(meterEntry.rise), at(meterEntry.eIn)], attrs('water', 20), meterOut.id);
@@ -354,7 +371,80 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
       pipes++;
       feedNode = ids.at(-1)!;
     }
-    return connect(feedNode, inNode.id, attrs('water', 20), [inletDir(f, inNode)]);
+    return feedNode;
+  };
+  const feedWater = (inNode: PipeNode, f: Fixture): boolean => {
+    const id = ensureFeed();
+    return !!id && connect(id, inNode.id, attrs('water', 20), [inletDir(f, inNode)]);
+  };
+
+  // --- 分岐でつなぐ（ヘッダーを使わない） ---
+  const mode: HeaderMode = opts.headers ?? 'use';
+  const needHeader = { water: 0, hot: 0 };
+  /** 分岐でつないだ床下の管（系統ごと）。次の器具はここへ合流できる */
+  const branchSegs: Record<'water' | 'hotWater', string[]> = { water: [], hotWater: [] };
+  type Tgt = { end: string; fixtureId: string; dia: number; port: string };
+  /** feedId（床下の入口）から器具へ、近い器具から順に。先に引いた管の途中へチーズで合流する。つなげなかった数 */
+  const branch = (system: 'water' | 'hotWater', feedId: string, list: Tgt[]): number => {
+    let failed = 0;
+    const feedPos = () => cur.network.nodes[feedId].pos;
+    const order = list.slice().sort((p, q) => dist2(cur.network.nodes[p.end].pos, feedPos()) - dist2(cur.network.nodes[q.end].pos, feedPos()));
+    const ends = new Map<string, number>();
+    for (const t of order) {
+      const from = cur.network.nodes[t.end].pos;
+      const goals: RouteGoal[] = [], segOf: (string | null)[] = [];
+      for (const dir of [0, 1, 2, 3] as const) { goals.push({ a: feedPos(), b: feedPos(), dir, tag: goals.length }); segOf.push(null); }
+      for (const sid of branchSegs[system]) {
+        const sg = cur.network.segments[sid];
+        if (!sg) continue;
+        const a = cur.network.nodes[sg.a].pos, c = cur.network.nodes[sg.b].pos;
+        if (Math.abs(a.z - zU) > 1 || Math.abs(c.z - zU) > 1 || dist2(a, c) < 2 * ROUTE_STEP) continue;
+        const ax = axisOf(a, c);
+        if (!ax) continue;
+        for (const dir of (ax === 'h' ? [1, 3] : [0, 2]) as (0 | 1 | 2 | 3)[]) { goals.push({ a, b: c, dir, tag: goals.length }); segOf.push(sid); }
+      }
+      const r = routeGoals(from, goals);
+      if (!r) { failed++; notes.push(`${FIXTURE_CATALOG[cur.fixtures[t.fixtureId].type].label}${system === 'hotWater' ? 'の給湯' : 'の給水'}へ、分岐でつなぐ道が見つかりませんでした`); continue; }
+      const last = r.points[r.points.length - 1];
+      const sid = segOf[r.goal.tag];
+      let endId = feedId;
+      if (sid) {
+        const sg = cur.network.segments[sid];
+        const hit = [sg.a, sg.b].find((n) => dist2(cur.network.nodes[n].pos, last) < 1);
+        if (hit) endId = hit;
+        else {
+          const sp = splitSegment(cur.network, sid, at(last));
+          cur = { ...cur, network: sp.net };
+          branchSegs[system] = [...branchSegs[system].filter((x) => x !== sid), ...sp.segmentIds];
+          newSegs.push(...sp.segmentIds);
+          endId = sp.nodeId;
+        }
+      }
+      const pts = r.points.map((x) => at(x));
+      const before = new Set(Object.keys(cur.network.segments));
+      path(pts, attrs(system, t.dia), t.end, endId);
+      branchSegs[system].push(...Object.keys(cur.network.segments).filter((x) => !before.has(x)));
+      pipes++;
+      ends.set(t.end, t.dia);
+      connected[system === 'water' ? 'water' : 'hot']++;
+      valvePorts.push(t.port);
+    }
+    // 管の太さ: 2 つ以上の器具へ流れる区間は φ20、1 つだけへの区間はその器具の太さ
+    const segSet = new Set(branchSegs[system]);
+    const visit = (nid: string, fromSeg: string | null, seen: Set<string>): [number, number] => {
+      let n = ends.has(nid) ? 1 : 0, dia = ends.get(nid) ?? 0;
+      for (const sg of segmentsAt(cur.network, nid)) {
+        if (sg.id === fromSeg || !segSet.has(sg.id) || seen.has(sg.id)) continue;
+        seen.add(sg.id);
+        const [c, d] = visit(sg.a === nid ? sg.b : sg.a, sg.id, seen);
+        const want = c >= 2 ? 20 : d || sg.diameter;
+        if (want !== sg.diameter) cur = { ...cur, network: { ...cur.network, segments: { ...cur.network.segments, [sg.id]: { ...cur.network.segments[sg.id], diameter: want } } } };
+        n += c; dia = Math.max(dia, want);
+      }
+      return [n, dia];
+    };
+    visit(feedId, null, new Set());
+    return failed;
   };
 
   const heater = Object.values(cur.fixtures).find((f) => f.type === 'waterHeater');
@@ -398,8 +488,14 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
     if (!free(meterOut) && !feedNode) notes.push('メーターの出口にはすでに配管があるため、引込は足していません（給水ヘッダーの入口は手でつないでください）');
     const near = meterEntry ? meterEntry.eIn : { x: (bounds.x0 + bounds.x1) / 2, y: (bounds.y0 + bounds.y1) / 2 };
     const inward = meterEntry ? { x: -meterEntry.n.x, y: -meterEntry.n.y } : toward(near, waterTargets.map((t) => cur.network.nodes[t.end].pos));
-    const outs = headerOutlets('waterHeader', waterTargets.length, near, around(inward), feedWater);
-    attach(waterTargets, outs, near, 'water', '給水ヘッダー');
+    if (mode === 'avoid' && !headerFixtures().some((f) => f.type === 'waterHeader')) {
+      const id = ensureFeed();
+      if (id) needHeader.water = branch('water', id, waterTargets);
+      else notes.push('メーターから床下への引込が引けないので、給水はつないでいません');
+    } else {
+      const outs = headerOutlets('waterHeader', waterTargets.length, near, around(inward), feedWater);
+      attach(waterTargets, outs, near, 'water', '給水ヘッダー');
+    }
   }
 
   // --- 給湯: 給湯器の出口 → 給湯ヘッダー → 器具の給湯口 ---
@@ -414,8 +510,14 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
       const feedHot = (inNode: PipeNode, f: Fixture): boolean => !!hotFeed && connect(hotFeed, inNode.id, attrs('hotWater', 20), [inletDir(f, inNode)]);
       const near = hotFeed ? cur.network.nodes[hotFeed].pos : heaterOut.pos;
       const inward = hotEntry ? { x: -hotEntry.n.x, y: -hotEntry.n.y } : toward(near, targets.hotWater.map((t) => t.end.pos));
-      const outs = headerOutlets('hotWaterHeader', targets.hotWater.length, near, around(inward), feedHot);
-      attach(targets.hotWater.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port })), outs, near, 'hotWater', '給湯ヘッダー');
+      const hotList = targets.hotWater.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port }));
+      if (mode === 'avoid' && !headerFixtures().some((f) => f.type === 'hotWaterHeader')) {
+        if (hotFeed) needHeader.hot = branch('hotWater', hotFeed, hotList);
+        else notes.push('給湯器の出口から床下への管が引けないので、給湯はつないでいません');
+      } else {
+        const outs = headerOutlets('hotWaterHeader', targets.hotWater.length, near, around(inward), feedHot);
+        attach(hotList, outs, near, 'hotWater', '給湯ヘッダー');
+      }
     }
   }
 
@@ -449,5 +551,5 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
   }
 
   if (!newSegs.length && !headers) return { ...none(), notes };
-  return { doc: { ...cur, network: assignAutoMaterials(cur.network, b, newSegs) }, pipes, headers, sleeves, crossings, valves, connected, notes };
+  return { doc: { ...cur, network: assignAutoMaterials(cur.network, b, newSegs.filter((id) => cur.network.segments[id])) }, pipes, headers, sleeves, crossings, valves, connected, notes, ...(mode === 'avoid' ? { needHeader } : {}) };
 }

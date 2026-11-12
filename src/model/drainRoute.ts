@@ -15,6 +15,7 @@ import { addPolyline, connectNodeToSegment, moveNode, segmentsAt, splitSegment, 
 import { applySlope, outerDiameter } from './slope';
 import { inUnderfloor, slopeUnderfloor, underfloorLevels } from './underfloorSlope';
 import { findFloorRoute, ROUTE_STEP, type RouteGoal, type RouteResult } from './floorRoute';
+import { ksaHeights } from './kisoSleeve';
 
 /** 外壁の芯からマスの中心までの距離の初期値(mm) */
 export const MANHOLE_OFFSET = 700;
@@ -68,6 +69,8 @@ export const outdoorSlope = (d: number) => OUTDOOR_SLOPE.find(([k]) => d <= k)?.
 export { outerDiameter } from './slope';
 /** 基礎の内側の面から、立ち下げてスリーブ（KSA）へ入る点までの離れ(mm) */
 const KSA_IN = 10;
+/** 基礎貫通スリーブの高さに合わせるとき、外の管（スリーブ → マス）の勾配の上限 */
+const KSA_MAX_SLOPE = 0.1;
 
 type Line = { a: Vec2; b: Vec2; t: number; exterior?: boolean };
 
@@ -214,6 +217,10 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
 
   let cur: Doc = doc;
   let pipes = 0, manholes = 0, sleeves = 0, skipped = 0;
+  /** 土間（スラブ天端）の高さ。基礎貫通スリーブの床下の口 */
+  const slabZ = b.foundation?.slabTop !== undefined ? base.elevation + b.foundation.slabTop : undefined;
+  /** この出口の外周に基礎（立上り）があり、土間の高さが分かる（基礎貫通スリーブを使う） */
+  const ksaAt = (plan: Plan) => slabZ !== undefined && extFoot.some((f) => pointSeg(plan.exit.foot, f.a, f.b) < f.t / 2 + 50);
   type Hole = { id: string; x: number; y: number };
   /** この回につないだ配管の上の端（勾配をつけ直す起点を探す元） */
   const touched: string[] = [];
@@ -329,13 +336,23 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
         let need = z0;
         if (p.z - need < 100) need = Math.round(p.z - INVERT_BELOW);
         if (drop && need + slope * drop.d > buriedTop) need = Math.round(buriedTop - slope * drop.d);
+        // 基礎貫通スリーブ（KSA）の高さ H に合うよう、土かぶりが取れる一番浅い品番の外の口より下にマスを置く
+        const fit = drop && ksaAt(plan) ? ksaHeights(e.seg.diameter).map((H) => slabZ! - H).find((u) => u <= buriedTop && p.z - u >= 50) : undefined;
+        if (fit !== undefined && need > fit - slope * drop!.d) need = Math.round(fit - slope * drop!.d);
         if (need !== z0) next = moveFixture(next, hole.id, plan.hp, undefined, { invertZ: need });
       }
     }
     const port = portNodes(next.network, hole.id)[0];
     if (!port || p.z - port.pos.z < 10) { skipped++; continue; } // 置いてあるマスの管底が、床下の配管より高い
     // 置いてあるマスが浅く、外の配管の土かぶりと勾配が取れない
-    const buried = drop ? Math.round(port.pos.z + slope * drop.d) : 0;
+    let buried = drop ? Math.round(port.pos.z + slope * drop.d) : 0;
+    // 基礎貫通スリーブ（KSA）: 外の口の高さ（土間 − H）が勾配・土かぶりの範囲にあれば、その高さに合わせる（なだらかな方）
+    if (drop && ksaAt(plan)) {
+      // 外の勾配が急になりすぎるものは使わない（急勾配にしない）
+      const u = ksaHeights(e.seg.diameter).map((H) => slabZ! - H)
+        .filter((z) => z >= buried - 0.5 && z <= buriedTop + 0.5 && p.z - z >= 50 && (z - port.pos.z) / Math.max(1, drop.d) <= KSA_MAX_SLOPE).sort((x, y) => x - y)[0];
+      if (u !== undefined) buried = Math.round(u);
+    }
     if (drop && (buried > buriedTop + 0.5 || p.z - buried < 50)) { skipped++; continue; }
     // 基礎の外で地中へ下ろす点（床下の高さ）。先の配管がここを通っていればここで合流
     const top: Vec3 = drop ? { ...drop.x, z: p.z } : { x: hole.x, y: hole.y, z: p.z };

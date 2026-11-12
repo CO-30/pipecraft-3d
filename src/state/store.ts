@@ -15,6 +15,12 @@ import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes }
 import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
 import { routeSupplies as routeSuppliesUnder } from '../model/supplyRoute';
 import { autoConnect } from '../model/autoConnect';
+import type { Question } from '../model/question';
+import type { HeaderMode } from '../model/supplyRoute';
+
+type AutoConnectOpts = { drainRules?: DrainRules; supply?: SupplyRules; dropDepth?: number; headers?: HeaderMode };
+/** 最後に「まとめてつなぐ」を押したときの設定（質問に答えたら同じ設定で続きを実行する） */
+let lastAutoOpts: AutoConnectOpts = {};
 import { calcSupply } from '../model/hydraulics/calc';
 import { readSuiriSettings } from '../model/hydraulics/settings';
 import { resolveSupplyRules, type SupplyRules } from '../model/hydraulics/supplyRules';
@@ -254,7 +260,7 @@ type State = {
   /** 給水・給湯を床下のヘッダーでつなぐ（案）。つないだ本数を返す。rules: 自治体の給水の値（埋設深さ・水理計算） */
   routeSupplies(rules?: SupplyRules): number;
   /** 汚水・水・湯をまとめてつなぐ（落とす → 排水を外へ → 屋外でマス・公共マスまで → 給水・給湯 → 通気弁）。元に戻す 1 回で全部戻る。足した管の数 */
-  autoConnectAll(opts?: { drainRules?: DrainRules; supply?: SupplyRules; dropDepth?: number }): number;
+  autoConnectAll(opts?: AutoConnectOpts): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -267,6 +273,9 @@ type State = {
   /** 画面に短く出すお知らせ（つなげない配管など）。表示専用 */
   notice: string | null;
   clearNotice(): void;
+  /** 使う人に聞いていること（自動の作業がどうしても決められないとき。答えると続きを実行） */
+  question: Question | null;
+  answerQuestion(value: string): void;
   // 下敷き
   /** 操作対象の下敷き（表示状態。保存しない） */
   activeUnderlayId: string | null;
@@ -782,6 +791,13 @@ export const useStore = create<State>((set, get) => {
     },
     notice: null,
     clearNotice: () => set({ notice: null }),
+    question: null,
+    answerQuestion: (value) => {
+      const q = get().question;
+      set({ question: null });
+      if (q?.id === 'header' && value === 'use') get().autoConnectAll({ ...lastAutoOpts, headers: 'use' });
+      else if (q) set({ notice: 'このままにしました。つながっていない所は配管の道具でつないでください' });
+    },
     cutSelected: () => {
       const sel = get().selection;
       const net = get().doc.network;
@@ -911,9 +927,11 @@ export const useStore = create<State>((set, get) => {
       return r.pipes;
     },
     autoConnectAll: (opts = {}) => {
+      lastAutoOpts = opts;
       const doc = get().doc;
       const rules = opts.supply ?? resolveSupplyRules({ address: get().meta?.address });
-      const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v, dropDepth: opts.dropDepth });
+      const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v, dropDepth: opts.dropDepth, ...(opts.headers ? { headers: opts.headers } : {}) });
+      set({ question: r.questions[0] ?? null });
       const added = Object.keys(r.doc.network.segments).filter((id) => !doc.network.segments[id]);
       if (r.doc === doc || !added.length) { set({ notice: ['新しくつなぐ配管はありませんでした', ...r.summary].join('。') }); return 0; }
       // 管種の付いていない新しい管に、屋内・屋外の自動の管種（ほかのボタンと同じ）

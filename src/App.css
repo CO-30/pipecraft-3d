@@ -449,3 +449,11 @@ header .lbl { margin-left: 2px; }
 @media (max-width: 700px) { .compare-list { max-height: 22vh; } .compare-bar .compare-main > span { font-size: 12px; } }
 /* 共通の要望欄（ホームのいちばん下） */
 .home-feedback { margin: 28px auto 8px; max-width: 640px; }
+
+/* 自動の作業からの質問（はじめての人にも分かる言葉で） */
+.question-card { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 60; width: min(520px, calc(100vw - 24px)); background: #fff; color: #1f2937; border: 2px solid #2563eb; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.question-card .qc-title { font-weight: 700; font-size: 16px; }
+.question-card .qc-why { font-size: 13px; line-height: 1.6; color: #374151; }
+.question-card .qc-options { display: flex; flex-direction: column; gap: 6px; }
+.question-card .qc-options button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; min-height: 44px; padding: 8px 10px; }
+.question-card .qc-later { align-self: flex-end; background: transparent; border: 0; color: #6b7280; text-decoration: underline; min-height: 32px; }
