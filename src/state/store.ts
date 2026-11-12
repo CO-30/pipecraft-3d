@@ -6,13 +6,16 @@ import { create } from 'zustand';
 import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
   deleteFitting, deleteSegment, deleteSegments, detachNode, duplicateSegments, emptyNetwork, insertValve, mergeNodes, moveNode,
-  setSegmentLength as setSegLen, translateNodes, validateNetwork, projectOnSegment, splitSegment,
+  setSegmentLength as setSegLen, translateNodes, validateNetwork, projectOnSegment, splitSegment, segmentsAt,
   detachSegmentEnd as detachSegEnd, type Network, type Segment, type SegmentAttrs, type SystemType, type Vec3,
 } from '../model/network';
 import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
-import { slopeUnderfloor, type UnderfloorRules, type UnderfloorSlopeResult } from '../model/underfloorSlope';
+import { solveDrain, unpinNode, type DrainIssue } from '../model/drainSolve';
+import { buildDrainTrees } from '../model/drainSolve/tree';
+import { resolveDrainRules, type DrainRuleSet } from '../model/drainRules';
+import { STANDARD_PROFILE } from '../model/municipality';
 import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import { assignAutoMaterials } from '../model/materials';
@@ -26,7 +29,7 @@ import { glOfDepth, levelSummary } from '../model/levels';
 import { defaultEstimate, type EstimateSettings, type ExtraItem, type PriceItem } from '../model/estimate';
 import { newId } from '../model/id';
 import type { FittingChoice } from '../model/fittings';
-import { applySlope, defaultSlope, downstreamEnd, isDrain, planLength, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
+import { applySlope, defaultSlope, downstreamEnd, isDrain, isSlopePinned, planLength, propagateLockedSlopes, setSlopeRatio } from '../model/slope';
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
@@ -41,21 +44,12 @@ import { addOutlineWalls, applyOutlineLength, copyOutlineToEmptyFloors, outlineL
 /** 床下に描く高さの初期値（床から mm） */
 export const UNDER_FLOOR_HEIGHT = -300;
 
-/** 床下の排水の勾配の決まり（自治体の最小勾配）。画面側（申請図面の自治体プロファイル）から渡す */
-let underfloorRulesOf: (doc: Doc) => UnderfloorRules = () => ({});
-export function setUnderfloorRulesSource(fn: (doc: Doc) => UnderfloorRules) { underfloorRulesOf = fn; }
-
-const pct = (r: number) => `${Math.round(r * 1000) / 10}/100`;
-/** 床下の自動勾配の知らせ */
-function underfloorNotice(u: UnderfloorSlopeResult, manual: boolean): string {
-  const lv = u.levels;
-  const parts = [`床下の排水に勾配: 土間（床下から出る所）から器具へ ${pct(0.02)}・レベルバンド支持`];
-  if (lv && !lv.slabKnown) parts.push('土間は床−500 の仮の高さ（基礎伏図を読むと正しくなります）');
-  if (u.low) parts.push(`${u.low} 系統は床下が低いため ${pct(0.015)}`);
-  if (u.over) parts.push(`⚠ ${u.over} 系統は基礎天端を超えます（ルートを短く・出口を増やす）`);
-  if (u.raised) parts.push(`${u.raised} 系統は下流が浅いため起点を上げました`);
-  if (u.failed && manual) parts.push(`${u.failed} 系統は起点を決められませんでした`);
-  return parts.join('。');
+/** 排水の決まり（工事の自治体）。画面側（自治体プロファイルの一覧）から渡す */
+let drainRulesOf: (doc: Doc) => DrainRuleSet = () => resolveDrainRules(STANDARD_PROFILE);
+export function setDrainRulesSource(fn: (doc: Doc) => DrainRuleSet) { drainRulesOf = fn; }
+/** 排水の管底高・勾配・マスの管底を計算し直す（配管・マス・建物・工事の設定が変わったとき） */
+export function solveDoc(doc: Doc): { doc: Doc; issues: DrainIssue[] } {
+  return solveDrain(doc, drainRulesOf(doc));
 }
 /** ヘッダーの出口の、設置面からの高さ(mm)（カタログの接続口 dz） */
 const HEADER_PORT_DZ = 100;
@@ -126,11 +120,12 @@ type State = {
   /** 床下（1 階の床の下・基礎の中）を表示・作図中 */
   underFloor: boolean;
   setUnderFloor(on: boolean): void;
-  /** 床下の排水を描いたら、床下から出る所（土間）を起点に器具へ自動で勾配をつける */
-  autoUnderfloorSlope: boolean;
-  setAutoUnderfloorSlope(on: boolean): void;
-  /** 床下の排水に、土間を起点に勾配をつけ直す。nodeId を渡すとその点のまとまりだけ。勾配をつけた系統の数 */
-  slopeUnderfloorDrains(nodeId?: string): number;
+  /** 排水の検査（自動計算のたびに更新） */
+  drainIssues: DrainIssue[];
+  /** 検査の直し方を当てる */
+  applyDrainFix(issueIndex: number, fixIndex: number): void;
+  /** 点の管底高の固定を外して自動に戻す */
+  unpinNodeHeight(nodeId: string): void;
   /** 床下で器具の接続口から描き始めた: 接続口から床下まで立て管を下ろし、そこから points を描く（履歴は 1 件） */
   drawFromPortDown(portNodeId: string, points: Vec3[], opts?: { endNodeId?: string; endSegId?: string }): void;
   orthoSnap: boolean;
@@ -338,8 +333,15 @@ type State = {
 
 export const useStore = create<State>((set, get) => {
   /** 新しい Doc を履歴付きで確定。変化がなければ何もしない */
-  const commit = (next: Doc, extra: Partial<State> = {}) => {
+  const commit = (next0: Doc, extra: Partial<State> = {}) => {
     const { doc, past } = get();
+    let next = next0;
+    // 排水: 平面ルート・属性・ピンから管底高を計算し直す（同じ履歴に入れる）
+    if (next.network !== doc.network || next.fixtures !== doc.fixtures || next.building !== doc.building || next.site !== doc.site) {
+      const r = solveDoc(next);
+      next = r.doc;
+      set({ drainIssues: r.issues });
+    }
     if (next.building === doc.building && next.network === doc.network && next.fixtures === doc.fixtures && next.estimate === doc.estimate && next.underlays === doc.underlays && next.elevations === doc.elevations && next.site === doc.site) return false;
     set({ doc: next, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1, ...extra });
     // 新しく描いた・動かした配管が梁・軒などにぶつかったらお知らせ
@@ -431,22 +433,15 @@ export const useStore = create<State>((set, get) => {
     // 「自動」の給水・給湯は、建物の内（床下を含む）を PB・外を HIVP/HTVP に（外周をまたぐ所で分ける）
     // 立面（外壁の面）に描く配管は外周の線の上にあるため自動にしない（未設定 = HIVP/HTVP 扱い）
     const joined = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
-    let net = extra.face ? joined : autoMat(joined, doc0.network);
-    // 床下の排水: 床下から出る所（土間）を起点に、器具の方へ勾配をつける（描いた配管を含むまとまりだけ）
-    if (get().autoUnderfloorSlope && !extra.face && (attrs.system === 'drain' || attrs.system === 'sewage')) {
-      const touched = [...r.nodeIds, ...(opts?.startNodeId ? [opts.startNodeId] : [])].filter((id) => net.nodes[id]);
-      const u = slopeUnderfloor({ ...doc0, network: net }, underfloorRulesOf(doc0), touched);
-      if (u.systems) {
-        net = u.net;
-        notice = [notice, underfloorNotice(u, false)].filter(Boolean).join('。');
-      }
-    }
+    const net = extra.face ? joined : autoMat(joined, doc0.network);
     // 外周で分けたときは、描き終わりの側の区間を選ぶ
     const endNode = r.nodeIds.at(-1);
     const selId = net.segments[last] ? last : Object.values(net.segments).find((s) => !doc0.network.segments[s.id] && (s.a === endNode || s.b === endNode))?.id;
     commit(withNet(net), { selection: selId ? { kind: 'segment', id: selId } : null, notice: [notice, end.notice].filter(Boolean).join('。') || null });
   };
   const withBld = (building: Building): Doc => ({ ...get().doc, building });
+  /** ドラッグ中: 排水の高さをその場で計算し直して表示（履歴には入れない） */
+  const liveSet = (doc: Doc) => { const r = solveDoc(doc); set({ doc: r.doc, drainIssues: r.issues }); };
   /** before に無かった区間に、自動の管種を付ける */
   const autoMat = (net: Network, before: Network): Network =>
     assignAutoMaterials(net, get().doc.building, Object.keys(net.segments).filter((id) => !before.segments[id]));
@@ -480,7 +475,7 @@ export const useStore = create<State>((set, get) => {
     drawHeight: 100,
     underFloor: false,
     orthoSnap: true,
-    autoUnderfloorSlope: true,
+    drainIssues: [],
     dimWizard: null,
     elevDraw: 'pipe',
     fixtureType: 'toilet',
@@ -505,10 +500,15 @@ export const useStore = create<State>((set, get) => {
     setSplitWithWall: (splitWithWall) => set({ splitWithWall }),
 
     openProject: (p) => {
-      const doc = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {} };
-      set({ doc, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(doc) });
+      const doc0 = { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {} };
+      // 排水の高さは保存された値を使わず、計算し直す（保存された z は計算結果の写し）
+      const r = solveDoc(doc0);
+      set({ doc: r.doc, drainIssues: r.issues, meta: { id: p.id, name: p.name, address: p.address, createdAt: p.createdAt }, ...resetView(r.doc) });
     },
-    newDoc: (doc, meta) => set({ doc: { underlays: {}, elevations: {}, site: {}, ...doc }, meta, ...resetView(doc) }),
+    newDoc: (doc, meta) => {
+      const r = solveDoc({ underlays: {}, elevations: {}, site: {}, ...doc });
+      set({ doc: r.doc, drainIssues: r.issues, meta, ...resetView(r.doc) });
+    },
     closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null }),
     toProjectData: () => {
       const { meta, doc } = get();
@@ -530,16 +530,15 @@ export const useStore = create<State>((set, get) => {
     },
     setDrawHeight: (drawHeight) => set({ drawHeight }),
     setOrthoSnap: (orthoSnap) => set({ orthoSnap }),
-    setAutoUnderfloorSlope: (autoUnderfloorSlope) => set({ autoUnderfloorSlope }),
-    slopeUnderfloorDrains: (nodeId) => {
-      const doc = get().doc;
-      const r = slopeUnderfloor(doc, underfloorRulesOf(doc), nodeId ? [nodeId] : undefined);
-      if (!r.systems) {
-        set({ notice: r.failed ? '床下の排水の起点（床下から出る所）を決められませんでした。外のマス・配管へつなぐか、外壁の近くまで描いてください' : '床下（1 階の床と土間の間）の排水がありません' });
-        return 0;
-      }
-      commit(withNet(r.net), { notice: underfloorNotice(r, true) });
-      return r.systems;
+    applyDrainFix: (i, j) => {
+      const fix = get().drainIssues[i]?.fixes[j];
+      if (fix) commit(fix.apply(get().doc), { notice: `${fix.label}。高さを計算し直しました` });
+    },
+    unpinNodeHeight: (nodeId) => {
+      const n = get().doc.network.nodes[nodeId];
+      if (!n?.zPin) return;
+      const { zPin: _z, ...rest } = n;
+      commit(withNet({ ...get().doc.network, nodes: { ...get().doc.network.nodes, [nodeId]: rest } }));
     },
     select: (selection) => set({ selection }),
     setActiveFloor: (activeFloorId) => set({ activeFloorId, selection: null, pendingMerge: null, underFloor: false, ...(get().underFloor && get().drawHeight < 0 ? { drawHeight: 100 } : {}), ...(get().dimWizard?.floorId !== activeFloorId ? { dimWizard: null } : {}) }),
@@ -786,7 +785,10 @@ export const useStore = create<State>((set, get) => {
       const net = get().doc.network, n = net.nodes[nodeId];
       // 設備の接続口の高さは器具で決まるので単独では変えない
       if (!n || n.fixtureId) return;
-      const next = propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId);
+      const moved = propagateLockedSlopes(net, moveNode(net, nodeId, { ...n.pos, z }), nodeId);
+      // 排水の点は手で決めた高さを固定する（自動計算で変えない。📌）
+      const drain = segmentsAt(net, nodeId).some((x) => x.system === 'drain' || x.system === 'sewage');
+      const next = drain && moved.nodes[nodeId] ? { ...moved, nodes: { ...moved.nodes, [nodeId]: { ...moved.nodes[nodeId], zPin: true } } } : moved;
       commit(withNet(next), lockedCount(next) < lockedCount(net) ? { notice: UNLOCK_NOTICE } : {});
     },
     updateSite: (patch) => {
@@ -805,6 +807,8 @@ export const useStore = create<State>((set, get) => {
       const doc = get().doc, f = doc.fixtures[id];
       if (!f) return;
       if (patch.diameter !== undefined && !(patch.diameter > 0)) return;
+      // 管底を手で入れたマスは固定（📌。自動計算で変えない）
+      if (patch.invertZ !== undefined && isManhole(f.type) && patch.invertPin === undefined) patch = { ...patch, invertPin: true };
       const next = moveFixture(doc, id, f, undefined, patch);
       if (next === doc) { set({ notice: patch.mountZ !== undefined || 'mountZ' in patch ? 'この高さにすると配管の長さが 0 になるため変えられません' : '管底高を変えると配管がつながらなくなります' }); return; }
       // 管底が動いたら、固定勾配の区間の上流端も追従させる
@@ -817,6 +821,18 @@ export const useStore = create<State>((set, get) => {
       const net = get().doc.network;
       if (!net.segments[segId] || !(denominator > 0)) return;
       const doc = get().doc, ratio = 1 / denominator;
+      // 排水・汚水: 勾配を固定（📌）するだけ。高さは自動計算が決める
+      const s0 = net.segments[segId];
+      if (s0.system === 'drain' || s0.system === 'sewage') {
+        let next: Doc = withNet({ ...net, segments: { ...net.segments, [segId]: { ...s0, slope: ratio, slopeLocked: true } } });
+        // 後から決めた勾配を優先: 上流端の高さの固定（点・マスの管底）を外す
+        const t = buildDrainTrees(doc).find((x) => x.parent.get(s0.a) === segId || x.parent.get(s0.b) === segId);
+        const up = t ? (t.parent.get(s0.a) === segId ? s0.a : s0.b) : undefined;
+        const un = up ? unpinNode(up)(next) : next;
+        const freed = un !== next && (un.network !== next.network || un.fixtures !== next.fixtures);
+        commit(un, freed ? { notice: '勾配を固定し、上流の端の高さの固定（📌）を外しました' } : {});
+        return;
+      }
       const isOutlet = (id: string) => isOutletNode(doc, id);
       const next = setSlopeRatio(net, segId, ratio, isOutlet);
       if (next !== net) {
@@ -847,9 +863,11 @@ export const useStore = create<State>((set, get) => {
     },
     setSegmentSlopeLocked: (segId, locked) => {
       const net = get().doc.network, s = net.segments[segId];
-      if (!s || !!s.slopeLocked === locked) return;
+      if (!s || isSlopePinned(s) === locked) return;
       if (locked) { get().setSegmentSlope(segId, s.slope ? Math.round(1 / s.slope) : Math.round(1 / defaultSlopeFor(s.diameter))); return; }
-      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...s, slopeLocked: false } } }));
+      // 外す: 以前の slopeLocked も新しい slopePin も外す（自動に戻す）
+      const { slopePin: _p, ...rest } = s;
+      commit(withNet({ ...net, segments: { ...net.segments, [segId]: { ...rest, slopeLocked: false } } }));
     },
     updateSegment: (segId, patch) => {
       const net = get().doc.network;
@@ -997,7 +1015,11 @@ export const useStore = create<State>((set, get) => {
     setSlopeFromOutlet: (nodeId, slope) => {
       const r = applySlope(get().doc.network, nodeId, slope);
       if (!r) { set({ notice: '流末には排水の横管の端（立て管・器具とのつなぎ目を含む）を選んでください。横管の途中の点や、配管が重なる場合は変更できません' }); return; }
-      commit(withNet(r.net), { notice: `${r.segments}区間に勾配をつけ、${r.nodes}点の高さを変えました` });
+      // 選んだ点を下流の出口として高さを固定し（📌）、勾配を選んだときはその勾配も固定する
+      const out = r.net.nodes[nodeId];
+      let net = { ...r.net, nodes: { ...r.net.nodes, [nodeId]: { ...out, zPin: true } } };
+      if (slope !== 'auto') net = { ...net, segments: Object.fromEntries(Object.entries(net.segments).map(([id, x]) => [id, r.net.segments[id].slope === slope && get().doc.network.segments[id]?.slope !== slope ? { ...x, slopePin: true } : x])) };
+      commit(withNet(net), { notice: `${r.segments}区間に勾配をつけ、${r.nodes}点の高さを変えました（出口の高さを固定 📌）` });
     },
     setSegmentSupport: (segId, patch) => {
       const net = get().doc.network;
@@ -1054,16 +1076,24 @@ export const useStore = create<State>((set, get) => {
     // ドラッグ中（beginDrag 後）だけ有効。途中で Undo 等により終了したドラッグの続きは無視する
     dragNode: (nodeId, pos) => {
       const base = get().dragBase;
-      if (base && !get().doc.network.nodes[nodeId]?.fixtureId) set({ doc: withNet(propagateLockedSlopes(base.network, moveNode(get().doc.network, nodeId, pos), nodeId)) });
+      const n0 = base?.network.nodes[nodeId];
+      if (!base || !n0 || n0.fixtureId) return;
+      // 元の位置に戻した（動かしていない）: ドラッグ前のまま（履歴を増やさない）
+      if (Math.hypot(pos.x - n0.pos.x, pos.y - n0.pos.y, pos.z - n0.pos.z) < 0.01) { set({ doc: base }); return; }
+      let moved = propagateLockedSlopes(base.network, moveNode(get().doc.network, nodeId, pos), nodeId);
+      // 排水の点を上下に動かしたら、その高さで固定（📌）。平面だけの移動は高さを自動のまま
+      const drain = segmentsAt(base.network, nodeId).some((x) => x.system === 'drain' || x.system === 'sewage');
+      if (drain && moved.nodes[nodeId] && Math.abs(pos.z - n0.pos.z) > 0.5) moved = { ...moved, nodes: { ...moved.nodes, [nodeId]: { ...moved.nodes[nodeId], zPin: true } } };
+      liveSet(withNet(moved));
     },
     dragSegment: (segId, d) => {
       const base = get().dragBase;
       const s = base?.network.segments[segId];
       if (!base || !s) return;
       const ids = movable(base.network, [s.a, s.b]);
-      if (ids.length) set({ doc: { ...get().doc, network: translateNodes(base.network, ids, d) } });
+      if (ids.length) liveSet({ ...get().doc, network: translateNodes(base.network, ids, d) });
     },
-    dragFixture: (id, p) => { if (get().dragBase) set({ doc: moveFixture(get().doc, id, p) }); },
+    dragFixture: (id, p) => { if (get().dragBase) liveSet(moveFixture(get().doc, id, p)); },
     dropNode: (nodeId, target) => {
       const { network: net, fixtures } = get().doc;
       if (!get().dragBase || !target || !net.nodes[nodeId]) return;
@@ -1081,11 +1111,14 @@ export const useStore = create<State>((set, get) => {
     },
     cancelDrag: () => {
       const base = get().dragBase;
-      if (base) set({ doc: base, dragBase: null });
+      if (base) set({ doc: base, dragBase: null, drainIssues: solveDoc(base).issues });
     },
     endDrag: () => {
-      const { dragBase, doc, past } = get();
+      const { dragBase, past } = get();
       if (!dragBase) return;
+      // 壁・角を動かすと床下・建物の内外が変わるので、終わりに排水を計算し直す
+      if (get().doc.building !== dragBase.building) liveSet(get().doc);
+      const doc = get().doc;
       const changed = dragBase.building !== doc.building || dragBase.network !== doc.network || dragBase.fixtures !== doc.fixtures || dragBase.underlays !== doc.underlays || dragBase.elevations !== doc.elevations || dragBase.site !== doc.site;
       set({ dragBase: null, ...(changed ? { past: [...past, dragBase].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1 } : {}), ...(changed && lockedCount(doc.network) < lockedCount(dragBase.network) ? { notice: UNLOCK_NOTICE } : {}) });
     },
@@ -1311,14 +1344,14 @@ export const useStore = create<State>((set, get) => {
       const { past, doc, future } = get();
       const prev = past.at(-1);
       if (!prev) return;
-      set({ doc: prev, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev), ...fixDim(prev) });
+      set({ doc: prev, drainIssues: solveDoc(prev).issues, past: past.slice(0, -1), future: [doc, ...future], revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(prev, get().activeFloorId), activeElevationId: fixElev(prev), ...fixDim(prev) });
     },
     redo: () => {
       get().endDrag();
       const { past, doc, future } = get();
       const next = future[0];
       if (!next) return;
-      set({ doc: next, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next), ...fixDim(next) });
+      set({ doc: next, drainIssues: solveDoc(next).issues, past: [...past, doc], future: future.slice(1), revision: get().revision + 1, selection: null, pendingMerge: null, activeFloorId: fixActiveFloor(next, get().activeFloorId), activeElevationId: fixElev(next), ...fixDim(next) });
     },
   };
 

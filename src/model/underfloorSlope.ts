@@ -11,8 +11,8 @@ import { wallsOnFloor, type Vec2 } from './building';
 import type { Doc } from './doc';
 import { isManhole } from './fixtures';
 import { membersOf } from './members';
-import { segmentsAt, type Network, type Segment } from './network';
-import { applySlope, defaultSlope, isRiserLike, outerDiameter, planLength } from './slope';
+import { normalize, segmentsAt, type Network, type Segment } from './network';
+import { applySlope, defaultSlope, isRiserLike, isSlopePinned, outerDiameter, planLength } from './slope';
 
 /** 床下の排水の標準の勾配（2/100） */
 export const UF_SLOPE = 0.02;
@@ -33,10 +33,10 @@ const DOWN_GAP = 50;
  * slopeFor: 自治体の口径ごとの最小勾配（比率）。target/low: 標準とゆとりが無いときの勾配。
  * startAbove: 起点の管底の、土間からの高さ（既定 0 = 土間）
  */
-export type UnderfloorRules = { slopeFor?: (diameter: number) => number | undefined; target?: number; low?: number; startAbove?: number };
+export type UnderfloorRules = { slopeFor?: (diameter: number) => number | undefined; target?: number; low?: number; startAbove?: number; /** 勾配を決める関数（自治体の決まり。あれば slopeFor・target・low より優先） */ ratio?: (diameter: number, low: boolean) => number };
 
 /** 口径 d の床下の勾配（比率）: 標準（または 1.5/100）・自治体の最小勾配・管径別の最小勾配のうち急な方 */
-export const underfloorRatio = (d: number, rules: UnderfloorRules = {}, low = false) =>
+export const underfloorRatio = (d: number, rules: UnderfloorRules = {}, low = false) => rules.ratio ? rules.ratio(d, low) :
   Math.max(low ? rules.low ?? UF_SLOPE_LOW : rules.target ?? UF_SLOPE, rules.slopeFor?.(d) ?? 0, defaultSlope(d));
 
 /** 床下の高さ（絶対 mm）: floor = 1 階の床、slab = 土間、top = 配管の上（管頂）の上限。slabKnown: 図面・設定の土間がある */
@@ -64,6 +64,9 @@ const isDrainLine = (s: Segment) => s.system === 'drain' || s.system === 'sewage
 /** 高さ z（絶対 mm）が床下（1 階の床より下・土間より上）か */
 export const inUnderfloor = (lv: UnderfloorLevels, z: number) => z < lv.floor - 1 && z > lv.slab - ZONE_TOL;
 
+/** 平面の点から外壁までの距離（外壁が無ければ 0） */
+export const distToOutline = (lv: Pick<UnderfloorLevels, 'outline'>, p: Vec2) => (lv.outline.length ? Math.min(...lv.outline.map(([a, b]) => pointSeg(p, a, b))) : 0);
+
 /** 平面の点が建物（1 階の外壁の内側）にあるか。外壁が無ければ true。外壁の線上は内 */
 export function insideBuilding(lv: Pick<UnderfloorLevels, 'outline'>, p: Vec2): boolean {
   if (!lv.outline.length) return true;
@@ -83,6 +86,8 @@ export function isUnderfloorDrain(net: Network, s: Segment, lv: UnderfloorLevels
   const za = net.nodes[s.a]?.pos.z, zb = net.nodes[s.b]?.pos.z;
   if (za === undefined || zb === undefined) return false;
   // 外の浅い排水管（床下と同じ高さでも外壁の外だけを通る管）は除く。外壁をまたぐ区間は床下に含める
+  // 器具・マスの接続口につながる区間は床下の横管ではない（マスは床下に無い）
+  if (net.nodes[s.a].fixtureId || net.nodes[s.b].fixtureId) return false;
   return inUnderfloor(lv, za) && inUnderfloor(lv, zb) && planLength(net, s) >= 1
     && (insideBuilding(lv, net.nodes[s.a].pos) || insideBuilding(lv, net.nodes[s.b].pos));
 }
@@ -183,12 +188,12 @@ export function slopeUnderfloor(doc: Doc, rules: UnderfloorRules = {}, onlyNodes
     let movedExit = false;
     for (const id of comp.nodes) {
       const n = nodes[id];
-      if (n.fixtureId || Math.abs(n.pos.z - zz) < 0.05) continue;
+      if (n.fixtureId || n.zPin || Math.abs(n.pos.z - zz) < 0.05) continue;
       nodes[id] = { ...n, pos: { ...n.pos, z: zz } };
       if (id === ex.id) movedExit = true;
     }
-    const start: Network = { ...net, nodes };
-    const run = (low: boolean) => applySlope(start, ex.id, (s) => underfloorRatio(s.diameter, rules, low), { include: (s) => comp.segs.has(s.id), allowMid: true });
+    const start: Network = normalize({ ...net, nodes });
+    const run = (low: boolean) => applySlope(start, ex.id, (s) => (isSlopePinned(s) && s.slope !== undefined ? s.slope : underfloorRatio(s.diameter, rules, low)), { include: (s) => comp.segs.has(s.id), allowMid: true });
     /** 配管の上（管頂）が上限を超える点があるか */
     const tooHigh = (n2: Network) => [...comp.segs].some((id) => {
       const s = n2.segments[id];

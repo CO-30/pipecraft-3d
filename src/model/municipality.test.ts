@@ -7,7 +7,7 @@ describe('自治体プロファイル', () => {
     expect(STANDARD_PROFILE.id).toBe('standard');
     expect(isBuiltinProfile('standard')).toBe(true);
     expect(isBuiltinProfile('mp_x')).toBe(false);
-    expect(BUILTIN_PROFILES).toHaveLength(7);
+    expect(BUILTIN_PROFILES).toHaveLength(8);
     expect(BUILTIN_PROFILES[0]).toBe(STANDARD_PROFILE);
   });
   test('parseProfileJson は rows が空ならエラー、壊れた JSON もエラー', () => {
@@ -53,12 +53,12 @@ describe('自治体プロファイル', () => {
 describe('同梱の自治体プロファイル', () => {
   test('沖縄本島南部 6 自治体が入っていて、schema を通り、確認できていない項目は unverified に入っている', () => {
     const ids = BUILTIN_PROFILES.map((p) => p.id);
-    expect(ids).toEqual(['standard', 'okinawa-city', 'itoman', 'haebaru', 'naha', 'tomigusuku', 'yonabaru']);
+    expect(ids).toEqual(['standard', 'okinawa-city', 'itoman', 'haebaru', 'naha', 'tomigusuku', 'ginowan', 'yonabaru']);
     for (const p of BUILTIN_PROFILES.slice(1)) {
       expect(municipalityProfileSchema.safeParse(p).success, p.id).toBe(true);
       expect(p.unverified.length, p.id).toBeGreaterThan(0);
       expect(p.source.url, p.id).toMatch(/^https?:\/\//);
-      expect(p.source.checkedAt, p.id).toBe('2026-11-10');
+      expect(['2026-11-10', '2026-11-12'], p.id).toContain(p.source.checkedAt);
       expect(isBuiltinProfile(p.id)).toBe(true);
     }
   });
@@ -147,7 +147,8 @@ describe('住所から自治体プロファイルを選ぶ（profileForAddress�
     expect(profileForAddress('島尻郡南風原町字兼城', BUILTIN_PROFILES)).toMatchObject({ city: '南風原町', profile: { id: 'haebaru' } });
   });
   test('「沖縄県」を沖縄市と取り違えない。プロファイルの無い市町村は市町村名だけ返す', () => {
-    expect(profileForAddress('沖縄県宜野湾市大山', BUILTIN_PROFILES)).toEqual({ city: '宜野湾市' });
+    expect(profileForAddress('沖縄県宜野湾市大山', BUILTIN_PROFILES)).toMatchObject({ city: '宜野湾市', profile: { id: 'ginowan' } });
+    expect(profileForAddress('沖縄県うるま市石川', BUILTIN_PROFILES)).toEqual({ city: 'うるま市' });
     expect(profileForAddress('千葉県市原市五井', BUILTIN_PROFILES)).toEqual({ city: '市原市' });
     expect(profileForAddress('', BUILTIN_PROFILES)).toEqual({});
   });

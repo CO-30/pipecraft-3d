@@ -22,7 +22,7 @@ import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from
 import { defaultEstimate, measureSegment } from '../model/estimate';
 import { findConnectCandidate } from '../model/connect';
 import { SYSTEM_NAME } from '../model/systems';
-import { actualSlope, defaultSlope, isDrain, maxSlope, slopeEnough, slopeLabel } from '../model/slope';
+import { actualSlope, defaultSlope, isDrain, isSlopePinned, maxSlope, slopeEnough, slopeLabel } from '../model/slope';
 import { defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, supportKindOf } from '../model/supports';
 import { analyzeFittings, FITTING_LABEL, FITTING_TYPES, fittingName, type FittingChoice } from '../model/fittings';
 import { PB_MATERIAL_LABEL, PB_MATERIALS, WATER_MATERIAL_OPTIONS } from '../model/materials';
@@ -112,7 +112,6 @@ export function PropertyPanel() {
   const drawAttrs = useStore((s) => s.drawAttrs);
   const drawHeight = useStore((s) => s.drawHeight);
   const ortho = useStore((s) => s.orthoSnap);
-  const autoUfSlope = useStore((s) => s.autoUnderfloorSlope);
   const splitWithWall = useStore((s) => s.splitWithWall);
   const floorElev = useStore((s) => floorById(s.doc.building, s.activeFloorId)?.elevation ?? 0);
   const st = useStore.getState();
@@ -376,10 +375,6 @@ export function PropertyPanel() {
             <label className="field inline">管<select data-testid="draw-material" value={drawAttrs.material ?? ''} onChange={(e) => st.setDrawAttrs({ material: e.target.value || undefined })}>
               {WATER_MATERIAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
           )}
-          {(drawAttrs.system === 'drain' || drawAttrs.system === 'sewage') && (
-            <label className="field inline" title="床下（1 階の床と土間の間）に排水・汚水を描くと、床下から外へ出る所の管底を土間に置き、そこから器具の方へ 2/100（床下の高さが足りなければ 1.5/100、自治体の最小勾配が急ならそれ）で上げます。レベルバンドで支持します">
-              <input type="checkbox" data-testid="auto-underfloor-slope" checked={autoUfSlope} onChange={(e) => st.setAutoUnderfloorSlope(e.target.checked)} /> 床下は土間から自動で勾配</label>
-          )}
           <label className="field inline">高さ<select data-testid="draw-height" value={drawHeight} onChange={(e) => st.setDrawHeight(Number(e.target.value))}>
             {[...HEIGHT_PRESETS, ...(HEIGHT_PRESETS.some((h) => h.z === drawHeight) ? [] : [{ label: '指定', z: drawHeight }])].map((h) => <option key={h.label} value={h.z}>{h.label}（{h.z}mm）</option>)}</select></label>
         </>
@@ -570,7 +565,7 @@ function SegmentSlopeInput({ segId }: { segId: string }) {
         <input data-testid="seg-slope-input" inputMode="numeric" size={5} value={text} placeholder={String(Math.round(1 / defaultSlope(seg.diameter)))}
           onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); } }} />
       </label>
-      <label className="small inline"><input type="checkbox" data-testid="seg-slope-lock" checked={!!seg.slopeLocked} onChange={(e) => st.setSegmentSlopeLocked(segId, e.target.checked)} /> 勾配を固定</label>
+      <label className="small inline"><input type="checkbox" data-testid="seg-slope-lock" checked={isSlopePinned(seg)} onChange={(e) => st.setSegmentSlopeLocked(segId, e.target.checked)} /> 勾配を固定</label>
       <label className="small inline" title="申請図面では既設を青、新設・増設を赤で描きます"><input type="checkbox" data-testid="seg-existing" checked={!!seg.existing} onChange={(e) => st.updateSegment(segId, { existing: e.target.checked || undefined })} /> 既設</label>
       <span className="muted small">固定すると、上流の高さを変えても下流端がこの勾配で動きます</span>
     </div>
@@ -609,17 +604,14 @@ function SupportFields({ segId }: { segId: string }) {
     <>
       {slope !== null && (
         <div className={`small ${!slopeEnough(doc.network, seg, need) || slope > maxSlope(seg.diameter) ? 'warn' : ''}`} data-testid="seg-slope">
-          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}${seg.slopeLocked ? ' 🔒' : ''}）` : ''}
+          勾配 {slope < 1e-6 ? '水平' : slopeLabel(slope)}{seg.slope ? `（設計 ${slopeLabel(seg.slope)}${isSlopePinned(seg) ? ' 📌' : ''}）` : ''}
           {!slopeEnough(doc.network, seg, need) && `　⚠ φ${seg.diameter} の最小勾配 ${slopeLabel(need)} より緩い（流末の点を選んで勾配をつけてください）`}
           {slope > maxSlope(seg.diameter) && `　⚠ 急すぎる勾配（φ${seg.diameter} は ${slopeLabel(maxSlope(seg.diameter))} まで。流速が標準の 1.5m/秒を超え、水だけ流れて汚物が残ります。高さを下げる所は立て管やドロップますで）`}
         </div>
       )}
       {slope !== null && <SegmentSlopeInput key={`${segId}:${seg.slope ?? ''}`} segId={segId} />}
       {uf && (
-        <div className="row">
-          <span className="small muted" data-testid="seg-underfloor">床下の排水: 土間から管底 {uf.lo}〜{uf.hi}mm（レベルバンドの高さ）</span>
-          <button data-testid="underfloor-slope" title="この配管につながる床下の排水を、床下から出る所（土間）を起点に器具の方へ 2/100（足りなければ 1.5/100）で付け直します" onClick={() => st.slopeUnderfloorDrains(seg.a)}>📐 土間から勾配をつけ直す</button>
-        </div>
+        <div className="small muted" data-testid="seg-underfloor">床下の排水: 土間から管底 {uf.lo}〜{uf.hi}mm（レベルバンドの高さ）</div>
       )}
       <label className="field inline">支持金具
         <select data-testid="seg-support" value={seg.support ?? 'auto'} onChange={(e) => st.setSegmentSupport(segId, { support: e.target.value === 'auto' ? null : (e.target.value as 'saddle' | 'levelBand' | 'tBracket' | 'none') })}>
