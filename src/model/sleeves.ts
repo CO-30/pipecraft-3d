@@ -130,6 +130,10 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
       rows.push(rowOf(s, h, floors.indexOf(h.floor)));
     }
   }
+  // 外周の基礎に重ねて置いた立上りの部材は、外周と同じ所（250mm 以内）なら外周の 1 か所にまとめる
+  const outer = rows.filter((r) => r.part === 'footingOuter');
+  const kept = rows.filter((r) => r.part !== 'footing' || !outer.some((o) => Math.hypot(o.point.x - r.point.x, o.point.y - r.point.y) < 250 && Math.abs(o.point.z - r.point.z) < 250));
+  rows.length = 0; rows.push(...kept);
   rows.sort((x, y) => x.order - y.order || PART_ORDER.indexOf(x.part) - PART_ORDER.indexOf(y.part) || x.point.y - y.point.y || x.point.x - y.point.x);
   return rows.map(({ order: _o, ...r }, i) => ({ ...r, no: i + 1 }));
 }

@@ -59,6 +59,13 @@ describe('スリーブ表の拾い出し', () => {
     expect(rows.map((x) => x.part).sort()).toEqual(['beam', 'footing', 'interiorWall']);
     expect(rows.map((x) => x.no)).toEqual([1, 2, 3]);
   });
+  test('外周の基礎に重ねて置いた「基礎の立上り」の部材は、外周と同じ 1 か所', () => {
+    let b = house();
+    b = withMember(b, { kind: 'footing', floorId: b.floors[0].id, a: { x: 0, y: 0 }, b: { x: 0, y: 7280 }, width: 150, z0: -600, z1: -50 }).b;
+    const net = addPolyline(emptyNetwork(), [v(-1000, 1000, -300), v(1000, 1000, -300)], W).net;
+    const rows = sleeveSchedule(docOf(b, net));
+    expect(rows.map((r) => r.part)).toEqual(['footingOuter']);
+  });
   test('壁の線の上で折れる配管は 1 か所と数える', () => {
     const b = house();
     const net = addPolyline(emptyNetwork(), [v(-1000, 1000, -300), v(0, 1000, -300), v(1000, 2000, -300)], W).net;

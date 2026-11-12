@@ -180,3 +180,18 @@ describe('見取図でも文字が重ならない', () => {
     }
   });
 });
+
+describe('スリーブ表でも文字が重ならない', () => {
+  test('給水・給湯の床下ルート（基礎の外周と立上り）', async () => {
+    const { supplyHouse } = await import('../model/testSupplyHouse');
+    const { routeSupplies } = await import('../model/supplyRoute');
+    const { sleeveSchedule } = await import('../model/sleeves');
+    const { renderSleeveSheets } = await import('./sleeveSheet');
+    const r = routeSupplies(supplyHouse().doc);
+    const rows = sleeveSchedule(r.doc);
+    expect(rows.length).toBeGreaterThan(2);
+    const out = renderSleeveSheets(r.doc, rows, meta);
+    expect(out.collisions).toBe(0);
+    for (const sh of out.sheets) expect(findTextOverlaps(sh)).toEqual([]);
+  });
+});
