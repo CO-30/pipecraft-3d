@@ -11,23 +11,27 @@ export type ShownCompare = Comparison & {
 // 2D・3D・帯の 3 か所で使うので、同じ図面・同じ版なら 1 回だけ比べる
 let cache: { net: Doc['network']; fx: Doc['fixtures']; bld: Doc['building']; target: CompareTarget; out: ShownCompare } | null = null;
 
-/** 比べている版と今の違い（比べていなければ null） */
+/** 比べている版と今の違い（比べていなければ null）。比べていないときは図面の変化で描き直さない */
 export function useCompare(): ShownCompare | null {
-  const doc = useStore((s) => s.doc);
   const target = useStore((s) => s.compare);
-  return compute(doc, target);
+  const net = useStore((s) => (s.compare ? s.doc.network : null));
+  const fx = useStore((s) => (s.compare ? s.doc.fixtures : null));
+  const bld = useStore((s) => (s.compare ? s.doc.building : null));
+  const dragging = useStore((s) => s.dragBase !== null);
+  return compute(target, net, fx, bld, dragging);
 }
 
-function compute(doc: Doc, target: CompareTarget | null): ShownCompare | null {
-  if (!target) return null;
-  if (cache && cache.net === doc.network && cache.fx === doc.fixtures && cache.bld === doc.building && cache.target === target) return cache.out;
-  const c = compareDocs(target.doc, doc);
+function compute(target: CompareTarget | null, net: Doc['network'] | null, fx: Doc['fixtures'] | null, bld: Doc['building'] | null, dragging: boolean): ShownCompare | null {
+  if (!target || !net || !fx || !bld) return null;
+  // ドラッグ中は前の結果のまま（離したら比べ直す）
+  if (cache && cache.target === target && ((cache.net === net && cache.fx === fx && cache.bld === bld) || dragging)) return cache.out;
+  const c = compareDocs(target.doc, { building: bld, network: net, fixtures: fx });
   const out: ShownCompare = {
     ...c, target,
     addedSegs: new Set(c.segments.added), changedSegs: new Set(c.segments.changed.map((x) => x.id)),
     addedFx: new Set(c.fixtures.added), movedFx: new Set([...c.fixtures.moved.map((x) => x.id), ...c.fixtures.changed.map((x) => x.id)]),
   };
-  cache = { net: doc.network, fx: doc.fixtures, bld: doc.building, target, out };
+  cache = { net, fx, bld, target, out };
   return out;
 }
 

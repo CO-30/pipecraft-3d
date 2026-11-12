@@ -806,12 +806,14 @@ export function PlanView() {
         );
       })}
       {/* 比較: 版にあって今は無い管（赤の破線） */}
-      {cmp && cmp.segments.removed.map((id) => {
-        const on = cmp.target.doc.network, sg = on.segments[id];
-        const pa = on.nodes[sg.a].pos, pb = on.nodes[sg.b].pos;
-        if (!onThisFloor(pa.z) && !onThisFloor(pb.z)) return null;
+      {cmp && [
+        ...cmp.segments.removed.map((id) => { const on = cmp.target.doc.network, sg = on.segments[id]; return { key: 'rm' + id, id, pa: on.nodes[sg.a].pos, pb: on.nodes[sg.b].pos }; }),
+        ...cmp.segments.removedParts.map((r, i) => ({ key: `rp${r.oldId}-${i}`, id: r.oldId, pa: r.a, pb: r.b })),
+      ].map(({ key, id, pa, pb }) => {
+        // 立て管が階をまたぐときも出す（両端の高さの範囲で見る）
+        if (!zRange(Math.min(pa.z, pb.z), Math.max(pa.z, pb.z))) return null;
         const a = toScreen(pa), b = toScreen(pb);
-        return <line key={'rm' + id} data-diff-old={id} data-diff="removed" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={DIFF_COLOR.removed} strokeWidth={4} strokeDasharray="8 5" strokeLinecap="round" opacity={0.85} pointerEvents="none" />;
+        return <line key={key} data-diff-old={id} data-diff="removed" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={DIFF_COLOR.removed} strokeWidth={4} strokeDasharray="8 5" strokeLinecap="round" opacity={0.85} pointerEvents="none" />;
       })}
       {showNotes && notes && Object.values(notes).filter((n) => n.floorId === floorId).sort((a, b) => (isSel('note', a.id) ? 1 : 0) - (isSel('note', b.id) ? 1 : 0)).map((n) => {
         const q = toScreen(n);

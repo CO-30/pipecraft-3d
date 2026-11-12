@@ -542,10 +542,17 @@ export const useStore = create<State>((set, get) => {
     compare: null,
     setCompare: (compare) => set({ compare }),
     restoreProject: (p) => {
-      const next = projectToDoc(p);
-      const doc = get().doc;
-      commit(next, { selection: null, compare: null, trace: null, activeFloorId: next.building.floors.some((f) => f.id === get().activeFloorId) ? get().activeFloorId : next.building.floors[0]?.id ?? '' });
-      if (get().doc === doc) set({ compare: null });
+      const { doc, past } = get();
+      // 版には下敷きの画像・外壁の写真を入れていないので、今のものを使う
+      const v = projectToDoc(p);
+      const elevations = Object.fromEntries(Object.entries(v.elevations ?? {}).map(([k, e]) => [k, e.photo || !doc.elevations?.[k]?.photo ? e : { ...e, photo: doc.elevations[k].photo }]));
+      // 排水は版だけで計算し直す（今との差でマスを自動で足さない）。履歴 1 件
+      const r = solveDoc({ ...v, underlays: doc.underlays ?? {}, elevations });
+      const next = r.doc;
+      const floorOk = next.building.floors.some((f) => f.id === get().activeFloorId);
+      set({ doc: next, drainIssues: r.issues, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1,
+        selection: null, compare: null, trace: null, hiddenIds: [], ghostIds: [], activeUnderlayId: null, dimWizard: null, pendingMerge: null, dragBase: null,
+        activeElevationId: fixElev(next), activeFloorId: floorOk ? get().activeFloorId : next.building.floors[0]?.id ?? '' });
     },
     showNotes: true,
     setShowNotes: (showNotes) => set({ showNotes }),
