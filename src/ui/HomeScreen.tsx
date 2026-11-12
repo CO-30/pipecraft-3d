@@ -3,6 +3,7 @@ import { repo } from '../storage/instance';
 import type { ProjectSummary } from '../storage/repository';
 import { NewProjectDialog, type NewProjectInput } from './NewProjectDialog';
 import { HelpDialog } from './HelpDialog';
+import { FeedbackBox } from '../feedback/FeedbackBox';
 
 const fmt = (t: number) => new Date(t).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -88,7 +89,7 @@ export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string
         <ul className="plist">
           {filtered.map((p) => (
             <li key={p.id} data-testid="project-item">
-              <button className="pmain" onClick={() => onOpen(p.id)}>
+              <button className="pmain" data-fb="工事を開く" onClick={() => onOpen(p.id)}>
                 <span className="pname">{p.name}</span>
                 <span className="pmeta">{p.address ? `${p.address}・` : ''}更新 {fmt(p.updatedAt)}</span>
               </button>
@@ -105,6 +106,7 @@ export function HomeScreen({ onOpen, onCreate, onSample }: { onOpen: (id: string
           ))}
         </ul>
       )}
+      <section className="home-feedback"><FeedbackBox id="feedback" /></section>
       <div className="muted small build-stamp" data-testid="build-stamp">版: {typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中'}</div>
       {help && <HelpDialog onClose={() => setHelp(false)} />}
       {creating && <NewProjectDialog onCancel={() => setCreating(false)} onSubmit={(v) => {

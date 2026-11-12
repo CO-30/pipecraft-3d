@@ -92,7 +92,7 @@ export function NotesList() {
           const first = n.text.trim().split('\n')[0] || '（本文なし）';
           return (
             <li key={n.id}>
-              <button data-testid="note-row" data-note={n.id} className={`${selId === n.id ? 'on' : ''} ${n.done ? 'done' : ''}`}
+              <button data-testid="note-row" data-fb="メモの一覧から選ぶ" data-note={n.id} className={`${selId === n.id ? 'on' : ''} ${n.done ? 'done' : ''}`}
                 onClick={() => { if (st.activeFloorId !== n.floorId) st.setActiveFloor(n.floorId); if (n.under !== st.underFloor && !n.target) st.setUnderFloor(!!n.under); st.setShowNotes(true); st.select({ kind: 'note', id: n.id }); }}>
                 <span className={`note-badge ${n.done ? 'done' : ''}`}>{nums.get(n.id)}</span>{n.done && <span className="note-done-mark" aria-label="済">✓</span>}
                 <span className="note-row-text"><small>{floor}{tl ? `・${tl}` : ''}</small>{first}</span>

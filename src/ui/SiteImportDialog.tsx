@@ -81,7 +81,7 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
         </div>
         {places && places.length === 0 && <p className="muted">見つかりませんでした。番地まで入れるか、緯度・経度で指定してください。</p>}
         {places && places.length > 1 && !place && (
-          <ul className="plist">{places.map((p, i) => <li key={i}><button className="pmain" data-testid="site-place" onClick={() => void choose(p)}>{p.title}</button></li>)}</ul>
+          <ul className="plist">{places.map((p, i) => <li key={i}><button className="pmain" data-testid="site-place" data-fb="住所の候補を選ぶ" onClick={() => void choose(p)}>{p.title}</button></li>)}</ul>
         )}
         {place && (
           <>
@@ -93,7 +93,7 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
               : (
                 <>
                   <label className="field inline">建物
-                    <select data-testid="site-fp" value={fpIdx} onChange={(e) => setFpIdx(Number(e.target.value))}>
+                    <select data-testid="site-fp" data-fb-skip value={fpIdx} onChange={(e) => setFpIdx(Number(e.target.value))}>
                       {fps.map((f, i) => <option key={f.id} value={i}>{pointInRing({ x: 0, y: 0 }, f.polygon) ? '★ 検索地点の建物' : `建物${i + 1}`}{f.name ? `（${f.name}）` : ''} 約{Math.round(polygonArea(f.polygon) / 1e6)}㎡・{f.polygon.length}角</option>)}
                     </select></label>
                   <label className="field inline">軒の出の補正（内側へ）<span className="unit-input"><input type="number" inputMode="numeric" data-testid="site-eave" value={eave} onChange={(e) => setEave(e.target.value)} /><span>mm</span></span></label>
