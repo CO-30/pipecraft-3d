@@ -46,6 +46,25 @@ describe('スリーブ表の用紙', () => {
     expect(texts(sheets[1].ops)).toContain('スリーブ');
     for (const sh of sheets) expect(findTextOverlaps(sh)).toEqual([]);
   });
+  test('壁の無い階の立て管だけでも位置図が建物の大きさで、縮尺がまともで、表に位置の列', () => {
+    const doc = site(0);
+    const f2 = doc.building.floors[1].id;
+    doc.building = { ...doc.building, walls: Object.fromEntries(Object.entries(doc.building.walls).filter(([, w]) => w.floorId !== f2)) };
+    const rows = sleeveSchedule(doc);
+    const { sheets } = renderSleeveSheets(doc, rows, meta);
+    const t = texts(sheets.at(-1)!.ops);
+    const sc = t.find((s) => s.startsWith('縮尺'))!;
+    expect(Number(/1\/(\d+)/.exec(sc)![1])).toBeGreaterThanOrEqual(10);
+    expect(t).toContain('位置 X,Y(m)');
+  });
+  test('建物から遠くへ延びる配管も位置図の枠の中だけに描く', () => {
+    const doc = site(2);
+    doc.network = addPolyline(doc.network, [v(4000, 3000, -300), v(4000, -20000, -300)], { system: 'sewage', diameter: 100, material: 'VU' }).net;
+    const { sheets } = renderSleeveSheets(doc, sleeveSchedule(doc), meta);
+    for (const o of sheets[0].ops) if (o.t === 'line' && o.color && o.color !== '#1f2328') {
+      for (const y of [o.y1, o.y2]) expect(y).toBeLessThanOrEqual(22 + 168 + 0.01);
+    }
+  });
   test('スリーブが無ければ用紙なし', () => {
     expect(renderSleeveSheets(site(0), [], meta).sheets).toEqual([]);
   });

@@ -1,7 +1,8 @@
 /**
  * 配管どうしの干渉（3D で管が重なっている所）。管は外径の円柱として、中心線どうしの最短距離 < 半径の和 で判定する。
  * つながっている区間（同じ点を持つ・ごく短い継手をはさんで続く）は除く。
- * 柔らかい管（PB・架橋ポリ）どうしが角度をもって交わる所は、上下にずらして通すので除く（平行に重なるのは干渉）。
+ * 柔らかい管（PB・架橋ポリ）どうしが角度をもって交わる所は、上下にずらして通すので除く（平行に重なる・立て管が貫くのは干渉）。
+ * 同じ重なりが分割された区間ごとに出ないよう、隣り合う区間どうしの干渉は 1 つにまとめる（重なりのいちばん大きいもの）。
  */
 import type { Doc } from './doc';
 import type { Segment, Vec3 } from './network';
@@ -60,6 +61,8 @@ export function findPipeClashes(doc: Doc): PipeClash[] {
     const a = d(A), b = d(B), la = Math.hypot(a.x, a.y, a.z), lb = Math.hypot(b.x, b.y, b.z);
     return la > 1e-6 && lb > 1e-6 && Math.abs(dot(a, b)) / (la * lb) < Math.cos((20 * Math.PI) / 180);
   };
+  /** ほぼ水平（勾配 1/5 より緩い） */
+  const horizontal = (s: Segment) => { const d = sub(net.nodes[s.b].pos, net.nodes[s.a].pos); return Math.abs(d.z) <= Math.hypot(d.x, d.y) * 0.2; };
   const box = segs.map((s) => {
     const p = net.nodes[s.a].pos, q = net.nodes[s.b].pos, rr = r(s);
     return { s, x0: Math.min(p.x, q.x) - rr, x1: Math.max(p.x, q.x) + rr, y0: Math.min(p.y, q.y) - rr, y1: Math.max(p.y, q.y) + rr, z0: Math.min(p.z, q.z) - rr, z1: Math.max(p.z, q.z) + rr };
@@ -72,12 +75,29 @@ export function findPipeClashes(doc: Doc): PipeClash[] {
       if (B.y0 > A.y1 || B.y1 < A.y0 || B.z0 > A.z1 || B.z1 < A.z0) continue;
       const sum = r(A.s) + r(B.s);
       if (connected(A.s, B.s, sum * 2)) continue;
-      if (flexible(A.s) && flexible(B.s) && crossing(A.s, B.s)) continue;
+      if (flexible(A.s) && flexible(B.s) && horizontal(A.s) && horizontal(B.s) && crossing(A.s, B.s)) continue;
       const c = closestPoints(net.nodes[A.s.a].pos, net.nodes[A.s.b].pos, net.nodes[B.s.a].pos, net.nodes[B.s.b].pos);
       const overlap = sum - c.dist;
       if (overlap <= 1) continue;
       out.push({ segA: A.s.id, segB: B.s.id, point: { x: (c.c1.x + c.c2.x) / 2, y: (c.c1.y + c.c2.y) / 2, z: (c.c1.z + c.c2.z) / 2 }, overlap });
     }
   }
-  return out;
+  return mergeAdjacent(out, (a, b) => {
+    const x = net.segments[a], y = net.segments[b];
+    return a === b || (!!x && !!y && (x.a === y.a || x.a === y.b || x.b === y.a || x.b === y.b));
+  });
+}
+
+/** 隣り合う区間（同じ点を持つ）どうしの干渉を 1 つにまとめる。代表は重なりのいちばん大きいもの */
+function mergeAdjacent(list: PipeClash[], adj: (a: string, b: string) => boolean): PipeClash[] {
+  const parent = list.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const p = list[i], q = list[j];
+    const same = (adj(p.segA, q.segA) && adj(p.segB, q.segB)) || (adj(p.segA, q.segB) && adj(p.segB, q.segA));
+    if (same) parent[find(i)] = find(j);
+  }
+  const best = new Map<number, PipeClash>();
+  list.forEach((c, i) => { const r = find(i), cur = best.get(r); if (!cur || c.overlap > cur.overlap) best.set(r, c); });
+  return [...best.values()];
 }

@@ -71,6 +71,26 @@ describe('スリーブ表の拾い出し', () => {
     const net = addPolyline(emptyNetwork(), [v(-1000, 1000, -300), v(0, 1000, -300), v(1000, 2000, -300)], W).net;
     expect(sleeveSchedule(docOf(b, net))).toHaveLength(1);
   });
+  test('基礎の立上りの中で区切られた配管も 1 か所', () => {
+    let b = house();
+    b = withMember(b, { kind: 'footing', floorId: b.floors[0].id, a: { x: 2000, y: 0 }, b: { x: 2000, y: 7280 }, width: 150, z0: -600, z1: -50 }).b;
+    const net = addPolyline(emptyNetwork(), [v(1500, 4000, -300), v(2000, 4000, -300), v(2500, 4000, -300)], D).net;
+    expect(sleeveSchedule(docOf(b, net)).map((r) => r.part)).toEqual(['footing']);
+  });
+  test('壁の継ぎ目（間仕切壁が当たる所）・外周の角を斜めに通る配管も 1 か所', () => {
+    let b = house();
+    b = addWall(b, b.floors[0].id, { x: 4000, y: 0 }, { x: 4000, y: 7280 }, { kind: 'interior', thickness: 120 }).b;
+    let net = addPolyline(emptyNetwork(), [v(3000, -1000, -300), v(5000, 1000, -300)], W).net; // 外壁の継ぎ目 (4000,0)
+    expect(sleeveSchedule(docOf(b, net)).map((r) => r.part)).toEqual(['footingOuter']);
+    net = addPolyline(emptyNetwork(), [v(-1000, -1000, -300), v(1000, 1000, -300)], W).net; // 角 (0,0)
+    expect(sleeveSchedule(docOf(b, net)).map((r) => r.part)).toEqual(['footingOuter']);
+  });
+  test('壁の線で終わって壁の中を下りる配管は貫通ではない', () => {
+    let b = house();
+    b = addWall(b, b.floors[0].id, { x: 4000, y: 0 }, { x: 4000, y: 7280 }, { kind: 'interior', thickness: 120 }).b;
+    const net = addPolyline(emptyNetwork(), [v(3000, 3000, 2600), v(4000, 3000, 2600), v(4000, 3000, 500)], W).net;
+    expect(sleeveSchedule(docOf(b, net))).toEqual([]);
+  });
   test('貫通の印が無い梁にぶつかる配管は拾わない（干渉として要確認に出る）', () => {
     let b = house();
     b = withMember(b, { kind: 'beam', floorId: b.floors[0].id, a: { x: 6000, y: 0 }, b: { x: 6000, y: 7280 }, width: 120, z0: 2500, z1: 2800 }).b;

@@ -44,6 +44,20 @@ describe('配管どうしの干渉', () => {
     const n2 = addPolyline(addPolyline(emptyNetwork(), [v(0, 0, -300), v(2000, 0, -300)], P).net, [v(1000, -1000, -300), v(1000, 1000, -300)], W).net;
     expect(findPipeClashes(docOf(n2))).toHaveLength(1);
   });
+  test('同じ干渉を区間ごとに何度も出さない（分割された管に沿う管・継ぎ目での交差）', () => {
+    let net = addPolyline(emptyNetwork(), [v(0, 0, -300), v(1000, 0, -300), v(2000, 0, -300), v(3000, 0, -300), v(4000, 0, -300)], D).net;
+    net = addPolyline(net, [v(500, 30, -300), v(3500, 30, -300)], W).net; // 30mm 横を沿う
+    expect(findPipeClashes(docOf(net))).toHaveLength(1);
+    let n2 = addPolyline(emptyNetwork(), [v(0, 0, -300), v(1000, 0, -300), v(2000, 0, -300)], D).net;
+    n2 = addPolyline(n2, [v(1000, -1000, -300), v(1000, 1000, -300)], W).net; // 継ぎ目で交差
+    expect(findPipeClashes(docOf(n2))).toHaveLength(1);
+  });
+  test('柔らかい管でも、立て管が横の管を貫くのは干渉', () => {
+    const P = { system: 'water' as const, diameter: 20, material: 'PB' };
+    let net = addPolyline(emptyNetwork(), [v(0, 0, -300), v(2000, 0, -300)], P).net;
+    net = addPolyline(net, [v(1000, 0, -800), v(1000, 0, 500)], { ...P, system: 'hotWater' as const }).net;
+    expect(findPipeClashes(docOf(net))).toHaveLength(1);
+  });
   test('積算の要確認に「干渉」として出る', () => {
     let net = addPolyline(emptyNetwork(), [v(0, 0, -300), v(2000, 0, -300)], D).net;
     net = addPolyline(net, [v(1000, -1000, -300), v(1000, 1000, -300)], W).net;

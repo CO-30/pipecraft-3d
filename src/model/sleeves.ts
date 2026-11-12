@@ -39,9 +39,12 @@ export function sleeveSize(od: number, system: SystemType): number {
   return SLEEVE_SIZES.find((s) => s >= need) ?? Math.ceil(need / 50) * 50;
 }
 
-type Hit = { part: SleevePart; partLabel?: string; floor: Floor; point: Vec3; key: string };
+type Hit = { part: SleevePart; partLabel?: string; floor: Floor; point: Vec3 };
 
 const lerp = (p: Vec3, q: Vec3, t: number): Vec3 => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t });
+
+/** 線 c-d に対して点がどちら側か（-1・0・1。0 は線の上） */
+const side = (c: Vec2, d: Vec2, r: Vec2) => { const v = (d.x - c.x) * (r.y - c.y) - (d.y - c.y) * (r.x - c.x); return Math.abs(v) < 1e-6 * Math.hypot(d.x - c.x, d.y - c.y) ? 0 : Math.sign(v); };
 
 /** 平面で配管 p-q が線 c-d を横切る（端で触れるのを含む）ときの配管上の t */
 function crossPlan(p: Vec3, q: Vec3, c: Vec2, d: Vec2): number | null {
@@ -84,11 +87,24 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
   if (!floors.length) return [];
   const f0 = floors[0];
   const rows: (Omit<SleeveRow, 'no'> & { order: number })[] = [];
-  const seen = new Set<string>();
   const members = membersOf(b);
   const outlines = new Map(floors.map((f) => [f.id, outline(b, f.id)]));
   const insideOf = (f: Floor, pt: Vec3) => { const o = outlines.get(f.id) ?? outlines.get(f0.id); return !!o && pointInPolygon(pt, o); };
 
+  const byNode = new Map<string, Segment[]>();
+  for (const s of Object.values(net.segments)) for (const n of [s.a, s.b]) byNode.set(n, [...(byNode.get(n) ?? []), s]);
+  /** 区間の端 nodeId が線 c-d の上にあるとき、その先の区間が反対側へ抜けるか（抜けなければ壁の中で終わる・下りるだけ） */
+  const passesThrough = (s: Segment, nodeId: string, c: Vec2, d: Vec2) => {
+    const far = net.nodes[nodeId === s.a ? s.b : s.a]?.pos;
+    const mine = far ? side(c, d, far) : 0;
+    if (!mine) return false;
+    return (byNode.get(nodeId) ?? []).some((o) => {
+      if (o.id === s.id) return false;
+      const f = net.nodes[o.a === nodeId ? o.b : o.a]?.pos;
+      return !!f && side(c, d, f) === -mine;
+    });
+  };
+  const all: (Hit & { s: Segment })[] = [];
   for (const s of Object.values(net.segments)) {
     const A = net.nodes[s.a], B = net.nodes[s.b];
     if (!A || !B) continue;
@@ -100,9 +116,12 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
       if (!f || !c || !d) continue;
       const t = crossPlan(p, q, c, d);
       if (t === null) continue;
+      // 端が壁の線の上: 次の区間が反対側へ抜けるときだけ（壁の中で終わる・下りるだけなら貫通ではない）
+      if (t < 1e-6 && !passesThrough(s, s.a, c, d)) continue;
+      if (t > 1 - 1e-6 && !passesThrough(s, s.b, c, d)) continue;
       const pt = lerp(p, q, t);
-      if (w.kind === 'exterior' && f.id === f0.id && pt.z < f0.elevation) hits.push({ part: 'footingOuter', floor: f0, point: pt, key: `w${w.id}` });
-      else if (pt.z >= f.elevation && pt.z < f.elevation + f.height) hits.push({ part: w.kind === 'exterior' ? 'exteriorWall' : 'interiorWall', floor: f, point: pt, key: `w${w.id}` });
+      if (w.kind === 'exterior' && f.id === f0.id && pt.z < f0.elevation) hits.push({ part: 'footingOuter', floor: f0, point: pt });
+      else if (pt.z >= f.elevation && pt.z < f.elevation + f.height) hits.push({ part: w.kind === 'exterior' ? 'exteriorWall' : 'interiorWall', floor: f, point: pt });
     }
     // 基礎の立上り（部材）・貫通の印のある部材
     for (const m of members) {
@@ -112,7 +131,7 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
       if (!f) continue;
       const t = clipMember(m, f.elevation, p, q);
       if (t === null) continue;
-      hits.push({ part: isFoot ? 'footing' : m.kind === 'beam' ? 'beam' : 'member', partLabel: isFoot || m.kind === 'beam' ? undefined : MEMBER_LABEL[m.kind], floor: f, point: lerp(p, q, t), key: `m${m.id}` });
+      hits.push({ part: isFoot ? 'footing' : m.kind === 'beam' ? 'beam' : 'member', partLabel: isFoot || m.kind === 'beam' ? undefined : MEMBER_LABEL[m.kind], floor: f, point: lerp(p, q, t) });
     }
     // 2 階以上の床（スラブの真ん中の高さ）・基礎スラブ
     const planes: { z: number; part: SleevePart; floor: Floor }[] = floors.slice(1).map((f) => ({ z: f.elevation - f.slabThickness / 2, part: 'floor' as const, floor: f }));
@@ -120,15 +139,15 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
     for (const pl of planes) {
       if ((p.z - pl.z) * (q.z - pl.z) > 0 || Math.abs(q.z - p.z) < 1e-9) continue;
       const pt = lerp(p, q, (pl.z - p.z) / (q.z - p.z));
-      if (insideOf(pl.floor, pt)) hits.push({ part: pl.part, floor: pl.floor, point: pt, key: `${pl.part}${pl.floor.id}` });
+      if (insideOf(pl.floor, pt)) hits.push({ part: pl.part, floor: pl.floor, point: pt });
     }
-    for (const h of hits) {
-      // 同じ所（壁の線の上で折れる配管の前後の区間など）は 1 つ
-      const k = `${h.key}|${Math.round(h.point.x / 20)}|${Math.round(h.point.y / 20)}|${Math.round(h.point.z / 20)}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      rows.push(rowOf(s, h, floors.indexOf(h.floor)));
-    }
+    for (const h of hits) all.push({ ...h, s });
+  }
+  // 同じ所は 1 つ: 同じ部位・同じ管（系統と口径）で 80mm 以内（壁の継ぎ目・角、部材の中で区切られた配管の前後など）
+  for (const h of all) {
+    const dup = rows.some((r) => r.part === h.part && r.system === h.s.system && r.diameter === h.s.diameter
+      && Math.hypot(r.point.x - h.point.x, r.point.y - h.point.y) < 80 && Math.abs(r.point.z - h.point.z) < 80);
+    if (!dup) rows.push(rowOf(h.s, h, floors.indexOf(h.floor)));
   }
   // 外周の基礎に重ねて置いた立上りの部材は、外周と同じ所（250mm 以内）なら外周の 1 か所にまとめる
   const outer = rows.filter((r) => r.part === 'footingOuter');
