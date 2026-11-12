@@ -395,3 +395,6 @@ header .lbl { margin-left: 2px; }
 .asbuilt-list ol { margin: 4px 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
 .asbuilt-list li > * { margin-right: 8px; }
 .asbuilt-list li { display: flex; flex-wrap: wrap; align-items: center; }
+/* 申請画面の図の種類: 文字は折らず、ボタンごと 2 段に並べる（スマホで 1 字ずつ縦に折れず、全部見える） */
+.shinsei-kinds { max-width: 100%; flex-wrap: wrap; row-gap: 4px; }
+.shinsei-kinds button { white-space: nowrap; flex: none; }
