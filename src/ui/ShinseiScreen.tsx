@@ -26,6 +26,8 @@ import { suggestDiameters } from '../model/hydraulics/suggest';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { renderSuiriSheets } from '../export/suiriSheet';
 import { SuiriPanel } from './SuiriPanel';
+import { MAT_AXIS_LABEL, materialSummary, type MatAxis } from '../model/materialSummary';
+import { renderMaterialSheets } from '../export/materialSheet';
 import { sleeveSchedule } from '../model/sleeves';
 import { renderSleeveSheets } from '../export/sleeveSheet';
 import { findPipeClashes } from '../model/clash';
@@ -38,7 +40,7 @@ import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } fro
 import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
 import type { LocationBuild } from '../import/locationMap';
 
-type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve';
+type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve' | 'material';
 const PROFILE_TITLE = '排水設備 縦断図';
 const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
@@ -150,6 +152,18 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const suiriSuggest = useMemo(() => (suiri && !('error' in suiri) && !suiri.ok ? suggestDiameters(doc, suiriRules, suiriSettings) : null), [suiri, doc, suiriRules, suiriSettings]);
   const setSuiri = (patch: Partial<SuiriSettings>) => updateSite({ application: writeSuiriSettings(doc.site?.application, patch) });
 
+  // 材料集計表の分け方（site.application の zairyo.axis）
+  const axisRaw = doc.site?.application?.['zairyo.axis'];
+  const matAxis: MatAxis = axisRaw === 'floor' || axisRaw === 'status' ? axisRaw : 'place';
+  const setMatAxis = (a: MatAxis) => updateSite({ application: { ...(doc.site?.application ?? {}), 'zairyo.axis': a } });
+  const downloadMaterialXlsx = async () => {
+    setBusy('xlsx'); setErr('');
+    try {
+      const [{ materialXlsx }, { downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/materialSheet'), import('../export/download'), import('../export/report')]);
+      downloadBytes(await materialXlsx(materialSummary(doc, matAxis), { siteName, date }), `${safeName(siteName)}_材料集計表_${dateStamp(new Date())}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    } catch (e) { setErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`); } finally { setBusy(''); }
+  };
+
   // 見取図（案内図）。場所と縮尺は site.application の mitori.*、地図はその都度取り込む（端末のメモリだけ）
   const mapSettings: MapSettings = useMemo(() => readMapSettings(doc.site?.application), [doc.site?.application]);
   const setMap = (patch: Partial<MapSettings>) => updateSite({ application: writeMapSettings(doc.site?.application, patch) });
@@ -190,6 +204,13 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
 
   const built0: ShinseiBuild = useMemo(() => {
     if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
+    if (kind === 'material') {
+      // 材料集計表: 管・部品・器具・マスを分け方（屋内外／階／新設既設）の列で
+      const sum = materialSummary(doc, matAxis);
+      const sheets = renderMaterialSheets(sum, { siteName, date });
+      if (!sheets.length) return { sheets: [], svg: '', warnings: [], error: '材料（配管・器具）がありません。図面で配管や器具を置いてください', kind };
+      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: sum.warnings, error: null, kind };
+    }
     if (kind === 'sleeve') {
       // スリーブ表: 配管が構造（基礎・梁・壁・床）を通る所。干渉があれば知らせる（積算の要確認から場所へ移動できる）
       const rows = sleeveSchedule(doc);
@@ -296,7 +317,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     }
     if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
     return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
-  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey]);
+  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis]);
 
   // 竣工図の印（縦断図・立面図だけ）。SVG はここで作り直す
   const built: ShinseiBuild = useMemo(() => {
@@ -316,7 +337,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     setBusy(fmt); setErr('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'sleeve' ? 'スリーブ表' : '立面図'}_${dateStamp(new Date())}`;
+      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'material' ? '材料集計表' : kind === 'sleeve' ? 'スリーブ表' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'svg') {
         // 枝が別図のときは、ページを縦に並べた 1 つの SVG
         downloadBytes(new TextEncoder().encode(sheetsToSvg(built.sheets)), `${base}.svg`, 'image/svg+xml');
@@ -361,10 +382,20 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
           <button data-testid="shinsei-kind-suiri" className={kind === 'suiri' ? 'on' : ''} onClick={() => setKind('suiri')}>水理計算書</button>
           <button data-testid="shinsei-kind-sleeve" className={kind === 'sleeve' ? 'on' : ''} onClick={() => setKind('sleeve')}>スリーブ表</button>
+          <button data-testid="shinsei-kind-material" className={kind === 'material' ? 'on' : ''} onClick={() => setKind('material')}>材料表</button>
           <button data-testid="shinsei-kind-mitori" className={kind === 'mitori' ? 'on' : ''} onClick={() => setKind('mitori')}>見取図</button>
           <button data-testid="shinsei-kind-forms" className={kind === 'forms' ? 'on' : ''} onClick={() => setKind('forms')}>申請書</button>
         </div>
-        {kind === 'forms' || kind === 'sleeve' ? null : kind === 'mitori' ? (
+        {kind === 'forms' || kind === 'sleeve' ? null : kind === 'material' ? (
+          <>
+            <label className="field inline">分け方
+              <select data-testid="material-axis" value={matAxis} onChange={(e) => setMatAxis(e.target.value as MatAxis)}>
+                {(Object.keys(MAT_AXIS_LABEL) as MatAxis[]).map((a) => <option key={a} value={a}>{MAT_AXIS_LABEL[a]}</option>)}
+              </select>
+            </label>
+            <button data-testid="material-xlsx" disabled={!!busy || !!built.error} onClick={() => void downloadMaterialXlsx()}>{busy === 'xlsx' ? '作成中…' : 'Excel'}</button>
+          </>
+        ) : kind === 'mitori' ? (
           <LocationPanel settings={mapSettings} defaultQuery={siteAddress} onChange={setMap} />
         ) : kind === 'suiri' ? (
           <SuiriPanel calc={suiri && !('error' in suiri) ? suiri : null} rules={suiriRules} settings={suiriSettings} onChange={setSuiri} suggestion={suiriSuggest}
