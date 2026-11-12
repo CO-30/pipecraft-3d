@@ -48,6 +48,20 @@ describe('材料集計表の用紙', () => {
     expect(texts(sheets[1].ops)).toContain('品名');
     for (const sh of sheets) expect(findTextOverlaps(sh)).toEqual([]);
   });
+  test('階が多い（9 階）と A4 横になり、仕様の列が細くなりすぎず、文字が重ならない', () => {
+    let b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 9, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    let net = emptyNetwork();
+    b.floors.forEach((f, i) => { net = addPolyline(net, [v(500, 500 + i * 300, f.elevation + 300), v(3000, 500 + i * 300, f.elevation + 300)], { system: i % 2 ? 'hotWater' : 'water', diameter: 20, material: 'HIVP' }).net; });
+    net = addPolyline(net, [v(500, 5500, -400), v(3000, 5500, -400)], { system: 'water', diameter: 20, material: 'HIVP' }).net; // 床下
+    const doc: Doc = { building: b, network: net, fixtures: {} };
+    const sheets = renderMaterialSheets(materialSummary(doc, 'floor'), meta);
+    expect([sheets[0].width, sheets[0].height]).toEqual([297, 210]);
+    for (const sh of sheets) expect(findTextOverlaps(sh)).toEqual([]);
+    const t = texts(sheets[0].ops);
+    expect(t).toContain('床下・地中');
+    expect(t.some((x) => x === 'HIVP φ20')).toBe(true);
+    void b;
+  });
   test('材料が無ければ用紙なし', () => {
     const doc: Doc = { building: createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 }), network: emptyNetwork(), fixtures: {} };
     expect(renderMaterialSheets(materialSummary(doc, 'place'), meta)).toEqual([]);

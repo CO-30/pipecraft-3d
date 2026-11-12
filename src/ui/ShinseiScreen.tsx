@@ -203,9 +203,10 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
     if (kind === 'material') {
       // 材料集計表: 管・部品・器具・マスを分け方（屋内外／階／新設既設）の列で
-      const sheets = renderMaterialSheets(materialSummary(doc, matAxis), { siteName, date });
+      const sum = materialSummary(doc, matAxis);
+      const sheets = renderMaterialSheets(sum, { siteName, date });
       if (!sheets.length) return { sheets: [], svg: '', warnings: [], error: '材料（配管・器具）がありません。図面で配管や器具を置いてください', kind };
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: [], error: null, kind };
+      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: sum.warnings, error: null, kind };
     }
     if (kind === 'mitori') {
       if (mapSettings.lat === undefined) return { sheets: [], svg: '', warnings: [], error: '工事場所が決まっていません。住所を入れて「探す」を押してください（緯度,経度でも指定できます）', kind };

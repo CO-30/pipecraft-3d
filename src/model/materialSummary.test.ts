@@ -64,4 +64,49 @@ describe('材料集計表', () => {
     expect(materialSummary(empty, 'place').sections).toEqual([]);
     void addFloor;
   });
+
+  test('既設の本管に新しく分岐したチーズは新設', () => {
+    const doc = site();
+    let r = addPolyline(emptyNetwork(), [v(1000, 3000, 200), v(3000, 3000, 200), v(5000, 3000, 200)], W);
+    const mid = r.nodeIds[1];
+    const mains = [...r.segmentIds];
+    r = addPolyline(r.net, [v(3000, 3000, 200), v(3000, 5000, 200)], W, { startNodeId: mid });
+    for (const id of mains) r.net.segments[id] = { ...r.net.segments[id], existing: true };
+    doc.network = r.net;
+    const tee = materialSummary(doc, 'status').sections[0].items.find((i) => i.name === 'チーズ')!;
+    expect(tee.qty).toEqual({ new: 1 });
+  });
+  test('定尺の継ぎ足し（ソケット）は継ぎ目の場所の列', () => {
+    const doc = site();
+    doc.network = addPolyline(emptyNetwork(), [v(-1000, -2000, -900), v(-1000, -14000, -900)], D).net; // 外の地中 12m
+    doc.fixtures = {}; // 器具（屋内のトイレ）は無し: 列は地中だけになるはず
+    const s = materialSummary(doc, 'place');
+    const sock = s.sections.find((x) => x.title === '排水・通気')!.items.find((i) => i.name === 'ソケット')!;
+    expect(Object.keys(sock.qty)).toEqual(['buried']);
+    expect(s.columns.map((c) => c.key)).not.toContain('indoor');
+  });
+  test('外壁をまたぐ 1 本の区間は、またいだ所で分けて長さを按分', () => {
+    const doc = site();
+    doc.network = addPolyline(emptyNetwork(), [v(4000, 1000, -700), v(-6000, 1000, -700)], W).net; // 中 4m（床下）・外 6m（地中）
+    const it = materialSummary(doc, 'place').sections[0].items.find((i) => i.kind === 'pipe')!;
+    expect(it.qty.under).toBeCloseTo(4, 6); expect(it.qty.buried).toBeCloseTo(6, 6);
+  });
+  test('外壁の輪が閉じていないときは高さで分け、注意を出す', () => {
+    const doc = site();
+    const ext = Object.values(doc.building.walls).find((w) => w.kind === 'exterior')!;
+    const walls = { ...doc.building.walls }; delete walls[ext.id];
+    doc.building = { ...doc.building, walls };
+    doc.network = addPolyline(emptyNetwork(), [v(-3000, 3000, -900), v(-6000, 3000, -900)], D).net; // 地面より下
+    const s = materialSummary(doc, 'place');
+    expect(s.sections[0].items.find((i) => i.kind === 'pipe')!.qty).toEqual({ buried: 3 });
+    expect(s.warnings.join('')).toContain('外壁');
+  });
+  test('角マスは □、丸マスは φ', () => {
+    const doc = site();
+    const f = doc.building.floors[0].id;
+    const d2 = placeFixture(doc, f, 'manholeSewage', { x: -3000, y: 1000 }, 0, { shape: 'square', diameter: 250 }).doc;
+    const specs = materialSummary(d2, 'place').sections.find((x) => x.title === '排水・通気')!.items.filter((i) => i.kind === 'manhole').map((i) => i.spec).sort();
+    expect(specs).toEqual(['φ300', '□250']);
+  });
 });
+

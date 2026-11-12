@@ -3,12 +3,15 @@
  * 行があふれたら続きのページ（表の見出しと区分の見出しを繰り返す）。文字は LabelPlacer、セルの中は fitText。
  */
 import { MAT_AXIS_LABEL, type MatItem, type MatSummary } from '../model/materialSummary';
-import { at, LabelPlacer } from './labelLayout';
+import { at, LabelPlacer, textWidth } from './labelLayout';
 import { dateJa } from './report';
 import { fitText, GRAY, INK, type Sheet } from './sheet';
 
+/** A4 縦の 1 ページの行数（A4 横は用紙の高さから決める） */
 export const MATERIAL_ROWS_PER_PAGE = 40;
-const W = 210, H = 297, M = 12;
+const M = 12;
+/** 列の最小・最大の幅（mm） */
+const NAME_MIN = 30, SPEC_MIN = 36, SPEC_MAX = 48, COL_MIN = 12, COL_MAX = 18, UNIT_W = 9, TOTAL_W = 16;
 const TOP = 34, ROW_H = 5.6, SIZE = 2.6;
 
 const fmt = (it: MatItem, n: number | undefined) => (!n ? '' : it.unit === 'm' ? n.toFixed(2) : String(Math.round(n)));
@@ -17,15 +20,21 @@ type Line = { kind: 'section'; title: string; cont: boolean } | { kind: 'item'; 
 
 export function renderMaterialSheets(sum: MatSummary, meta: { siteName: string; date: Date }): Sheet[] {
   if (!sum.sections.length) return [];
-  // 列: 品名・仕様・分け方の列・計・単位（幅は列の数で決める）
+  // 列: 品名・仕様・分け方の列・計・単位。A4 縦に入らない列の数（階が多い）なら A4 横
   const nCols = sum.columns.length;
-  const unitW = 9, totalW = 17, colW = Math.min(18, Math.max(14, (W - M * 2 - 76 - totalW - unitW) / Math.max(1, nCols)));
-  const specW = Math.min(44, W - M * 2 - totalW - unitW - colW * nCols - 40);
-  const nameW = W - M * 2 - totalW - unitW - colW * nCols - specW;
+  const fixed = NAME_MIN + SPEC_MIN + UNIT_W + TOTAL_W;
+  const landscape = fixed + COL_MIN * nCols > 210 - M * 2;
+  const W = landscape ? 297 : 210, H = landscape ? 210 : 297;
+  const avail = W - M * 2;
+  const colW = Math.max(COL_MIN, Math.min(COL_MAX, (avail - fixed) / Math.max(1, nCols)));
+  const rest = avail - UNIT_W - TOTAL_W - colW * nCols;
+  const specW = Math.max(SPEC_MIN, Math.min(SPEC_MAX, rest * 0.5));
+  const nameW = rest - specW;
+  const rowsPerPage = landscape ? Math.floor((H - TOP - 16) / ROW_H) - 1 : MATERIAL_ROWS_PER_PAGE;
   const cols = [
     { k: '品名', w: nameW, align: 'start' as const }, { k: '仕様', w: specW, align: 'start' as const },
     ...sum.columns.map((c) => ({ k: c.label, w: colW, align: 'end' as const })),
-    { k: '計', w: totalW, align: 'end' as const }, { k: '単位', w: unitW, align: 'middle' as const },
+    { k: '計', w: TOTAL_W, align: 'end' as const }, { k: '単位', w: UNIT_W, align: 'middle' as const },
   ];
 
   // ページに分ける（区分の見出しはページの最後に残さない）
@@ -35,7 +44,7 @@ export function renderMaterialSheets(sum: MatSummary, meta: { siteName: string; 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     if (l.kind === 'section') section = l.title;
-    const full = cur.length >= MATERIAL_ROWS_PER_PAGE || (l.kind === 'section' && cur.length >= MATERIAL_ROWS_PER_PAGE - 1);
+    const full = cur.length >= rowsPerPage || (l.kind === 'section' && cur.length >= rowsPerPage - 1);
     if (full) { pages.push(cur); cur = l.kind === 'item' ? [{ kind: 'section', title: section, cont: true }] : []; }
     cur.push(l);
   }
@@ -53,7 +62,10 @@ export function renderMaterialSheets(sum: MatSummary, meta: { siteName: string; 
     let x = M;
     for (const c of cols) {
       sheet.ops.push({ t: 'rect', x, y: TOP, w: c.w, h: ROW_H, fill: '#f1f5f9', stroke: INK, lw: 0.25 });
-      P.place([at(x + c.w / 2, TOP + ROW_H - 1.7, { s: fitText(c.k, SIZE, c.w - 1.5), size: SIZE, bold: true }, 'middle')]);
+      // 細い列の見出しは、入るまで字を小さくする（1.8 まで。それでも長ければ … で切る）
+      let hs = SIZE;
+      while (hs > 1.8 && textWidth(c.k, hs) > c.w - 1) hs -= 0.1;
+      P.place([at(x + c.w / 2, TOP + ROW_H - 1.7, { s: fitText(c.k, hs, c.w - 1), size: hs, bold: true }, 'middle')]);
       x += c.w;
     }
     rows.forEach((l, i) => {
