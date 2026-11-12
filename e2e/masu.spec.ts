@@ -29,7 +29,7 @@ test('ます表: 縦断図と同じ番号・高さ・次のますまでの延長
   await page.getByTestId('shinsei-kind-masu').click();
   const preview = page.getByTestId('shinsei-preview');
   await expect(preview).toContainText('ます表');
-  for (const t of ['NO.1', 'NO.2', 'NO.3', '公共', '地盤高', '管底高', '3.00→NO.2', '2.00→公共']) await expect(preview).toContainText(t);
+  for (const t of ['NO.1', 'NO.2', 'NO.3', '公共', '地盤高', '管底高', '延長(m)', '次のます', '3.00', '2.00']) await expect(preview).toContainText(t);
   await page.screenshot({ path: evidence('masu-01') });
   if (!isMobile()) {
     const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByTestId('shinsei-pdf').click()]);
