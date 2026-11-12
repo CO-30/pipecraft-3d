@@ -132,7 +132,7 @@ export function UnderlayPanel() {
       {list.length > 0 && (
         <div className="chips" data-testid="ul-list">
           {list.map((u) => (
-            <button key={u.id} className={u.id === activeId ? 'on' : ''} onClick={() => st.setActiveUnderlay(u.id)}>
+            <button key={u.id} data-fb="下敷きを選ぶ" className={u.id === activeId ? 'on' : ''} onClick={() => st.setActiveUnderlay(u.id)}>
               {u.label || '下敷き'}{u.scaled ? '' : '（縮尺未確定）'}
             </button>
           ))}

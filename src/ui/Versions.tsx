@@ -171,7 +171,7 @@ export function CompareBar() {
       {open && (
         <ul className="compare-list" data-testid="compare-list">
           {rows.map((r) => (
-            <li key={r.key}><button data-testid="compare-row" data-kind={r.kind} onClick={r.go}><b style={{ color: DIFF_COLOR[r.kind] }}>{mark[r.kind]}</b> {r.text}</button></li>
+            <li key={r.key}><button data-testid="compare-row" data-fb="比較の一覧から選ぶ" data-kind={r.kind} onClick={r.go}><b style={{ color: DIFF_COLOR[r.kind] }}>{mark[r.kind]}</b> {r.text}</button></li>
           ))}
         </ul>
       )}

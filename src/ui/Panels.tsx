@@ -763,7 +763,7 @@ export function FloorBar({ compact = false }: { compact?: boolean }) {
           <button data-testid="underfloor-chip" className={underFloor ? 'on' : ''} title="1階の床の下（基礎の中）の配管を描く・見る" onClick={() => (underFloor ? st.setActiveFloor(floors[0].id) : st.setUnderFloor(true))}>床下</button>
         )}
         {floors.map((x) => (
-          <button key={x.id} data-testid="floor-chip" className={x.id === active && !underFloor ? 'on' : ''} onClick={() => st.setActiveFloor(x.id)}>{x.name}</button>
+          <button key={x.id} data-testid="floor-chip" data-fb="階を選ぶ" className={x.id === active && !underFloor ? 'on' : ''} onClick={() => st.setActiveFloor(x.id)}>{x.name}</button>
         ))}
         <button data-testid="add-floor" onClick={() => st.addFloor(true)} title="現在の階の外壁をコピーして上に階を追加">＋階</button>
         <ElevationChips />
@@ -803,7 +803,7 @@ function ElevationChips() {
     <>
       <span className="small muted elev-sep">立面</span>
       {list.map((e) => (
-        <button key={e.id} data-testid="elev-chip" className={e.id === active ? 'on' : ''} onClick={() => st.openElevation(e.id === active ? null : e.id)}>{e.label}</button>
+        <button key={e.id} data-testid="elev-chip" data-fb="立面を選ぶ" className={e.id === active ? 'on' : ''} onClick={() => st.openElevation(e.id === active ? null : e.id)}>{e.label}</button>
       ))}
       <button data-testid="elev-new" onClick={() => {
         if (hasWalls) { st.openElevation(null); useStore.setState({ notice: '図面で外壁をタップし「立面図で配管を描く」を押してください', tool: 'select' }); }
@@ -1032,7 +1032,7 @@ function PortConnect({ nodeId, title }: { nodeId: string; title?: string }) {
     <div className="port-connect" data-testid="port-connect">
       <div className="subhead">🔗 {title ? `${title} ` : ''}器具につなぐ（自動でルートを作ります）</div>
       <div className="row">
-        {cands.map((c) => <button key={c.nodeId} data-testid="port-cand" data-target={c.nodeId} onClick={() => useStore.getState().connectToPort(nodeId, c.nodeId)}>→ {c.label}{c.diameterNote && <small className="warn"> 口径 {c.diameterNote}</small>}</button>)}
+        {cands.map((c) => <button key={c.nodeId} data-testid="port-cand" data-fb="接続先の器具を選ぶ" data-target={c.nodeId} onClick={() => useStore.getState().connectToPort(nodeId, c.nodeId)}>→ {c.label}{c.diameterNote && <small className="warn"> 口径 {c.diameterNote}</small>}</button>)}
       </div>
     </div>
   );

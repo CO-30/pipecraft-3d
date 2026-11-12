@@ -13,6 +13,7 @@ import { EstimateBar, EstimateScreen, type EstTab } from './EstimateScreen';
 import { ShinseiScreen } from './ShinseiScreen';
 import { GuideBar, type EstimateTab } from './GuideBar';
 import { HelpDialog } from './HelpDialog';
+import { fbLog } from '../feedback/feedback';
 import { PLAN_HINTS } from './hints';
 import { usePrefs } from './prefs';
 import { DimWizard } from './DimWizard';
@@ -32,6 +33,11 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
   const [showEst, setShowEst] = useState<EstTab | null>(null);
   const [help, setHelp] = useState(false);
   const [showShinsei, setShowShinsei] = useState(false);
+  // 要望欄の記録: 作業画面の中の画面（積算・申請図面・使い方・立面）を開いたとき
+  useEffect(() => { if (showEst) fbLog('画面: 積算'); }, [showEst]);
+  useEffect(() => { if (showShinsei) fbLog('画面: 申請図面'); }, [showShinsei]);
+  useEffect(() => { if (help) fbLog('画面: 使い方'); }, [help]);
+  useEffect(() => { if (facadeOpen) fbLog('画面: 外壁の立面'); }, [facadeOpen]);
   const guideHidden = usePrefs((s) => s.guideHidden);
   const setGuideHidden = usePrefs((s) => s.setGuideHidden);
   const openEst = (tab: EstimateTab | EstTab = 'qty') => setShowEst(tab);
