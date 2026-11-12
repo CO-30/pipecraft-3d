@@ -1,7 +1,7 @@
 # PipeCraft 3D — Claude 開発ルール
 
 設計書: Claudeプロジェクト資料 `docs/PipeCraft3D_最終実装設計書.md`
-進捗: `docs/progress/PROGRESS.md`（各Phaseの記録・コミットID・テスト結果・次の作業）。セッション開始時はまずこれを読む。
+進捗: `docs/progress/PROGRESS.md`（これまでの記録）と `docs/progress/log/`（2026-11-12 以降、作業ごとに 1 ファイル）。セッション開始時はまず PROGRESS.md と log/ の新しいものを読む。
 
 ## 最優先ルール（2026-11-06 ユーザー指定）
 - 完成まで可能な限り全工程を自動で進める。質問・確認・承認依頼は最小限。
@@ -25,10 +25,16 @@
 - main へのマージはユーザー確認後（停止条件4）。
 - コミット末尾に Co-Authored-By / Claude-Session 行を付ける。
 
+## PR の衝突を出さない（2026-11-12 ユーザー指定「今後こうしたことがないように」）
+- 作業の記録は `docs/progress/log/<日付>-<ブランチ名>.md` を新しく作って書く。`PROGRESS.md` など、どの PR も書き足す共有ファイルには追記しない（新しいファイルどうしは衝突しない）。
+- PR を作ったら、報告する前に `git merge origin/main` で最新の main を取り込み、`gh api repos/CO-30/pipecraft-3d/pulls/<番号> --jq .mergeable_state` が `dirty` でないことを確かめる。衝突があれば自分で解消してテストを通してから報告する。
+- 開いている PR が他にあるときは、ユーザーに伝えるマージ順のとおりに手元の一時ブランチで全部を合わせてみて、衝突しないことを確かめる。衝突するなら後の PR に先の PR のブランチを取り込んでおく（先の PR を入れた後でもそのまま押せる状態にする）。
+- 「衝突が出たらスクショを送って」とユーザーに頼まない。衝突しない状態にしてから渡す。
+
 ## 品質
 - 単体テスト(Vitest)と E2E(Playwright: PC / iPhone・Android エミュレーション)を通してからコミット。
 - 内部単位は mm。実測長を図面・モデル値で上書きしない。
 - 2D/3D は共通ストア（`src/state/store.ts`）だけを読み書きする。データを二重管理しない。
-- Phase 完了時: 独立レビュー（別モデルの reviewer subagent）→ 指摘修正 → PROGRESS 更新 → テスト証拠を `test-evidence/` に保存。
+- Phase 完了時: 独立レビュー（別モデルの reviewer subagent）→ 指摘修正 → 記録（`docs/progress/log/`）を書く → テスト証拠を `test-evidence/` に保存。
 - 使う人目線（2026-11-10 ユーザー指定）: 「痒いところに手が届く」気遣いを設計の基準にする。出力はそのまま提出・印刷できる見た目にする（文字の重なり・はみ出し・切れを残さない）。
 - 図面の文字は `src/export/labelLayout.ts`（LabelPlacer・spread1D）で置く。固定座標で文字を足さない。新しい図面・様式を足したら `src/export/noOverlap.test.ts` に加えて「重なり 0」を守る。

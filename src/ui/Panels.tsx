@@ -20,6 +20,8 @@ import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
 import { ElevationDialog } from './ElevationDialog';
 import { SYSTEMS, defaultSystemColor, systemColor, systemLabel, useColors } from './colors';
+import { familyOf, type SystemFamily } from '../model/trace';
+import { useTrace } from './useTrace';
 import { defaultEstimate, measureSegment } from '../model/estimate';
 import { findConnectCandidate } from '../model/connect';
 import { SYSTEM_NAME } from '../model/systems';
@@ -158,6 +160,7 @@ export function PropertyPanel() {
           }}>枝管ごと削除</button>
         </div>
         <DetachEnds segId={seg.id} />
+        <button data-testid="trace-system" aria-label="この系統をたどる" onClick={() => st.setTrace(seg.id)} title="同じ系統につながる管・器具をまとめて強調し、長さ・器具の数を出します">🔗 この系統をたどる</button>
         <div className="subhead">つながった配管全体（{run.segmentIds.length}区間・{Math.round(runLen)}mm）</div>
         <div className="row">
           <button onClick={() => st.setRunHeightDelta(seg.id, -100)}>高さ−100</button>
@@ -251,6 +254,7 @@ export function PropertyPanel() {
           const used = n ? segmentsAt(net, n.id).length > 0 : false;
           return <button key={p.id} data-testid={`port-${p.id}`} disabled={!n} onClick={() => n && st.select({ kind: 'node', id: n.id })}>{p.label} φ{p.diameter}{used ? ' ✓' : ''}</button>;
         })}</div>
+        <TraceButtons fixtureId={f.id} />
         {ports.filter((n) => segmentsAt(net, n.id).length === 0).map((n) => <PortConnect key={n.id} nodeId={n.id} title={`${def.ports.find((p) => p.id === n.portId)?.label}から`} />)}
         <div className="row">
           <button data-testid="rotate-fixture" onClick={() => st.rotateFixture(f.id)}>⟳ 90°回転</button>
@@ -952,6 +956,43 @@ export function SelectionBar() {
       {color && <i className="sys-dot" style={{ background: color }} />}
       <span>選択中: <b>{label}</b></span>
       <button data-testid="sel-clear" onClick={() => useStore.getState().select(null)}>✕ 選択をやめる</button>
+    </div>
+  );
+}
+
+const familyLabel = (f: SystemFamily) => (f === 'drain' ? '排水' : systemLabel(f));
+
+/** 器具につながる系統ごとの「たどる」ボタン */
+function TraceButtons({ fixtureId }: { fixtureId: string }) {
+  const net = useStore((s) => s.doc.network);
+  const seen = new Map<SystemFamily, string>();
+  for (const n of portNodes(net, fixtureId)) for (const g of segmentsAt(net, n.id)) if (!seen.has(familyOf(g.system))) seen.set(familyOf(g.system), g.id);
+  if (!seen.size) return null;
+  return (
+    <div className="row">{[...seen].map(([fam, segId]) => (
+      <button key={fam} data-testid={`trace-${fam}`} aria-label={`${familyLabel(fam)}の系統をたどる`} onClick={() => useStore.getState().setTrace(segId)}>🔗 {familyLabel(fam)}をたどる</button>
+    ))}</div>
+  );
+}
+
+/** 系統を強調しているときの帯: 系統の名前・管の長さ（口径別）・器具・マス・設備・バルブの数 */
+export function TraceBar() {
+  const t = useTrace();
+  const inElevation = useStore((s) => !!s.activeElevationId);
+  if (!t || inElevation) return null;
+  const m = (mm: number) => `${(mm / 1000).toFixed(1)}m`;
+  const dias = t.byDiameter.map((d) => `φ${d.diameter} ${m(d.length)}`).join('・');
+  const c = t.counts;
+  const parts = [c.fixtures ? `器具 ${c.fixtures}` : '', c.manholes ? `マス ${c.manholes}` : '', c.equipment ? `メーター・ヘッダー等 ${c.equipment}` : '', t.valveCount ? `バルブ ${t.valveCount}` : ''].filter(Boolean);
+  return (
+    <div className="sel-bar trace-bar" data-testid="trace-bar" role="status" aria-live="polite">
+      <i className="sys-dot" style={{ background: systemColor(t.family) }} />
+      <span title={`長さは実測があれば実測（余長の割増は入れていません）。${dias}`}>
+        系統: <b data-testid="trace-label">{t.label}</b> — 管 <b data-testid="trace-length">{m(t.totalLength)}</b>
+        {t.byDiameter.length > 1 && <span className="trace-dias">（{dias}）</span>}
+        {parts.length > 0 && <>・<span data-testid="trace-counts">{parts.join('・')}</span></>}
+      </span>
+      <button data-testid="trace-clear" aria-label="系統の強調をやめる" onClick={() => useStore.getState().setTrace(null)}>✕ 強調をやめる</button>
     </div>
   );
 }

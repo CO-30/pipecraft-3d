@@ -2,6 +2,7 @@
  * 共通ストア。2D/3D の両ビューはここだけを読み書きする（データの二重管理なし）。
  * 建物と配管は1つの Doc として、1本の Undo/Redo 履歴で管理する。
  */
+import { traceSeed, type TraceSeed } from '../model/trace';
 import { create } from 'zustand';
 import {
   addPolyline, addRiser, branchFromSegment, collectBranch, connectNodeToSegment, connectedComponent, cutSegment, deleteBranch,
@@ -158,6 +159,9 @@ type State = {
   /** 個別に非表示/半透明にした要素ID */
   hiddenIds: string[];
   ghostIds: string[];
+  /** 系統をたどって強調している出発の手がかり（画面だけの状態。図面・元に戻すには入れない） */
+  trace: TraceSeed | null;
+  setTrace(segId: string | null): void;
   dragBase: Doc | null;
   revision: number;
   /** 結合待ちの部屋（次にタップした部屋と結合する） */
@@ -483,7 +487,7 @@ export const useStore = create<State>((set, get) => {
   const fixActiveFloor = (doc: Doc, preferred: string) =>
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
-    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], pendingMerge: null,
+    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], trace: null, pendingMerge: null,
     section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null, activeElevationId: null,
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1, dimWizard: null, underFloor: false,
   });
@@ -509,6 +513,8 @@ export const useStore = create<State>((set, get) => {
     visibility: defaultVisibility(),
     hiddenIds: [],
     ghostIds: [],
+    trace: null,
+    setTrace: (segId) => set({ trace: segId ? traceSeed(get().doc, segId) : null }),
     dragBase: null,
     revision: 0,
     pendingMerge: null,
@@ -534,7 +540,7 @@ export const useStore = create<State>((set, get) => {
       const r = solveDoc({ underlays: {}, elevations: {}, site: {}, ...doc });
       set({ doc: r.doc, drainIssues: r.issues, meta, ...resetView(r.doc) });
     },
-    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null }),
+    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null, trace: null }),
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
