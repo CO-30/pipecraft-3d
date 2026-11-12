@@ -10,7 +10,10 @@ describe('underlayFileKind', () => {
     ['写真.jpg', 'image/jpeg', 'image'],
     ['IMG_0001', 'image/heic', 'image'],
     ['古い.jwc', '', 'jww'],
-    ['図面.dxf', '', 'unsupported'],
+    ['図面.dxf', '', 'dxf'],
+    ['図面.DXF', 'application/octet-stream', 'dxf'],
+    ['図面.dwg', '', 'dwg'],
+    ['図面.sfc', '', 'unsupported'],
   ])('%s → %s', (name, type, kind) => {
     expect(underlayFileKind({ name, type })).toBe(kind);
   });

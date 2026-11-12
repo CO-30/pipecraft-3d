@@ -333,12 +333,20 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     return { ...built0, sheets, svg: sheets.map(sheetToSvg).join(''), warnings };
   }, [built0, asBuilt.on, asBuilt.date]);
 
-  const download = async (fmt: 'pdf' | 'svg') => {
-    setBusy(fmt); setErr('');
+  const [info, setInfo] = useState('');
+  const download = async (fmt: 'pdf' | 'svg' | 'dxf') => {
+    setBusy(fmt); setErr(''); setInfo('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
       const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'material' ? '材料集計表' : kind === 'sleeve' ? 'スリーブ表' : '立面図'}_${dateStamp(new Date())}`;
-      if (fmt === 'svg') {
+      if (fmt === 'dxf') {
+        // DXF（R12・Shift_JIS）: AutoCAD・Jw_cad で開ける。ページは横に並べる
+        const { sheetsToDxf } = await import('../export/dxf');
+        const r = sheetsToDxf(built.sheets);
+        downloadBytes(r.bytes, `${base}.dxf`, 'application/dxf');
+        const notes = [...r.notes, ...(r.missing.size ? [`Shift_JIS に無い文字を ? にしました: ${[...r.missing].join(' ')}`] : [])];
+        if (notes.length) setInfo(notes.join('。'));
+      } else if (fmt === 'svg') {
         // 枝が別図のときは、ページを縦に並べた 1 つの SVG
         downloadBytes(new TextEncoder().encode(sheetsToSvg(built.sheets)), `${base}.svg`, 'image/svg+xml');
       } else {
@@ -362,6 +370,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <span className="muted small">配管データから縦断図・立面図・水理計算書を自動で作ります</span>
         <span className="grow" />
         <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
+ <button data-testid="shinsei-dxf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('dxf')} title="AutoCAD・Jw_cad で開ける DXF（R12）">DXF</button>
         <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('svg')}>SVG</button>
       </header>
       <div className="shinsei-controls">
@@ -437,6 +446,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       </div>
       {built.error && <p className="est-provisional" role="alert" data-testid="shinsei-error">{built.error}</p>}
       {err && <p className="est-provisional" role="alert">{err}</p>}
+      {info && <p className="small muted" data-testid="shinsei-info">{info}</p>}
       {profiles.error && <p className="est-provisional" role="alert">保存したプロファイルを読み込めませんでした: {profiles.error}</p>}
       {built.warnings.length > 0 && (
         <ul className="shinsei-warnings small" data-testid="shinsei-warnings">

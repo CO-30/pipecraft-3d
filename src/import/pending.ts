@@ -14,7 +14,7 @@ export function takePendingUnderlayFile(): File | null {
   return f;
 }
 
-export type UnderlayFileKind = 'pdf' | 'jww' | 'image' | 'unsupported';
+export type UnderlayFileKind = 'pdf' | 'jww' | 'dxf' | 'dwg' | 'image' | 'unsupported';
 
 /** ファイル名と種類から取り込み方を決める（中身の確認は各取り込み処理で行う） */
 export function underlayFileKind(f: { name: string; type: string }): UnderlayFileKind {
@@ -22,6 +22,9 @@ export function underlayFileKind(f: { name: string; type: string }): UnderlayFil
   if (ext === 'pdf' || f.type === 'application/pdf') return 'pdf';
   // .jwc / .jws も Jw_cad の読み込みへ回す（中身を見て「.jww で保存し直してください」と案内する）
   if (['jww', 'jwc', 'jws'].includes(ext)) return 'jww';
-  if (['dxf', 'dwg', 'sfc', 'p21'].includes(ext)) return 'unsupported';
+  if (ext === 'dxf') return 'dxf';
+  // DWG は形式が非公開で読めない。CAD で DXF に保存し直してもらう
+  if (ext === 'dwg') return 'dwg';
+  if (['sfc', 'p21'].includes(ext)) return 'unsupported';
   return 'image';
 }

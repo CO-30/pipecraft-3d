@@ -67,7 +67,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
         <button type="button" className={`linkish ${v.mode === 'blank' ? 'on' : ''}`} onClick={() => setV({ ...v, mode: 'blank' })}>白紙から描く</button>
         {v.mode === 'blank' && <p className="hint">壁も階も自由に描きます（慣れた人向け）。</p>}
         {v.mode === 'photo' && (
-          <label className="field">図面ファイル（PDF・Jw_cad の .jww・写真）
+          <label className="field">図面ファイル（PDF・Jw_cad の .jww・DXF・写真）
             {/* accept を付けない: iPhone は .jww を選べなくするため */}
             <input type="file" data-testid="np-file" onChange={(e) => setV({ ...v, file: e.target.files?.[0] })} />
             <span className="hint">作成するとこの図面が下に敷かれます。あとから選ぶこともできます。</span>
