@@ -156,7 +156,8 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
   const kept = rows.filter((r) => {
     if (r.part !== 'footing' && r.part !== 'baseSlab') return true;
     return !outer.some((o) => Math.hypot(o.point.x - r.point.x, o.point.y - r.point.y) < 250
-      && (r.part === 'footing' && Math.abs(o.point.z - r.point.z) < 250 || (vertical(r) && o.system === r.system && o.diameter === r.diameter && r.point.z > o.point.z)));
+      && (r.part === 'footing' && Math.abs(o.point.z - r.point.z) < 250
+        || ((vertical(r) || r.part === 'baseSlab') && o.system === r.system && o.diameter === r.diameter && r.point.z > o.point.z)));
   });
   rows.length = 0; rows.push(...kept);
   rows.sort((x, y) => x.order - y.order || PART_ORDER.indexOf(x.part) - PART_ORDER.indexOf(y.part) || x.point.y - y.point.y || x.point.x - y.point.x);

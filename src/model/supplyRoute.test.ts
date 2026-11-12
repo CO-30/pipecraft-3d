@@ -260,3 +260,13 @@ describe('ヘッダーを使わず分岐でつなぐ（2026-11-12）', () => {
     expect(again.pipes).toBe(0);
   });
 });
+
+describe('分岐で引込が引けないとき（レビューの指摘）', () => {
+  test('メーターの出口にもう管があるときは、これまでどおりヘッダーで器具をつなぐ（何もつながらないことにしない）', () => {
+    const h = supplyHouse();
+    const meterOut = portNodes(h.doc.network, h.ids.meter!).find((n) => n.portId === 'out')!;
+    const net = addPolyline(h.doc.network, [meterOut.pos, { ...meterOut.pos, x: meterOut.pos.x - 500 }], { system: 'water', diameter: 20 }, { startNodeId: meterOut.id }).net;
+    const r = routeSupplies({ ...h.doc, network: net }, { headers: 'avoid' });
+    expect(r.connected.water).toBeGreaterThan(0);
+  });
+});

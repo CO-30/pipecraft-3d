@@ -155,7 +155,8 @@ function Notice() {
  * 答えるまで出しておく（自動では消さない）。「あとで」で閉じられる
  */
 function QuestionCard() {
-  const q = useStore((s) => s.question);
+  // 質問したあとに図が変わった（元に戻す・別の工事）ら出さない
+  const q = useStore((s) => (s.question && s.questionDoc === s.doc ? s.question : null));
   if (!q) return null;
   return (
     <div className="question-card" role="dialog" aria-label={q.title} data-testid="question-card" data-question={q.id}>

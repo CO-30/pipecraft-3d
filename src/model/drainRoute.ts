@@ -140,6 +140,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
    * マスから壁まで HOLE_REACH 以内で、壁の点からマスまでの間に壁・基礎が無いもの
    */
   const holeExits = (p: Vec3): Exit[] => {
+    if (!inside(p)) return [];
     const out: Exit[] = [];
     for (const h of placedHoles) {
       let best: Exit | null = null;
@@ -227,7 +228,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   let buriedCount = 0;
   const holes: Hole[] = Object.values(doc.fixtures)
     .filter((f) => isManhole(f.type) && f.type !== 'manholeRain' && f.type !== 'publicRain').map((f) => ({ id: f.id, x: f.x, y: f.y }));
-  /** 使う人が置いた汚水マス（このボタンで置いたマスは含めない） */
+  /** 置いてある汚水マス（使う人が置いたもの。前にこのボタンで置いたマスも、もう決まったマスとして同じに扱う） */
   const placedHoles: Hole[] = Object.values(doc.fixtures).filter((f) => PLACED_TYPES.has(f.type)).map((f) => ({ id: f.id, x: f.x, y: f.y }));
   /** この出口で使えるマス: 出口の壁の外側にあり、出口から MERGE_MM 以内で、その位置に置けることを確かめたもの。近い順 */
   const holeFor = (e: Exit): Hole | undefined => holes
@@ -336,9 +337,10 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
         let need = z0;
         if (p.z - need < 100) need = Math.round(p.z - INVERT_BELOW);
         if (drop && need + slope * drop.d > buriedTop) need = Math.round(buriedTop - slope * drop.d);
-        // 基礎貫通スリーブ（KSA）の高さ H に合うよう、土かぶりが取れる一番浅い品番の外の口より下にマスを置く
+        // 基礎貫通スリーブ（KSA）の高さ H に合わせる: 土かぶりが取れる一番浅い品番の外の口から最小勾配で下がった所を、このマスの管底にする
+        // （標準の GL−600 より浅くても、土かぶりと床下の配管との差が取れればそちら。マスは自分で置くので深さを合わせられる）
         const fit = drop && ksaAt(plan) ? ksaHeights(e.seg.diameter).map((H) => slabZ! - H).find((u) => u <= buriedTop && p.z - u >= 50) : undefined;
-        if (fit !== undefined && need > fit - slope * drop!.d) need = Math.round(fit - slope * drop!.d);
+        if (fit !== undefined && p.z - (fit - slope * drop!.d) >= 100) need = Math.round(fit - slope * drop!.d);
         if (need !== z0) next = moveFixture(next, hole.id, plan.hp, undefined, { invertZ: need });
       }
     }

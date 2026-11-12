@@ -32,11 +32,12 @@ describe('排水のつなぎ案（drainRoute）', () => {
     // 床下（GL+300）を水平に基礎の内側まで → 基礎の中で立ち下げ（基礎貫通スリーブ KSA）→ 地中で基礎を抜けて勾配でマスへ（外に配管を出さない）
     const net = r.doc.network;
     const port = portNodes(net, m.id)[0];
-    expect(port.pos.z).toBe(-1200); // マスの管底 GL−600（標準）
+    // マスの管底: 基礎貫通スリーブ KSA75NF×430H（土間 −550 − 430 = −980）から 3/100 で 845 下がった所（標準の GL−600 より浅いが土かぶりは取れる）
+    expect(port.pos.z).toBe(-1005);
     const [last] = segmentsAt(net, port.id);
     const a = net.nodes[last.a === port.id ? last.b : last.a];
-    // 基礎の内側の面（立上りの幅 150 の半分）から 10 内で下ろす。φ75 は 3/100 以上 → 845 × 0.03 ≈ 25 上
-    expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D - 85, -1175]);
+    // 基礎の内側の面（立上りの幅 150 の半分）から 10 内で、KSA の高さ H430 だけ下ろす
+    expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D - 85, -980]);
     expect([last.system, last.diameter]).toEqual(['sewage', 75]);
     const drop = segmentsAt(net, a.id).find((x) => x.id !== last.id)!;
     const x = net.nodes[drop.a === a.id ? drop.b : drop.a];

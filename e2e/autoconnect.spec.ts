@@ -67,7 +67,7 @@ test('ヘッダーの質問カード: やさしい言葉で理由と選択肢 �
   const h = supplyHouse();
   const doc = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 }).doc;
   await page.evaluate((d) => { const s = (window as any).__pc.getState(); s.newDoc(d, s.meta);}, doc);
-  await page.evaluate(() => (window as any).__pc.setState({ question: { id: 'header', title: '水を分ける部品「ヘッダー」を床下に置きますか？', why: 'テスト', options: [{ value: 'use', label: 'ヘッダーを置いてつなぐ', hint: '床下にヘッダーを置きます' }, { value: 'skip', label: '置かない（自分でつなぐ）', hint: 'いまの形のまま' }] } }));
+  await page.evaluate(() => (window as any).__pc.setState({ questionDoc: (window as any).__pc.getState().doc, question: { id: 'header', title: '水を分ける部品「ヘッダー」を床下に置きますか？', why: 'テスト', options: [{ value: 'use', label: 'ヘッダーを置いてつなぐ', hint: '床下にヘッダーを置きます' }, { value: 'skip', label: '置かない（自分でつなぐ）', hint: 'いまの形のまま' }] } }));
   const card = page.getByTestId('question-card');
   await expect(card).toBeVisible();
   await expect(card).toContainText('ヘッダー');

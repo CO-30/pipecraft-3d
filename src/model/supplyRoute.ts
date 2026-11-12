@@ -421,6 +421,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
         }
       }
       const pts = r.points.map((x) => at(x));
+      // 分けた点が区間の端に寄せられたときも、最後の点をその点に合わせる（斜めの短い管を作らない）
+      if (endId !== feedId || !sid) { const q = cur.network.nodes[endId].pos; pts[pts.length - 1] = at(q); }
       const before = new Set(Object.keys(cur.network.segments));
       path(pts, attrs(system, t.dia), t.end, endId);
       branchSegs[system].push(...Object.keys(cur.network.segments).filter((x) => !before.has(x)));
@@ -488,11 +490,10 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     if (!free(meterOut) && !feedNode) notes.push('メーターの出口にはすでに配管があるため、引込は足していません（給水ヘッダーの入口は手でつないでください）');
     const near = meterEntry ? meterEntry.eIn : { x: (bounds.x0 + bounds.x1) / 2, y: (bounds.y0 + bounds.y1) / 2 };
     const inward = meterEntry ? { x: -meterEntry.n.x, y: -meterEntry.n.y } : toward(near, waterTargets.map((t) => cur.network.nodes[t.end].pos));
-    if (mode === 'avoid' && !headerFixtures().some((f) => f.type === 'waterHeader')) {
-      const id = ensureFeed();
-      if (id) needHeader.water = branch('water', id, waterTargets);
-      else notes.push('メーターから床下への引込が引けないので、給水はつないでいません');
-    } else {
+    // 引込が引けない（メーターの出口にもう管がある など）ときは、これまでどおりヘッダーで（入口は手でつなぐ）
+    const feedId = mode === 'avoid' && !headerFixtures().some((f) => f.type === 'waterHeader') ? ensureFeed() : null;
+    if (feedId) needHeader.water = branch('water', feedId, waterTargets);
+    else {
       const outs = headerOutlets('waterHeader', waterTargets.length, near, around(inward), feedWater);
       attach(waterTargets, outs, near, 'water', '給水ヘッダー');
     }
@@ -511,10 +512,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       const near = hotFeed ? cur.network.nodes[hotFeed].pos : heaterOut.pos;
       const inward = hotEntry ? { x: -hotEntry.n.x, y: -hotEntry.n.y } : toward(near, targets.hotWater.map((t) => t.end.pos));
       const hotList = targets.hotWater.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port }));
-      if (mode === 'avoid' && !headerFixtures().some((f) => f.type === 'hotWaterHeader')) {
-        if (hotFeed) needHeader.hot = branch('hotWater', hotFeed, hotList);
-        else notes.push('給湯器の出口から床下への管が引けないので、給湯はつないでいません');
-      } else {
+      if (mode === 'avoid' && hotFeed && !headerFixtures().some((f) => f.type === 'hotWaterHeader')) needHeader.hot = branch('hotWater', hotFeed, hotList);
+      else {
         const outs = headerOutlets('hotWaterHeader', targets.hotWater.length, near, around(inward), feedHot);
         attach(hotList, outs, near, 'hotWater', '給湯ヘッダー');
       }

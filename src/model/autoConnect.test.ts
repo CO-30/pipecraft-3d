@@ -213,9 +213,35 @@ describe('ヘッダーはできるだけ足さない（2026-11-12）', () => {
     const { useStore } = await import('../state/store');
     const h = supplyHouse();
     const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
-    useStore.setState({ doc: p.doc, question: { id: 'header', title: 't', why: 'w', options: [] } });
+    useStore.setState({ doc: p.doc, questionDoc: p.doc, question: { id: 'header', title: 't', why: 'w', options: [] } });
     useStore.getState().answerQuestion('use');
     expect(useStore.getState().question).toBeNull();
     expect(Object.values(useStore.getState().doc.fixtures).some((f) => f.type === 'waterHeader')).toBe(true);
+  });
+  test('質問のあとに図が変わったら（元に戻すなど）、答えても続きを実行しない', async () => {
+    const { useStore } = await import('../state/store');
+    const h = supplyHouse();
+    useStore.setState({ doc: h.doc, questionDoc: supplyHouse().doc, question: { id: 'header', title: 't', why: 'w', options: [] } });
+    useStore.getState().answerQuestion('use');
+    expect(Object.values(useStore.getState().doc.fixtures).some((f) => f.type === 'waterHeader')).toBe(false);
+    expect(useStore.getState().notice).toContain('取り消しました');
+  });
+});
+
+describe('基礎貫通スリーブの高さに合わせる（レビューの指摘）', () => {
+  test('まとめてつなぐで置いたマスは、KSA の高さ H に合う深さにする（積算に高さ違いの要確認が出ない）。土間の貫通を二重に数えない', async () => {
+    const { kisoSleeveItems } = await import('./kisoSleeve');
+    const { sleeveSchedule } = await import('./sleeves');
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    const r = autoConnect(p.doc);
+    const k = kisoSleeveItems(r.doc);
+    expect(k.items.some((i) => i.spec.startsWith('KSA'))).toBe(true);
+    expect(k.checks.filter((c) => c.message.includes('KSA'))).toEqual([]);
+    const rows = sleeveSchedule(r.doc);
+    const outer = rows.filter((x) => x.part === 'footingOuter');
+    for (const s of rows.filter((x) => x.part === 'baseSlab')) {
+      expect(outer.some((o) => Math.hypot(o.point.x - s.point.x, o.point.y - s.point.y) < 250 && o.system === s.system)).toBe(false);
+    }
   });
 });

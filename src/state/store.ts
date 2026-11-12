@@ -275,6 +275,8 @@ type State = {
   clearNotice(): void;
   /** 使う人に聞いていること（自動の作業がどうしても決められないとき。答えると続きを実行） */
   question: Question | null;
+  /** 質問したときの図（元に戻す・別の工事を開いたなどで図が変わったら、答えても続きは実行しない） */
+  questionDoc: Doc | null;
   answerQuestion(value: string): void;
   // 下敷き
   /** 操作対象の下敷き（表示状態。保存しない） */
@@ -792,9 +794,12 @@ export const useStore = create<State>((set, get) => {
     notice: null,
     clearNotice: () => set({ notice: null }),
     question: null,
+    questionDoc: null,
     answerQuestion: (value) => {
       const q = get().question;
-      set({ question: null });
+      const same = get().questionDoc === get().doc;
+      set({ question: null, questionDoc: null });
+      if (q && !same) { set({ notice: '図が変わったので、この質問は取り消しました。もう一度「まとめてつなぐ」を押してください' }); return; }
       if (q?.id === 'header' && value === 'use') get().autoConnectAll({ ...lastAutoOpts, headers: 'use' });
       else if (q) set({ notice: 'このままにしました。つながっていない所は配管の道具でつないでください' });
     },
@@ -931,15 +936,17 @@ export const useStore = create<State>((set, get) => {
       const doc = get().doc;
       const rules = opts.supply ?? resolveSupplyRules({ address: get().meta?.address });
       const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v, dropDepth: opts.dropDepth, ...(opts.headers ? { headers: opts.headers } : {}) });
-      set({ question: r.questions[0] ?? null });
+      set({ question: null, questionDoc: null });
       const added = Object.keys(r.doc.network.segments).filter((id) => !doc.network.segments[id]);
-      if (r.doc === doc || !added.length) { set({ notice: ['新しくつなぐ配管はありませんでした', ...r.summary].join('。') }); return 0; }
+      if (r.doc === doc || !added.length) { set({ notice: ['新しくつなぐ配管はありませんでした', ...r.summary].join('。'), question: r.questions[0] ?? null, questionDoc: get().doc }); return 0; }
       // 管種の付いていない新しい管に、屋内・屋外の自動の管種（ほかのボタンと同じ）
       const noMat = added.filter((id) => !r.doc.network.segments[id].material);
       const net = assignAutoMaterials(r.doc.network, r.doc.building, noMat);
       const c = r.supplies ? calcSupply({ ...r.doc, network: net }, rules, readSuiriSettings(r.doc.site?.application)) : null;
       const verdict = !c ? '' : 'error' in c ? `水理計算: できませんでした（${c.error}）` : `水理計算: ${c.ok ? '適当' : '不適当（申請画面の「水理計算書」で口径の提案を使ってください）'}`;
       commit({ ...r.doc, network: tagNodeFloors(net, r.doc.building.floors, get().activeFloorId) }, { selection: null });
+      // 分岐でつなげない所があれば質問（いまの図に対して。図が変わったら答えても実行しない）
+      set({ question: r.questions[0] ?? null, questionDoc: r.questions.length ? get().doc : null });
       const issues = get().drainIssues.length;
       set({ notice: [...r.summary, verdict, issues ? `排水の注意が ${issues} 件あります（積算の「要確認」から場所へ移動できます）` : '', '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].filter(Boolean).join('。') });
       return added.length;

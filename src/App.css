@@ -451,7 +451,7 @@ header .lbl { margin-left: 2px; }
 .home-feedback { margin: 28px auto 8px; max-width: 640px; }
 
 /* 自動の作業からの質問（はじめての人にも分かる言葉で） */
-.question-card { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 60; width: min(520px, calc(100vw - 24px)); background: #fff; color: #1f2937; border: 2px solid #2563eb; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.question-card { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(80px + env(safe-area-inset-bottom)); max-height: 70vh; overflow: auto; z-index: 60; width: min(520px, calc(100vw - 24px)); background: #fff; color: #1f2937; border: 2px solid #2563eb; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .question-card .qc-title { font-weight: 700; font-size: 16px; }
 .question-card .qc-why { font-size: 13px; line-height: 1.6; color: #374151; }
 .question-card .qc-options { display: flex; flex-direction: column; gap: 6px; }

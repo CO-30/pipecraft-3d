@@ -90,8 +90,8 @@ export function pickKss(od: number, H: number, antiTermite = false): KisoProduct
   const size = od + 10 <= KSS_BORE[50] ? 50 : od + 10 <= KSS_BORE[75] ? 75 : null;
   if (!size) return null;
   const c = KISO_PRODUCTS.filter((p) => p.use === 'water' && p.antiTermite === antiTermite && p.deep === deep && p.size >= size);
-  // 防蟻品・深基礎には 75 が無い。50 で入らなければ防蟻なしの 75（KSS45L75）
-  return c.sort((a, b) => a.size - b.size)[0] ?? KISO_PRODUCTS.find((p) => p.code === 'KSS45L75×280H')!;
+  // 防蟻品・深基礎には 75 が無い。50 で入らなければ防蟻なし・標準の 75（KSS45L75）
+  return c.sort((a, b) => a.size - b.size)[0] ?? { ...KISO_PRODUCTS.find((p) => p.code === 'KSS45L75×280H')!, note: '管が太く 50 に入らないため 75 を選びました（75 は防蟻品・深基礎用が無く、給水用パッキンも入っていないので、パテかモルタルですき間を埋めます）' };
 }
 
 /** スリーブの点（区間の端）からの、縦の区間の高さ（区間が基礎を抜けた先で、基礎の内側で上がる・下がる高さ）。capZ より上は数えない */
