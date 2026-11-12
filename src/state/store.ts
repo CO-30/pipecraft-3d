@@ -12,6 +12,10 @@ import {
 import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
+import { routeSupplies as routeSuppliesUnder } from '../model/supplyRoute';
+import { calcSupply } from '../model/hydraulics/calc';
+import { readSuiriSettings } from '../model/hydraulics/settings';
+import { resolveSupplyRules, type SupplyRules } from '../model/hydraulics/supplyRules';
 import { slopeUnderfloor, type UnderfloorRules, type UnderfloorSlopeResult } from '../model/underfloorSlope';
 import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
@@ -205,6 +209,8 @@ type State = {
   /** 床下へ落とした排水を、外壁の外に置いた汚水マスまでつなぐ（案）。つないだ本数を返す */
   /** rules: 外の排水管の土かぶり・勾配（自治体のプロファイルから。省略時は標準） */
   routeDrainsOut(rules?: DrainRules): number;
+  /** 給水・給湯を床下のヘッダーでつなぐ（案）。つないだ本数を返す。rules: 自治体の給水の値（埋設深さ・水理計算） */
+  routeSupplies(rules?: SupplyRules): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -769,6 +775,19 @@ export const useStore = create<State>((set, get) => {
       }
       const parts = [`排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.buried ? `外では基礎を出てすぐ地中へ下ろし、土かぶり ${(rules?.cover ?? DEFAULT_COVER) / 10}cm 以上・最小勾配でマスへ下げています。床下は基礎を出る所（起点）から器具へ勾配をつけています` : '',
         r.unsloped ? `${r.unsloped} か所は床下に勾配をつけられませんでした（流末の点を選んで勾配をつけてください）` : '', r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置（敷地境界・他の設備との離れ）・マスどうしの接続・勾配は現場に合わせて直してください'];
+      commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
+      return r.pipes;
+    },
+    routeSupplies: (rulesIn) => {
+      const rules = rulesIn ?? resolveSupplyRules({ address: get().meta?.address });
+      const r = routeSuppliesUnder(get().doc, { burial: rules.burial.v });
+      if (r.error) { set({ notice: r.error }); return 0; }
+      if (!r.pipes && !r.headers) { set({ notice: [r.notes.length ? 'つなぐ給水・給湯がありません' : 'つなぐ給水・給湯がありません（器具の給水・給湯口はすでにつながっています）', ...r.notes].join('。') }); return 0; }
+      // できた案の水理計算（給水）の判定もすぐ知らせる
+      const c = calcSupply(r.doc, rules, readSuiriSettings(r.doc.site?.application));
+      const verdict = 'error' in c ? `水理計算: できませんでした（${c.error}）`
+        : `水理計算: ${c.ok ? '適当' : '不適当'}（全所要水頭 ${c.total.toFixed(2)}m ＋ 余裕 ${c.margin.toFixed(2)}m ${c.required <= c.available ? '≦' : '＞'} 設計水圧 ${c.pressure}MPa（${c.available.toFixed(2)}m））${c.unverified.length ? '・設計水圧は要確認' : ''}${c.ok ? '' : ' → 申請画面の「水理計算書」で口径の提案を使ってください'}`;
+      const parts = [`給水 ${r.connected.water} 本・給湯 ${r.connected.hot} 本を床下のヘッダーでつなぎました（案）`, r.headers ? `ヘッダーを ${r.headers} 台、床下に置きました` : '', r.valves ? `止水栓を ${r.valves} 個入れました（器具・給湯器の給水・給湯の口のすぐ先）` : '', r.sleeves ? `外周の基礎の貫通 ${r.sleeves} か所` : '', r.crossings ? `内部の立上りの貫通 ${r.crossings} か所` : '', verdict, ...r.notes, '3D で確かめて、合わない所は直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
     },
