@@ -23,6 +23,8 @@ export type RouteResult = {
 export const OUTER_DIAMETER: Record<number, number> = { 40: 48, 50: 60, 65: 76, 75: 89, 100: 114, 125: 140, 150: 165, 200: 216 };
 export const outerDiameter = (nominal: number) => OUTER_DIAMETER[nominal] ?? Math.round(nominal * 1.1);
 
+/** これ以下のます内の段差(mm)は落差ますとして描かない */
+export const SMALL_DROP = 30;
 export type ProfileWarning = { kind: 'minSlope' | 'reverseSlope' | 'cover' | 'tentativeGL' | 'datum'; segId?: string; nodeId?: string; message: string };
 export type ProfileNode = {
   nodeId: string; cumDistance: number; groundLevel: number; invertLevel: number; cover: number;
@@ -213,7 +215,8 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     const manhole: ProfileNode['manhole'] = fx && fl && isManhole(fx.type)
       ? { type: fx.type, label: FIXTURE_CATALOG[fx.type].label, diameter: fx.params?.diameter ?? 300, depth: manholeDepth(fx, doc.building, doc.site), symbol: profile.symbols[fx.type] ?? 'circle', isPublic: fx.type.startsWith('public'), name: FIXTURE_CATALOG[fx.type].label }
       : undefined;
-    const drop = i > 0 && manhole && n.dropIn && n.dropIn > 0 ? n.dropIn : 0;
+    // ます内の小さな段差（自動の 2cm など）は落差ますとして描かない（管底は流出側。勾配の計算には入れる）
+    const drop = i > 0 && manhole && n.dropIn && n.dropIn > SMALL_DROP ? n.dropIn : 0;
     if (drop && manhole) manhole.depthIn = manhole.depth - drop;
     nodes.push({ nodeId: id, cumDistance: cum, groundLevel: gl, invertLevel: n.pos.z, cover, manhole, ...(drop ? { invertIn: n.pos.z + drop, coverIn: gl - (n.pos.z + drop + od) } : {}), ...(notes[id] ? { note: notes[id] } : {}), ...(fx?.params?.existing ? { existing: true } : {}) });
     const minCover = drop ? Math.min(cover, gl - (n.pos.z + drop + od)) : cover;
