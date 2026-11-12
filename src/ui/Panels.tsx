@@ -426,7 +426,10 @@ function DropPipes() {
           // 埋設深さ・水理計算は、申請図面で選んでいる自治体と現場の住所に合わせる
           const st = useStore.getState();
           const p = resolveProfile(st.doc.site?.municipalityProfileId, useProfiles.getState().user);
-          st.routeSupplies(resolveSupplyRules({ profileName: p.id === 'standard' ? undefined : p.name, address: st.meta?.address }));
+          const rules = resolveSupplyRules({ profileName: p.id === 'standard' ? undefined : p.name, address: st.meta?.address });
+          // 大きい家では少し時間がかかるので、先に知らせを出してから計算する（画面が止まって見えないように）
+          useStore.setState({ notice: '給水・給湯の配管の案を作っています…' });
+          setTimeout(() => useStore.getState().routeSupplies(rules), 30);
         }}>🚰 給水・給湯を床下でつなぐ（案）</button>
       </div>
       <div className="muted small">1 階の器具が対象です（屋外の水栓は除く）。つながっていない給水・給湯口だけをつなぐので、何度押しても増えません。</div>

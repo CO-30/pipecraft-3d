@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { useStore } from './store';
 import { supplyHouse } from '../model/testSupplyHouse';
+import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 
 const s = () => useStore.getState();
 
@@ -16,6 +17,11 @@ describe('routeSupplies', () => {
     s().undo();
     expect(Object.keys(s().doc.network.segments)).toEqual(segs);
     expect(Object.keys(s().doc.fixtures)).toEqual(fx);
+  });
+  it('設計水圧が未確認の自治体では、判定に「要確認」を添える（水頭と MPa を並べて書く）', () => {
+    s().newDoc(supplyHouse().doc, { id: 'p', name: 'テスト', createdAt: 1 });
+    s().routeSupplies(resolveSupplyRules({ address: '沖縄県宜野湾市大山1-1' }));
+    expect(s().notice).toMatch(/水理計算: 適当.*設計水圧 0\.15MPa（15\.30m）.*要確認/);
   });
   it('メーターが無ければ知らせて何もしない', () => {
     s().newDoc(supplyHouse({ meter: false }).doc, { id: 'p', name: 'テスト', createdAt: 1 });

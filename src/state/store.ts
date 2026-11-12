@@ -782,10 +782,11 @@ export const useStore = create<State>((set, get) => {
       const rules = rulesIn ?? resolveSupplyRules({ address: get().meta?.address });
       const r = routeSuppliesUnder(get().doc, { burial: rules.burial.v });
       if (r.error) { set({ notice: r.error }); return 0; }
-      if (!r.pipes && !r.headers) { set({ notice: ['つなぐ給水・給湯がありません（器具の給水・給湯口はすでにつながっています）', ...r.notes].join('。') }); return 0; }
+      if (!r.pipes && !r.headers) { set({ notice: [r.notes.length ? 'つなぐ給水・給湯がありません' : 'つなぐ給水・給湯がありません（器具の給水・給湯口はすでにつながっています）', ...r.notes].join('。') }); return 0; }
       // できた案の水理計算（給水）の判定もすぐ知らせる
       const c = calcSupply(r.doc, rules, readSuiriSettings(r.doc.site?.application));
-      const verdict = 'error' in c ? '' : c.ok ? `水理計算: 適当（全所要水頭 ${c.total.toFixed(2)}m ＋ 余裕 ${c.margin.toFixed(2)}m ≦ 設計水圧 ${c.pressure}MPa）` : '水理計算: 不適当 → 申請画面の「水理計算書」で口径の提案を使ってください';
+      const verdict = 'error' in c ? `水理計算: できませんでした（${c.error}）`
+        : `水理計算: ${c.ok ? '適当' : '不適当'}（全所要水頭 ${c.total.toFixed(2)}m ＋ 余裕 ${c.margin.toFixed(2)}m ${c.required <= c.available ? '≦' : '＞'} 設計水圧 ${c.pressure}MPa（${c.available.toFixed(2)}m））${c.unverified.length ? '・設計水圧は要確認' : ''}${c.ok ? '' : ' → 申請画面の「水理計算書」で口径の提案を使ってください'}`;
       const parts = [`給水 ${r.connected.water} 本・給湯 ${r.connected.hot} 本を床下のヘッダーでつなぎました（案）`, r.headers ? `ヘッダーを ${r.headers} 台、床下に置きました` : '', r.sleeves ? `外周の基礎の貫通 ${r.sleeves} か所` : '', r.crossings ? `内部の立上りの貫通 ${r.crossings} か所` : '', verdict, ...r.notes, '3D で確かめて、合わない所は直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;

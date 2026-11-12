@@ -6,6 +6,27 @@ import { resolveSupplyRules } from './hydraulics/supplyRules';
 import { isPB } from './materials';
 import { routeSupplies, UNDERFLOOR_Z } from './supplyRoute';
 import { supplyHouse } from './testSupplyHouse';
+import { dropFixturePipes } from './dropPipes';
+import { placeFixture, moveFixture } from './fixtures';
+import { addPolyline } from './network';
+import { createBuildingFromDims, deleteWall } from './building';
+
+/** 床下（z = −300）の水平な給水・給湯管どうしが、40mm 未満の離れで平行に重なって走っている組（10mm を超えて重なるもの） */
+function overlaps(doc: Doc): string[] {
+  const net = doc.network, out: string[] = [];
+  const segs = Object.values(net.segments).filter((s) => (s.system === 'water' || s.system === 'hotWater') && net.nodes[s.a].pos.z === UNDERFLOOR_Z && net.nodes[s.b].pos.z === UNDERFLOOR_Z);
+  const axis = (s: (typeof segs)[0]) => { const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos; return Math.abs(a.y - b.y) < 60 ? 'h' : Math.abs(a.x - b.x) < 60 ? 'v' : null; };
+  for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+    const A = segs[i], B = segs[j], ax = axis(A);
+    if (!ax || ax !== axis(B)) continue;
+    const [a0, a1, b0, b1] = [net.nodes[A.a].pos, net.nodes[A.b].pos, net.nodes[B.a].pos, net.nodes[B.b].pos];
+    const off = ax === 'h' ? Math.abs((a0.y + a1.y) / 2 - (b0.y + b1.y) / 2) : Math.abs((a0.x + a1.x) / 2 - (b0.x + b1.x) / 2);
+    const [p0, p1, q0, q1] = ax === 'h' ? [a0.x, a1.x, b0.x, b1.x] : [a0.y, a1.y, b0.y, b1.y];
+    const ov = Math.min(Math.max(p0, p1), Math.max(q0, q1)) - Math.max(Math.min(p0, p1), Math.min(q0, q1));
+    if (off < 40 && ov > 10) out.push(`${A.id}/${B.id}`);
+  }
+  return out;
+}
 
 const tree = (doc: Doc): SupplyTree => {
   const t = buildSupplyTree(doc);
@@ -70,6 +91,7 @@ describe('給水・給湯を床下でつなぐ（案）', () => {
     expect(buried.length).toBeGreaterThan(0);
     expect(buried.every((s) => s.material === 'HIVP')).toBe(true);
   });
+  test('床下の管どうしを平行に重ねない', () => expect(overlaps(r.doc)).toEqual([]));
   test('もう一度押しても増えない', () => {
     const r2 = routeSupplies(r.doc);
     expect(r2.pipes).toBe(0);
@@ -89,6 +111,94 @@ describe('条件を変える', () => {
     const r = routeSupplies(h.doc);
     expect(Object.values(r.doc.fixtures).filter((f) => f.type === 'waterHeader')).toHaveLength(2);
     expect(tree(r.doc).outlets).toHaveLength(7);
+  });
+  test('先に「器具の真下に配管を落とす」を押していても、その立て管を使ってつなぐ（深さが違えば床下の高さまで足す）', () => {
+    const h = supplyHouse();
+    const dropped = dropFixturePipes(h.doc, 400).doc;
+    const r = routeSupplies(dropped);
+    expect(r.connected).toEqual({ water: 4, hot: 2 });
+    expect(tree(r.doc).outlets).toHaveLength(4);
+  });
+  test('給湯器が無ければ給湯は知らせて残し、あとで置いて押すとつながる', () => {
+    const h = supplyHouse();
+    const noHeater = { ...h.doc, fixtures: Object.fromEntries(Object.entries(h.doc.fixtures).filter(([id]) => id !== h.ids.heater)), network: { ...h.doc.network, nodes: Object.fromEntries(Object.entries(h.doc.network.nodes).filter(([, n]) => n.fixtureId !== h.ids.heater)) } };
+    const r1 = routeSupplies(noHeater);
+    expect(r1.connected.hot).toBe(0);
+    expect(r1.notes.join()).toMatch(/給湯器/);
+    const withHeater = placeFixture(r1.doc, h.floorId, 'waterHeater', { x: 2000, y: -300 }).doc;
+    const r2 = routeSupplies(withHeater);
+    expect(r2.connected.hot).toBe(2);
+    expect(overlaps(r2.doc)).toEqual([]);
+  });
+  test('あとから器具を足して押すと、2 台目のヘッダーも同じ引込から分ける', () => {
+    const h = supplyHouse();
+    let d = routeSupplies(h.doc).doc;
+    for (let i = 0; i < 3; i++) d = placeFixture(d, h.floorId, 'faucet', { x: 2400 + i * 400, y: 2000 }).doc;
+    const r = routeSupplies(d);
+    expect(r.connected.water).toBe(3);
+    expect(tree(r.doc).outlets).toHaveLength(7);
+    expect(r.notes.join()).not.toMatch(/入口へ配管をつなげませんでした/);
+  });
+  test('ヘッダーは内部の立上りの上に置かない', () => {
+    const h = supplyHouse();
+    const d = moveFixture(h.doc, h.ids.meter!, { x: 4000, y: -1500 });
+    const r = routeSupplies(d);
+    for (const f of Object.values(r.doc.fixtures).filter((x) => x.type === 'waterHeader' || x.type === 'hotWaterHeader')) expect(Math.abs(f.x - 4000)).toBeGreaterThanOrEqual(210 + 75 + 60);
+  });
+  test('給湯器を回して置いても、給水と給湯は別の所で基礎を貫通する', () => {
+    const h = supplyHouse();
+    const d = moveFixture(h.doc, h.ids.heater, { x: 2000, y: -300 }, 90);
+    const r = routeSupplies(d);
+    expect(r.sleeves).toBe(3);
+    expect(overlaps(r.doc)).toEqual([]);
+  });
+  test('建物の中の給湯器（東の壁ぎわ）でも給湯ヘッダーを置いてつなぐ', () => {
+    const h = supplyHouse();
+    const d = moveFixture(h.doc, h.ids.heater, { x: 7500, y: 3000 });
+    const r = routeSupplies(d);
+    expect(r.connected.hot).toBe(2);
+  });
+  test('メーターの出口にすでに配管があれば引込は足さず、知らせる', () => {
+    const h = supplyHouse();
+    const out = Object.values(h.doc.network.nodes).find((n) => n.fixtureId === h.ids.meter && n.portId === 'out')!;
+    const stub = addPolyline(h.doc.network, [out.pos, { ...out.pos, x: out.pos.x + 300 }], { system: 'water', diameter: 20 }, { startNodeId: out.id }).net;
+    const r = routeSupplies({ ...h.doc, network: stub });
+    expect(r.notes.join()).toMatch(/すでに配管/);
+  });
+  test('立上りで囲まれた器具も（貫通して）つなぎ、貫通の数を返す', () => {
+    const h = supplyHouse();
+    const b = ['a', 'b', 'c', 'd'].reduce((bb, _, i) => {
+      const pts = [{ x: 5600, y: 4200 }, { x: 7400, y: 4200 }, { x: 7400, y: 5800 }, { x: 5600, y: 5800 }];
+      const m = { id: `box${i}`, kind: 'footing' as const, floorId: h.floorId, a: pts[i], b: pts[(i + 1) % 4], width: 150, z0: -700, z1: -150 };
+      return { ...bb, members: { ...(bb.members ?? {}), [m.id]: m } };
+    }, h.doc.building);
+    const r = routeSupplies({ ...h.doc, building: b });
+    expect(r.connected.water).toBe(4);
+    expect(r.crossings).toBeGreaterThan(0);
+  });
+  test('外壁が 1 周つながっていない（立上りも無い）と、建物の中の器具が分からないことを知らせる', () => {
+    let b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    b = deleteWall(b, Object.keys(b.walls)[0]);
+    let d: Doc = { building: b, network: { nodes: {}, segments: {} }, fixtures: {}, site: { designGL: -611 } };
+    d = placeFixture(d, b.floors[0].id, 'waterMeter', { x: -1500, y: 3000 }).doc;
+    d = placeFixture(d, b.floors[0].id, 'kitchen', { x: 4000, y: 3000 }).doc;
+    const r = routeSupplies(d);
+    expect(r.error).toMatch(/建物の中/);
+    expect(r.doc).toBe(d);
+  });
+  test('大きい家（12×9m・器具 15）でも 1.5 秒以内', () => {
+    let b = createBuildingFromDims({ width: 12000, depth: 9000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    let d: Doc = { building: b, network: { nodes: {}, segments: {} }, fixtures: {}, site: { designGL: -611 } };
+    const f = b.floors[0].id;
+    d = placeFixture(d, f, 'waterMeter', { x: -1500, y: 4500 }).doc;
+    d = placeFixture(d, f, 'waterHeater', { x: 3000, y: -300 }).doc;
+    const types = ['kitchen', 'washbasin', 'toilet', 'shower', 'washer'] as const;
+    for (let i = 0; i < 15; i++) d = placeFixture(d, f, types[i % 5], { x: 1500 + (i % 5) * 2000, y: 1500 + Math.floor(i / 5) * 2800 }).doc;
+    b = d.building;
+    const t0 = performance.now();
+    const r = routeSupplies(d);
+    expect(performance.now() - t0).toBeLessThan(1500);
+    expect(r.connected.water).toBeGreaterThan(10);
   });
   test('メーターが無ければ何もしない', () => {
     const h = supplyHouse({ meter: false });
