@@ -787,7 +787,7 @@ export const useStore = create<State>((set, get) => {
       const c = calcSupply(r.doc, rules, readSuiriSettings(r.doc.site?.application));
       const verdict = 'error' in c ? `水理計算: できませんでした（${c.error}）`
         : `水理計算: ${c.ok ? '適当' : '不適当'}（全所要水頭 ${c.total.toFixed(2)}m ＋ 余裕 ${c.margin.toFixed(2)}m ${c.required <= c.available ? '≦' : '＞'} 設計水圧 ${c.pressure}MPa（${c.available.toFixed(2)}m））${c.unverified.length ? '・設計水圧は要確認' : ''}${c.ok ? '' : ' → 申請画面の「水理計算書」で口径の提案を使ってください'}`;
-      const parts = [`給水 ${r.connected.water} 本・給湯 ${r.connected.hot} 本を床下のヘッダーでつなぎました（案）`, r.headers ? `ヘッダーを ${r.headers} 台、床下に置きました` : '', r.sleeves ? `外周の基礎の貫通 ${r.sleeves} か所` : '', r.crossings ? `内部の立上りの貫通 ${r.crossings} か所` : '', verdict, ...r.notes, '3D で確かめて、合わない所は直してください'];
+      const parts = [`給水 ${r.connected.water} 本・給湯 ${r.connected.hot} 本を床下のヘッダーでつなぎました（案）`, r.headers ? `ヘッダーを ${r.headers} 台、床下に置きました` : '', r.valves ? `止水栓を ${r.valves} 個入れました（器具・給湯器の給水・給湯の口のすぐ先）` : '', r.sleeves ? `外周の基礎の貫通 ${r.sleeves} か所` : '', r.crossings ? `内部の立上りの貫通 ${r.crossings} か所` : '', verdict, ...r.notes, '3D で確かめて、合わない所は直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
     },

@@ -14,7 +14,7 @@ import { FIXTURE_CATALOG, fixtureCorners, groundZ, placeFixture, portNodes, type
 import { findFloorRoute, ROUTE_STEP, type RouteGoal } from './floorRoute';
 import { assignAutoMaterials } from './materials';
 import { membersOf } from './members';
-import { addPolyline, addRiser, segmentsAt, type PipeNode, type SegmentAttrs, type SystemType, type Vec3 } from './network';
+import { addPolyline, addRiser, insertValve, segmentsAt, type PipeNode, type SegmentAttrs, type SystemType, type Vec3 } from './network';
 
 /** 床下の配管の高さ（1 階の床から mm） */
 export const UNDERFLOOR_Z = -300;
@@ -42,6 +42,8 @@ export type SupplyRouteResult = {
   sleeves: number;
   /** 内部の立上りの貫通の数 */
   crossings: number;
+  /** 入れた止水栓の数（各器具の給水・給湯と給湯器の入口） */
+  valves: number;
   connected: { water: number; hot: number };
   notes: string[];
   error?: string;
@@ -78,7 +80,7 @@ const dirOf = (v: Vec2): 0 | 1 | 2 | 3 => (Math.abs(v.x) >= Math.abs(v.y) ? (v.x
 type Entry = { eIn: Vec2; eOut: Vec2; n: Vec2 };
 
 export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyRouteResult {
-  const none = (error?: string): SupplyRouteResult => ({ doc, pipes: 0, headers: 0, sleeves: 0, crossings: 0, connected: { water: 0, hot: 0 }, notes: [], ...(error ? { error } : {}) });
+  const none = (error?: string): SupplyRouteResult => ({ doc, pipes: 0, headers: 0, sleeves: 0, crossings: 0, valves: 0, connected: { water: 0, hot: 0 }, notes: [], ...(error ? { error } : {}) });
   const b = doc.building;
   const base = b.floors.slice().sort((p, q) => p.elevation - q.elevation)[0];
   if (!base) return none('建物がありません');
@@ -118,6 +120,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
   let pipes = 0, headers = 0, sleeves = 0, crossings = 0;
   const connected = { water: 0, hot: 0 };
   const notes: string[] = [];
+  /** 止水栓を入れる口（つないだ器具の給水・給湯、給湯器の入口） */
+  const valvePorts: string[] = [];
   const nodeOf = (fid: string, pid: string): PipeNode | undefined => portNodes(cur.network, fid).find((n) => n.portId === pid);
   const free = (n: PipeNode | undefined) => !!n && segmentsAt(cur.network, n.id).length === 0;
   const attrs = (system: SystemType, diameter: number): SegmentAttrs => ({ system, diameter });
@@ -306,7 +310,7 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
     const ids = path([st.end.pos, at(st.end.pos)], attrs(system, dia), st.end.id);
     return cur.network.nodes[ids.at(-1)!];
   };
-  type Target = { end: PipeNode; fixtureId: string };
+  type Target = { end: PipeNode; fixtureId: string; port: string };
   const targets: Record<'water' | 'hotWater', Target[]> = { water: [], hotWater: [] };
   let outdoor = 0, upper = 0, indoorSeen = 0;
   for (const f of Object.values(cur.fixtures)) {
@@ -320,7 +324,7 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
     for (const { n, st } of states) {
       const def = FIXTURE_CATALOG[f.type].ports.find((p) => p.id === n.portId)!;
       const end = underEnd(n, st, def.system, def.diameter);
-      if (end) targets[def.system as 'water' | 'hotWater'].push({ end, fixtureId: f.id });
+      if (end) targets[def.system as 'water' | 'hotWater'].push({ end, fixtureId: f.id, port: n.id });
     }
   }
   if (!indoorSeen && outdoor && !Object.values(doc.fixtures).some((f) => f.type !== 'outdoorFaucet' && SUPPLY_TYPES.has(f.type) && inside(f))) {
@@ -378,10 +382,10 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
   };
 
   // --- 給水: メーター → 給水ヘッダー → 器具・給湯器の入口 ---
-  const waterTargets: { end: string; fixtureId: string; dia: number }[] = targets.water.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13 }));
+  const waterTargets: { end: string; fixtureId: string; dia: number; port: string }[] = targets.water.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port }));
   if (heaterIn && free(heaterIn)) {
     const end = heaterInside ? dropLink(heaterIn, attrs('water', 20)) : wallLink(heaterIn, attrs('water', 20))?.id ?? null;
-    if (end) waterTargets.push({ end, fixtureId: heater!.id, dia: 20 });
+    if (end) waterTargets.push({ end, fixtureId: heater!.id, dia: 20, port: heaterIn.id });
     else notes.push('給湯器の入口への道が見つかりませんでした');
   }
   if (waterTargets.length) {
@@ -405,21 +409,39 @@ export function routeSupplies(doc: Doc, opts: { burial?: number } = {}): SupplyR
       const near = hotFeed ? cur.network.nodes[hotFeed].pos : heaterOut.pos;
       const inward = hotEntry ? { x: -hotEntry.n.x, y: -hotEntry.n.y } : toward(near, targets.hotWater.map((t) => t.end.pos));
       const outs = headerOutlets('hotWaterHeader', targets.hotWater.length, near, around(inward), feedHot);
-      attach(targets.hotWater.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13 })), outs, near, 'hotWater', '給湯ヘッダー');
+      attach(targets.hotWater.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port })), outs, near, 'hotWater', '給湯ヘッダー');
     }
   }
 
   /** 器具をヘッダーの出口へ（ヘッダーに近い器具から、通れる出口へ） */
-  function attach(list: { end: string; fixtureId: string; dia: number }[], outs: Outlet[], near: Vec2, system: 'water' | 'hotWater', label: string) {
+  function attach(list: { end: string; fixtureId: string; dia: number; port: string }[], outs: Outlet[], near: Vec2, system: 'water' | 'hotWater', label: string) {
     const order = list.slice().sort((p, q) => dist2(cur.network.nodes[p.end].pos, near) - dist2(cur.network.nodes[q.end].pos, near));
     for (const t of order) {
       if (!outs.length) { notes.push(`${label}の出口が足りず、つないでいない器具があります`); break; }
       const i = outs.findIndex((o) => connect(t.end, o.node.id, attrs(system, t.dia), o.dirs));
-      if (i >= 0) { outs.splice(i, 1); connected[system === 'water' ? 'water' : 'hot']++; }
+      if (i >= 0) { outs.splice(i, 1); connected[system === 'water' ? 'water' : 'hot']++; valvePorts.push(t.port); }
       else notes.push(`${FIXTURE_CATALOG[cur.fixtures[t.fixtureId].type].label}${system === 'hotWater' ? 'の給湯' : ''}への道が見つかりませんでした`);
     }
   }
 
+  // 止水栓: つないだ器具の給水・給湯と給湯器の入口の、口のすぐ先（150mm、短ければ半分）
+  let valves = 0;
+  for (const pid of valvePorts) {
+    const port = cur.network.nodes[pid];
+    const seg = port && segmentsAt(cur.network, pid)[0];
+    if (!seg) continue;
+    const o = cur.network.nodes[seg.a === pid ? seg.b : seg.a];
+    if (o.kind === 'valve') continue;
+    const L = Math.hypot(o.pos.x - port.pos.x, o.pos.y - port.pos.y, o.pos.z - port.pos.z);
+    if (L < 20) continue;
+    const t = Math.min(150, L / 2) / L;
+    const r = insertValve(cur.network, seg.id, { x: port.pos.x + (o.pos.x - port.pos.x) * t, y: port.pos.y + (o.pos.y - port.pos.y) * t, z: port.pos.z + (o.pos.z - port.pos.z) * t });
+    if (!r) continue;
+    cur = { ...cur, network: r.net };
+    newSegs.push(...segmentsAt(cur.network, r.nodeId).map((s) => s.id));
+    valves++;
+  }
+
   if (!newSegs.length && !headers) return { ...none(), notes };
-  return { doc: { ...cur, network: assignAutoMaterials(cur.network, b, newSegs) }, pipes, headers, sleeves, crossings, connected, notes };
+  return { doc: { ...cur, network: assignAutoMaterials(cur.network, b, newSegs) }, pipes, headers, sleeves, crossings, valves, connected, notes };
 }
