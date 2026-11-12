@@ -14,6 +14,7 @@ import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
 import { routeSupplies as routeSuppliesUnder } from '../model/supplyRoute';
+import { autoConnect } from '../model/autoConnect';
 import { calcSupply } from '../model/hydraulics/calc';
 import { readSuiriSettings } from '../model/hydraulics/settings';
 import { resolveSupplyRules, type SupplyRules } from '../model/hydraulics/supplyRules';
@@ -252,6 +253,8 @@ type State = {
   routeDrainsOut(rules?: DrainRules): number;
   /** 給水・給湯を床下のヘッダーでつなぐ（案）。つないだ本数を返す。rules: 自治体の給水の値（埋設深さ・水理計算） */
   routeSupplies(rules?: SupplyRules): number;
+  /** 汚水・水・湯をまとめてつなぐ（落とす → 排水を外へ → 屋外でマス・公共マスまで → 給水・給湯 → 通気弁）。元に戻す 1 回で全部戻る。足した管の数 */
+  autoConnectAll(opts?: { drainRules?: DrainRules; supply?: SupplyRules }): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -906,6 +909,15 @@ export const useStore = create<State>((set, get) => {
       const parts = [`給水 ${r.connected.water} 本・給湯 ${r.connected.hot} 本を床下のヘッダーでつなぎました（案）`, r.headers ? `ヘッダーを ${r.headers} 台、床下に置きました` : '', r.valves ? `止水栓を ${r.valves} 個入れました（器具・給湯器の給水・給湯の口のすぐ先）` : '', r.sleeves ? `外周の基礎の貫通 ${r.sleeves} か所` : '', r.crossings ? `内部の立上りの貫通 ${r.crossings} か所` : '', verdict, ...r.notes, '3D で確かめて、合わない所は直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
+    },
+    autoConnectAll: (opts = {}) => {
+      const doc = get().doc;
+      const rules = opts.supply ?? resolveSupplyRules({ address: get().meta?.address });
+      const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v });
+      const added = Object.keys(r.doc.network.segments).filter((id) => !doc.network.segments[id]).length;
+      if (r.doc === doc || !added) { set({ notice: ['つなぐものがありません（器具・マスはもうつながっています）', ...r.summary].join('。') }); return 0; }
+      commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: [...r.summary, '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].join('。') });
+      return added;
     },
     placeFixtureAt: (p) => {
       const { doc, activeFloorId, fixtureType } = get();

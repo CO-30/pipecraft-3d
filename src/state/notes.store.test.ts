@@ -114,3 +114,19 @@ describe('共通ストア: メモ', () => {
     expect(notes()[0]).toMatchObject({ text: 'あ' });
   });
 });
+
+describe('共通ストア: まとめて自動でつなぐ', () => {
+  it('1 回で全部つなぎ、元に戻す 1 回で全部戻る。知らせにまとめて出す', async () => {
+    const { supplyHouse } = await import('../model/testSupplyHouse');
+    const { placeFixture } = await import('../model/fixtures');
+    const h = supplyHouse();
+    const d = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 }).doc;
+    s().newDoc(d, { id: 'q', name: 'q', createdAt: 1 });
+    const n0 = Object.keys(s().doc.network.segments).length;
+    expect(s().autoConnectAll()).toBeGreaterThan(0);
+    expect(Object.keys(s().doc.network.segments).length).toBeGreaterThan(n0);
+    expect(s().notice).toContain('通気弁');
+    s().undo();
+    expect(Object.keys(s().doc.network.segments).length).toBe(n0);
+  });
+});
