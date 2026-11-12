@@ -69,12 +69,22 @@ export function UnderlayPanel() {
     const id = st.addUnderlay({ floorId: useStore.getState().activeFloorId, kind: 'image', label: `${baseName(f)}（1/${d.scale}）`, ...r, ...initialPlacement(r.widthPx, r.heightPx, viewCenter(), mmPerPx), opacity: 0.6 });
     if (id) setNote(d.notes.join(' '));
   });
+  /** DXF: 実寸（mm）の線画として置く。単位は図面の $INSUNITS から */
+  const addDxf = (f: File) => run('DXF図面の読み込み', async () => {
+    const [{ parseDxf }, { renderCad }] = await Promise.all([import('../import/dxf'), import('../import/cadRender')]);
+    const d = parseDxf(new Uint8Array(await f.arrayBuffer()));
+    if (d.empty) throw new Error('図面に線や文字が見つかりませんでした（ペーパー空間だけの図面は、モデル空間に図を置いて保存し直してください）');
+    const { mmPerPx, ...r } = renderCad(d);
+    const id = st.addUnderlay({ floorId: useStore.getState().activeFloorId, kind: 'image', label: `${baseName(f)}（DXF・実寸）`, ...r, ...initialPlacement(r.widthPx, r.heightPx, viewCenter(), mmPerPx), opacity: 0.6 });
+    if (id) setNote(d.notes.join(' '));
+  });
   const addFile = (f: File) => {
     const kind = underlayFileKind(f);
     if (kind === 'pdf') return addPdf(f);
     if (kind === 'jww') return addCad(f);
+    if (kind === 'dxf') return addDxf(f);
     if (kind === 'image') return addImage(f);
-    setErr('この形式（DXF・DWG など）には対応していません。PDF か Jw_cad の .jww、または写真を選んでください'); setNote('');
+    setErr(kind === 'dwg' ? 'DWG は読めません。CAD で「DXF」に保存し直して選んでください' : 'この形式には対応していません。PDF・Jw_cad の .jww・DXF、または写真を選んでください'); setNote('');
     return Promise.resolve();
   };
   // 「新しい工事」で選んだ図面をそのまま取り込む
@@ -90,7 +100,7 @@ export function UnderlayPanel() {
       <div className="row">
         <button data-testid="ul-image" disabled={!!busy} onClick={() => imgRef.current?.click()}>🖼 写真・画像</button>
         <button data-testid="ul-pdf" disabled={!!busy} onClick={() => pdfRef.current?.click()}>📄 PDF図面</button>
-        <button data-testid="ul-cad" disabled={!!busy} onClick={() => cadRef.current?.click()}>📐 Jw_cad図面</button>
+        <button data-testid="ul-cad" disabled={!!busy} onClick={() => cadRef.current?.click()}>📐 CAD図面（Jw_cad・DXF）</button>
         <button data-testid="ul-site" disabled={!!busy} onClick={() => setSite(true)}>🛰 航空写真・建物外形</button>
         <label className="field inline"><input type="checkbox" data-testid="ul-show" checked={show} onChange={(e) => st.setShowUnderlays(e.target.checked)} /> 表示</label>
       </div>
