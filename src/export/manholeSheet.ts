@@ -6,6 +6,7 @@
 import type { Doc } from '../model/doc';
 import type { ManholeTable } from '../model/manholeTable';
 import { around, at, LabelPlacer } from './labelLayout';
+import { clipToRect } from './sleeveSheet';
 import { dateJa } from './report';
 import { fitText, GRAY, INK, RED, type Sheet } from './sheet';
 
@@ -13,17 +14,19 @@ export const MASU_ROWS_PER_PAGE = 24;
 const W = 297, H = 210, M = 10;
 const PLAN = { x: M, y: 22, w: 105, h: 168 };
 const COLS = [
-  { k: 'No', w: 13 }, { k: '種類', w: 24 }, { k: '大きさ', w: 13 }, { k: '地盤高', w: 15 }, { k: '管底高', w: 15 }, { k: '深さ', w: 12 },
-  { k: '下流の管', w: 24 }, { k: '勾配', w: 15 }, { k: '次まで(m)', w: 16 }, { k: '備考', w: 20 },
+  { k: 'No', w: 12 }, { k: '種類', w: 20 }, { k: '大きさ', w: 12 }, { k: '地盤高', w: 14 }, { k: '管底高', w: 14 }, { k: '深さ', w: 11 },
+  { k: '下流の管', w: 20 }, { k: '勾配', w: 15 }, { k: '延長(m)', w: 13 }, { k: '次のます', w: 13 }, { k: '備考', w: 23 },
 ];
 const TX = PLAN.x + PLAN.w + 5, TY = 22, HEAD_H = 6, ROW_H = 6.2;
-const DRAIN = '#7c4a1e';
+const DRAIN = '#7c4a1e', BLUE = '#2563eb';
 
 const signed = (mm: number) => (mm > 0 ? `+${mm}` : mm < 0 ? `−${-mm}` : '±0');
 
-export function renderManholeSheets(doc: Doc, table: ManholeTable, pos: Record<string, { x: number; y: number }>, meta: { siteName: string; date: Date }): Sheet[] {
+/** title: 表題（竣工図なら「ます表（竣工）」）。numbersOnProfile: 縦断図にも NO. を書く様式（注記の言い方） */
+export function renderManholeSheets(doc: Doc, table: ManholeTable, pos: Record<string, { x: number; y: number }>, meta: { siteName: string; date: Date; title?: string; numbersOnProfile?: boolean }): Sheet[] {
   const b = doc.building, net = doc.network;
-  const f1 = [...b.floors].sort((x, y) => x.elevation - y.elevation)[0];
+  // 1 階（地下があっても床の高さが 0 にいちばん近い階）
+  const f1 = [...b.floors].sort((x, y) => Math.abs(x.elevation) - Math.abs(y.elevation))[0];
   const walls = Object.values(b.walls).filter((w) => w.floorId === f1?.id && b.corners[w.a] && b.corners[w.b]);
   const rows = table.rows.filter((r) => pos[r.nodeId]);
   const pts = [...walls.flatMap((w) => [b.corners[w.a], b.corners[w.b]]), ...rows.map((r) => pos[r.nodeId])];
@@ -37,14 +40,17 @@ export function renderManholeSheets(doc: Doc, table: ManholeTable, pos: Record<s
   const ox = PLAN.x + (PLAN.w - (maxX - minX) * k) / 2, oy = PLAN.y + (PLAN.h - (maxY - minY) * k) / 2;
   const X = (x: number) => ox + (x - minX) * k, Y = (y: number) => oy + (maxY - y) * k;
   const scale = Math.round(1 / k / 10) * 10;
-  const drains = Object.values(net.segments).filter((s) => (s.system === 'drain' || s.system === 'sewage') && net.nodes[s.a] && net.nodes[s.b]);
+  // 表の系統の管だけ（別の系統・遠くの管は描かない）
+  const show = new Set(table.segIds);
+  const drains = Object.values(net.segments).filter((s) => show.has(s.id) && net.nodes[s.a] && net.nodes[s.b]);
 
   const pages = Math.max(1, Math.ceil(table.rows.length / MASU_ROWS_PER_PAGE));
   const sheets: Sheet[] = [];
   for (let pg = 0; pg < pages; pg++) {
     const sheet: Sheet = { width: W, height: H, ops: [] };
     const P = new LabelPlacer(sheet, { x1: M - 2, y1: 6, x2: W - M + 2, y2: H - 2 });
-    P.place([at(M, 15, { s: pg > 0 ? 'ます表（続き）' : 'ます表', size: 5, bold: true })]);
+    const title = meta.title ?? 'ます表';
+    P.place([at(M, 15, { s: pg > 0 ? `${title}（続き）` : title, size: 5, bold: true })]);
     P.place([at(W - M, 15, { s: `${meta.siteName}　作成日: ${dateJa(meta.date)}`, size: 2.8, color: GRAY }, 'end')]);
 
     // 位置図
@@ -58,20 +64,23 @@ export function renderManholeSheets(doc: Doc, table: ManholeTable, pos: Record<s
     for (const s of drains) {
       const p = net.nodes[s.a].pos, q = net.nodes[s.b].pos;
       if (Math.hypot(q.x - p.x, q.y - p.y) * k < 0.05) continue;
-      sheet.ops.push({ t: 'line', x1: X(p.x), y1: Y(p.y), x2: X(q.x), y2: Y(q.y), w: 0.3, color: DRAIN });
-      PP.blockSeg(X(p.x), Y(p.y), X(q.x), Y(q.y));
+      // 位置図の枠で切る（表・用紙の外へはみ出さない）
+      const c = clipToRect(X(p.x), Y(p.y), X(q.x), Y(q.y), PLAN);
+      if (!c) continue;
+      sheet.ops.push({ t: 'line', x1: c[0], y1: c[1], x2: c[2], y2: c[3], w: 0.3, color: DRAIN });
+      PP.blockSeg(c[0], c[1], c[2], c[3]);
     }
     const R = 1.6;
     for (const r of rows) {
       const p = pos[r.nodeId];
-      sheet.ops.push({ t: 'circle', cx: X(p.x), cy: Y(p.y), r: R, stroke: r.existing ? '#2563eb' : RED, fill: '#ffffff', lw: 0.35 });
+      sheet.ops.push({ t: 'circle', cx: X(p.x), cy: Y(p.y), r: R, stroke: r.existing ? BLUE : RED, fill: '#ffffff', lw: 0.35 });
       PP.block({ x1: X(p.x) - R, y1: Y(p.y) - R, x2: X(p.x) + R, y2: Y(p.y) + R });
     }
     for (const r of rows) {
       const p = pos[r.nodeId];
-      PP.place(around(X(p.x), Y(p.y), [{ s: r.no, size: 2.3, color: r.existing ? '#2563eb' : RED, bold: true }], { gap: R + 0.4, leaderColor: RED, maxDist: 40 }));
+      PP.place(around(X(p.x), Y(p.y), [{ s: r.no, size: 2.3, color: r.existing ? BLUE : RED, bold: true }], { gap: R + 0.4, leaderColor: r.existing ? BLUE : RED, maxDist: 40 }));
     }
-    PP.place([at(PLAN.x + 2, PLAN.y + PLAN.h - 2, { s: `縮尺 約1/${scale}　赤: 新設　青: 既設`, size: 2.4, color: GRAY })]);
+    PP.place([at(PLAN.x + 2, PLAN.y + PLAN.h - 2, { s: `縮尺 約1/${scale}　赤: 新設　青: 既存`, size: 2.4, color: GRAY })]);
 
     // 表
     const T = new LabelPlacer(sheet, { x1: M - 2, y1: 6, x2: W - M + 2, y2: H - 2 });
@@ -82,19 +91,19 @@ export function renderManholeSheets(doc: Doc, table: ManholeTable, pos: Record<s
     const part = table.rows.slice(pg * MASU_ROWS_PER_PAGE, (pg + 1) * MASU_ROWS_PER_PAGE);
     part.forEach((r, i) => {
       const y = TY + HEAD_H + i * ROW_H;
-      const note = [r.existing ? '既設' : '', r.drop ? `落差 ${r.drop}` : ''].filter(Boolean).join('・');
-      const cells = [r.no, r.kind, r.size, signed(r.gl), signed(r.invert), String(r.depth), r.pipe ?? '—', r.slope ?? '—', r.toNext !== undefined ? `${(r.toNext / 1000).toFixed(2)}→${r.next ?? ''}` : '—', note];
+      const note = [r.existing ? '既存' : '', r.drop ? `落差 ${r.drop}` : ''].filter(Boolean).join('・');
+      const cells = [r.no, r.kind, r.size, signed(r.gl), signed(r.invert), String(r.depth), r.pipe ?? '—', r.slope ?? '—', r.toNext !== undefined ? (r.toNext / 1000).toFixed(2) : '—', r.next ?? '—', note];
       let cx = TX;
       COLS.forEach((c, ci) => {
         sheet.ops.push({ t: 'rect', x: cx, y, w: c.w, h: ROW_H, stroke: INK, lw: 0.15 });
-        const num = ci >= 3 && ci <= 5;
+        const num = (ci >= 3 && ci <= 5) || ci === 8;
         const anchor = ci === 0 ? 'middle' : num ? 'end' : 'start';
         const tx = ci === 0 ? cx + c.w / 2 : num ? cx + c.w - 1 : cx + 1;
-        T.place([at(tx, y + ROW_H - 1.9, { s: fitText(cells[ci], 2.4, c.w - 2), size: 2.4, color: ci === 0 ? (r.existing ? '#2563eb' : RED) : INK, bold: ci === 0 }, anchor)]);
+        T.place([at(tx, y + ROW_H - 1.9, { s: fitText(cells[ci], 2.4, c.w - 2), size: 2.4, color: ci === 0 ? (r.existing ? BLUE : RED) : INK, bold: ci === 0 }, anchor)]);
         cx += c.w;
       });
     });
-    T.place([at(M, H - 8, { s: `高さは mm。${table.datumLabel ?? '高さの基準: 1階の床（FL）±0'}。深さは地盤から流出側の管底まで。番号は排水縦断図の NO. と同じ`, size: 2.4, color: GRAY })]);
+    T.place([at(M, H - 8, { s: `高さは mm。${table.datumLabel ?? '高さの基準: 1階の床（FL）±0'}。深さは地盤から流出側の管底まで。${meta.numbersOnProfile ? '番号は排水縦断図の NO. と同じ' : '番号はこの表と位置図の番号'}`, size: 2.4, color: GRAY })]);
     T.place([at(M, H - 4.5, { s: 'ますの位置・深さは配管データからの計算です。現場で確かめてください', size: 2.4, color: GRAY })]);
     sheets.push(sheet);
   }

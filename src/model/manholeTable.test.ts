@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { testSite } from './drainSolve/testSite';
 import { placeFixture, portNodes } from './fixtures';
 import { addPolyline, type Network } from './network';
-import { buildProfile, extractRoute, trimToManholes, type ProfileModel } from './profileDrawing';
+import { buildRouteProfiles, extractRoute, type ProfileModel } from './profileDrawing';
 import { manholeTable } from './manholeTable';
 import { STANDARD_PROFILE } from './municipality';
 import { solveDoc } from '../state/store';
@@ -24,10 +24,7 @@ function site(): { doc: Doc; models: ProfileModel[]; pubPort: string } {
   const profile = { ...STANDARD_PROFILE, profileTable: { ...STANDARD_PROFILE.profileTable, datum: 'publicInvert' as const, manholeLabel: 'above' as const } };
   const r = extractRoute(doc.network, t.pub);
   if ('error' in r) throw new Error(r.error);
-  const main = buildProfile(doc, trimToManholes(doc, r.route), profile, 't');
-  const models = [main];
-  let start = main.manholeCount;
-  for (const b of r.branches) { const bm = buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, 'b', {}, { datumZ: main.datumZ, manholeNoStart: start }); start += bm.manholeCount; models.push(bm); }
+  const models = buildRouteProfiles(doc, r, profile, 't', () => 'b');
   return { doc, models, pubPort: t.pub };
 }
 
@@ -68,5 +65,47 @@ describe('ます表', () => {
     const extra = placeFixture(doc, doc.building.floors[0].id, 'manholeRain', { x: 9000, y: 9000 }).doc;
     const t = manholeTable(extra, models);
     expect(t.outside).toBe(1);
+  });
+
+  test('枝が 2 本以上でも、ます表の番号は縦断図の名前と同じ。合流のマスは 1 つの番号', () => {
+    const t = testSite(-1200, -4000);
+    let doc = t.doc;
+    const mh = (x: number, y: number) => { const r = placeFixture(doc, t.floorId, 'manholeSewage', { x, y }); doc = r.doc; return portNodes(doc.network, r.fixtureId!)[0]; };
+    const j = mh(-2000, 3000), a = mh(-2000, 6000), b = mh(-2000, 0), c = mh(-3500, 4500);
+    let net: Network = doc.network;
+    net = addPolyline(net, [j.pos, doc.network.nodes[t.pub].pos], S, { startNodeId: j.id, endNodeId: t.pub }).net;
+    for (const u of [a, b, c]) net = addPolyline(net, [u.pos, j.pos], S, { startNodeId: u.id, endNodeId: j.id }).net;
+    doc = solveDoc({ ...doc, network: net }).doc;
+    const profile = { ...STANDARD_PROFILE, profileTable: { ...STANDARD_PROFILE.profileTable, datum: 'publicInvert' as const, manholeLabel: 'above' as const } };
+    const r = extractRoute(doc.network, t.pub);
+    if ('error' in r) throw new Error(r.error);
+    const models = buildRouteProfiles(doc, r, profile, 't', () => 'b');
+    expect(models.length).toBe(3);
+    const nameOf = new Map<string, Set<string>>();
+    for (const m of models) for (const n of m.nodes) if (n.manhole) nameOf.set(n.nodeId, new Set([...(nameOf.get(n.nodeId) ?? []), n.manhole.name]));
+    for (const names of nameOf.values()) expect(names.size).toBe(1); // 合流のマスも 1 つの名前
+    const tbl = manholeTable(doc, models);
+    for (const row of tbl.rows.filter((x) => !x.isPublic)) expect([...nameOf.get(row.nodeId)!][0].startsWith(row.no)).toBe(true);
+    expect(tbl.rows.map((x) => x.no)).toEqual(['NO.1', 'NO.2', 'NO.3', 'NO.4', '公共']);
+    expect(tbl.rows.every((x) => x.depth === x.gl - x.invert)).toBe(true);
+  });
+
+  test('配管の途中（チーズ）で合流する枝のマスも、下流の管・勾配・次のますまでを出す', () => {
+    const t = testSite(-1200, -4000);
+    let doc = t.doc;
+    const mh = (x: number, y: number) => { const r = placeFixture(doc, t.floorId, 'manholeSewage', { x, y }); doc = r.doc; return portNodes(doc.network, r.fixtureId!)[0]; };
+    const m1 = mh(-2000, 3000), m2 = mh(-3000, 6000);
+    let net: Network = doc.network;
+    const main = addPolyline(net, [m1.pos, { ...doc.network.nodes[t.pub].pos, x: -3000 }, doc.network.nodes[t.pub].pos], S, { startNodeId: m1.id, endNodeId: t.pub });
+    net = main.net;
+    const tee = main.nodeIds[1];
+    net = addPolyline(net, [m2.pos, net.nodes[tee].pos], S, { startNodeId: m2.id, endNodeId: tee }).net;
+    doc = solveDoc({ ...doc, network: net }).doc;
+    const r = extractRoute(doc.network, t.pub);
+    if ('error' in r) throw new Error(r.error);
+    const tbl = manholeTable(doc, buildRouteProfiles(doc, r, STANDARD_PROFILE, 't', () => 'b'));
+    const own = tbl.rows.filter((x) => !x.isPublic);
+    expect(own).toHaveLength(2);
+    expect(own.every((x) => x.pipe && x.slope && x.toNext && x.next === '公共')).toBe(true);
   });
 });
