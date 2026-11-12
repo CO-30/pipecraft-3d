@@ -207,6 +207,7 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .modal.help { width: min(680px, 100%); }
 .help-head { display: flex; justify-content: space-between; align-items: center; }
 .modal.help h3 { margin: 8px 0 0; font-size: 15px; }
+.modal.help .fbw h3 { margin: 0 0 8px; font-size: 16px; }
 .help-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
 .help-steps li b { display: block; }
 .help-steps li span { color: #4b5563; font-size: 13px; line-height: 1.6; }
@@ -427,3 +428,5 @@ header .lbl { margin-left: 2px; }
 .note-tag.done { background: #e2e8f0; color: #64748b; border-color: #94a3b8; }
 .note-tag.on, .note-tag.on:hover { background: #fde047; color: #422006; border-color: #d97706; outline: 3px solid #f59e0b; }
 .note-tag-text { font-weight: 400; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+/* 共通の要望欄（ホームのいちばん下） */
+.home-feedback { margin: 28px auto 8px; max-width: 640px; }

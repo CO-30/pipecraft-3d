@@ -41,7 +41,7 @@ export function LocationPanel({ settings, defaultQuery, onChange }: Props) {
       {places && places.length === 0 && <span className="warn small" role="status">見つかりませんでした。番地まで入れるか、緯度,経度で指定してください</span>}
       {places && places.length > 1 && (
         <span className="field inline">候補
-          <select data-testid="mitori-place" value="" onChange={(e) => { const p = places[Number(e.target.value)]; if (p) choose(p); }}>
+          <select data-testid="mitori-place" data-fb-skip value="" onChange={(e) => { const p = places[Number(e.target.value)]; if (p) choose(p); }}>
             <option value="" disabled>{places.length} 件から選ぶ</option>
             {places.map((p, i) => <option key={i} value={i}>{p.title}</option>)}
           </select>

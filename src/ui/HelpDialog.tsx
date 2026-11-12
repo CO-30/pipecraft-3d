@@ -1,6 +1,6 @@
 /** 使い方（8つの工程・基本操作・用語）。ホームと作業画面の「？」から開く */
-import { useEffect, useRef } from 'react';
-import { feedbackWidget, initFeedback } from '../feedback/feedback';
+import { useEffect } from 'react';
+import { FeedbackBox } from '../feedback/FeedbackBox';
 
 const STEPS: [string, string][] = [
   ['工事を作る', 'ホームの「新しい工事を作る」で工事名を入れ、建物の作り方を選びます。'],
@@ -35,16 +35,14 @@ const TERMS: [string, string][] = [
   ['マス・管底高', '排水のます。管底高は管の内側の底の高さ。排水の配管は高さを管底高として扱います。'],
 ];
 
-/** 共通の要望欄（feedback-widget.js）をここに描く */
-function FeedbackBox() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { initFeedback(); const fw = feedbackWidget(); if (fw && ref.current) fw.render(ref.current); }, []);
-  return <div ref={ref} data-testid="feedback-box" />;
-}
-
 export function HelpDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const k = (e: KeyboardEvent) => {
+      // 要望を書いている途中（入力欄・日本語の変換の取り消し）の Esc では閉じない
+      const t = e.target as HTMLElement | null;
+      if (e.key !== 'Escape' || e.isComposing || t?.closest?.('textarea,input')) return;
+      onClose();
+    };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
@@ -60,9 +58,8 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
         <h3>用語</h3>
         <dl className="help-dl">{TERMS.map(([t, d]) => <div key={t}><dt>{t}</dt><dd>{d}</dd></div>)}</dl>
         <p className="muted small">このアプリは数量・見積の作成を助けるものです。施工・法令・耐圧などの確認は別途行ってください。</p>
-        <h3 id="feedback">ご要望・不具合</h3>
-        <p className="muted small">送ったときだけ、書いた本文と直前の操作（画面名・ボタン名）・版・端末の種類・配管や器具の数が送られます。工事名・住所・図面・単価・申請者の情報は送られません。</p>
-        <FeedbackBox />
+        <h3>ご要望・不具合</h3>
+        <FeedbackBox testId="feedback-box-help" />
       </div>
     </div>
   );

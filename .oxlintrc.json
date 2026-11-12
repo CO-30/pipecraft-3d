@@ -15,6 +15,6 @@
     ]
   },
   "ignorePatterns": [
-    "src/feedback/feedback-widget.js"
+    "src/feedback/feedback-widget.fixture.js"
   ]
 }

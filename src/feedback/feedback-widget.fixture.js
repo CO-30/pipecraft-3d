@@ -1,3 +1,4 @@
+// テスト用の写し（単体テスト・E2E で使う）。本番は FEEDBACK_SCRIPT の URL から読み込む。元は CO-30/invoice-maker の feedback/feedback-widget.js
 /*!
  * 共通の要望欄（feedback-widget.js）
  * どのアプリにも同じ形で入れられる「要望・不具合の送信欄」と「直前の操作の記録」。

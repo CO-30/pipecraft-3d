@@ -2,6 +2,7 @@ import { setPendingUnderlayFile } from './import/pending';
 import { defaultEstimate } from './model/estimate';
 import { useEffect, useState } from 'react';
 import { HomeScreen } from './ui/HomeScreen';
+import { fbError, fbLog } from './feedback/feedback';
 import { Editor } from './ui/Editor';
 import type { NewProjectInput } from './ui/NewProjectDialog';
 import { emptyDoc, setDrainRulesSource, useStore } from './state/store';
@@ -37,6 +38,9 @@ export default function App() {
   const [report, setReport] = useState<{ report: ImportReport; fixtures: LearnedCandidate[]; raw: PlacedCandidate[] } | null>(null);
   // 図面から置いた器具を使う人が直したら、この端末に覚える
   useEffect(() => startFixtureLearning(useStore), []);
+  // 要望欄の記録: 画面の切り替えと、画面に出したエラー（「：」より前だけ）
+  useEffect(() => { fbLog('画面: ' + (screen === 'home' ? 'ホーム' : '作業')); }, [screen]);
+  useEffect(() => { if (error) fbError(error); }, [error]);
   const save = useSaveState();
 
   const open = async (id: string) => {

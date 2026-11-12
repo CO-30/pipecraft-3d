@@ -1,15 +1,17 @@
 /**
- * 共通の要望欄（REDSEAL・左官見積と同じ受付へ送る）。
- * 部品 `feedback-widget.js` は CO-30/invoice-maker の `feedback/feedback-widget.js` の写し。直すときは向こうを直してから写す。
- * 使い方の画面（HelpDialog）の下に出す。
+ * 共通の要望欄（REDSEAL・左官見積などと同じ受付へ送る）。手順書: CO-30/invoice-maker の feedback/README.md
+ * 部品は公開 URL から読み込む（読み込めなくてもアプリは動く）。ホーム画面の下と、使い方の画面の下に出す。
  */
-import './feedback-widget.js';
 import { useStore } from '../state/store';
 
-/** 要望・不具合の受付先（共通の受付 Code.gs をウェブアプリとして公開した …/exec の URL）。空のあいだは送信ボタンが押せない */
-export const FEEDBACK_URL = '';
+/** 部品（全アプリ共通。版を変えるときは ?v= も変える） */
+export const FEEDBACK_SCRIPT = 'https://co-30.github.io/invoice-maker/feedback/feedback-widget.js?v=1.14.0';
+/** 受付（全アプリ共通。Code.gs のウェブアプリ） */
+export const FEEDBACK_URL = 'https://script.google.com/macros/s/AKfycbwRiAKzdRhW0SQFyNuoIlGmPQx9rGA199TT0weaKZ-v3-G4nmfdddiot9f45Rs9mSNCQQ/exec';
+/** 受付のまとめはこの名前ごとに分かれる */
+export const FEEDBACK_APP = '給水';
 
-type Payload = { app: string; version: string; kind: string; text: string; log: { t: string; a: string }[]; context: unknown };
+type Payload = { app: string; version: string; kind: string; text: string; log: { t: string; a: string }[]; errors: { t: string; m: string }[]; context: unknown };
 export type FeedbackWidgetApi = {
   init(o: Record<string, unknown>): FeedbackWidgetApi;
   render(target: string | Element): void;
@@ -22,7 +24,7 @@ export type FeedbackWidgetApi = {
 export const feedbackWidget = (): FeedbackWidgetApi | undefined =>
   (window as unknown as { FeedbackWidget?: FeedbackWidgetApi }).FeedbackWidget;
 
-/** 調査に役立つ状態だけ（工事名・住所・申請者・単価などは入れない） */
+/** 調査に役立つ状態だけ（工事名・住所・申請者・単価・メモの本文などは入れない） */
 export function feedbackContext(): Record<string, unknown> {
   const st = useStore.getState();
   const d = st.doc;
@@ -31,15 +33,51 @@ export function feedbackContext(): Record<string, unknown> {
     階数: d.building.floors.length,
     配管: Object.keys(d.network.segments).length,
     器具: Object.keys(d.fixtures ?? {}).length,
+    メモ: Object.keys(d.notes ?? {}).length,
+    下敷き: Object.keys(d.underlays ?? {}).length,
     道具: st.tool,
     床下: st.underFloor,
   };
 }
 
 let started = false;
-export function initFeedback(): void {
+/** 部品が読み込まれていれば初期化する（何度呼んでもよい） */
+export function initFeedback(): FeedbackWidgetApi | null {
   const fw = feedbackWidget();
-  if (!fw || started) return;
-  started = true;
-  fw.init({ app: '水道見積', version: typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中', endpoint: FEEDBACK_URL, title: 'ご要望・不具合の報告', getContext: feedbackContext });
+  if (!fw) return null;
+  if (!started) {
+    started = true;
+    fw.init({ app: FEEDBACK_APP, version: typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中', endpoint: FEEDBACK_URL, getContext: feedbackContext });
+  }
+  return fw;
+}
+
+let loading: Promise<FeedbackWidgetApi | null> | null = null;
+/** 部品を読み込んで初期化する。読み込めない（電波が無い）ときは null */
+export function loadFeedback(): Promise<FeedbackWidgetApi | null> {
+  if (feedbackWidget()) return Promise.resolve(initFeedback());
+  if (loading) return loading;
+  loading = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = FEEDBACK_SCRIPT;
+    s.async = true;
+    s.onload = () => resolve(initFeedback());
+    s.onerror = () => { loading = null; s.remove(); resolve(null); }; // 次に開いたときにもう一度試す
+    document.head.appendChild(s);
+  });
+  return loading;
+}
+
+/** 画面の切り替えなどを記録（部品が無ければ何もしない） */
+export function fbLog(a: string): void {
+  try { if (started) feedbackWidget()?.log(a); } catch { /* 記録できなくてもアプリは止めない */ }
+}
+
+/**
+ * 画面に出したエラーを記録。「：」「:」「（」より前の文だけ（後ろにファイル名やサーバーの文言が入ることがあるため）
+ */
+export function fbError(message: string): void {
+  const t = String(message || '').split(/[:：（(\n]/)[0].trim().slice(0, 40);
+  if (!t) return;
+  try { if (started) feedbackWidget()?.logError('表示: ' + t); } catch { /* 同上 */ }
 }

@@ -375,7 +375,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       </header>
       <div className="shinsei-controls">
         <label className="field inline">自治体プロファイル
-          <select data-testid="shinsei-profile" value={profile.id} onChange={(e) => updateSite({ municipalityProfileId: e.target.value })}>
+          <select data-testid="shinsei-profile" data-fb-skip value={profile.id} onChange={(e) => updateSite({ municipalityProfileId: e.target.value })}>
             {profiles.all().map((p) => <option key={p.id} value={p.id}>{p.name}{p.unverified.length ? '（要確認あり）' : ''}</option>)}
           </select>
         </label>
@@ -412,13 +412,13 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         ) : kind === 'profile' ? (
           <>
             <label className="field inline">下流端（公共マスなど）
-              <select data-testid="shinsei-outlet" value={outletId} onChange={(e) => { setOutlet(e.target.value); setChoice({}); }}>
+              <select data-testid="shinsei-outlet" data-fb-skip value={outletId} onChange={(e) => { setOutlet(e.target.value); setChoice({}); }}>
                 {outlets.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </select>
             </label>
             {branches.map((b) => (
               <label key={b.nodeId} className="field inline">分岐（{nodeLabel(b.nodeId)}）
-                <select data-testid={`shinsei-branch-${b.nodeId}`} value={choice[b.nodeId] ?? ALL} onChange={(e) => setChoice({ ...choice, [b.nodeId]: e.target.value })}>
+                <select data-testid={`shinsei-branch-${b.nodeId}`} data-fb-skip value={choice[b.nodeId] ?? ALL} onChange={(e) => setChoice({ ...choice, [b.nodeId]: e.target.value })}>
                   <option value={ALL}>全部（枝は別図）</option>
                   {b.options.map((o) => <option key={o} value={o}>{branchDescription(doc, b.nodeId, o)}</option>)}
                 </select>
@@ -430,7 +430,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <label className="field inline">起点
-            <select data-testid="shinsei-root" value={rootId} onChange={(e) => setRoot(e.target.value)}>
+            <select data-testid="shinsei-root" data-fb-skip value={rootId} onChange={(e) => setRoot(e.target.value)}>
               {roots.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
           </label>
