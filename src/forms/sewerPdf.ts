@@ -3,12 +3,12 @@
  * 1 面: 申請書（文字と、選択肢の番号を囲む円）
  * 2 面「平面図及び縦断面図」: 排水の縦断図（Sheet）を縮小して載せる
  * 3 面「配管立図」: 排水の立面図（展開図、アイソメ）を載せる
- * 4 面「見取図」: 空のまま（案内図を貼る）
+ * 4 面「見取図」: 見取図（案内図。国土地理院の地図に工事場所の印）を載せる。無ければ空欄
  * 座標は pdftotext -bbox で様式から取った pt（上端基準）。様式が更新されたら POS を直す。
  */
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { drawSheetOnPage, fontSafe, type PdfOpts, type Sheet } from '../export/sheet';
+import { drawSheetOnPage, embedSheetImages, fontSafe, type PdfOpts, type Sheet } from '../export/sheet';
 import { SEWER_BUILDING_USES, SEWER_CONNECTIONS, SEWER_WORK_KINDS, WATER_SOURCES } from './okinawaCity';
 import { reiwa, type ApplicationValues, type Contractor } from './types';
 
@@ -41,6 +41,8 @@ const POS = {
   },
   /** 2・3 面の図面欄（見出しの下） */
   drawingBox: { x: 36, top: 58, w: 494, h: 706 },
+  /** 4 面「見取図」の枠（罫線 x 28〜522・y 23〜792 pt）の内側。左上の「見取図」の欄の下から */
+  mapBox: { x: 31, top: 58, w: 488, h: 731 },
 } as const;
 
 let missingChars: Set<string> | undefined;
@@ -102,19 +104,22 @@ export function fillSewerPage1(page: PDFPage, font: PDFFont, v: ApplicationValue
 }
 
 /**
- * 様式 PDF に値と図面を載せる。profileSheet: 縦断図（2 面）、isoSheet: 立面図（3 面）。無ければ空欄のまま
+ * 様式 PDF に値と図面を載せる。profile: 縦断図（2 面）、iso: 立面図（3 面）、location: 見取図（4 面）。無ければ空欄のまま
  */
-export async function buildSewerApplication(template: ArrayBuffer | Uint8Array, fontBytes: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor, sheets: { profile?: Sheet; iso?: Sheet }, opts: PdfOpts = {}): Promise<Uint8Array> {
+export async function buildSewerApplication(template: ArrayBuffer | Uint8Array, fontBytes: ArrayBuffer | Uint8Array, v: ApplicationValues, c: Contractor, sheets: { profile?: Sheet; iso?: Sheet; location?: Sheet }, opts: PdfOpts = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.load(template);
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(fontBytes, { subset: false });
   const pages = pdf.getPages();
   if (pages.length < 4) throw new Error('様式 PDF の面数が 4 ではありません');
+  const images = await embedSheetImages(pdf, Object.values(sheets).filter((s): s is Sheet => !!s), opts.images);
+  opts = { ...opts, images };
   missingChars = opts.missing;
   try {
     fillSewerPage1(pages[0], font, v, c);
     if (sheets.profile) drawSheetOnPage(pages[1], font, sheets.profile, POS.drawingBox, opts);
     if (sheets.iso) drawSheetOnPage(pages[2], font, sheets.iso, POS.drawingBox, opts);
+    if (sheets.location) drawSheetOnPage(pages[3], font, sheets.location, POS.mapBox, opts);
   } finally { missingChars = undefined; }
   return pdf.save();
 }

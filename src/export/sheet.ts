@@ -3,7 +3,7 @@
  * プレビューは SVG に、出力は pdf-lib で PDF に変換する（同じ命令から作るので見た目が一致する）。
  * 座標: 原点は用紙の左上、x 右向き、y 下向き、単位 mm。
  */
-import { degrees, PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
+import { degrees, PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { MunicipalityProfile } from '../model/municipality';
 import { textWidth } from './labelLayout';
@@ -13,7 +13,9 @@ export type Op =
   | { t: 'poly'; pts: [number, number][]; w?: number; color?: string; close?: boolean; fill?: string }
   | { t: 'rect'; x: number; y: number; w: number; h: number; stroke?: string; fill?: string; lw?: number }
   | { t: 'circle'; cx: number; cy: number; r: number; stroke?: string; fill?: string; lw?: number }
-  | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; color?: string; /** 回転（度、時計回り。-90 は下から上へ読む縦書き） */ rotate?: number; bold?: boolean };
+  | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; color?: string; /** 回転（度、時計回り。-90 は下から上へ読む縦書き） */ rotate?: number; bold?: boolean }
+  /** 画像（地図など）。href は data:image/png または data:image/jpeg の base64 だけ */
+  | { t: 'image'; x: number; y: number; w: number; h: number; href: string };
 export type Sheet = { width: number; height: number; ops: Op[] };
 
 export const PAPER_MM = { A3: [420, 297], A4: [297, 210] } as const;
@@ -33,6 +35,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 /** 色は #rrggbb だけを属性に入れる（それ以外は既定色。プロファイルの色が属性に入るので注入を防ぐ） */
 const col = (c: string | undefined, fallback = INK) => (c && /^#[0-9a-fA-F]{6}$/.test(c) ? c : fallback);
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
+const IMAGE_HREF = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/;
 
 /** プレビュー用 SVG（単位 mm、viewBox = 用紙） */
 export function sheetToSvg(sheet: Sheet): string {
@@ -50,6 +53,9 @@ export function sheetToSvg(sheet: Sheet): string {
         break;
       case 'circle':
         parts.push(`<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${n(o.r)}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.stroke)}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
+        break;
+      case 'image':
+        if (IMAGE_HREF.test(o.href)) parts.push(`<image x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" href="${o.href}" preserveAspectRatio="none"/>`);
         break;
       case 'text': {
         const anchor = o.anchor ?? 'start';
@@ -105,15 +111,33 @@ export function fontSafe(font: PDFFont, s: string, missing?: Set<string>): strin
   return out;
 }
 
-export type PdfOpts = { /** フォントに無かった文字（呼び出し側で警告に使う） */ missing?: Set<string> };
+export type PdfOpts = {
+  /** フォントに無かった文字（呼び出し側で警告に使う） */ missing?: Set<string>;
+  /** embedSheetImages で埋め込んだ画像（href → 画像）。無い画像は描かない */ images?: Map<string, PDFImage>;
+};
+
+/** Sheet の画像を PDF に埋め込む（drawSheetOnPage は同期なので先に済ませる） */
+export async function embedSheetImages(pdf: PDFDocument, sheets: Sheet[], into: Map<string, PDFImage> = new Map()): Promise<Map<string, PDFImage>> {
+  for (const s of sheets) for (const o of s.ops) {
+    if (o.t !== 'image' || into.has(o.href)) continue;
+    const m = IMAGE_HREF.exec(o.href);
+    if (!m) continue;
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    into.set(o.href, m[1] === 'png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes));
+  }
+  return into;
+}
 
 export async function sheetsToPdf(sheets: Sheet[], fontBytes: Uint8Array | ArrayBuffer, opts: PdfOpts = {}): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(fontBytes, { subset: false });
+  const images = await embedSheetImages(pdf, sheets, opts.images);
   for (const sheet of sheets) {
     const page = pdf.addPage([sheet.width * PT_PER_MM, sheet.height * PT_PER_MM]);
-    drawSheetOnPage(page, font, sheet, { x: 0, top: 0, w: sheet.width * PT_PER_MM, h: sheet.height * PT_PER_MM }, opts);
+    drawSheetOnPage(page, font, sheet, { x: 0, top: 0, w: sheet.width * PT_PER_MM, h: sheet.height * PT_PER_MM }, { ...opts, images });
   }
   return pdf.save();
 }
@@ -138,6 +162,11 @@ export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box:
         case 'rect':
           page.drawRectangle({ x: X(o.x), y: Y(o.y + o.h), width: W(o.w), height: W(o.h), borderColor: hex(o.stroke ?? INK), borderWidth: W(o.lw ?? 0.25), ...(o.fill ? { color: hex(o.fill) } : {}) });
           break;
+        case 'image': {
+          const img = opts.images?.get(o.href);
+          if (img) page.drawImage(img, { x: X(o.x), y: Y(o.y + o.h), width: W(o.w), height: W(o.h) });
+          break;
+        }
         case 'circle':
           page.drawCircle({ x: X(o.cx), y: Y(o.cy), size: W(o.r), borderColor: hex(o.stroke ?? INK), borderWidth: W(o.lw ?? 0.25), ...(o.fill ? { color: hex(o.fill) } : { opacity: 0 }) });
           break;

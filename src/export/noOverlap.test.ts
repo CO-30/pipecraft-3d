@@ -169,3 +169,14 @@ describe('竣工図の印を押しても文字が重ならない', () => {
     });
   }
 });
+
+describe('見取図でも文字が重ならない', () => {
+  test('長い住所・現場名、地図あり・なし', async () => {
+    const { renderLocationSheet, MAP_PX } = await import('./locationSheet');
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    for (const mpp of [0.53, 1.07, 2.14]) for (const map of [{ href: PNG, wPx: MAP_PX.w, hPx: MAP_PX.h, mpp }, null]) {
+      const sh = renderLocationSheet({ map, siteName: '共同住宅新築工事に伴う給排水衛生設備工事（第二期）その１ 追加工事を含む', address: '沖縄県中頭郡北中城村字安谷屋一丁目二番三号 アパートメント北中城グランドヒルズ 第二棟', date: meta.date });
+      expect(findTextOverlaps(sh)).toEqual([]);
+    }
+  });
+});
