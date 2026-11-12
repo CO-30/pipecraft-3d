@@ -2,6 +2,7 @@
  * 編集画面のパネル類：プロパティ（選択対象の設定）、階バー、表示切替、ツールバー。
  */
 import { isUnderfloorDrain, underfloorLevels } from '../model/underfloorSlope';
+import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, isUnderFloor, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
@@ -420,6 +421,15 @@ function DropPipes() {
         }}>🚽 排水を外の桝までつなぐ（案）</button>
       </div>
       <div className="muted small">1 階の床下の排水が対象です。給水・給湯はつなぎません。3D で確かめて、合わない所は直してください。</div>
+      <div className="row">
+        <button data-testid="supply-route" title="メーター → 床下の給水ヘッダー → 各器具、給湯器 → 床下の給湯ヘッダー → 各器具 をつなぎます（ヘッダー工法）。基礎の立上りは人通口などの切れ目を通ります" onClick={() => {
+          // 埋設深さ・水理計算は、申請図面で選んでいる自治体と現場の住所に合わせる
+          const st = useStore.getState();
+          const p = resolveProfile(st.doc.site?.municipalityProfileId, useProfiles.getState().user);
+          st.routeSupplies(resolveSupplyRules({ profileName: p.id === 'standard' ? undefined : p.name, address: st.meta?.address }));
+        }}>🚰 給水・給湯を床下でつなぐ（案）</button>
+      </div>
+      <div className="muted small">1 階の器具が対象です（屋外の水栓は除く）。つながっていない給水・給湯口だけをつなぐので、何度押しても増えません。</div>
     </div>
   );
 }
