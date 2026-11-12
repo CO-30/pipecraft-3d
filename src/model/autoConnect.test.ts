@@ -8,6 +8,8 @@ import { addPolyline, segmentsAt, type Network } from './network';
 import { closestPoints } from './clash';
 import { supplyHouse } from './testSupplyHouse';
 import { testSite } from './drainSolve/testSite';
+import { addFloor, addWall, emptyBuilding, type Building } from './building';
+import { emptyDoc } from '../state/store';
 
 /** 点 a から排水・汚水の管だけでたどれる点 */
 function drainReach(net: Network, a: string): Set<string> {
@@ -166,5 +168,80 @@ describe('まとめてつなぐ（レビューの指摘）', () => {
     const teeAtVent = fits.filter((f) => segmentsAt(r.doc.network, f.nodeId).some((s) => s.system === 'vent') && segmentsAt(r.doc.network, f.nodeId).length === 3);
     expect(teeAtVent.length).toBe(2);
     expect(teeAtVent.every((f) => !f.needsConfirm)).toBe(true);
+  });
+});
+
+describe('公共マスまで必ず届く（2026-11-12）', () => {
+  test('コの字の建物のへこみにあるマスでも、建物の周りを回って反対側の公共マスへ（建物の中を通さない）', () => {
+    const f = addFloor(emptyBuilding(), { height: 2900 });
+    let b: Building = { ...f.b, foundation: { slabTop: -550 } };
+    const P = [{ x: 0, y: 0 }, { x: 10000, y: 0 }, { x: 10000, y: 8000 }, { x: 7000, y: 8000 }, { x: 7000, y: 3000 }, { x: 3000, y: 3000 }, { x: 3000, y: 8000 }, { x: 0, y: 8000 }];
+    for (let i = 0; i < P.length; i++) b = addWall(b, f.floorId, P[i], P[(i + 1) % P.length], { kind: 'exterior' }).b;
+    let doc: Doc = { ...emptyDoc(), building: b, site: { designGL: -600 } };
+    const pub = placeFixture(doc, f.floorId, 'publicSewage', { x: 5000, y: -3000 }, 0, { invertZ: -1300 }); doc = pub.doc;
+    const mh = placeFixture(doc, f.floorId, 'manholeSewage', { x: 5000, y: 5000 }); doc = mh.doc;
+    const r = connectYard(doc);
+    expect(r.connected).toBe(1);
+    expect(drainReach(r.doc.network, port(r.doc, pub.fixtureId!)).has(port(r.doc, mh.fixtureId!))).toBe(true);
+    const inU = (x: number, y: number) => (x > 0 && x < 10000 && y > 0 && y < 3000) || (x > 0 && x < 3000 && y > 0 && y < 8000) || (x > 7000 && x < 10000 && y > 0 && y < 8000);
+    for (const sg of Object.values(r.doc.network.segments)) {
+      const p = r.doc.network.nodes[sg.a].pos, q = r.doc.network.nodes[sg.b].pos;
+      for (let k = 0; k <= 20; k++) expect(inU(p.x + ((q.x - p.x) * k) / 20, p.y + ((q.y - p.y) * k) / 20)).toBe(false);
+    }
+  });
+});
+
+describe('ヘッダーはできるだけ足さない（2026-11-12）', () => {
+  test('まとめてつなぐではヘッダーを置かずに枝分かれでつなぎ、聞くことは無い', () => {
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    const r = autoConnect(p.doc);
+    expect(r.headers).toBe(0);
+    expect(r.questions).toEqual([]);
+    expect(r.summary.join()).toContain('ヘッダーは使っていません');
+  });
+  test('ヘッダーの質問ははじめての人にも分かる言葉で、理由と答えごとの説明がある', async () => {
+    const { headerQuestion } = await import('./question');
+    expect(headerQuestion({ water: 0, hot: 0 })).toBeNull();
+    const q = headerQuestion({ water: 1, hot: 2 })!;
+    expect(q.title).toContain('ヘッダー');
+    expect(q.why).toContain('給水 1 か所・お湯 2 か所');
+    expect(q.options.map((o) => o.value)).toEqual(['use', 'skip']);
+    for (const o of q.options) expect(o.hint.length).toBeGreaterThan(5);
+  });
+  test('質問に「置く」と答えると、ヘッダーでつなぐ（use）で続きを実行する', async () => {
+    const { useStore } = await import('../state/store');
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    useStore.setState({ doc: p.doc, questionDoc: p.doc, question: { id: 'header', title: 't', why: 'w', options: [] } });
+    useStore.getState().answerQuestion('use');
+    expect(useStore.getState().question).toBeNull();
+    expect(Object.values(useStore.getState().doc.fixtures).some((f) => f.type === 'waterHeader')).toBe(true);
+  });
+  test('質問のあとに図が変わったら（元に戻すなど）、答えても続きを実行しない', async () => {
+    const { useStore } = await import('../state/store');
+    const h = supplyHouse();
+    useStore.setState({ doc: h.doc, questionDoc: supplyHouse().doc, question: { id: 'header', title: 't', why: 'w', options: [] } });
+    useStore.getState().answerQuestion('use');
+    expect(Object.values(useStore.getState().doc.fixtures).some((f) => f.type === 'waterHeader')).toBe(false);
+    expect(useStore.getState().notice).toContain('取り消しました');
+  });
+});
+
+describe('基礎貫通スリーブの高さに合わせる（レビューの指摘）', () => {
+  test('まとめてつなぐで置いたマスは、KSA の高さ H に合う深さにする（積算に高さ違いの要確認が出ない）。土間の貫通を二重に数えない', async () => {
+    const { kisoSleeveItems } = await import('./kisoSleeve');
+    const { sleeveSchedule } = await import('./sleeves');
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    const r = autoConnect(p.doc);
+    const k = kisoSleeveItems(r.doc);
+    expect(k.items.some((i) => i.spec.startsWith('KSA'))).toBe(true);
+    expect(k.checks.filter((c) => c.message.includes('KSA'))).toEqual([]);
+    const rows = sleeveSchedule(r.doc);
+    const outer = rows.filter((x) => x.part === 'footingOuter');
+    for (const s of rows.filter((x) => x.part === 'baseSlab')) {
+      expect(outer.some((o) => Math.hypot(o.point.x - s.point.x, o.point.y - s.point.y) < 250 && o.system === s.system)).toBe(false);
+    }
   });
 });

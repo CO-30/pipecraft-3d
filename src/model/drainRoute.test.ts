@@ -29,24 +29,25 @@ describe('排水のつなぎ案（drainRoute）', () => {
     expect(validateFixtures(r.doc)).toEqual([]);
     const [m] = manholes(r.doc);
     expect([m.x, m.y]).toEqual([1000, D + 60 + MANHOLE_OFFSET]);
-    // 床下（GL+300）を水平に出て基礎を貫通し、基礎の外ですぐ地中へ下ろし、勾配をつけてマスへ（地面より上を通さない）
+    // 床下（GL+300）を水平に基礎の内側まで → 基礎の中で立ち下げ（基礎貫通スリーブ KSA）→ 地中で基礎を抜けて勾配でマスへ（外に配管を出さない）
     const net = r.doc.network;
     const port = portNodes(net, m.id)[0];
-    expect(port.pos.z).toBe(-1200); // マスの管底 GL−600（標準）
+    // マスの管底: 基礎貫通スリーブ KSA75NF×430H（土間 −550 − 430 = −980）から 3/100 で 845 下がった所（標準の GL−600 より浅いが土かぶりは取れる）
+    expect(port.pos.z).toBe(-1005);
     const [last] = segmentsAt(net, port.id);
     const a = net.nodes[last.a === port.id ? last.b : last.a];
-    // 基礎の外面（立上りの幅 150 の半分）から 100 外で下ろす。φ75 は 3/100 以上 → 585 × 0.03 ≈ 18 上
-    expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D + 175, -1182]);
+    // 基礎の内側の面（立上りの幅 150 の半分）から 10 内で、KSA の高さ H430 だけ下ろす
+    expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D - 85, -980]);
     expect([last.system, last.diameter]).toEqual(['sewage', 75]);
     const drop = segmentsAt(net, a.id).find((x) => x.id !== last.id)!;
     const x = net.nodes[drop.a === a.id ? drop.b : drop.a];
-    // 起点（基礎を出る点）の管底を土間（スラブ天端 −550）に置き、器具へ 2/100 で上がる: 器具の下の端（便器の排水口 y=4550）は 1085 × 2/100 上
-    expect([x.pos.x, x.pos.y]).toEqual([1000, D + 175]);
+    // 起点（基礎の中で立ち下げる点）の管底を土間（スラブ天端 −550）に置き、器具へ 2/100 で上がる: 器具の下の端（便器の排水口 y=4550）は 825 × 2/100 上
+    expect([x.pos.x, x.pos.y]).toEqual([1000, D - 85]);
     expect(x.pos.z).toBe(-550);
     const flat = segmentsAt(net, x.id).find((t) => t.id !== drop.id)!;
     const up = net.nodes[flat.a === x.id ? flat.b : flat.a];
     expect([up.pos.x, up.pos.y]).toEqual([1000, 4550]);
-    expect(up.pos.z).toBeCloseTo(-550 + 1085 * 0.02, 1);
+    expect(up.pos.z).toBeCloseTo(-550 + 825 * 0.02, 1);
     expect(flat.slope).toBe(0.02);
     // 地中の配管の上（管頂）は GL から 200 以上下（宅地内の土かぶり）
     expect(-600 - (a.pos.z + 89)).toBeGreaterThanOrEqual(200);
@@ -179,14 +180,14 @@ describe('排水のつなぎ案（drainRoute）', () => {
     const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
     const [last] = segmentsAt(net, port.id);
     const a = net.nodes[last.a === port.id ? last.b : last.a];
-    // 管頂 = GL−600 → 管底 −600−600−89 = −1289。マスはそこから 3/100 で 585 下
+    // 管頂 = GL−600 → 管底 −600−600−89 = −1289。マスはそこから 3/100 で 845 下
     expect(a.pos.z).toBe(-1289);
-    expect(port.pos.z).toBe(-1307);
+    expect(port.pos.z).toBe(-1314);
   });
   it('配置図の敷地の高さで地面が下がっている所は、その地面から土かぶりを取る', () => {
     const doc0 = house([['toilet', 1000, 4500]]);
-    // 基礎のすぐ外（地中へ下ろす所）の地面が GL−1200（絶対 −1800）。マスの所は GL±0
-    const doc = { ...doc0, site: { ...doc0.site, groundPoints: [{ x: 1000, y: D + 175, gl: -1200 }, { x: 1000, y: D + 760, gl: 0 }] } };
+    // 基礎の所（地中へ下ろす所）の地面が GL−1200（絶対 −1800）。マスの所は GL±0
+    const doc = { ...doc0, site: { ...doc0.site, groundPoints: [{ x: 1000, y: D - 85, gl: -1200 }, { x: 1000, y: D + 760, gl: 0 }] } };
     const r = routeDrainsOut(doc);
     const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
     const [last] = segmentsAt(net, port.id);
@@ -283,5 +284,39 @@ describe('排水のつなぎ案（drainRoute）', () => {
     const net = r.doc.network;
     const joint = Object.values(net.nodes).find((n) => Math.abs(n.pos.x - 1600) < 1 && Math.abs(n.pos.y - (D - 60)) < 1)!;
     expect(segmentsAt(net, joint.id)).toHaveLength(2);
+  });
+});
+
+describe('置いたマスへ集める・基礎貫通スリーブの形（2026-11-12）', () => {
+  it('手で置いた汚水マスが器具の真横でなくても、その近くの基礎から床下へ入れて器具の排水を集める（新しいマスを足さない）', async () => {
+    const { supplyHouse } = await import('./testSupplyHouse');
+    const h = supplyHouse();
+    let doc = placeFixture(h.doc, h.floorId, 'manholeSewage', { x: 5000, y: -800 }).doc;
+    doc = dropFixturePipes(doc).doc;
+    const r = routeDrainsOut(doc);
+    expect(r.skipped).toBe(0);
+    expect(manholes(r.doc)).toHaveLength(1);
+    const m = manholes(r.doc)[0];
+    // 3 つの器具の排水がすべてそのマスへ（排水管でたどれる）
+    const net = r.doc.network;
+    const seen = new Set([portNodes(net, m.id)[0].id]), st = [...seen];
+    while (st.length) { const n = st.pop()!; for (const sg of segmentsAt(net, n)) for (const k of [sg.a, sg.b]) if (!seen.has(k) && (sg.system === 'drain' || sg.system === 'sewage')) { seen.add(k); st.push(k); } }
+    for (const [fid, pid] of [[h.ids.toilet, 'sewage'], [h.ids.kitchen, 'drain'], [h.ids.washbasin, 'drain']] as const) {
+      expect(seen.has(portNodes(net, fid).find((n) => n.portId === pid)!.id)).toBe(true);
+    }
+    // マスへ下りる配管は 1 本（床下で 1 本にまとめてから基礎を抜ける）
+    expect(segmentsAt(net, portNodes(net, m.id)[0].id)).toHaveLength(1);
+  });
+  it('外に出た所では地面より上に排水管を出さない（基礎の中で立ち下げて地中で抜ける）', () => {
+    const r = routeDrainsOut(house([['toilet', 1000, 4500], ['washbasin', 6000, 1000]]));
+    const net = r.doc.network;
+    for (const sg of Object.values(net.segments)) {
+      if (sg.system !== 'drain' && sg.system !== 'sewage') continue;
+      for (const id of [sg.a, sg.b]) {
+        const q = net.nodes[id].pos;
+        const outside = q.x < -60 || q.y < -60 || q.x > 7340 || q.y > D + 60;
+        if (outside) expect(q.z).toBeLessThan(-600);
+      }
+    }
   });
 });

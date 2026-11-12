@@ -151,7 +151,14 @@ export function sleeveSchedule(doc: Doc): SleeveRow[] {
   }
   // 外周の基礎に重ねて置いた立上りの部材は、外周と同じ所（250mm 以内）なら外周の 1 か所にまとめる
   const outer = rows.filter((r) => r.part === 'footingOuter');
-  const kept = rows.filter((r) => r.part !== 'footing' || !outer.some((o) => Math.hypot(o.point.x - r.point.x, o.point.y - r.point.y) < 250 && Math.abs(o.point.z - r.point.z) < 250));
+  // 基礎貫通スリーブ（前澤 KSA・KSS）の形: 外周の基礎を地中で抜けて基礎の中で縦に上がる所は、縦の管が通る立上り・土間も同じ 1 か所
+  const vertical = (r: (typeof rows)[number]) => { const sg = net.segments[r.segId]; const a = sg && net.nodes[sg.a]?.pos, c = sg && net.nodes[sg.b]?.pos; return !!a && !!c && Math.hypot(a.x - c.x, a.y - c.y) < 1; };
+  const kept = rows.filter((r) => {
+    if (r.part !== 'footing' && r.part !== 'baseSlab') return true;
+    return !outer.some((o) => Math.hypot(o.point.x - r.point.x, o.point.y - r.point.y) < 250
+      && (r.part === 'footing' && Math.abs(o.point.z - r.point.z) < 250
+        || ((vertical(r) || r.part === 'baseSlab') && o.system === r.system && o.diameter === r.diameter && r.point.z > o.point.z)));
+  });
   rows.length = 0; rows.push(...kept);
   rows.sort((x, y) => x.order - y.order || PART_ORDER.indexOf(x.part) - PART_ORDER.indexOf(y.part) || x.point.y - y.point.y || x.point.x - y.point.x);
   return rows.map(({ order: _o, ...r }, i) => ({ ...r, no: i + 1 }));

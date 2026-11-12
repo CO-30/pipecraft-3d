@@ -109,6 +109,7 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
       )}
       {isWide && <EstimateBar onOpen={() => openEst('qty')} onIssues={() => openEst('issues')} />}
       <Notice />
+      <QuestionCard />
       <Toolbar />
       {showEst && <EstimateScreen initialTab={showEst} onClose={() => setShowEst(null)} />}
       {showShinsei && <ShinseiScreen onClose={() => setShowShinsei(false)} />}
@@ -145,6 +146,30 @@ function Notice() {
     <div className="toast notice" role="status" data-testid="notice">
       {notice}
       <button className="notice-x" aria-label="お知らせを閉じる" onClick={() => useStore.getState().clearNotice()}>✕</button>
+    </div>
+  );
+}
+
+/**
+ * 自動の作業がどうしても決められないときの質問（はじめての人にも分かる言葉で、理由と、答えで何が起きるかを添える）。
+ * 答えるまで出しておく（自動では消さない）。「あとで」で閉じられる
+ */
+function QuestionCard() {
+  // 質問したあとに図が変わった（元に戻す・別の工事）ら出さない
+  const q = useStore((s) => (s.question && s.questionDoc === s.doc ? s.question : null));
+  if (!q) return null;
+  return (
+    <div className="question-card" role="dialog" aria-label={q.title} data-testid="question-card" data-question={q.id}>
+      <div className="qc-title">❓ {q.title}</div>
+      <div className="qc-why">{q.why}</div>
+      <div className="qc-options">
+        {q.options.map((o) => (
+          <button key={o.value} className={o === q.options[0] ? 'primary' : ''} data-testid={`question-${o.value}`} onClick={() => useStore.getState().answerQuestion(o.value)}>
+            <b>{o.label}</b><span className="small">{o.hint}</span>
+          </button>
+        ))}
+      </div>
+      <button className="qc-later small" data-testid="question-later" onClick={() => useStore.setState({ question: null })}>あとで決める</button>
     </div>
   );
 }

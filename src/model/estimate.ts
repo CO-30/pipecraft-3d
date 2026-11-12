@@ -16,6 +16,7 @@ import { computeConsumables, defaultConsumableSettings, GLUE_LABEL, type Consuma
 import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportMark, type SupportSettings } from './supports';
 import { orderChain, pointsAlong } from './chain';
 import type { Vec3 } from './network';
+import { kisoSleeveItems } from './kisoSleeve';
 
 /** 単価の出どころ: user=現場で入力 / catalog=メーカー参考単価 / none=なし */
 export type PriceSource = 'user' | 'catalog' | 'none';
@@ -39,6 +40,8 @@ export type EstimateSettings = {
   supports?: SupportSettings;
   /** シールテープ・接着剤の設定（未設定なら既定値） */
   consumables?: ConsumableSettings;
+  /** 基礎貫通スリーブ（前澤 KSA・KSS、立上りの VU 管）を積算に入れるか・防蟻品を使うか（未設定なら入れる・防蟻なし） */
+  kisoSleeve?: { enabled: boolean; antiTermite: boolean };
   client?: string;
   title?: string;
   issuer?: string;
@@ -175,6 +178,8 @@ export type Estimate = {
   supports: SupportLine[];
   /** シールテープ・接着剤 */
   consumables: SupportLine[];
+  /** 基礎貫通スリーブ（前澤 KSA・KSS・立上りの VU 管） */
+  kiso: SupportLine[];
   /** 部材図用: 支持金具の位置 */
   supportMarks: SupportMark[];
   /** 部材図用: 定尺の継ぎ足しソケットの位置 */
@@ -378,8 +383,25 @@ export function computeEstimate(doc: Doc): Estimate {
     consumables.push(...supports.splice(supLen));
   }
 
+  // --- 基礎貫通スリーブ（外周の基礎は前澤 KSA・KSS、内部の立上りは VU 管） ---
+  const kst = st.kisoSleeve ?? { enabled: true, antiTermite: false };
+  const kiso: SupportLine[] = [];
+  if (kst.enabled) {
+    const k = kisoSleeveItems(doc, { antiTermite: kst.antiTermite });
+    for (const it of k.items) {
+      const user = st.prices[it.key];
+      const cat = catalogSupportPrice(it.key);
+      const price = user ?? (cat !== undefined ? { material: cat, labor: 0 } : undefined);
+      kiso.push({
+        key: it.key, name: it.name, spec: it.spec, count: it.count, unit: it.unit, note: it.note, price, priceSource: user ? 'user' : cat !== undefined ? 'catalog' : 'none',
+        materialAmount: roundYen(it.count * (price?.material ?? 0)), laborAmount: roundYen(it.count * (price?.labor ?? 0)),
+      });
+    }
+    for (const c of k.checks) issues.push({ kind: 'sleeve', target: { kind: 'segment', id: c.segId }, message: c.message });
+  }
+
   // --- 単価未登録 ---
-  for (const l of [...supports, ...consumables]) {
+  for (const l of [...supports, ...consumables, ...kiso]) {
     if (!l.price || (l.price.material === 0 && l.price.labor === 0)) issues.push({ kind: 'noPrice', target: { kind: 'price', id: l.key }, message: `${l.name} ${l.spec} の単価が未登録です` });
   }
   for (const l of [...pipes, ...fittings]) {
@@ -394,10 +416,10 @@ export function computeEstimate(doc: Doc): Estimate {
   const lines: QuoteLine[] = [];
   for (const p of pipes) lines.push({ section: 'material', name: p.name, spec: pipeSpec(p), quantity: p.orderQty, unit: p.orderUnit, unitPrice: p.price?.material ?? 0, amount: p.materialAmount, priceKey: p.key });
   for (const f of fittings) lines.push({ section: 'material', name: f.name, spec: fittingSpec(f), quantity: f.count, unit: '個', unitPrice: f.price?.material ?? 0, amount: f.materialAmount, priceKey: f.key });
-  for (const l of [...supports, ...consumables]) lines.push({ section: 'material', name: l.name, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price?.material ?? 0, amount: l.materialAmount, priceKey: l.key });
+  for (const l of [...supports, ...consumables, ...kiso]) lines.push({ section: 'material', name: l.name, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price?.material ?? 0, amount: l.materialAmount, priceKey: l.key });
   for (const p of pipes) lines.push({ section: 'labor', name: `${p.name} 施工`, spec: pipeSpec(p), quantity: p.laborQty, unit: 'm', unitPrice: p.price?.labor ?? 0, amount: p.laborAmount, priceKey: p.key });
   for (const f of fittings) if ((f.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${f.name} 取付`, spec: fittingSpec(f), quantity: f.count, unit: '個', unitPrice: f.price!.labor, amount: f.laborAmount, priceKey: f.key });
-  for (const l of [...supports, ...consumables]) if ((l.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${l.name} 取付`, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price!.labor, amount: l.laborAmount, priceKey: l.key });
+  for (const l of [...supports, ...consumables, ...kiso]) if ((l.price?.labor ?? 0) > 0) lines.push({ section: 'labor', name: `${l.name} 取付`, spec: l.spec, quantity: l.count, unit: l.unit, unitPrice: l.price!.labor, amount: l.laborAmount, priceKey: l.key });
   for (const e of st.extras) lines.push({ section: 'extra', name: e.name, spec: '', quantity: e.quantity, unit: e.unit, unitPrice: e.unitPrice, amount: roundYen(e.quantity * e.unitPrice) });
 
   const sum = (sec: QuoteLine['section']) => lines.filter((l) => l.section === sec).reduce((a, l) => a + l.amount, 0);
@@ -406,7 +428,7 @@ export function computeEstimate(doc: Doc): Estimate {
   const overhead = st.overhead.mode === 'rate' ? roundYen(base * st.overhead.value) : roundYen(st.overhead.value);
   const subtotal = base + overhead;
   const tax = Math.floor(Number((subtotal * st.taxRate).toFixed(6)));
-  return { measures, pipes, fittings, supports, consumables, supportMarks: sup.marks, stockJointMarks, nodeFittings, lines, issues, materialTotal, laborTotal, extrasTotal, overhead, subtotal, tax, total: subtotal + tax };
+  return { measures, pipes, fittings, supports, consumables, kiso, supportMarks: sup.marks, stockJointMarks, nodeFittings, lines, issues, materialTotal, laborTotal, extrasTotal, overhead, subtotal, tax, total: subtotal + tax };
 }
 
 const spacingNote = (st: SupportSettings, d: number) => `${(d <= 80 ? st.spacingSmall : st.spacingLarge) / 1000}m`;

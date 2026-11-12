@@ -13,6 +13,8 @@ import type { FittingType } from './fittings';
 import type { SaleUnit } from './estimate';
 import { isPB } from './materials';
 
+import { KISO_PRODUCTS } from './kisoSleeve';
+
 export const CATALOG_SOURCE = '積水化学工業 エスロン 設計積算価格（2026年度・税抜）';
 
 /** 材質が未指定の配管に使う既定の管種 */
@@ -142,7 +144,9 @@ const SEAL_TAPE = 212;
 const GLUE: Record<string, number> = { hi: 1089, ht: 2714 };
 
 export function catalogSupportPrice(key: string): number | undefined {
-  const [, kind, d] = key.split('|');
+  const [head, kind, d] = key.split('|');
+  // 基礎貫通スリーブ: 前澤のセットの設計価格。立上りのスリーブ用 VU 管は 4m 1本の価格
+  if (head === 'kiso') return kind === 'vu' ? PIPE.VU[Number(d)] : KISO_PRODUCTS.find((p) => p.code === kind)?.price;
   if (kind === 'sealTape') return SEAL_TAPE;
   if (kind === 'glue') return GLUE[d];
   if (kind === 'saddle') return SADDLE[Number(d)];

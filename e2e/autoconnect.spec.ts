@@ -38,3 +38,41 @@ test('1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 
   await page.getByTestId('undo').click();
   expect(await state(page)).toEqual(before);
 });
+
+test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリーブが積算に入る。質問カードに答えられる', async ({ page }) => {
+  await freshApp(page);
+  await createProject(page, 'スリーブ');
+  const h = supplyHouse();
+  const doc = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 }).doc;
+  await page.evaluate((d) => { const s = (window as any).__pc.getState(); s.newDoc(d, s.meta); }, doc);
+  await useTool(page, 'fixture');
+  await page.getByTestId('auto-connect').click();
+  await expect(page.getByTestId('notice')).toContainText('ヘッダーは使っていません', { timeout: 15000 });
+  const headers = () => page.evaluate(() => Object.values((window as any).__pc.getState().doc.fixtures).filter((f: any) => f.type === 'waterHeader').length);
+  expect(await headers()).toBe(0);
+
+  await page.getByTestId('open-estimate').click();
+  await page.getByTestId('tab-parts').click();
+  await expect(page.getByTestId('kiso-table')).toContainText('基礎貫通スリーブ（排水用）');
+  await expect(page.getByTestId('kiso-table')).toContainText('KSA');
+  await expect(page.getByTestId('kiso-table')).toContainText('KSS');
+  await page.screenshot({ path: evidence('autoconnect-03-kiso') });
+  await page.getByTestId('tab-quote').click();
+  await expect(page.getByTestId('quote-table')).toContainText('基礎貫通スリーブ');
+});
+
+test('ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ', async ({ page }) => {
+  await freshApp(page);
+  await createProject(page, '質問');
+  const h = supplyHouse();
+  const doc = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 }).doc;
+  await page.evaluate((d) => { const s = (window as any).__pc.getState(); s.newDoc(d, s.meta);}, doc);
+  await page.evaluate(() => (window as any).__pc.setState({ questionDoc: (window as any).__pc.getState().doc, question: { id: 'header', title: '水を分ける部品「ヘッダー」を床下に置きますか？', why: 'テスト', options: [{ value: 'use', label: 'ヘッダーを置いてつなぐ', hint: '床下にヘッダーを置きます' }, { value: 'skip', label: '置かない（自分でつなぐ）', hint: 'いまの形のまま' }] } }));
+  const card = page.getByTestId('question-card');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('ヘッダー');
+  await page.screenshot({ path: evidence('autoconnect-04-question') });
+  await page.getByTestId('question-use').click();
+  await expect(card).toBeHidden();
+  await expect.poll(() => page.evaluate(() => Object.values((window as any).__pc.getState().doc.fixtures).filter((f: any) => f.type === 'waterHeader').length)).toBeGreaterThan(0);
+});

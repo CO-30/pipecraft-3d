@@ -13,6 +13,7 @@ import {
 } from '../model/estimate';
 import { ISSUE_LABEL, yen } from '../export/report';
 import { PB_CATALOG_SOURCE, CATALOG_SOURCE, catalogFittingPrice, catalogPipePrice, catalogSupportPrice, SUPPORT_CATALOG_SOURCE } from '../model/priceCatalog';
+import { KISO_CATALOG_SOURCE } from '../model/kisoSleeve';
 import { defaultConsumableSettings, type ConsumableSettings } from '../model/consumables';
 import { defaultSupportSettings, SUBSTRATE_LABEL, type SupportSettings } from '../model/supports';
 import type { SupportLine } from '../model/estimate';
@@ -172,6 +173,18 @@ function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
           </tbody>
         </table>
       )}
+      <h3 className="h-sub">基礎貫通スリーブ</h3>
+      {est.kiso.length === 0 ? <p className="empty">基礎を通る配管がありません（または「単価」タブで集計しない設定）。</p> : (
+        <table className="est-table" data-testid="kiso-table">
+          <thead><tr><th>品名</th><th>仕様</th><th>数量</th><th>備考</th></tr></thead>
+          <tbody>
+            {est.kiso.map((l) => (
+              <tr key={l.key}><td>{l.name}</td><td>{l.spec}</td><td className="num"><b>{l.count}</b>{l.unit}</td><td className="small">{l.note}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="muted small">外まわりの基礎を地面の下でくぐる排水は前澤化成「基礎貫通スリーブ」排水用 KSA、給水・給湯は給水用 KSS（さや管・フレキ管・パッキン・スリーブホルダー 2 個のセット）。高さ H は図の立ち下げの高さに一番近い品番。床下で中の基礎（立上り）を通る所はスリーブ用の VU 管を切って使う本数です。</p>
       <p className="muted small">シールテープは水栓・給湯器などネジでつなぐ箇所ごと（13・16 は0.5m、20 は0.7m、25 は0.9m、それ以上 1.2m）、接着剤は塩ビ継手の受口ごとの目安量（φ13 約1g〜φ100 約20g）から巻・缶に切り上げ。HIVP=HI用、VP・VU=VP用、HTVP=HT用。</p>
       <p className="muted small">床から400mm以内の排水横管はレベルバンド、その他の配管はサドルバンド。継手で区切られた区間ごとに「長さ÷支持間隔」（最低1個）。区間ごとの変更は図面で配管を選んで「支持金具」から。</p>
     </div>
@@ -283,6 +296,9 @@ function PriceTab({ est }: { est: Estimate }) {
         {est.supports.map((l) => <SupportPriceRow key={l.key} line={l} />)}
         <ConsumableSettingsForm />
         {est.consumables.map((l) => <SupportPriceRow key={l.key} line={l} />)}
+        <KisoSettingsForm />
+        {est.kiso.map((l) => <SupportPriceRow key={l.key} line={l} />)}
+        <p className="muted small" data-testid="kiso-catalog-note">基礎貫通スリーブの参考単価は {KISO_CATALOG_SOURCE} です。スリーブ用 VU 管は 4m 1本の価格です。</p>
         <p className="muted small" data-testid="support-catalog-note">支持金具・ビス・キリはメーカー希望価格のない「オープン価格」品のため、参考単価は {SUPPORT_CATALOG_SOURCE} です（サドル: 昭和コーポレーション ステンレス片サドル、コンクリートビス: マーベル SCS-432、ステンレスビス: 皿木ねじ 4.1×38、キリ: 大西工業 No.24 3.4mm）。レベルバンドはサイズ別の価格が得られないため入力してください。シールテープは日東電工 ニトフロン No.95S 13mm×15m、接着剤はクボタケミックス HI用・HT用 500g の通販税抜価格です。VP・VU用の接着剤は入力してください。</p>
       </section>
       <p className="muted small">単価はこの現場に保存されます。材料費 = 発注数量 × 材料単価、施工費 = 施工数量 × 施工単価（行ごとに円未満四捨五入）。</p>
@@ -503,6 +519,20 @@ function ConsumableSettingsForm() {
       <label className="field inline"><input type="checkbox" data-testid="consumable-enabled" checked={cst.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> シールテープ・接着剤を集計する</label>
       <NumField label="シールテープ1巻" unit="m" decimals={1} value={cst.tapeRoll} min={0.1} onCommit={(v) => set({ tapeRoll: v })} />
       <NumField label="接着剤1缶" unit="g" value={cst.glueCan} min={1} onCommit={(v) => set({ glueCan: v })} />
+    </div>
+  );
+}
+
+function KisoSettingsForm() {
+  const raw = useStore((s) => s.doc.estimate?.kisoSleeve);
+  const k = raw ?? { enabled: true, antiTermite: false };
+  const st = useStore.getState();
+  const set = (patch: Partial<typeof k>) => st.updateEstimate({ kisoSleeve: { ...k, ...patch } });
+  return (
+    <div className="row" data-testid="kiso-settings">
+      <label className="field inline"><input type="checkbox" data-testid="kiso-enabled" checked={k.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> 基礎貫通スリーブを集計する</label>
+      <label className="field inline"><input type="checkbox" data-testid="kiso-anti-termite" checked={k.antiTermite} onChange={(e) => set({ antiTermite: e.target.checked })} /> シロアリ対策品（防蟻 -B）を使う</label>
+      <span className="muted small">沖縄などシロアリの多い地域では、すき間をふさぐテープ・パッキンの付いた防蟻品がおすすめです</span>
     </div>
   );
 }
