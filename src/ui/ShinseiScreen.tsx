@@ -144,16 +144,17 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mitoriKey が場所・縮尺・表記をまとめて持つ
   }, [mitoriKey]);
-  /** 見取図のプレビューをタップ → その点を新しい工事場所（地図の中心）にする */
+  /** 見取図のプレビューをタップ → その点を新しい工事場所（地図の中心）にする。いま表示している地図の中心から測る（読み込み中の連打で二重に動かない） */
   const tapMap = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (kind !== 'mitori' || mapSettings.lat === undefined || mapSettings.lon === undefined || !mitori.build?.mapOk) return;
+    const shown = mitori.build;
+    if (kind !== 'mitori' || !shown?.mapOk) return;
     const svg = (e.target as Element).closest('svg');
     if (!svg) return;
     const r = svg.getBoundingClientRect();
     const mx = ((e.clientX - r.left) / r.width) * 210, my = ((e.clientY - r.top) / r.height) * 297;
     const F = MAP_FRAME;
     if (mx < F.x || mx > F.x + F.w || my < F.y || my > F.y + F.h) return;
-    const p = offsetLatLon({ lat: mapSettings.lat, lon: mapSettings.lon }, mapSettings.zoom, (mx - (F.x + F.w / 2)) * (MAP_PX.w / F.w), (my - (F.y + F.h / 2)) * (MAP_PX.h / F.h));
+    const p = offsetLatLon(shown.center, shown.zoom, (mx - (F.x + F.w / 2)) * (MAP_PX.w / F.w), (my - (F.y + F.h / 2)) * (MAP_PX.h / F.h));
     setMap({ lat: Math.round(p.lat * 1e7) / 1e7, lon: Math.round(p.lon * 1e7) / 1e7 });
   };
 
@@ -161,9 +162,12 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
     if (kind === 'mitori') {
       if (mapSettings.lat === undefined) return { sheets: [], svg: '', warnings: [], error: '工事場所が決まっていません。住所を入れて「探す」を押してください（緯度,経度でも指定できます）', kind };
-      const b = mitori.key === mitoriKey ? mitori.build : null;
-      if (!b) return { sheets: [], svg: '', warnings: [mitori.loading || mitori.key !== mitoriKey ? '地図を読み込んでいます…' : '見取図を作れませんでした'], error: null, kind };
-      return { sheets: [b.sheet], svg: sheetToSvg(b.sheet), warnings: b.mapOk ? b.notes : [...b.notes, '地図が無いため、枠だけの見取図です（手で書き込んで使えます）'], error: null, kind };
+      // 新しい地図ができるまでは前の見取図を出したまま「読み込んでいます」（出力は新しい地図ができてから）
+      const loading = mitori.loading || mitori.key !== mitoriKey;
+      const b = mitori.build;
+      if (!b) return { sheets: [], svg: '', warnings: [loading ? '地図を読み込んでいます…' : '見取図を作れませんでした'], error: null, kind };
+      const notes = b.mapOk ? b.notes : [...b.notes, '地図が無いため、枠だけの見取図です（手で書き込んで使えます）'];
+      return { sheets: loading ? [] : [b.sheet], svg: sheetToSvg(b.sheet), warnings: loading ? ['地図を読み込んでいます…'] : notes, error: null, kind };
     }
     if (kind === 'suiri') {
       if (!suiri) return { sheets: [], svg: '', warnings: [], error: null, kind };
@@ -310,7 +314,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         </ul>
       )}
       {kind === 'forms' ? <div className="shinsei-preview forms"><ShinseiForms profile={profile} siteName={siteName} date={date} /></div> : <div className={`shinsei-preview${kind === 'mitori' ? ' mitori' : ''}`} data-testid="shinsei-preview" onClick={tapMap}>
-        <div className="shinsei-pages" style={{ width: `${zoom * 100}%` }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
+        <div className="shinsei-pages" style={{ width: `${zoom * 100}%`, ...(kind === 'mitori' ? { maxWidth: 760 * zoom } : {}) }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
     </div>

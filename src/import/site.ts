@@ -20,14 +20,22 @@ export async function searchAddress(q: string): Promise<Place[]> {
     .map((x) => ({ lon: x.geometry!.coordinates![0], lat: x.geometry!.coordinates![1], title: x.properties?.title ?? '' }));
 }
 
-export function loadTile(url: string): Promise<HTMLImageElement | null> {
+/** ms 待っても決まらなければ null（電波の弱い所で 1 枚のタイルに出力全体が止められないように） */
+export function orNullAfter<T>(p: Promise<T | null>, ms: number): Promise<T | null> {
   return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(null); });
+  });
+}
+
+export function loadTile(url: string, timeoutMs = 10000): Promise<HTMLImageElement | null> {
+  return orNullAfter(new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
     img.src = url;
-  });
+  }), timeoutMs);
 }
 
 export async function fetchAerial(p: LatLon, sizeM = 120): Promise<Raster & { mmPerPx: number; centerOffset: { x: number; y: number }; missing: number }> {

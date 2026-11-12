@@ -353,7 +353,6 @@ header .lbl { margin-left: 2px; }
 .shinsei-preview { overflow: auto; background: #e5e7eb; padding: 12px; touch-action: pan-x pan-y pinch-zoom; -webkit-overflow-scrolling: touch; }
 .shinsei-pages { min-width: 320px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .shinsei-pages svg { width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); display: block; }
-.shinsei-preview.mitori .shinsei-pages { max-width: 760px; }
 .shinsei-preview.mitori svg { cursor: crosshair; }
 .plain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .plain-list .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

@@ -87,7 +87,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
         const sheets: { profile?: Sheet; iso?: Sheet; location?: Sheet } = { ...drainageSheetsFor(doc, profile, siteName, date) };
         const { buildLocationSheet } = await import('../import/locationMap');
-        const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress ?? '', date });
+        const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || useStore.getState().meta?.address || '', date });
         if (loc?.mapOk) sheets.location = loc.sheet;
         const missing = new Set<string>();
         downloadBytes(await buildSewerApplication(tpl, font, vals, contractor, sheets, { missing }), `${base}_下水道排水設備計画確認申請書.pdf`, 'application/pdf');

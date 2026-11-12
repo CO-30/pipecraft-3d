@@ -81,6 +81,34 @@ test.describe('見取図（案内図）', () => {
     if (test.info().project.name === 'pc-chrome') await pdf.saveAs('test-evidence/pc-chrome-mitori-04-sewer.pdf');
   });
 
+  test('地図の読み込み中に続けてタップしても、表示中の地図で測る（印が二重に動かない）', async ({ page }) => {
+    const png = await tile(page);
+    let slow = false;
+    await page.route('**/cyberjapandata.gsi.go.jp/xyz/std/**', async (r) => {
+      if (slow) await new Promise((res) => setTimeout(res, 1500));
+      await r.fulfill({ body: png, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' } });
+    });
+    await createProject(page, '見取図タップ');
+    await page.evaluate(() => { const s = (window as any).__pc.getState(); s.updateSite({ application: { 'mitori.lat': '26.3343', 'mitori.lon': '127.7946' } }); });
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-kind-mitori').click();
+    const preview = page.getByTestId('shinsei-preview');
+    await expect(preview.locator('svg image')).toHaveCount(1);
+    slow = true;
+    const svg = preview.locator('svg').first();
+    await svg.scrollIntoViewIfNeeded();
+    const box = (await svg.boundingBox())!;
+    const at = { x: box.x + box.width * 0.5, y: box.y + box.height * ((40 + 226 * 0.3) / 297) };
+    await page.mouse.click(at.x, at.y);
+    await expect.poll(async () => Number((await app(page))['mitori.lat'])).toBeGreaterThan(26.3343);
+    const first = Number((await app(page))['mitori.lat']);
+    await expect(page.getByTestId('shinsei-warnings')).toContainText('地図を読み込んでいます');
+    const box2 = (await svg.boundingBox())!; // 注意の行が出て地図が下がるので取り直す
+    await page.mouse.click(box2.x + box2.width * 0.5, box2.y + box2.height * ((40 + 226 * 0.3) / 297)); // まだ古い地図 → 同じ所を指したのだから同じ点
+    await page.waitForTimeout(300);
+    expect(Number((await app(page))['mitori.lat'])).toBeCloseTo(first, 6);
+  });
+
   test('地図が取れないとき（オフライン）は枠だけの見取図と注意', async ({ page }) => {
     await page.route('**/cyberjapandata.gsi.go.jp/**', (r) => r.abort());
     await createProject(page, '見取図オフライン');
