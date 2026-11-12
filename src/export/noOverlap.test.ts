@@ -181,6 +181,24 @@ describe('見取図でも文字が重ならない', () => {
   });
 });
 
+describe('材料集計表でも文字が重ならない', () => {
+  test('給水・給湯の床下ルート（3 つの分け方）', async () => {
+    const { supplyHouse } = await import('../model/testSupplyHouse');
+    const { routeSupplies } = await import('../model/supplyRoute');
+    const { materialSummary } = await import('../model/materialSummary');
+    const { renderMaterialSheets } = await import('./materialSheet');
+    const doc = routeSupplies(supplyHouse().doc).doc;
+    for (const axis of ['place', 'floor', 'status'] as const) for (const sh of renderMaterialSheets(materialSummary(doc, axis), { siteName: '共同住宅新築工事に伴う給排水衛生設備工事（第二期）その１ 追加工事を含む', date: meta.date })) expect(findTextOverlaps(sh)).toEqual([]);
+    // 9 階建て（A4 横・細い列）
+    const { createBuildingFromDims } = await import('../model/building');
+    const tall = createBuildingFromDims({ width: 8000, depth: 6000, floors: 9, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    let net = emptyNetwork();
+    tall.floors.forEach((f, i) => { net = addPolyline(net, [v(500, 500 + i * 300, f.elevation + 300), v(3000, 500 + i * 300, f.elevation + 300)], { system: 'water', diameter: 20, material: 'HIVP' }).net; });
+    net = addPolyline(net, [v(500, 5500, -400), v(3000, 5500, -400)], { system: 'water', diameter: 20, material: 'HIVP' }).net;
+    for (const sh of renderMaterialSheets(materialSummary({ building: tall, network: net, fixtures: {} }, 'floor'), { siteName: 'テスト', date: meta.date })) expect(findTextOverlaps(sh)).toEqual([]);
+  });
+});
+
 describe('スリーブ表でも文字が重ならない', () => {
   test('給水・給湯の床下ルート（基礎の外周と立上り）', async () => {
     const { supplyHouse } = await import('../model/testSupplyHouse');
