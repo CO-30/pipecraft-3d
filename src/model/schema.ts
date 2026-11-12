@@ -18,6 +18,7 @@ export const nodeSchema = z.object({
   avoid: z.enum(['beam', 'eave', 'balcony']).optional(),
   groundLevel: z.number().finite().optional(),
   dropIn: z.number().finite().nonnegative().optional(),
+  zPin: z.boolean().optional(),
 });
 
 export const segmentSchema = z.object({
@@ -33,6 +34,8 @@ export const segmentSchema = z.object({
   note: z.string().optional(),
   slope: z.number().finite().min(0).max(1).optional(),
   slopeLocked: z.boolean().optional(),
+  slopePin: z.boolean().optional(),
+  diameterPin: z.boolean().optional(),
   existing: z.boolean().optional(),
   support: z.enum(['saddle', 'levelBand', 'tBracket', 'none']).optional(),
   face: z.string().min(1).optional(),
@@ -78,7 +81,7 @@ export const fixtureSchema = z.object({
   y: z.number().finite(),
   rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]),
   /** マスの口径・形状・管底高（v5 の途中で追加したため省略可） */
-  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional(), existing: z.boolean().optional(), drop: z.number().finite().nonnegative().optional(), mountZ: z.number().finite().min(-1000).max(5000).optional() }).optional(),
+  params: z.object({ diameter: z.number().positive().optional(), shape: z.enum(['round', 'square']).optional(), invertZ: z.number().finite().optional(), existing: z.boolean().optional(), drop: z.number().finite().nonnegative().optional(), invertPin: z.boolean().optional(), auto: z.boolean().optional(), mountZ: z.number().finite().min(-1000).max(5000).optional() }).optional(),
 });
 
 const money = z.number().finite().nonnegative();
@@ -160,6 +163,7 @@ export const siteSchema = z.object({
   municipalityProfileId: z.string().min(1).optional(),
   /** 配置図から読んだ敷地の高さの点（省略可） */
   groundPoints: z.array(z.object({ x: z.number().finite(), y: z.number().finite(), gl: z.number().finite() })).optional(),
+  manholeSuppressed: z.array(z.object({ x: z.number().finite(), y: z.number().finite() })).optional(),
   /** 申請書類の入力値（様式の項目 id → 文字列）。省略可 */
   application: z.record(z.string(), z.string()).optional(),
 });
