@@ -8,7 +8,7 @@ import { useStore } from '../state/store';
 import { FIXTURE_CATALOG, isManhole, MANHOLE_TYPES } from '../model/fixtures';
 import { isDrain } from '../model/slope';
 import { isBuiltinProfile, resolveProfile, type MunicipalityProfile } from '../model/municipality';
-import { branchPoints, buildProfile, extractRoute, trimToManholes, type ProfileModel } from '../model/profileDrawing';
+import { branchPoints, buildRouteProfiles, extractRoute, type ProfileModel } from '../model/profileDrawing';
 import { buildRiser, defaultRiserRoot, type RiserModel } from '../model/riser';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderRiserSheet } from '../export/riserSheet';
@@ -30,6 +30,8 @@ import { MAT_AXIS_LABEL, materialSummary, type MatAxis } from '../model/material
 import { renderMaterialSheets } from '../export/materialSheet';
 import { sleeveSchedule } from '../model/sleeves';
 import { renderSleeveSheets } from '../export/sleeveSheet';
+import { renderManholeSheets } from '../export/manholeSheet';
+import { manholeTable } from '../model/manholeTable';
 import { findPipeClashes } from '../model/clash';
 import { AsBuiltPanel } from './AsBuiltPanel';
 import { applyMeasuredToProfile, approxSegments, asBuiltTitle, suspiciousMeasured, measuredLengthOf, readAsBuilt, unmeasuredSegments, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
@@ -40,7 +42,7 @@ import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } fro
 import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
 import type { LocationBuild } from '../import/locationMap';
 
-type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve' | 'material';
+type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve' | 'material' | 'masu';
 const PROFILE_TITLE = '排水設備 縦断図';
 const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
@@ -236,6 +238,26 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       const sheets = renderSuiriSheets(suiri, { siteName, date });
       return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: [...suiri.unverified.map((u) => `要確認: ${u}`), ...suiri.warnings], error: null, kind };
     }
+    if (kind === 'masu') {
+      // ます表: 縦断図と同じモデルから（番号・高さの基準が縦断図と一致する。竣工図なら実測の延長・勾配）
+      if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
+      const r = extractRoute(doc.network, outletId, pick);
+      if ('error' in r) return { sheets: [], svg: '', warnings: [], error: r.error, kind };
+      const ab = asBuilt.on;
+      const models0 = buildRouteProfiles(doc, r, profile, PROFILE_TITLE, () => PROFILE_TITLE);
+      let unmeasured = 0;
+      const models = ab ? models0.map((m) => { const x = applyMeasuredToProfile(m, doc); unmeasured += x.unmeasured.length; return x.model; }) : models0;
+      const table = manholeTable(doc, models, r.omitted.map((o) => o.atNodeId));
+      if (!table.rows.length) return { sheets: [], svg: '', warnings: [], error: 'この下流端につながるマスがありません。器具の「マス（排水）」から置いて排水の管でつないでください', kind };
+      const pos = Object.fromEntries(table.rows.map((row) => [row.nodeId, doc.network.nodes[row.nodeId]?.pos]).filter(([, q]) => q)) as Record<string, { x: number; y: number }>;
+      const sheets = renderManholeSheets(doc, table, pos, { siteName, date, title: ab ? asBuiltTitle('ます表') : 'ます表', numbersOnProfile: profile.profileTable.manholeLabel === 'above' });
+      const warnings = [...models.flatMap((m) => m.warnings.map((w) => w.message))];
+      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
+      if (table.outside) warnings.push(`この表に入っていないマスが ${table.outside} 個あります（別の系統など。下流端を選び直すと、その系統のます表になります）`);
+      for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）の先のマスは入っていません。別の下流端を選んで作ってください`);
+      if (ab && unmeasured) warnings.push(`実測長が未入力の区間 ${unmeasured} か所は、図面の長さで延長・勾配を出しています`);
+      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: [...new Set(warnings)], error: null, kind, ...(ab ? { asBuilt: { segIds: [], unmeasured, modelLen: {}, labels: {}, noLengths: true } } : {}) };
+    }
     if (kind === 'profile') {
       if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
       const r = extractRoute(doc.network, outletId, pick);
@@ -245,15 +267,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       r.branches.forEach((b, i) => { notes[b.atNodeId] = [notes[b.atNodeId], `→別図 枝${i + 1}`].filter(Boolean).join(' '); });
       const ab = asBuilt.on;
       const T = ab ? asBuiltTitle(PROFILE_TITLE) : PROFILE_TITLE;
-      const main = buildProfile(doc, trimToManholes(doc, r.route), profile, T, notes);
-      const models: ProfileModel[] = [main];
-      // 枝は本線の基準（公共桝の管底）と桝番号の続きを使う
-      let manholeNoStart = main.manholeCount;
-      r.branches.forEach((b, i) => {
-        const bm = buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, `${T}（枝${i + 1}: ${nodeLabel(b.atNodeId)} から）`, {}, { datumZ: main.datumZ, manholeNoStart });
-        manholeNoStart += bm.manholeCount;
-        models.push(bm);
-      });
+      // 枝は本線の基準（公共桝の管底）と桝番号の続きを使う（合流のマスは本線の名前のまま）
+      const models: ProfileModel[] = buildRouteProfiles(doc, r, profile, T, (i, at) => `${T}（枝${i + 1}: ${nodeLabel(at)} から）`, notes);
       // 沖縄市の様式: 縦断図の上に排水のアイソメ図（立面図・展開図）
       const iso = profile.profileTable.drainageIsometric ? buildIsometric(doc, 'drain', profile, ab ? { lengthOf: measuredLengthOf(doc) } : {}) : undefined;
       // 竣工図: 延長を実測にする（図面の長さは一覧に出す）
@@ -338,7 +353,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     setBusy(fmt); setErr(''); setInfo('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'material' ? '材料集計表' : kind === 'sleeve' ? 'スリーブ表' : '立面図'}_${dateStamp(new Date())}`;
+      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'material' ? '材料集計表' : kind === 'sleeve' ? 'スリーブ表' : kind === 'masu' ? 'ます表' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'dxf') {
         // DXF（R12・Shift_JIS）: AutoCAD・Jw_cad で開ける。ページは横に並べる
         const { sheetsToDxf } = await import('../export/dxf');
@@ -391,6 +406,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
           <button data-testid="shinsei-kind-suiri" className={kind === 'suiri' ? 'on' : ''} onClick={() => setKind('suiri')}>水理計算書</button>
           <button data-testid="shinsei-kind-sleeve" className={kind === 'sleeve' ? 'on' : ''} onClick={() => setKind('sleeve')}>スリーブ表</button>
+          <button data-testid="shinsei-kind-masu" className={kind === 'masu' ? 'on' : ''} onClick={() => setKind('masu')}>ます表</button>
           <button data-testid="shinsei-kind-material" className={kind === 'material' ? 'on' : ''} onClick={() => setKind('material')}>材料表</button>
           <button data-testid="shinsei-kind-mitori" className={kind === 'mitori' ? 'on' : ''} onClick={() => setKind('mitori')}>見取図</button>
           <button data-testid="shinsei-kind-forms" className={kind === 'forms' ? 'on' : ''} onClick={() => setKind('forms')}>申請書</button>
@@ -409,7 +425,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         ) : kind === 'suiri' ? (
           <SuiriPanel calc={suiri && !('error' in suiri) ? suiri : null} rules={suiriRules} settings={suiriSettings} onChange={setSuiri} suggestion={suiriSuggest}
             onApply={() => suiriSuggest && updateSegments(Object.fromEntries(suiriSuggest.changes.map((c) => [c.segId, { diameter: c.to }])))} />
-        ) : kind === 'profile' ? (
+        ) : kind === 'profile' || kind === 'masu' ? (
           <>
             <label className="field inline">下流端（公共マスなど）
               <select data-testid="shinsei-outlet" data-fb-skip value={outletId} onChange={(e) => { setOutlet(e.target.value); setChoice({}); }}>
@@ -419,7 +435,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
             {branches.map((b) => (
               <label key={b.nodeId} className="field inline">分岐（{nodeLabel(b.nodeId)}）
                 <select data-testid={`shinsei-branch-${b.nodeId}`} data-fb-skip value={choice[b.nodeId] ?? ALL} onChange={(e) => setChoice({ ...choice, [b.nodeId]: e.target.value })}>
-                  <option value={ALL}>全部（枝は別図）</option>
+                  <option value={ALL}>{kind === 'masu' ? '全部（枝のマスも表に入れる）' : '全部（枝は別図）'}</option>
                   {b.options.map((o) => <option key={o} value={o}>{branchDescription(doc, b.nodeId, o)}</option>)}
                 </select>
               </label>

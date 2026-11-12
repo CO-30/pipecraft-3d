@@ -10,7 +10,7 @@ import { adjacency, segmentLength, type Network, type PipeNode, type Segment, ty
 export type FittingType =
   | 'elbow90' | 'elbow45' | 'elbow' | 'socket' | 'reducer' | 'tee' | 'wye' | 'cross'
   | 'valve' | 'adapter' | 'junctionBox' | 'cap' | 'other'
-  | 'faucetElbow' | 'faucetSocket' | 'threadSocket' | 'hivpAdapter';
+  | 'faucetElbow' | 'faucetSocket' | 'threadSocket' | 'hivpAdapter' | 'aav';
 export type FittingChoice = FittingType | 'none';
 
 export const FITTING_LABEL: Record<FittingType, string> = {
@@ -19,6 +19,7 @@ export const FITTING_LABEL: Record<FittingType, string> = {
   junctionBox: 'ジョイントボックス', cap: 'キャップ', other: 'その他部品',
   faucetElbow: '給水栓用エルボ（ネジ）', faucetSocket: '給水栓用ソケット（ネジ）', threadSocket: 'バルブ用ソケット（ネジ）',
   hivpAdapter: 'HIVP変換継手',
+  aav: '通気弁',
 };
 /** 片側がネジの継手（シールテープを巻く） */
 export const THREAD_FITTINGS: ReadonlySet<FittingType> = new Set(['faucetElbow', 'faucetSocket', 'threadSocket']);

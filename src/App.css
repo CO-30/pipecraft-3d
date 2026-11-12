@@ -428,5 +428,24 @@ header .lbl { margin-left: 2px; }
 .note-tag.done { background: #e2e8f0; color: #64748b; border-color: #94a3b8; }
 .note-tag.on, .note-tag.on:hover { background: #fde047; color: #422006; border-color: #d97706; outline: 3px solid #f59e0b; }
 .note-tag-text { font-weight: 400; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ⑩ 版・比較 */
+.versions { margin-top: 8px; }
+.versions > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.versions .row { flex-wrap: wrap; gap: 6px; align-items: center; }
+.version-name { flex: 1 1 160px; min-width: 0; font-size: 16px; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.versions ul { list-style: none; margin: 6px 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.versions li { border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px; margin-bottom: 6px; background: #fff; }
+.versions li.on { border-color: #ea580c; background: #fff7ed; }
+.versions li button { min-height: 36px; }
+.version-head { font-size: 13px; margin-bottom: 4px; overflow-wrap: anywhere; }
+.compare-bar { background: #f8fafc; border-color: #cbd5e1; flex-direction: column; align-items: stretch; }
+.compare-bar .compare-main { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.compare-bar .compare-main > span { flex: 1 1 200px; min-width: 0; white-space: normal; line-height: 1.4; font-size: 13px; }
+.views > .compare-bar { position: absolute; left: 8px; right: 8px; bottom: 24px; width: auto; z-index: 4; /* 表示シート（5）より下 */ box-shadow: 0 2px 8px rgba(15,23,42,0.15); }
+.compare-list { list-style: none; margin: 4px 0 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.compare-list button { width: 100%; text-align: left; min-height: 40px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 3px; font-size: 13px; }
+.compare-lens .sys-dot { margin: 0 3px 0 6px; }
+@media (max-width: 700px) { .compare-list { max-height: 22vh; } .compare-bar .compare-main > span { font-size: 12px; } }
 /* 共通の要望欄（ホームのいちばん下） */
 .home-feedback { margin: 28px auto 8px; max-width: 640px; }

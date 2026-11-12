@@ -9,7 +9,9 @@ import { addPolyline, emptyNetwork } from '../model/network';
 import { placeFixture, portNodes } from '../model/fixtures';
 import { BUILTIN_PROFILES, STANDARD_PROFILE } from '../model/municipality';
 import { buildIsometric } from '../model/isometric';
-import { buildProfile, extractRoute } from '../model/profileDrawing';
+import { buildProfile, extractRoute, trimToManholes } from '../model/profileDrawing';
+import { manholeTable } from '../model/manholeTable';
+import { renderManholeSheets } from './manholeSheet';
 import { buildRiser } from '../model/riser';
 import { renderIsoSheet } from './isoSheet';
 import { renderProfileSheet } from './profileSheet';
@@ -114,6 +116,15 @@ describe('全ての申請図面で文字が重ならない', () => {
       expect(model.nodes.length).toBeGreaterThan(5);
       const iso = buildIsometric(doc, 'drain', profile);
       expect(findTextOverlaps(renderProfileSheet(model, meta, iso))).toEqual([]);
+    });
+    test(`ます表: 桝が 13 個（${profile.name}）`, () => {
+      const { doc, outlet } = manyManholes();
+      const route = extractRoute(doc.network, outlet);
+      if (!('route' in route)) throw new Error('経路が取れない');
+      const t = manholeTable(doc, [buildProfile(doc, trimToManholes(doc, route.route), profile, '排水設備 縦断図')]);
+      expect(t.rows.length).toBeGreaterThan(5);
+      const pos = Object.fromEntries(t.rows.map((r) => [r.nodeId, doc.network.nodes[r.nodeId].pos]));
+      for (const sh of renderManholeSheets(doc, t, pos, meta)) expect(findTextOverlaps(sh)).toEqual([]);
     });
     test(`桝が 13 個続く縦断図とアイソメ図（${profile.name}）`, () => {
       const { doc, outlet } = manyManholes();

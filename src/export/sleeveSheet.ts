@@ -116,7 +116,7 @@ export function renderSleeveSheets(doc: Doc, rows: SleeveRow[], meta: { siteName
 }
 
 /** 線分を四角で切る（Liang-Barsky）。外なら null */
-function clipToRect(x1: number, y1: number, x2: number, y2: number, r: { x: number; y: number; w: number; h: number }): [number, number, number, number] | null {
+export function clipToRect(x1: number, y1: number, x2: number, y2: number, r: { x: number; y: number; w: number; h: number }): [number, number, number, number] | null {
   let t0 = 0, t1 = 1;
   const dx = x2 - x1, dy = y2 - y1;
   for (const [p, q] of [[-dx, x1 - r.x], [dx, r.x + r.w - x1], [-dy, y1 - r.y], [dy, r.y + r.h - y1]]) {

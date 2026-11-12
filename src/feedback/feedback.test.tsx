@@ -62,6 +62,7 @@ describe('要望欄', () => {
       ['src/ui/Panels.tsx', 'data-testid="port-cand" data-fb="接続先の器具を選ぶ"'],
       ['src/ui/ImportReportDialog.tsx', 'data-testid="ir-fixtures" data-fb-skip'],
       ['src/ui/ShinseiForms.tsx', '`app-${f.id}`} data-fb-skip'],
+      ['src/ui/Versions.tsx', 'data-testid="compare-row" data-fb="比較の一覧から選ぶ"'],
       ['src/ui/ShinseiScreen.tsx', 'data-testid="shinsei-profile" data-fb-skip'],
       ['src/ui/ShinseiScreen.tsx', 'data-testid="shinsei-outlet" data-fb-skip'],
       ['src/ui/ShinseiScreen.tsx', 'data-testid="shinsei-root" data-fb-skip'],

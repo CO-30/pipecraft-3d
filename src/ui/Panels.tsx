@@ -409,6 +409,24 @@ function DropPipes() {
   return (
     <div className="drop-pipes" data-testid="drop-pipes">
       <div className="row">
+        <button className="primary auto-connect" data-testid="auto-connect" title="器具の真下に落とす → 排水を床下から外の汚水マスへ → 外のマスを公共汚水マスまで → 給水・給湯を床下のヘッダーで（止水栓も）→ キッチン・洗面台に通気弁、を 1 回で。元に戻す 1 回で全部戻ります" onClick={() => {
+          // 外の排水管の土かぶり・勾配、給水の埋設深さは、申請図面で選んでいる自治体と現場の住所に合わせる
+          const st = useStore.getState();
+          const p = resolveProfile(st.doc.site?.municipalityProfileId, useProfiles.getState().user);
+          const supply = resolveSupplyRules({ profileName: p.id === 'standard' ? undefined : p.name, address: st.meta?.address });
+          useStore.setState({ notice: '汚水・水・湯をまとめてつないでいます…' });
+          setTimeout(() => {
+            try {
+              // 床下へ落とす深さは下の入力欄の値（正しくなければ既定の 300mm）
+              useStore.getState().autoConnectAll({ drainRules: { cover: p.profileTable.minCover, slopeFor: (d) => minSlopeFor(p, d) }, supply, dropDepth: ok ? v : undefined });
+            } catch (e) {
+              useStore.setState({ notice: `つなげませんでした: ${(e as Error).message}。1 つずつのボタンで試してください` });
+            }
+          }, 30);
+        }}>🔗 汚水・水・湯をまとめてつなぐ（案）</button>
+      </div>
+      <div className="muted small">器具・マス・公共汚水マス・メーター（ヘッダー）を置いてから押すと、床下に落として、排水は公共マスまで、給水・給湯はヘッダーで、止水栓・通気弁も入れてつなぎます。下のボタンで 1 つずつもできます。</div>
+      <div className="row">
         <label className="field inline">床から下へ
           <span className="unit-input"><input type="number" inputMode="numeric" data-testid="drop-depth" value={text} min={DROP_MIN} max={DROP_MAX} onChange={(e) => setText(e.target.value)} /><span>mm</span></span>
         </label>

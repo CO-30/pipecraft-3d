@@ -14,6 +14,7 @@ import type { Doc, SiteSettings } from '../model/doc';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN, dropFixturePipes as dropPipes } from '../model/dropPipes';
 import { DEFAULT_COVER, routeDrainsOut as routeDrains, type DrainRules } from '../model/drainRoute';
 import { routeSupplies as routeSuppliesUnder } from '../model/supplyRoute';
+import { autoConnect } from '../model/autoConnect';
 import { calcSupply } from '../model/hydraulics/calc';
 import { readSuiriSettings } from '../model/hydraulics/settings';
 import { resolveSupplyRules, type SupplyRules } from '../model/hydraulics/supplyRules';
@@ -79,6 +80,13 @@ export type { Doc };
 export type Tool = 'select' | 'outline' | 'pipe' | 'wall' | 'room' | 'split' | 'door' | 'window' | 'fixture' | 'underlay' | 'note';
 export type SelKind = 'segment' | 'node' | 'wall' | 'corner' | 'opening' | 'room' | 'fixture' | 'member' | 'note';
 /** at: 区間をタップした位置（切断・バルブ挿入に使う） */
+/** 保存データ（工事・版）から編集データへ（階の無いメモは捨てる） */
+export function projectToDoc(p: ProjectData): Doc {
+  const notes = p.notes ? Object.fromEntries(Object.entries(p.notes).filter(([, n]) => p.building.floors.some((f) => f.id === n.floorId))) : undefined;
+  return { building: p.building, network: p.network, fixtures: p.fixtures, estimate: p.estimate, underlays: p.underlays, elevations: p.elevations ?? {}, site: p.site ?? {}, ...(notes ? { notes } : {}) };
+}
+/** 比べている版（保存した時点）。doc は版の中身 */
+export type CompareTarget = { id: string; name: string; createdAt: number; doc: Doc };
 export type Selection = { kind: SelKind; id: string; at?: Vec3 } | null;
 export type VisCategory = BoxCategory | 'pipes' | 'fixtures';
 /** 配管全体の複製でずらす量(mm) */
@@ -163,6 +171,11 @@ type State = {
   /** 系統をたどって強調している出発の手がかり（画面だけの状態。図面・元に戻すには入れない） */
   trace: TraceSeed | null;
   setTrace(segId: string | null): void;
+  /** 比べている版（画面だけの状態。図面・元に戻すには入れない） */
+  compare: CompareTarget | null;
+  setCompare(c: CompareTarget | null): void;
+  /** 版の中身に戻す（元に戻すで取り消せる） */
+  restoreProject(p: ProjectData): void;
   /** 図面・3D のメモを出す（表示だけ。保存しない） */
   showNotes: boolean;
   setShowNotes(on: boolean): void;
@@ -240,6 +253,8 @@ type State = {
   routeDrainsOut(rules?: DrainRules): number;
   /** 給水・給湯を床下のヘッダーでつなぐ（案）。つないだ本数を返す。rules: 自治体の給水の値（埋設深さ・水理計算） */
   routeSupplies(rules?: SupplyRules): number;
+  /** 汚水・水・湯をまとめてつなぐ（落とす → 排水を外へ → 屋外でマス・公共マスまで → 給水・給湯 → 通気弁）。元に戻す 1 回で全部戻る。足した管の数 */
+  autoConnectAll(opts?: { drainRules?: DrainRules; supply?: SupplyRules; dropDepth?: number }): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
   rotateFixture(id: string): void;
@@ -501,7 +516,7 @@ export const useStore = create<State>((set, get) => {
   const fixActiveFloor = (doc: Doc, preferred: string) =>
     doc.building.floors.some((f) => f.id === preferred) ? preferred : doc.building.floors[0]?.id ?? '';
   const resetView = (doc: Doc): Partial<State> => ({
-    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], trace: null, pendingMerge: null,
+    past: [], future: [], dragBase: null, selection: null, hiddenIds: [], ghostIds: [], trace: null, compare: null, pendingMerge: null,
     section: { mode: 'off', value: 0 }, floorFilter: 'all', activeUnderlayId: null, scalePick: null, activeElevationId: null,
     activeFloorId: doc.building.floors[0]?.id ?? '', tool: 'select', revision: get().revision + 1, dimWizard: null, underFloor: false,
   });
@@ -527,6 +542,21 @@ export const useStore = create<State>((set, get) => {
     visibility: defaultVisibility(),
     hiddenIds: [],
     ghostIds: [],
+    compare: null,
+    setCompare: (compare) => set({ compare }),
+    restoreProject: (p) => {
+      const { doc, past } = get();
+      // 版には下敷きの画像・外壁の写真を入れていないので、今のものを使う
+      const v = projectToDoc(p);
+      const elevations = Object.fromEntries(Object.entries(v.elevations ?? {}).map(([k, e]) => [k, e.photo || !doc.elevations?.[k]?.photo ? e : { ...e, photo: doc.elevations[k].photo }]));
+      // 排水は版だけで計算し直す（今との差でマスを自動で足さない）。履歴 1 件
+      const r = solveDoc({ ...v, underlays: doc.underlays ?? {}, elevations });
+      const next = r.doc;
+      const floorOk = next.building.floors.some((f) => f.id === get().activeFloorId);
+      set({ doc: next, drainIssues: r.issues, past: [...past, doc].slice(-HISTORY_LIMIT), future: [], revision: get().revision + 1,
+        selection: null, compare: null, trace: null, hiddenIds: [], ghostIds: [], activeUnderlayId: null, dimWizard: null, pendingMerge: null, dragBase: null,
+        activeElevationId: fixElev(next), activeFloorId: floorOk ? get().activeFloorId : next.building.floors[0]?.id ?? '' });
+    },
     showNotes: true,
     setShowNotes: (showNotes) => set({ showNotes }),
     placeNoteAt: (p, target) => {
@@ -599,7 +629,7 @@ export const useStore = create<State>((set, get) => {
       const r = solveDoc({ underlays: {}, elevations: {}, site: {}, ...doc });
       set({ doc: r.doc, drainIssues: r.issues, meta, ...resetView(r.doc) });
     },
-    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null, trace: null }),
+    closeProject: () => set({ meta: null, selection: null, dragBase: null, activeElevationId: null, trace: null, compare: null }),
     toProjectData: () => {
       const { meta, doc } = get();
       if (!meta) return null;
@@ -879,6 +909,22 @@ export const useStore = create<State>((set, get) => {
       const parts = [`給水 ${r.connected.water} 本・給湯 ${r.connected.hot} 本を床下のヘッダーでつなぎました（案）`, r.headers ? `ヘッダーを ${r.headers} 台、床下に置きました` : '', r.valves ? `止水栓を ${r.valves} 個入れました（器具・給湯器の給水・給湯の口のすぐ先）` : '', r.sleeves ? `外周の基礎の貫通 ${r.sleeves} か所` : '', r.crossings ? `内部の立上りの貫通 ${r.crossings} か所` : '', verdict, ...r.notes, '3D で確かめて、合わない所は直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
+    },
+    autoConnectAll: (opts = {}) => {
+      const doc = get().doc;
+      const rules = opts.supply ?? resolveSupplyRules({ address: get().meta?.address });
+      const r = autoConnect(doc, { drainRules: opts.drainRules, burial: rules.burial.v, dropDepth: opts.dropDepth });
+      const added = Object.keys(r.doc.network.segments).filter((id) => !doc.network.segments[id]);
+      if (r.doc === doc || !added.length) { set({ notice: ['新しくつなぐ配管はありませんでした', ...r.summary].join('。') }); return 0; }
+      // 管種の付いていない新しい管に、屋内・屋外の自動の管種（ほかのボタンと同じ）
+      const noMat = added.filter((id) => !r.doc.network.segments[id].material);
+      const net = assignAutoMaterials(r.doc.network, r.doc.building, noMat);
+      const c = r.supplies ? calcSupply({ ...r.doc, network: net }, rules, readSuiriSettings(r.doc.site?.application)) : null;
+      const verdict = !c ? '' : 'error' in c ? `水理計算: できませんでした（${c.error}）` : `水理計算: ${c.ok ? '適当' : '不適当（申請画面の「水理計算書」で口径の提案を使ってください）'}`;
+      commit({ ...r.doc, network: tagNodeFloors(net, r.doc.building.floors, get().activeFloorId) }, { selection: null });
+      const issues = get().drainIssues.length;
+      set({ notice: [...r.summary, verdict, issues ? `排水の注意が ${issues} 件あります（積算の「要確認」から場所へ移動できます）` : '', '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].filter(Boolean).join('。') });
+      return added.length;
     },
     placeFixtureAt: (p) => {
       const { doc, activeFloorId, fixtureType } = get();

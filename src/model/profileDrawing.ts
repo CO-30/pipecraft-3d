@@ -56,6 +56,8 @@ export type BuildProfileOpts = {
   datumZ?: number;
   /** 枝の図: NO. をこの数の次から振る */
   manholeNoStart?: number;
+  /** 前の図で名前を付けたマス（枝の合流のマスなど）。同じ名前を使い、番号を数えない */
+  fixedNames?: Map<string, string>;
 };
 
 /** 管種口径の表記 */
@@ -225,7 +227,11 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
   // 桝の名前: 図の上に書く様式では、上流から NO.1, NO.2 …（公共マスは種類名のまま。枝は本線の続き）
   let no = opts.manholeNoStart ?? 0;
   if (profile.profileTable.manholeLabel === 'above') {
-    for (const n of nodes) if (n.manhole) n.manhole.name = n.manhole.isPublic ? `${n.existing ? '既存' : '新設'}${n.manhole.label}` : `NO.${++no}${n.manhole.label}`;
+    for (const n of nodes) {
+      if (!n.manhole) continue;
+      const fixed = opts.fixedNames?.get(n.nodeId);
+      n.manhole.name = fixed ?? (n.manhole.isPublic ? `${n.existing ? '既存' : '新設'}${n.manhole.label}` : `NO.${++no}${n.manhole.label}`);
+    }
   }
   const manholeCount = no - (opts.manholeNoStart ?? 0);
   // 高さの基準: 下流端（公共桝）の管底を ±0 にする。下流端が公共桝でなければ動かさず警告（枝は本線の基準を使う）
@@ -248,4 +254,25 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     }
   }
   return { nodes, segments, warnings, tentativeGL, profile, title, manholeCount, ...(datumLabel ? { datumLabel } : {}), ...(datumZ !== undefined ? { datumZ } : {}) };
+}
+
+/**
+ * 下流端からの本線と枝の縦断図のモデル（縦断図・ます表で共通）。枝は本線の基準（公共桝の管底）と NO. の続きを使い、
+ * 前の図で名前を付けたマス（合流のマス）は同じ名前のまま（番号を数え直さない）
+ */
+export function buildRouteProfiles(doc: Doc, r: RouteResult, profile: MunicipalityProfile, title: string, branchTitle: (i: number, atNodeId: string) => string, notes: Record<string, string> = {}): ProfileModel[] {
+  if ('error' in r) return [];
+  const main = buildProfile(doc, trimToManholes(doc, r.route), profile, title, notes);
+  const models: ProfileModel[] = [main];
+  const names = new Map<string, string>();
+  const remember = (m: ProfileModel) => { for (const n of m.nodes) if (n.manhole && !names.has(n.nodeId)) names.set(n.nodeId, n.manhole.name); };
+  remember(main);
+  let start = main.manholeCount;
+  r.branches.forEach((b, i) => {
+    const bm = buildProfile(doc, trimToManholes(doc, b.nodeIds), profile, branchTitle(i, b.atNodeId), {}, { datumZ: main.datumZ, manholeNoStart: start, fixedNames: new Map(names) });
+    start += bm.manholeCount;
+    remember(bm);
+    models.push(bm);
+  });
+  return models;
 }
