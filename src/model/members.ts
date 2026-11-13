@@ -209,7 +209,7 @@ export function bumpWall(b: Building, wallId: string, o0: number, o1: number, de
   const flag = w.lengthSet === undefined ? {} : { lengthSet: false };
   const mkWall = (a: string, c: string, extra: Partial<Wall> = {}) => {
     const id = newId('w');
-    walls[id] = { id, floorId: w.floorId, a, b: c, thickness: w.thickness, kind: w.kind, ...flag, ...extra };
+    walls[id] = { id, floorId: w.floorId, a, b: c, thickness: w.thickness, kind: w.kind, ...flag, ...(w.locked ? { locked: true } : {}), ...extra };
     return id;
   };
   // 端にかかる場合は端の角を動かす（隣の壁が伸び縮みする）

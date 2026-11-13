@@ -1415,6 +1415,8 @@ export const useStore = create<State>((set, get) => {
         ? bumpFace(b, el, r, what === 'bump' ? size : -size)
         : addFaceMember(b, el, what, r, size);
       if (!res.ok) return res.error;
+      // 押し込み・張り出しで、位置をロックした壁は動かさない
+      if ((what === 'bump' || what === 'setback') && (B.lockedWallsMoved(b, res.b) || Object.values(b.walls).some((w) => w.locked && !res.b.walls[w.id]))) return WALL_LOCK_NOTICE;
       let elevations = doc.elevations;
       if (what === 'bump' || what === 'setback') {
         // 立面の元の壁が分割・移動したら、立面をこの面の上の壁に付け替える（面の位置も合わせる）

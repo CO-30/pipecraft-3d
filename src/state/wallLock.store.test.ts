@@ -1,6 +1,7 @@
 /** 壁のロック（2026-11-13 ユーザー要望: 図面から読み取った壁は、まちがって位置を変えないように） */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { emptyDoc, useStore } from './store';
+import { emptyDoc, useStore, WALL_LOCK_NOTICE } from './store';
+import { elevationFromWall } from '../model/elevation';
 import { createBuildingFromDims, wallsOnFloor } from '../model/building';
 
 const s = () => useStore.getState();
@@ -29,6 +30,15 @@ describe('ロックした壁は動かない', () => {
     const r = s().setOutlineLength(w.id, 9000, 'a', true);
     expect(r.ok).toBe(false);
     expect(JSON.stringify(b().walls[w.id])).toBe(JSON.stringify(walls()[0]));
+  });
+  it('壁を正面から見て押し込み・張り出しをしても、ロックした壁は変えない', () => {
+    const south = walls().find((w) => { const a = b().corners[w.a], c = b().corners[w.b]; return a.y === 0 && c.y === 0; })!;
+    const el = elevationFromWall(b(), south.id);
+    expect(s().addElevation(el)).toBeNull();
+    const before = JSON.stringify(b().walls);
+    const id = Object.keys(s().doc.elevations ?? {})[0];
+    expect(s().addFromFace(id, 'bump', { u0: 3000, u1: 5000, v0: 100, v1: 2500 }, 910)).toBe(WALL_LOCK_NOTICE);
+    expect(JSON.stringify(b().walls)).toBe(before);
   });
   it('厚さ・内外は変えられる', () => {
     const w = walls()[0];

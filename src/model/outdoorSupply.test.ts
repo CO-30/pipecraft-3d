@@ -99,6 +99,36 @@ describe('外回りの給水・給湯（給湯器が外の家）', () => {
     expect(e.kiso.some((l) => l.spec.startsWith('KSS'))).toBe(false);
   });
 
+  test('ベンリカンは支持金具を数えない', () => {
+    const e = computeEstimate(r.doc);
+    const benIds = new Set(Object.values(net.segments).filter((s) => s.material === BENRIKAN).map((s) => s.id));
+    expect(e.supportMarks.some((m) => benIds.has(m.segId))).toBe(false);
+  });
+
+  test('床下へ戻したお湯の先がつながらなかったときも、もう一度押すとその床下の端から続ける', () => {
+    // 給湯器から床下の入口までだけ残し、床下の給湯の管を消した状態（1 回目で器具へつなげなかったのと同じ）
+    const n0 = r.doc.network;
+    const keep = new Set<string>();
+    let at0 = port(r.doc, h.ids.heater, 'out').id, prev: string | null = null;
+    for (let i = 0; i < 10; i++) {
+      const segs = segmentsAt(n0, at0).filter((s) => s.id !== prev);
+      if (segs.length !== 1) break;
+      keep.add(segs[0].id); prev = segs[0].id; at0 = other(n0, segs[0], at0).id;
+      const q = n0.nodes[at0].pos;
+      if (Math.abs(q.z - UNDERFLOOR_Z) < 1 && q.y > 150) break;
+    }
+    const segments = Object.fromEntries(Object.entries(n0.segments).filter(([id, s]) => s.system !== 'hotWater' || keep.has(id)));
+    const used = new Set(Object.values(segments).flatMap((s) => [s.a, s.b]));
+    const nodes = Object.fromEntries(Object.entries(n0.nodes).filter(([id, n]) => used.has(id) || n.fixtureId));
+    const r2 = routeSupplies({ ...r.doc, network: { nodes, segments } }, { headers: 'avoid' });
+    expect(r2.connected.hot).toBe(2);
+    // ヘッダーを足さず、給湯器の出口から器具の給湯口までつながっている
+    expect(Object.values(r2.doc.fixtures).some((f) => f.type === 'hotWaterHeader')).toBe(false);
+    const seen = new Set([port(r2.doc, h.ids.heater, 'out').id]), st = [...seen];
+    while (st.length) for (const sg of segmentsAt(r2.doc.network, st.pop()!)) if (sg.system === 'hotWater') for (const m of [sg.a, sg.b]) if (!seen.has(m)) { seen.add(m); st.push(m); }
+    expect(seen.has(port(r2.doc, h.ids.kitchen, 'hot').id)).toBe(true);
+  });
+
   test('もう一度押しても増えない', () => {
     const again = routeSupplies(r.doc, { headers: 'avoid' });
     expect(Object.keys(again.doc.network.segments).length).toBe(Object.keys(net.segments).length);

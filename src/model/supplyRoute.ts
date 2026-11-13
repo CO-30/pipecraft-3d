@@ -484,6 +484,19 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     pipes++;
     return true;
   };
+  /** 口 startId から system の管を枝分かれ無しにたどり、床下（建物の中・床下の高さ）で行き止まりの端があればその id */
+  const looseUnderEnd = (startId: string, system: SystemType): string | null => {
+    let at0 = startId, prev: string | null = null;
+    for (let i = 0; i < 50; i++) {
+      const segs = segmentsAt(cur.network, at0).filter((s) => s.id !== prev);
+      if (segs.length !== 1 || segs[0].system !== system) break;
+      const nx = segs[0].a === at0 ? segs[0].b : segs[0].a;
+      prev = segs[0].id; at0 = nx;
+      const n = cur.network.nodes[nx];
+      if (segmentsAt(cur.network, nx).length === 1) return !n.fixtureId && Math.abs(n.pos.z - zU) < 1 && inside(n.pos) ? nx : null;
+    }
+    return null;
+  };
   /** 外の給湯器の出口: ベンリカン → 止水栓 → PB で床下の高さまで下ろし → エルボ → 地上で基礎を抜けて床下へ（コーキング） */
   const hotDown = (): { id: string; e: Entry } | null => {
     const e = entryFor(heaterOut!.pos);
@@ -495,8 +508,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     // 3 点が一直線なら真ん中を除く（継手を作らない）
     const line = pts.filter((q, i) => i === 0 || i === pts.length - 1 || Math.abs((q.x - pts[i - 1].x) * (pts[i + 1].y - q.y) - (q.y - pts[i - 1].y) * (pts[i + 1].x - q.x)) > 1 || Math.abs(q.z - pts[i - 1].z) > 1);
     const ids2 = path(line, { ...attrs('hotWater', 20), material: 'PB保温10mm' }, ids.at(-1));
-    // 下ろした所の曲がりは L（エルボ）
-    const bend = ids2[1];
+    // 下ろした所（口の真下・床下の高さ）の曲がりは L（エルボ）
+    const bend = ids2.find((id) => { const q = cur.network.nodes[id].pos; return dist2(q, p) < 1 && Math.abs(q.z - zU) < 1 && segmentsAt(cur.network, id).length === 2; });
     if (bend) cur = { ...cur, network: { ...cur.network, nodes: { ...cur.network.nodes, [bend]: { ...cur.network.nodes[bend], fitting: { type: 'elbow90', degree: 2 } } } } };
     sleeves++;
     pipes++;
@@ -665,6 +678,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     if (!heater || !heaterOut) notes.push('給湯器が無いため、給湯はつないでいません（給湯器を置いてもう一度押すとつながります）');
     else {
       let hotFeed: string | null = null, hotEntry: Entry | null = null;
+      // 前に押したときに給湯器から床下まで引いて、その先がつながらなかった管があれば、その床下の端から続ける
+      if (!free(heaterOut)) hotFeed = looseUnderEnd(heaterOut.id, 'hotWater');
       if (free(heaterOut)) {
         if (heaterInside) hotFeed = dropLink(heaterOut, attrs('hotWater', 20));
         else if (heaterOutdoor) {

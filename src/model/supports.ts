@@ -10,6 +10,7 @@ import type { Doc } from './doc';
 import type { Network, Segment, Vec3 } from './network';
 import { orderChain, pointsAlong } from './chain';
 import { isWire } from './fittings';
+import { isBenrikan } from './materials';
 import { isDrain, isRiserLike } from './slope';
 import type { SegmentMeasure } from './estimate';
 import { bandHeight, isUnderfloorRun, underfloorLevels } from './underfloorSlope';
@@ -109,6 +110,8 @@ export function computeSupports(doc: Doc, st: SupportSettings, measures: Record<
   if (!st.enabled) return empty;
   const groups = new Map<string, { kind: SupportKind; diameter: number; substrate: Substrate; segs: Segment[] }>();
   for (const s of Object.values(doc.network.segments)) {
+    // ベンリカン（給湯器の口と止水栓の間の短い管）は支持しない
+    if (isBenrikan(s.material)) continue;
     const kind = supportKindOf(doc, s);
     if (!kind) continue;
     const substrate = s.substrate ?? st.substrate;
