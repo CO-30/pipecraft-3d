@@ -85,3 +85,25 @@ describe('精度の基準（作り物の戸建）', () => {
     expect(formatScore(truth, s)).toContain('| 壁 |');
   });
 });
+
+describe('精度の基準（作り物の 2 階建て共同住宅: 同じ間取りの 1 階・2 階）', () => {
+  const ins = [{ name: '1F', page: planSheet({ floorName: '1階' }) }, { name: '2F', page: planSheet({ floorName: '2階' }) }, { name: 'tachi', page: elevationSheet() }];
+  const room = truth.fixtures!.filter((f) => f.type !== 'outdoorFaucet');
+  const t2 = parseTruth({
+    id: 'synthetic-2f', kind: 'apartment', structure: 'wood', confirmedBy: 'testHouse.ts の作図', confirmedAt: '2026-11-13',
+    sheets: [{ name: '1F', kind: 'plan', scale: 100 }, { name: '2F', kind: 'plan', scale: 100 }, { name: 'tachi', kind: 'elevation', scale: 100 }],
+    walls: [1, 2].flatMap((floor) => truth.walls!.map((w) => ({ ...w, floor }))),
+    openings: [{ floor: 1, count: 2 }, { floor: 2, count: 2 }],
+    // 外の立水栓は 1 階だけ（上の階の図面に写っていても 2 階の器具にしない）
+    fixtures: [...truth.fixtures!, ...room.map((f) => ({ ...f, floor: 2 }))],
+  });
+  const s = evaluate(readingOf(buildFromSheets(ins), ins), t2);
+  it('階ごとに壁・開口・器具が合う', () => {
+    expect(s.sheets).toMatchObject({ kindCorrect: 3, scaleCorrect: 3 });
+    expect(s.walls.recall).toBeGreaterThanOrEqual(0.99);
+    expect(s.walls.precision).toBeGreaterThanOrEqual(0.99);
+    expect(s.openings?.diff).toBe(0);
+    expect(s.fixtures).toMatchObject({ recall: 1, precision: 1 });
+    expect(s.fixtures.positionMax).toBeLessThanOrEqual(100);
+  });
+});

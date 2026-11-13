@@ -8,7 +8,7 @@ import { MAX_UNDERLAYS_TOTAL, type Underlay } from '../model/underlay';
 import { buildFromSheets, PlanReadError, type ImportReport, type PlacedCandidate, type SheetInput, type SiteResult } from '../model/planRead/assemble';
 import { classifySheet, toWorldX, toWorldY } from '../model/planRead/sheet';
 import { openPdf } from './pdf';
-import { readVectorPages } from './pdfVector';
+import { MAX_TEXT_PAGES, readVectorPages } from './pdfVector';
 
 export type PlanSetImport = { building: Building; designGL?: number; underlays: Record<string, Underlay>; fixtures: PlacedCandidate[]; report: ImportReport; site?: SiteResult };
 /** 一度に読む枚数の上限（ページ数の合計） */
@@ -20,14 +20,17 @@ const baseName = (n: string) => n.replace(/\.[^.]+$/, '');
 export async function readPlanInputs(files: { name: string; data: ArrayBuffer }[], lib?: unknown) {
   const inputs: SheetInput[] = [];
   const source: { data: ArrayBuffer; page: number }[] = [];
-  const failed: string[] = [], skipped: string[] = [], textOnly: string[] = [];
+  const failed: string[] = [], skipped: string[] = [], textOnly: string[] = [], unread: string[] = [];
   for (const f of files) {
     try {
       const data = f.data;
+      const info: { total?: number } = {};
       const room = MAX_PLAN_PAGES - inputs.length;
       if (room <= 0) { skipped.push(f.name); continue; }
       // 図面一式の PDF: 平面図・基礎伏図・立面図・断面図・配置図だけ線を読む（図面リスト・仕様書・日影図などは文字だけ）
-      const pages = await readVectorPages(data, lib, room, (texts) => ['plan', 'foundation', 'elevation', 'section', 'site', 'unknown'].includes(classifySheet(texts, f.name).kind));
+      const pages = await readVectorPages(data, lib, room, (texts) => ['plan', 'foundation', 'elevation', 'section', 'site', 'unknown'].includes(classifySheet(texts, f.name).kind), info);
+      // 文字も読まなかったページ（多すぎる分）は知らせる
+      if (info.total && info.total > pages.length) unread.push(`${f.name} の p${pages.length + 1}〜p${info.total}（${info.total - pages.length} ページ）`);
       const off = pages.map((p, i) => (p.skipped ? i + 1 : 0)).filter(Boolean);
       if (off.length) textOnly.push(`${f.name} の ${off.length} ページ（p${off.join('・')}）`);
       pages.forEach((page, i) => {
@@ -39,7 +42,7 @@ export async function readPlanInputs(files: { name: string; data: ArrayBuffer }[
       failed.push(f.name);
     }
   }
-  return { inputs, source, failed, skipped, textOnly };
+  return { inputs, source, failed, skipped, textOnly, unread };
 }
 
 export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
@@ -48,14 +51,15 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
   for (const f of files) {
     try { read.push({ name: f.name, data: await f.arrayBuffer() }); } catch { unreadable.push(f.name); }
   }
-  const { inputs, source, failed: notPdf, skipped, textOnly } = await readPlanInputs(read);
+  const { inputs, source, failed: notPdf, skipped, textOnly, unread } = await readPlanInputs(read);
   const failed = [...unreadable, ...notPdf];
   if (!inputs.length) throw new PlanReadError(failed.length ? `PDF を開けませんでした（${failed.join('、')}）。PDF のファイルを選んでください` : '図面の PDF を選んでください');
   const r = buildFromSheets(inputs);
   const report: ImportReport = { ...r.report, check: [...r.report.check, ...failed.map((n) => `${n} は PDF として開けなかったので使っていません`), ...(skipped.length ? [`一度に読めるのは ${MAX_PLAN_PAGES} ページまでです。${skipped.join('、')} は読んでいません`] : []),
-    ...(textOnly.length ? [`図面リスト・仕様書・日影図・展開図など、壁を読まない図面は飛ばしました: ${textOnly.join('、')}`] : [])],
+    ...(textOnly.length ? [`図面リスト・仕様書・日影図・展開図など、壁を読まない図面は飛ばしました: ${textOnly.join('、')}`] : []),
+    ...(unread.length ? [`ページが多いため ${MAX_TEXT_PAGES} ページ目までしか読んでいません: ${unread.join('、')}。平面図などが後ろにあれば、その PDF を分けて選んでください`] : [])],
     // 確からしさ: 開けなかった・読まなかった PDF は「読めなかった」、飛ばした図面はお知らせ
-    levels: [...r.report.check.map((_, i) => r.report.levels?.[i] ?? 'mid'), ...failed.map(() => 'low' as const), ...(skipped.length ? ['low' as const] : []), ...(textOnly.length ? ['info' as const] : [])] };
+    levels: [...r.report.check.map((_, i) => r.report.levels?.[i] ?? 'mid'), ...failed.map(() => 'low' as const), ...(skipped.length ? ['low' as const] : []), ...(textOnly.length ? ['info' as const] : []), ...(unread.length ? ['low' as const] : [])] };
 
   // 読み取った平面図を下に敷く（読み違いを見比べて直せるように、器具の位置も見えるように）
   const underlays: Record<string, Underlay> = {};
