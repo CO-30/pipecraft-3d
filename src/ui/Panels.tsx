@@ -249,6 +249,7 @@ export function PropertyPanel() {
             <NumField label="管底高 FL" value={manholeInvertZ(f, doc.building, doc.site) - fl.elevation} testId="manhole-invert" onCommit={(v) => st.updateFixtureParams(f.id, { invertZ: v + fl.elevation })} />
             <span className="small muted" data-testid="manhole-depth">深さ {Math.round(manholeDepth(f, doc.building, doc.site))}mm（GL {doc.site?.designGL === undefined ? '仮 ' : ''}1階FL{groundZ(doc.building, doc.site) >= 0 ? '+' : ''}{Math.round(groundZ(doc.building, doc.site))}）</span>
             <NumField label="落差（流入側の管底が高い分）" value={f.params?.drop ?? 0} testId="manhole-drop" onCommit={(v) => st.updateFixtureParams(f.id, { drop: v > 0 ? Math.round(v) : undefined })} />
+            {(ports[0]?.dropIn ?? 0) > (f.params?.drop ?? 0) + 50 && <span className="small" data-testid="manhole-auto-drop">⤵ 公共ますまでの勾配が強すぎるので、ここで {Math.round(ports[0]!.dropIn!)}mm ドロップ（自動。上流の管底を変えると変わります）</span>}
             {(f.params?.drop ?? 0) > 0 && <span className="small muted" data-testid="manhole-drop-note">落差桝: 上流からの管は管底 +{Math.round(f.params!.drop!)} に着きます（縦断図は H{Math.round(manholeDepth(f, doc.building, doc.site) - f.params!.drop!)}-{Math.round(manholeDepth(f, doc.building, doc.site))}）</span>}
           </div>
         )}

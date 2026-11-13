@@ -56,4 +56,17 @@ describe('積算に入れる基礎貫通スリーブ', () => {
     expect(v?.count).toBe(1);
     expect(v?.unit).toBe('本');
   });
+  test('床下の立上りの貫通パイプは 排水 φ125・給水給湯 φ50。近くを通る給水・給湯は 5 本まで 1 本の φ50 にまとめる（2026-11-13）', () => {
+    const h = supplyHouse();
+    let net = h.doc.network;
+    // x=4000 の内部の立上りを、y 1000〜1240 に 7 本（60 おき）の給水・給湯と、y 1800 に排水 1 本
+    for (let i = 0; i < 7; i++) net = addPolyline(net, [{ x: 3000, y: 1000 + i * 40, z: -300 }, { x: 5000, y: 1000 + i * 40, z: -300 }], { system: i % 2 ? 'hotWater' : 'water', diameter: 13 }).net;
+    net = addPolyline(net, [{ x: 3000, y: 1800, z: -400 }, { x: 5000, y: 1800, z: -420 }], { system: 'drain', diameter: 75 }).net;
+    const r = kisoSleeveItems({ ...h.doc, network: net });
+    const v50 = r.items.find((i) => i.key === 'kiso|vu|50'), v125 = r.items.find((i) => i.key === 'kiso|vu|125');
+    expect(v50?.note).toContain('7か所');
+    // 7 本 → φ50 が 2 本分（5 本 + 2 本）: 長さ (150 + 40) × 2
+    expect(v50?.note).toContain('0.38m');
+    expect(v125).toBeDefined();
+  });
 });

@@ -95,18 +95,20 @@ describe('給水・給湯を床下でつなぐ（案）', () => {
     expect(buried.every((s) => s.material === 'HIVP')).toBe(true);
   });
   test('床下の管どうしを平行に重ねない', () => expect(overlaps(r.doc)).toEqual([]));
-  test('各器具の給水・給湯と給湯器の入口・出口に止水栓（口のすぐ先。給湯器はベンリカンの先）。水理計算にも入る', () => {
+  test('各器具の給水・給湯と給湯器の入口・出口、ヘッダーの手前に止水栓（口のすぐ先。給湯器はベンリカンの先）。水理計算にも入る', () => {
     const net = r.doc.network;
     const ports = Object.values(net.nodes).filter((n) => n.fixtureId && ['kitchen', 'washbasin', 'toilet'].includes(r.doc.fixtures[n.fixtureId].type) && (n.portId === 'water' || n.portId === 'hot'));
     ports.push(...Object.values(net.nodes).filter((n) => n.fixtureId === h.ids.heater && (n.portId === 'in' || n.portId === 'out')));
-    expect(ports).toHaveLength(7);
+    // 外から入ってきた給水・給湯のヘッダーの手前にも必ず止水栓（2026-11-13）
+    ports.push(...Object.values(net.nodes).filter((n) => n.fixtureId && ['waterHeader', 'hotWaterHeader'].includes(r.doc.fixtures[n.fixtureId].type) && n.portId === 'in'));
+    expect(ports).toHaveLength(9);
     for (const p of ports) {
       const segs = Object.values(net.segments).filter((s) => s.a === p.id || s.b === p.id);
       expect(segs).toHaveLength(1);
       const o = net.nodes[segs[0].a === p.id ? segs[0].b : segs[0].a];
       expect(o.kind).toBe('valve');
     }
-    expect(r.valves).toBe(7);
+    expect(r.valves).toBe(9);
     const c = calcSupply(r.doc, resolveSupplyRules({}), { flows: {} });
     expect('error' in c ? [] : c.rows.filter((x) => x.label.startsWith('バルブ'))).not.toEqual([]);
   });

@@ -6,7 +6,9 @@
  */
 import type { Doc } from './doc';
 import { segmentsAt, type Network, type Segment } from './network';
-import { sleeveSchedule, type SleeveRow } from './sleeves';
+import { FOOTING_SLEEVE, SUPPLY_PER_SLEEVE, sleeveSchedule, type SleeveRow } from './sleeves';
+/** 同じ φ50 の貫通パイプにまとめる、立上りを通る給水・給湯の管どうしの離れ(mm) */
+const BUNDLE_MM = 200;
 
 export const KISO_CATALOG_SOURCE = '前澤化成工業 基礎貫通スリーブカタログ（2024年12月版）の設計価格（税抜・参考。沖縄・離島は別途）';
 
@@ -135,6 +137,7 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
   const by = new Map<string, KisoItem>();
   const checks: KisoCheck[] = [];
   const vu = new Map<number, { len: number; rows: number[] }>();
+  const bundles: { x: number; y: number; n: number }[] = [];
   const floorZ = Math.min(...doc.building.floors.map((f) => f.elevation));
   // スリーブの床下の口は土間（スラブ天端）。その上は床下の配管なので H に入れない
   const slab = doc.building.foundation?.slabTop;
@@ -163,8 +166,14 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
     }
     // VU 管のスリーブ: 立上りの幅（一般的な 150mm）＋ 両側 20mm
     const v = vu.get(r.sleeve) ?? vu.set(r.sleeve, { len: 0, rows: [] }).get(r.sleeve)!;
-    v.len += FOOT_W + 40;
     v.rows.push(r.no);
+    // 床下の立上りの給水・給湯は、近くを通る管（BUNDLE_MM 以内）を 1 本の φ50 にまとめて通す（5 本まで）
+    if (r.part === 'footing' && isSupply(r) && r.sleeve === FOOTING_SLEEVE.supply) {
+      const c = bundles.find((b) => Math.hypot(b.x - r.point.x, b.y - r.point.y) <= BUNDLE_MM && b.n < SUPPLY_PER_SLEEVE);
+      if (c) { c.n++; continue; }
+      bundles.push({ x: r.point.x, y: r.point.y, n: 1 });
+    }
+    v.len += FOOT_W + 40;
   }
   const items = [...by.values()].sort((a, b) => a.key.localeCompare(b.key, 'ja'));
   for (const [d, v] of [...vu].sort((a, b) => a[0] - b[0])) {

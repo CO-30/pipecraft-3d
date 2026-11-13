@@ -4,6 +4,7 @@
  * 2D・3D とも、区間の端を接線長だけ縮め、角は 2 次ベジェ曲線（制御点 = 角）でつなぐ。積算・図面には使わない。
  */
 import { adjacency, type Network, type Vec3 } from './network';
+import { endZ } from './slope';
 import type { NodeFitting } from './fittings';
 
 /** 見た目の曲げ半径の上限（最小曲げ半径の何倍まで大きく曲げるか） */
@@ -70,7 +71,9 @@ export function pbBendArcs(net: Network, fittings: NodeFitting[]): Map<string, B
 /** 区間の両端（曲げの所は曲がりの始まりまで縮めた点） */
 export function trimmedEnds(net: Network, arcs: Map<string, BendArc>, segId: string): [Vec3, Vec3] {
   const s = net.segments[segId];
-  return [arcs.get(s.a)?.ends[segId] ?? net.nodes[s.a].pos, arcs.get(s.b)?.ends[segId] ?? net.nodes[s.b].pos];
+  // 落差ます（ドロップ）へ入る管は、マスの管底ではなく流入側の管底（管底 + 落差）に着く
+  const at = (side: 'a' | 'b') => { const p = net.nodes[side === 'a' ? s.a : s.b].pos, zz = endZ(net, s, side); return zz === p.z ? p : { ...p, z: zz }; };
+  return [arcs.get(s.a)?.ends[segId] ?? at('a'), arcs.get(s.b)?.ends[segId] ?? at('b')];
 }
 
 /** 円弧の上の点（from → to を n 等分） */

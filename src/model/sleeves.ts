@@ -31,12 +31,25 @@ export type SleeveRow = {
 };
 
 export const SLEEVE_SIZES = [50, 65, 75, 100, 125, 150, 200, 250, 300] as const;
-export const SLEEVE_RULE = 'スリーブ径は一般値（内径 ≥ 管の外径＋30mm、給湯は保温材の分＋20mm）。構造の確認をしてください';
+export const SLEEVE_RULE = 'スリーブ径は一般値（内径 ≥ 管の外径＋30mm、給湯は保温材の分＋20mm）。床下の立上りは貫通パイプ（排水 φ125・給水給湯 φ50）。構造の確認をしてください';
+/** 床下の立上り（内部）の貫通パイプ（ユーザーの施工 2026-11-13）: 排水 φ125、給水・給湯 φ50（PB を 5 本程度まで通す） */
+export const FOOTING_SLEEVE = { drain: 125, supply: 50 } as const;
+/** 1 本の φ50 の貫通パイプに通す給水・給湯の管の目安 */
+export const SUPPLY_PER_SLEEVE = 5;
 
 /** スリーブの呼び径（一般値）。表より太いときは 50 刻みで切り上げ */
 export function sleeveSize(od: number, system: SystemType): number {
   const need = od + 30 + (system === 'hotWater' ? 20 : 0);
   return SLEEVE_SIZES.find((s) => s >= need) ?? Math.ceil(need / 50) * 50;
+}
+
+/** 床下の立上り（内部）は貫通パイプの太さ（細い管は φ125・φ50 にそろえる。太い管は一般値）。ほかは一般値 */
+function footingSleeve(part: SleevePart, system: SystemType, od: number): number {
+  const g = sleeveSize(od, system);
+  if (part !== 'footing') return g;
+  if (system === 'drain' || system === 'sewage') return Math.max(FOOTING_SLEEVE.drain, g);
+  if (system === 'water' || system === 'hotWater') return g <= 75 ? FOOTING_SLEEVE.supply : g;
+  return g;
 }
 
 type Hit = { part: SleevePart; partLabel?: string; floor: Floor; point: Vec3 };
@@ -168,6 +181,6 @@ function rowOf(s: Segment, h: Hit, order: number): Omit<SleeveRow, 'no'> & { ord
   const od = outerDiameter(s.diameter);
   return {
     order, part: h.part, partLabel: h.partLabel ?? SLEEVE_PART_LABEL[h.part], floorId: h.floor.id, floorName: h.floor.name,
-    point: h.point, flz: Math.round(h.point.z - h.floor.elevation), segId: s.id, system: s.system, material: s.material ?? '', diameter: s.diameter, od, sleeve: sleeveSize(od, s.system),
+    point: h.point, flz: Math.round(h.point.z - h.floor.elevation), segId: s.id, system: s.system, material: s.material ?? '', diameter: s.diameter, od, sleeve: footingSleeve(h.part, s.system, od),
   };
 }

@@ -1,17 +1,18 @@
 /**
  * 排水の高さの計算（純関数）。正は「平面ルート＋区間の勾配・管径＋ピン」。点の z とマスの管底はここで毎回決める。
  *  1. 系統の木（根 = 公共ます）を作る
- *  2. 固定点（根・zPin の点・invertPin のマス）どうしの間で、勾配の固定されていない区間に勾配を割り振る
+ *  2. 固定点（根・zPin の点・invertPin のマス・床下から外へ出る所）どうしの間で、勾配の固定されていない区間に勾配を割り振る。
+ *     公共ますまでの区間の勾配が強すぎるときは、標準の勾配のまま公共ますの手前のマスでドロップ（落差）にする（2026-11-13）
  *  3. 根から上流へ: 横の区間は 下流端 + 落差（マス）+ 勾配 × 平面の長さ。立て管は今の高さのまま（器具の接続口は動かさない）
  *  4. 床下は「床下から出る所（土間）」から器具へ（underfloorSlope）
  *  5. 床下より上流（床下から立ち上がった先）をもう一度 3 の決まりで
  */
 import type { Doc } from '../doc';
 import type { DrainRuleSet } from '../drainRules';
-import { isManhole } from '../fixtures';
-import { normalize, validateNetwork, type Network, type Segment } from '../network';
+import { groundZAt, isManhole } from '../fixtures';
+import { normalize, segmentsAt, validateNetwork, type Network, type Segment } from '../network';
 import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, planLength } from '../slope';
-import { insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels } from '../underfloorSlope';
+import { distToOutline, insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels } from '../underfloorSlope';
 import { buildDrainTrees, type DrainTree } from './tree';
 
 export type SolveHeightsResult = {
@@ -26,22 +27,38 @@ export type SolveHeightsResult = {
 };
 
 const r1 = (z: number) => Math.round(z * 10) / 10;
+/** いちばん上流の外の管底（床下から外へ出る所）の初期値: GL − 370（ユーザーの標準 2026-11-13） */
+export const EXIT_BELOW_GL = 370;
+/** 床下から外へ出る所（基礎の内側で地中へ下ろした点）とみなす、外周からの距離(mm) */
+const EXIT_NEAR_OUTLINE = 400;
+/** 公共ますまでの勾配がこれより強ければドロップにする: 標準の 2 倍（2/100 より緩ければ 2/100）、最大勾配は超えない */
+const steepLimit = (rules: DrainRuleSet, d: number) => Math.min(rules.maxSlope(d) * 0.999, Math.max(2 * rules.defaultSlope(d), 0.02));
 const isPublicType = (t: string) => t === 'publicSewage' || t === 'publicRain';
 
 export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult {
+  // 1 回目: 床下から外へ出る所をすべて KSA の高さに固定。合流する短い枝が急になりすぎたら、その出口は固定せずに 2 回目
+  const first = solveCore(doc, rules, null);
+  if (!first.steepExits.size) return first.result;
+  return solveCore(doc, rules, first.steepExits).result;
+}
+
+function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null): { result: SolveHeightsResult; steepExits: Set<string> } {
   const trees = buildDrainTrees(doc);
   const lv = underfloorLevels(doc);
   const empty = { low: 0, over: 0, raised: 0 };
-  if (!trees.length) return { doc, segSlopes: {}, trees, underfloor: empty, failed: false };
+  const none = new Set<string>();
+  if (!trees.length) return { result: { doc, segSlopes: {}, trees, underfloor: empty, failed: false }, steepExits: none };
   const net0 = doc.network;
   const z = new Map<string, number>(Object.values(net0.nodes).map((n) => [n.id, n.pos.z]));
   const fxOf = (id: string) => { const f = net0.nodes[id]?.fixtureId; return f ? doc.fixtures[f] : undefined; };
+  /** 公共ますの手前のドロップ（勾配が強すぎるとき自動で付ける落差。マスの点 → mm） */
+  const autoDrop = new Map<string, number>();
   /** マス（公共ます以外）の流入側の落差 */
   const dropOf = (id: string) => {
     const f = fxOf(id);
     if (!f || !isManhole(f.type)) return 0;
-    // 公共ますは管底を食い違わせない（使う人が落差を入れたときだけ）
-    return isPublicType(f.type) ? f.params?.drop ?? 0 : Math.max(f.params?.drop ?? 0, rules.drop);
+    // 公共ますは管底を食い違わせない（使う人が落差を入れたとき・手前にマスが無くてドロップするときだけ）
+    return (isPublicType(f.type) ? f.params?.drop ?? 0 : Math.max(f.params?.drop ?? 0, rules.drop)) + (autoDrop.get(id) ?? 0);
   };
   const ufSegs = new Set(lv ? Object.values(net0.segments).filter((s) => isUnderfloorDrain(net0, s, lv)).map((s) => s.id) : []);
   const ufNodes = new Set([...ufSegs].flatMap((id) => [net0.segments[id].a, net0.segments[id].b]));
@@ -53,6 +70,27 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
     const indoor = !!lv && a.z >= lv.floor - 1 && b.z >= lv.floor - 1 && insideBuilding(lv, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
     return indoor ? indoorMinSlope(s.diameter) : rules.defaultSlope(s.diameter);
   };
+  /**
+   * 床下から外へ出る所（前澤 KSA の外の口）: 床下から下りてきた立て管の下の端で、外周の基礎のすぐ内側・土間より下にあり、
+   * そこから建物の外へ出る点。いちばん上流の外の管底なので、公共ますの深さに引きずられないよう固定点にする。
+   * 高さは GL − 370（ユーザーの標準）。ここから公共ますへ下る
+   */
+  const exitZ = new Map<string, number>();
+  if (lv?.outline.length) {
+    for (const n of Object.values(net0.nodes)) {
+      if (n.fixtureId || n.zPin || n.pos.z >= lv.slab - 1) continue;
+      const segs = segmentsAt(net0, n.id).filter((s) => s.system === 'drain' || s.system === 'sewage');
+      if (segs.length !== 2) continue;
+      const riser = segs.find((s) => vertical(s)), out = segs.find((s) => !vertical(s));
+      if (!riser || !out) continue;
+      const top = net0.nodes[riser.a === n.id ? riser.b : riser.a];
+      if (top.pos.z <= n.pos.z || !ufNodes.has(top.id)) continue;
+      if (!insideBuilding(lv, n.pos) || distToOutline(lv, n.pos) > EXIT_NEAR_OUTLINE) continue;
+      if (insideBuilding(lv, net0.nodes[out.a === n.id ? out.b : out.a].pos)) continue;
+      if (!floatExits?.has(n.id)) exitZ.set(n.id, Math.round(groundZAt(doc.building, doc.site, n.pos) - EXIT_BELOW_GL));
+    }
+    for (const [id, zz] of exitZ) z.set(id, zz);
+  }
   const segSlopes: Record<string, number> = {};
   const fixtureIds = new Map<string, number>(); // マスの管底（fixtureId → z）
   const childrenOf = new Map<string, number>();
@@ -64,19 +102,23 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
       const p = s.a === n ? s.b : s.a;
       childrenOf.set(p, (childrenOf.get(p) ?? 0) + 1);
     }
+    /** 先に決めた（長い方の）経路の点。後の経路はここで止めて、間に割り振る */
+    const settled = new Set<string>();
     const anchor = (id: string) => {
-      if (id === t.root) return true;
+      if (id === t.root || settled.has(id)) return true;
       const n = net0.nodes[id];
-      if (n.zPin) return true;
+      if (n.zPin || exitZ.has(id)) return true;
       const f = fxOf(id);
       // 公共ますの管底は現地で決まっている値なので、いつも固定点
       return !!f && isManhole(f.type) && (!!f.params?.invertPin || isPublicType(f.type));
     };
     const down = (id: string) => { const sid = t.parent.get(id)!; const s = net0.segments[sid]; return { s, p: s.a === id ? s.b : s.a }; };
     const slopeOverride = new Map<string, number>();
-    // 2. 固定点の間に勾配を割り振る（間に立て管・床下があれば割り振らない）
-    for (const a of t.order) {
-      if (a === t.root || !anchor(a)) continue;
+    // 2. 固定点の間に勾配を割り振る（間に立て管・床下があれば割り振らない）。公共ますから遠い固定点から（幹を先に決める）
+    const distRoot = new Map<string, number>([[t.root, 0]]);
+    for (const n of t.order) if (n !== t.root) { const { s, p } = down(n); distRoot.set(n, (distRoot.get(p) ?? 0) + planLength(net0, s)); }
+    const tops = t.order.filter((a) => a !== t.root && anchor(a)).sort((x, y) => (distRoot.get(y) ?? 0) - (distRoot.get(x) ?? 0));
+    for (const a of tops) {
       const path: Segment[] = [];
       let cur = a, ok = true;
       while (cur !== t.root && !(cur !== a && anchor(cur))) {
@@ -96,8 +138,30 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
       cur = a;
       for (const s of path) { const p = s.a === cur ? s.b : s.a; drops += dropOf(p); cur = p; }
       if (free <= 0) continue;
+      const isFree = (s: Segment) => !(isSlopePinned(s) && s.slope !== undefined);
       const r = (z.get(a)! - z.get(cur)! - drops - fixed) / free;
-      for (const s of path) if (!(isSlopePinned(s) && s.slope !== undefined)) slopeOverride.set(s.id, r);
+      // 公共ますまでの勾配が強すぎる: 標準の勾配のまま、差を公共ますの手前のマス（無ければ公共ますへ入る所）のドロップにする
+      const last = path[path.length - 1];
+      const m = last.a === cur ? last.b : last.a;
+      const fm = fxOf(m);
+      const at = fm && isManhole(fm.type) && !isPublicType(fm.type) && m !== a ? m : t.root;
+      const std = path.filter(isFree).reduce((sum, s) => sum + defaultFor(s) * planLength(net0, s), 0);
+      const extra = Math.round(z.get(a)! - z.get(cur)! - drops - fixed - std);
+      // ドロップは 1 つのマスに 1 回だけ（先に決めた経路の高さを変えない）。差が無ければ割り振る
+      if (cur === t.root && extra > 0 && !autoDrop.has(at) && path.some((s) => isFree(s) && r > steepLimit(rules, s.diameter))) {
+        autoDrop.set(at, extra);
+        for (const s of path) if (isFree(s)) slopeOverride.set(s.id, defaultFor(s));
+      } else for (const s of path) if (isFree(s)) slopeOverride.set(s.id, r);
+      // 経路の点の高さを下から決めて、後の経路の止まる所にする
+      let lo = cur, zz = z.get(cur)!;
+      for (let i = path.length - 1; i >= 0; i--) {
+        const s = path[i], up = s.a === lo ? s.b : s.a;
+        zz = zz + dropOf(lo) + (isFree(s) ? slopeOverride.get(s.id)! : s.slope!) * planLength(net0, s);
+        // 器具の接続口（マス以外）は動かさない
+        const fu = fxOf(up);
+        if (up !== a && !(fu && !isManhole(fu.type))) { z.set(up, r1(zz)); settled.add(up); }
+        lo = up;
+      }
     }
     // 3. 根から上流へ
     const sweep = () => {
@@ -158,15 +222,25 @@ export function solveHeights(doc: Doc, rules: DrainRuleSet): SolveHeightsResult 
   // 何も変わらなければ同じ doc（履歴を増やさない・描き直しを起こさない）
   const same = (a: Network) => Object.values(a.nodes).every((n) => { const o = net0.nodes[n.id]; return o && o.pos.z === n.pos.z && o.dropIn === n.dropIn; })
     && Object.values(a.segments).every((x) => net0.segments[x.id]?.slope === x.slope);
-  if (!fixturesChanged && same(net)) return { doc, segSlopes, trees, underfloor, failed: false };
+  // 合流する枝で、KSA の高さに固定した出口から急になりすぎた所（2 回目は固定しない）
+  const steepExits = new Set<string>();
+  for (const id of exitZ.keys()) {
+    const t = trees.find((x) => x.parent.has(id));
+    const sid = t?.parent.get(id);
+    const sg = sid ? net0.segments[sid] : undefined;
+    // 急すぎる、または公共ますが浅くて下りにならない出口は、2 回目は固定しない（下流から決める）。緩いだけなら GL−370 のまま（検査で知らせる）
+    const sl = sg ? segSlopes[sg.id] ?? 0 : 0;
+    if (sg && (sl > steepLimit(rules, sg.diameter) || sl <= 0)) steepExits.add(id);
+  }
+  if (!fixturesChanged && same(net)) return { result: { doc, segSlopes, trees, underfloor, failed: false }, steepExits };
   // 高さが変わると継手の種類（直線の継ぎ目・曲がり）が変わることがあるので付け直す
   net = normalize(net);
-  if (validateNetwork(net).length) return { doc, segSlopes, trees, underfloor, failed: true };
+  if (validateNetwork(net).length) return { result: { doc, segSlopes, trees, underfloor, failed: true }, steepExits };
   let fixtures = doc.fixtures;
   for (const [fid, zz] of fixtureIds) {
     const f = fixtures[fid];
     if (f.params?.invertPin || f.params?.invertZ === zz) continue;
     fixtures = { ...fixtures, [fid]: { ...f, params: { ...(f.params ?? {}), invertZ: zz } } };
   }
-  return { doc: { ...doc, network: net, fixtures }, segSlopes, trees, underfloor, failed: false };
+  return { result: { doc: { ...doc, network: net, fixtures }, segSlopes, trees, underfloor, failed: false }, steepExits };
 }
