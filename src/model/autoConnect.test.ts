@@ -245,3 +245,63 @@ describe('基礎貫通スリーブの高さに合わせる（レビューの指�
     }
   });
 });
+
+describe('手で置いたヘッダーを使う（2026-11-13 不具合: 1 階に置いたヘッダーを使わず別の所に置いていた）', () => {
+  const house = (extraWater = 0) => {
+    const h = supplyHouse({ extraWater });
+    let doc = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 }).doc;
+    // 1 階の図（床の上）で置いたヘッダー。高さは決めていない（mountZ なし）
+    const w = placeFixture(doc, h.floorId, 'waterHeader', { x: 6000, y: 3000 }); doc = w.doc;
+    const hw = placeFixture(doc, h.floorId, 'hotWaterHeader', { x: 6000, y: 2000 }); doc = hw.doc;
+    return { ...h, doc, water: w.fixtureId!, hot: hw.fixtureId! };
+  };
+  const outsUsed = (doc: Doc, fid: string) => portNodes(doc.network, fid).filter((n) => n.portId?.startsWith('out') && segmentsAt(doc.network, n.id).length > 0).length;
+
+  test('1 階に置いた給水・給湯ヘッダーを同じ場所の床下へ下ろして使い、別のヘッダーは置かない', () => {
+    const h = house();
+    const r = autoConnect(h.doc);
+    const heads = Object.values(r.doc.fixtures).filter((f) => f.type === 'waterHeader' || f.type === 'hotWaterHeader');
+    expect(heads.map((f) => f.id).sort()).toEqual([h.water, h.hot].sort());
+    expect(r.headers).toBe(0);
+    for (const id of [h.water, h.hot]) {
+      const f = r.doc.fixtures[id];
+      expect(f.params?.mountZ ?? 0).toBeLessThan(0);
+      expect([f.x, f.y]).toEqual([h.doc.fixtures[id].x, h.doc.fixtures[id].y]);
+      expect(segmentsAt(r.doc.network, port(r.doc, id, 'in')).length).toBeGreaterThan(0);
+    }
+    expect(outsUsed(r.doc, h.water)).toBe(4); // キッチン・洗面台・トイレ・給湯器
+    expect(outsUsed(r.doc, h.hot)).toBeGreaterThan(0);
+    expect(r.questions).toEqual([]);
+    expect(r.summary.join()).toContain('床下へ下ろして');
+    const again = autoConnect(r.doc);
+    expect(Object.keys(again.doc.network.segments).length).toBe(Object.keys(r.doc.network.segments).length);
+  });
+
+  test('出口が足りないときに足すヘッダーは、置いたヘッダーのそばに置く（メーターの近くへ勝手に置かない）', () => {
+    const h = house(3); // 給水口 7（ヘッダー 1 台は出口 6）
+    const r = autoConnect(h.doc);
+    const ws = Object.values(r.doc.fixtures).filter((f) => f.type === 'waterHeader');
+    expect(ws).toHaveLength(2);
+    const added = ws.find((f) => f.id !== h.water)!;
+    expect(Math.hypot(added.x - 6000, added.y - 3000)).toBeLessThan(1500);
+  });
+
+  test('配管をもうつないである床上のヘッダーは動かさない', () => {
+    const h = house();
+    const inN = portNodes(h.doc.network, h.water).find((n) => n.portId === 'in')!;
+    const net = addPolyline(h.doc.network, [inN.pos, { ...inN.pos, x: inN.pos.x - 500 }], { system: 'water', diameter: 20 }, { startNodeId: inN.id }).net;
+    const r = autoConnect({ ...h.doc, network: net });
+    expect(r.doc.fixtures[h.water].params?.mountZ).toBeUndefined();
+    expect(r.summary.join()).toContain('配管がつないであるため、そのままにしました');
+  });
+
+  test('つながらなかったヘッダーは「つなぎました」と知らせない（給湯器が無い家の給湯ヘッダー）', () => {
+    const h = house();
+    const heater = Object.values(h.doc.fixtures).find((f) => f.type === 'waterHeater')!;
+    const { [heater.id]: _gone, ...fixtures } = h.doc.fixtures;
+    const net = { ...h.doc.network, nodes: Object.fromEntries(Object.entries(h.doc.network.nodes).filter(([, n]) => n.fixtureId !== heater.id)) };
+    const r = autoConnect({ ...h.doc, fixtures, network: net });
+    expect(r.summary.join()).toContain('給水ヘッダーを、同じ場所の床下へ下ろしてつなぎました');
+    expect(r.summary.join()).not.toContain('給湯ヘッダーを、同じ場所の床下へ下ろしてつなぎました');
+  });
+});

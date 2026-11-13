@@ -10,7 +10,7 @@
 import type { Vec2 } from './building';
 import { wallsOnFloor } from './building';
 import type { Doc } from './doc';
-import { FIXTURE_CATALOG, fixtureCorners, groundZ, placeFixture, portNodes, type Fixture, type FixtureType } from './fixtures';
+import { FIXTURE_CATALOG, fixtureCorners, groundZ, isHeader, moveFixture, placeFixture, portNodes, type Fixture, type FixtureType } from './fixtures';
 import { findFloorRoute, ROUTE_STEP, type RouteGoal, type RouteResult } from './floorRoute';
 import { assignAutoMaterials } from './materials';
 import { KSS_HEIGHTS } from './kisoSleeve';
@@ -148,6 +148,19 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     newSegs.push(...r.segmentIds);
     return r.nodeIds;
   };
+
+  // --- 手で置いたヘッダー: 1 階の床の上に置いたまま（まだ配管なし）のものは、同じ場所の床下へ下ろして使う ---
+  // （置いた場所を優先する。これをしないと床下のヘッダーが無いとみなされ、別の所にヘッダーを置いていた）
+  const lowered: Fixture[] = [];
+  for (const f of Object.values(cur.fixtures)) {
+    if (!isHeader(f.type) || f.floorId !== base.id || (f.params?.mountZ ?? 0) < 0) continue;
+    const label = FIXTURE_CATALOG[f.type].label;
+    if (portNodes(cur.network, f.id).some((n) => segmentsAt(cur.network, n.id).length > 0)) { notes.push(`1 階の床の上の${label}は配管がつないであるため、そのままにしました（床下で使うときは、選んで「床下」を押してください）`); continue; }
+    const next = moveFixture(cur, f.id, f, undefined, { mountZ: HEADER_MOUNT });
+    if (next === cur) { notes.push(`1 階の床の上の${label}を床下へ下ろせませんでした（選んで「床下」を押してください）`); continue; }
+    cur = next;
+    lowered.push(f);
+  }
 
   // --- ヘッダー: 床下のヘッダーの形（回してあっても）と、出口・入口へ入る向き ---
   const headerFixtures = () => Object.values(cur.fixtures).filter((f) => (f.type === 'waterHeader' || f.type === 'hotWaterHeader') && f.floorId === base.id && (f.params?.mountZ ?? 0) < 0);
@@ -478,6 +491,14 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     const c = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length - from.x, y: pts.reduce((s, p) => s + p.y, 0) / pts.length - from.y };
     return DIR[dirOf(c)];
   };
+  /** 置いてあるヘッダーがあれば、出口が足りないときに足すヘッダーはそのそば（横に並べる。器具の側を先に）。無ければ near・dirs のまま */
+  const besideHeader = (type: 'waterHeader' | 'hotWaterHeader', near: Vec2, dirs: Vec2[], ends: Vec2[]): [Vec2, Vec2[]] => {
+    const h = headerFixtures().find((f) => f.type === type);
+    if (!h) return [near, dirs];
+    const at = { x: h.x, y: h.y }, t = toward(at, ends);
+    const side = t.y !== 0 ? t : { x: 0, y: 1 };
+    return [at, [side, { x: -side.x, y: -side.y }, { x: 1, y: 0 }, { x: -1, y: 0 }]];
+  };
 
   // --- 給水: メーター → 給水ヘッダー → 器具・給湯器の入口 ---
   const waterTargets: { end: string; fixtureId: string; dia: number; port: string }[] = targets.water.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port }));
@@ -494,8 +515,9 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     const feedId = mode === 'avoid' && !headerFixtures().some((f) => f.type === 'waterHeader') ? ensureFeed() : null;
     if (feedId) needHeader.water = branch('water', feedId, waterTargets);
     else {
-      const outs = headerOutlets('waterHeader', waterTargets.length, near, around(inward), feedWater);
-      attach(waterTargets, outs, near, 'water', '給水ヘッダー');
+      const [hNear, hDirs] = besideHeader('waterHeader', near, around(inward), waterTargets.map((t) => cur.network.nodes[t.end].pos));
+      const outs = headerOutlets('waterHeader', waterTargets.length, hNear, hDirs, feedWater);
+      attach(waterTargets, outs, hNear, 'water', '給水ヘッダー');
     }
   }
 
@@ -514,8 +536,9 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       const hotList = targets.hotWater.map((t) => ({ end: t.end.id, fixtureId: t.fixtureId, dia: 13, port: t.port }));
       if (mode === 'avoid' && hotFeed && !headerFixtures().some((f) => f.type === 'hotWaterHeader')) needHeader.hot = branch('hotWater', hotFeed, hotList);
       else {
-        const outs = headerOutlets('hotWaterHeader', targets.hotWater.length, near, around(inward), feedHot);
-        attach(hotList, outs, near, 'hotWater', '給湯ヘッダー');
+        const [hNear, hDirs] = besideHeader('hotWaterHeader', near, around(inward), targets.hotWater.map((t) => t.end.pos));
+        const outs = headerOutlets('hotWaterHeader', targets.hotWater.length, hNear, hDirs, feedHot);
+        attach(hotList, outs, hNear, 'hotWater', '給湯ヘッダー');
       }
     }
   }
@@ -550,5 +573,7 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
   }
 
   if (!newSegs.length && !headers) return { ...none(), notes };
+  // 下ろしたヘッダーは、配管がつながったものだけ知らせる（つながらなかったものは上の注意のとおり）
+  notes.unshift(...lowered.filter((f) => portNodes(cur.network, f.id).some((n) => segmentsAt(cur.network, n.id).length > 0)).map((f) => `1 階に置いてあった${FIXTURE_CATALOG[f.type].label}を、同じ場所の床下へ下ろしてつなぎました`));
   return { doc: { ...cur, network: assignAutoMaterials(cur.network, b, newSegs.filter((id) => cur.network.segments[id])) }, pipes, headers, sleeves, crossings, valves, connected, notes, ...(mode === 'avoid' ? { needHeader } : {}) };
 }
