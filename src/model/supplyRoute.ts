@@ -23,6 +23,8 @@ import { addPolyline, addRiser, insertValve, segmentsAt, splitSegment, type Pipe
 export const UNDERFLOOR_Z = -300;
 /** 床下のヘッダーの設置面（出口が UNDERFLOOR_Z に来る） */
 const HEADER_MOUNT = -400;
+/** 立水栓などを外の給水管へ分けるとき、道を探す分け口の数・建物の中に入る管をずらす刻みと、建物から離す長さ(mm) */
+const TEE_TRIES = 6, TEE_STEP = 50, TEE_OUT = 300;
 /** 給水・給湯口を床下へ下ろす器具（屋外の水栓・機器どうしをつなぐものは除く） */
 const SUPPLY_TYPES = new Set<FixtureType>(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet']);
 /** 基礎の内側の面から、スリーブ（KSS）から床下へ立ち上げる点までの離れ(mm) */
@@ -440,20 +442,38 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
    * fromId が無ければ from に新しい点を作る。分岐の始まりの点の id（つなげなければ null。何も作らない）
    */
   const teeToMain = (from: Vec3, dia: number, fromId?: string): string | null => {
-    let best: { sid: string; p: Vec3; d: number } | null = null;
+    const cands: { sid: string; p: Vec3; d: number }[] = [];
     for (const sg of Object.values(cur.network.segments)) {
       if (sg.system !== 'water' || sg.a === fromId || sg.b === fromId) continue;
       const a = cur.network.nodes[sg.a].pos, c = cur.network.nodes[sg.b].pos;
       if (Math.abs(a.z - c.z) > 1 || a.z > gl - 1 || (inside(a) && inside(c))) continue;
-      const L2 = (c.x - a.x) ** 2 + (c.y - a.y) ** 2;
-      const t = L2 < 1 ? 0 : Math.max(0, Math.min(1, ((from.x - a.x) * (c.x - a.x) + (from.y - a.y) * (c.y - a.y)) / L2));
-      const p = { x: Math.round(a.x + (c.x - a.x) * t), y: Math.round(a.y + (c.y - a.y) * t), z: a.z };
-      const d = dist2(p, from);
-      if (!best || d < best.d) best = { sid: sg.id, p, d };
+      const L = Math.hypot(c.x - a.x, c.y - a.y);
+      const pt = (t: number) => ({ x: Math.round(a.x + (c.x - a.x) * t), y: Math.round(a.y + (c.y - a.y) * t), z: a.z });
+      let t = L < 1 ? 0 : Math.max(0, Math.min(1, ((from.x - a.x) * (c.x - a.x) + (from.y - a.y) * (c.y - a.y)) / (L * L)));
+      // 基礎の下を抜けて建物の中へ入る管: 分ける所は外の部分（建物から TEE_OUT 離した所。管が短ければ外の端）にずらす
+      if (inside(pt(t))) {
+        const step = TEE_STEP / Math.max(L, 1), outT = (dir: 1 | -1) => { for (let u = t; u >= 0 && u <= 1; u += dir * step) if (!inside(pt(u))) return u; return null; };
+        const ts = ([1, -1] as const).map((dir) => {
+          const u = outT(dir);
+          if (u === null) return null;
+          const u2 = Math.max(0, Math.min(1, u + (dir * TEE_OUT) / Math.max(L, 1)));
+          return inside(pt(u2)) ? u : u2;
+        }).filter((u): u is number => u !== null);
+        if (!ts.length) continue;
+        t = ts.sort((x, y) => dist2(pt(x), from) - dist2(pt(y), from))[0];
+      }
+      const p = pt(t);
+      cands.push({ sid: sg.id, p, d: dist2(p, from) });
     }
-    if (!best) return null;
-    const run = best.d < 1 ? [at(from, best.p.z)] : yard(at(from, best.p.z), best.p);
-    if (!run) return null;
+    // 近い順にいくつか道を探し、いちばん短く行ける所で分ける（一番近い所へ道が無くても、ほかの所から分ける）
+    let best: { sid: string; p: Vec3; d: number } | null = null, run: Vec3[] | null = null, runLen = Infinity;
+    for (const cd of cands.sort((x, y) => x.d - y.d).slice(0, TEE_TRIES)) {
+      const r = cd.d < 1 ? [at(from, cd.p.z)] : yard(at(from, cd.p.z), cd.p);
+      if (!r) continue;
+      const len = r.reduce((sum, q, i) => (i ? sum + Math.hypot(q.x - r[i - 1].x, q.y - r[i - 1].y) : sum), 0);
+      if (len < runLen) { best = cd; run = r; runLen = len; }
+    }
+    if (!best || !run) return null;
     const sg = cur.network.segments[best.sid];
     let endId = [sg.a, sg.b].find((n) => dist2(cur.network.nodes[n].pos, best!.p) < 1 && Math.abs(cur.network.nodes[n].pos.z - best!.p.z) < 1);
     if (!endId) {
@@ -667,8 +687,9 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     } else if (segs.length === 1) {
       // 「器具の真下に配管を落とす」で下ろした立て管があれば、その下の端から
       const o = cur.network.nodes[segs[0].a === n.id ? segs[0].b : segs[0].a];
-      if (dist2(o.pos, n.pos) < 1 && o.pos.z < n.pos.z && !o.fixtureId && segmentsAt(cur.network, o.id).length === 1) ok = !!teeToMain(o.pos, 13, o.id);
-      else continue;
+      // （真下でなくても、先が何にもつながっていない管なら、その端から地中の給水管へ）
+      if (!o.fixtureId && !inside(o.pos) && segmentsAt(cur.network, o.id).length === 1) ok = !!teeToMain(o.pos, 13, o.id);
+      else continue; // もうつながっている
     } else continue;
     if (ok) { connected.water++; faucetsDone++; }
     else notes.push(`${FIXTURE_CATALOG[f.type].label}を地中の給水管へつなぐ道が見つかりませんでした`);

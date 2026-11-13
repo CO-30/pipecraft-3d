@@ -180,6 +180,43 @@ describe('床が地面から高い家の立水栓（2026-11-13 不具合: 立水
   });
 });
 
+describe('メーターから遠い立水栓（2026-11-13 不具合: 東の立水栓だけつながらない）', () => {
+  test('床が GL に近い家（KSS の形）で、一番近い給水管が基礎の下を抜けて建物に入る所でも、外の部分で分けてつなぐ', async () => {
+    const { autoConnect } = await import('./autoConnect');
+    const h = supplyHouse();
+    let d: Doc = { ...h.doc, site: { designGL: -200 } };
+    const w = placeFixture(d, h.floorId, 'outdoorFaucet', { x: -1000, y: 800 }); d = w.doc;
+    const e = placeFixture(d, h.floorId, 'outdoorFaucet', { x: 8300, y: 3000 }); d = e.doc;
+    const r = autoConnect(d);
+    const net = r.doc.network;
+    for (const fid of [w.fixtureId!, e.fixtureId!]) {
+      let cur = port(r.doc, fid, 'water').id, prev: string | null = null;
+      for (let i = 0; i < 30; i++) {
+        const segs = segmentsAt(net, cur).filter((s) => s.id !== prev);
+        if (segs.length !== 1) break;
+        prev = segs[0].id; cur = other(net, segs[0], cur).id;
+      }
+      // 地中のチーズに着く。チーズは建物の外（外周の立上りより外）
+      expect(segmentsAt(net, cur)).toHaveLength(3);
+      const p = net.nodes[cur].pos;
+      expect(p.x < -75 || p.y < -75 || p.x > 8075 || p.y > 6075).toBe(true);
+    }
+    expect(r.summary.join()).toMatch(/立水栓 2 個/);
+    expect(r.summary.join()).not.toMatch(/見つかりませんでした/);
+  });
+  test('2 回目に押したときも（先に西の立水栓をつないだあとで東を足す）つながる', async () => {
+    const { autoConnect } = await import('./autoConnect');
+    const h = supplyHouse();
+    let d: Doc = { ...h.doc, site: { designGL: -200 } };
+    d = placeFixture(d, h.floorId, 'outdoorFaucet', { x: -1000, y: 800 }).doc;
+    d = autoConnect(d).doc;
+    const e = placeFixture(d, h.floorId, 'outdoorFaucet', { x: 8300, y: 3000 });
+    const r = autoConnect(e.doc);
+    expect(r.summary.join()).toMatch(/立水栓 1 個/);
+    expect(r.summary.join()).not.toMatch(/見つかりませんでした/);
+  });
+});
+
 describe('給湯器が無い家・床下が GL より低い家', () => {
   test('給湯器が無ければ、メーターに近い外壁で立ち上げて床下へ（コーキング）', () => {
     const h = supplyHouse();
