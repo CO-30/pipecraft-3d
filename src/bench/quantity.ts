@@ -17,7 +17,9 @@ const dias = (s: string) => { const f = s.normalize('NFKC').match(/[φΦ]\s*\d+(
 function parse(name: string, spec: string, unit: string): { key: string; label: string } {
   const all = norm(`${name} ${spec}`);
   if (unit === 'm') {
-    const mat = MATERIAL_RE.exec(all)?.[1] ?? norm(name).replace(/\d.*$/, '');
+    const raw = MATERIAL_RE.exec(all)?.[1] ?? norm(name).replace(/\d.*$/, '');
+    // 申請図の「HI20」は HIVP（耐衝撃性塩ビ管）の略
+    const mat = raw === 'HI' ? 'HIVP' : raw;
     const d = dias(spec)[0] ?? dias(name)[0] ?? '';
     return { key: `m|${mat}|${d}`, label: `${mat} ${d}`.trim() };
   }
@@ -60,6 +62,10 @@ export function formatQuantities(rows: QtyRow[]): string {
   const parts = rows.filter((r) => r.unit !== 'm' && r.rate !== null);
   const partAvg = parts.length ? parts.reduce((s, r) => s + Math.abs(r.rate!), 0) / parts.length : null;
   const extra = rows.filter((r) => r.actual === null).length;
+  // 系統ごとの長さ（管種の選び方が違っても比べられるように）: 給水・給湯 = PB・HIVP・HTVP・PE・SGP、排水 = VU・VP
+  const sys = (r: QtyRow) => (/^(VU|VP)\b/.test(r.label) ? 'drain' : /^(PB|HIVP|HTVP|PE|SGP|SUS)\b/.test(r.label) ? 'water' : null);
+  const tot = (k: 'water' | 'drain', f: 'design' | 'actual') => round(rows.filter((r) => r.unit === 'm' && sys(r) === k).reduce((s, r) => s + (r[f] ?? 0), 0));
+  const bySys = `系統ごとの長さ（管種を問わない）: 給水・給湯 自動 ${tot('water', 'design')}m / 実際 ${tot('water', 'actual')}m・排水 自動 ${tot('drain', 'design')}m / 実際 ${tot('drain', 'actual')}m`;
   const head = [
     sumAct ? `管の長さの誤差 ${(sumDiff / sumAct * 100).toFixed(1)}%（差の合計 ${round(sumDiff)}m ÷ 実際 ${round(sumAct)}m）` : '',
     partAvg === null ? '' : `部品・器具の数の誤差（平均）${(partAvg * 100).toFixed(1)}%`,
@@ -67,6 +73,8 @@ export function formatQuantities(rows: QtyRow[]): string {
   ].filter(Boolean).join('・');
   return [
     `### 数量の照合（自動でつないだ配管 ↔ 実際）${head ? ` ${head}` : ''}`,
+    '',
+    bySys,
     '',
     '| 品目 | 単位 | 自動 | 実際 | 差 | 率 |',
     '|---|---|---|---|---|---|',

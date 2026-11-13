@@ -4,6 +4,7 @@
  * フォルダの中は 1 件 = 1 フォルダ: その工事の PDF 一式と、正解として次のどちらか（両方なら truth.json の値が優先）
  *   - 読み取ったあと人が直して「書き出し」た工事（*.pipecraft.json）→ src/bench/fromDoc.ts
  *   - truth.json（src/bench/truth.ts の形。数量・人の確認の記録・図面の縮尺もここに書く）
+ * 数量は truth.json に無ければ、フォルダの設備図（「PB13×7.1」のような表示のある申請図）から取る
  * 結果は <フォルダ>/results.md と画面に出す。BENCH_DIR が無いときは何もしない（ふだんのテストでは飛ばす）。
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ import { readPlanInputs } from '../import/planSet';
 import { parseProject } from '../storage/repository';
 import { buildFromSheets } from '../model/planRead/assemble';
 import { designFromReading } from './design';
+import { quantitiesFromSheets } from './equipmentTruth';
 import { evaluate } from './evaluate';
 import { truthFromDoc } from './fromDoc';
 import { readingOf } from './reading';
@@ -40,7 +42,10 @@ describe.skipIf(!dir)('実物の図面で精度を測る（BENCH_DIR）', () => 
         const res = buildFromSheets(inputs);
         out.push(formatScore(truth, evaluate(readingOf(res, inputs), truth)));
         // 実際の数量があれば、読み取り結果から自動でつないだ配管の材料と比べる
-        if (truth.quantities?.length) out.push(formatQuantities(compareQuantities(truth.quantities, designFromReading(res).summary)));
+        // 無ければ、一緒に入れた設備図（申請図）に書かれた数量を正解にする
+        const fromSheets = truth.quantities?.length ? [] : quantitiesFromSheets(inputs);
+        const qty = truth.quantities?.length ? truth.quantities : fromSheets;
+        if (qty.length) out.push(`${fromSheets.length ? '（実際の数量は設備図に書かれた管の表示から）\n\n' : ''}${formatQuantities(compareQuantities(qty, designFromReading(res).summary))}`);
       } catch (e) {
         out.push(`## ${truth.id}\n\n読み取りに失敗: ${(e as Error).message}\n`);
       }

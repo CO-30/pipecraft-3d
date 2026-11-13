@@ -10,7 +10,7 @@ export function readingOf(res: PlanSetResult, inputs: SheetInput[]): Reading {
   const sheets = inputs.map((s) => {
     const kind = classifySheet(s.page.texts, s.name).kind;
     const placed = res.plans.find((p) => p.index === inputs.indexOf(s));
-    const scale = placed?.scale ?? sheetScale(s.page.texts, readGrid(s.page.texts))?.scale;
+    const scale = placed?.scale ?? sheetScale(s.page.texts, readGrid(s.page.texts), s.page.segs)?.scale;
     return { name: s.name, kind, ...(scale ? { scale } : {}) };
   });
   const walls = b.floors.flatMap((f) => wallsOnFloor(b, f.id).map((w) => ({

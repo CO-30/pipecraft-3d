@@ -178,6 +178,41 @@ export function gridDimHits(texts: PText[], grid: Grid, n: number): number {
   return [...gaps(grid.xs), ...gaps(grid.ys)].filter((g) => { const mm = g * PT_MM * n; return dims.some((d) => Math.abs(d - mm) <= Math.max(15, d * 0.01)); }).length;
 }
 
+/** 寸法の数字（「7,280」「11,147.5」「≒8,259」）。300mm 以上 */
+const dimValue = (s: string): number | null => {
+  const m = /^[≒約]?((?:\d{1,3}(?:,\d{3})+)|\d{3,6})(\.\d+)?$/.exec(norm(s));
+  const v = m ? Number(m[1].replace(/,/g, '') + (m[2] ?? '')) : NaN;
+  return v >= 300 ? v : null;
+};
+
+/**
+ * 寸法線から縮尺: 寸法の数字のすぐ横（真ん中あたり）にある水平・垂直の線の紙の長さ × 縮尺 が数字に合う（±1.5%）縮尺。
+ * 2 か所以上で合い、ほかの縮尺より多いときだけ。通り芯も縮尺の文字も無い図面のため
+ */
+export function scaleFromDimLines(texts: PText[], segs: PSeg[]): number | undefined {
+  const dims = texts.flatMap((t) => { const v = dimValue(t.s); return v === null ? [] : [{ t, v }]; });
+  if (dims.length < 2) return undefined;
+  const lines = segs.filter((g) => (Math.abs(g.x2 - g.x1) < 0.5 || Math.abs(g.y2 - g.y1) < 0.5) && Math.hypot(g.x2 - g.x1, g.y2 - g.y1) >= 10);
+  const votes = new Map<number, number>();
+  for (const { t, v } of dims) {
+    const near = Math.max(8, t.h * 1.5);
+    const hit = new Set<number>();
+    for (const g of lines) {
+      const hz = Math.abs(g.y2 - g.y1) < 0.5;
+      const L = hz ? Math.abs(g.x2 - g.x1) : Math.abs(g.y2 - g.y1);
+      const [lo, hi] = hz ? [Math.min(g.x1, g.x2), Math.max(g.x1, g.x2)] : [Math.min(g.y1, g.y2), Math.max(g.y1, g.y2)];
+      const along = hz ? t.x : t.y, off = hz ? Math.abs(t.y - g.y1) : Math.abs(t.x - g.x1);
+      if (off > near || along < lo + L * 0.25 || along > hi - L * 0.25) continue;
+      const n = v / (L * PT_MM);
+      const sc = PAPER_SCALES.find((p) => Math.abs(n - p) / p <= 0.015);
+      if (sc) hit.add(sc);
+    }
+    for (const sc of hit) votes.set(sc, (votes.get(sc) ?? 0) + 1);
+  }
+  const ranked = [...votes].sort((a, b) => b[1] - a[1]);
+  return ranked[0] && ranked[0][1] >= 2 && ranked[0][1] > (ranked[1]?.[1] ?? 0) ? ranked[0][0] : undefined;
+}
+
 /** 通り芯の間隔（紙の pt）でいちばん多いもの */
 function modalPitch(g: GridLine[]): number {
   const d = g.slice(1).map((l, i) => Math.abs(l.pos - g[i].pos) / (l.n - g[i].n)).sort((a, b) => a - b);
@@ -188,7 +223,7 @@ function modalPitch(g: GridLine[]): number {
  * 縮尺（1/n の n）。図面の文字 → 無ければ通り芯の間隔が 910mm（尺モジュール）か 1000mm に最も近くなる縮尺。
  * guessed: 文字から読めず推定した
  */
-export function sheetScale(texts: PText[], grid: Grid | null): { scale: number; guessed: boolean } | null {
+export function sheetScale(texts: PText[], grid: Grid | null, segs?: PSeg[]): { scale: number; guessed: boolean; /** 寸法線から推定 */ byDims?: boolean } | null {
   const s = detectDrawingScale(texts.map((t) => t.s));
   // 通り芯の間隔と寸法の数字が合う縮尺: 文字の縮尺が無いとき、または文字の縮尺では合う寸法がその半分以下
   // （図の中の詳細の「S=1/20」だけが書かれていて、たまたま 1〜2 か所合う）ときに使う
@@ -200,7 +235,12 @@ export function sheetScale(texts: PText[], grid: Grid | null): { scale: number; 
   // 表題欄の「1/50」だけの文字（「SCALE」の欄と別の文字列になっている図面）。違う値が混ざるなら採らない
   const lone = new Set(texts.map((t) => /^1[/:](\d{2,3})$/.exec(norm(t.s))).filter(Boolean).map((m) => Number(m![1])));
   const title = lone.size === 1 && (PAPER_SCALES as readonly number[]).includes([...lone][0]) ? [...lone][0] : undefined;
-  if (!grid) return title ? { scale: title, guessed: false } : null;
+  if (!grid) {
+    if (title) return { scale: title, guessed: false };
+    // 通り芯も縮尺の文字も無い図面（申請図・設備図など）: 寸法線と寸法の数字から
+    const d = segs ? scaleFromDimLines(texts, segs) : undefined;
+    return d ? { scale: d, guessed: true, byDims: true } : null;
+  }
   const pitch = modalPitch(grid.xs) * PT_MM;
   let best: { scale: number; err: number } | null = null;
   for (const n of PAPER_SCALES) for (const mod of [910, 1000]) {

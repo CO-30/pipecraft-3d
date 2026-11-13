@@ -17,7 +17,7 @@ describe('品目の合わせ方（qtyKey）', () => {
   });
   it('管種は語として合わせる（「PEX」「CHIP」を PE・HI にしない）', () => {
     expect(qtyKey('架橋ポリエチレン管', 'PEX φ13', 'm')).not.toBe(qtyKey('PE', '13', 'm'));
-    expect(qtyKey('HI', '20', 'm')).not.toBe(qtyKey('HIVP', '20', 'm'));
+    expect(qtyKey('HI', '20', 'm')).toBe(qtyKey('給水管', 'HIVP φ20', 'm')); // 申請図の「HI20」は HIVP の略
     expect(qtyKey('VP40 L=4m', '', 'm')).toBe(qtyKey('VP', 'φ40', 'm'));
   });
   it('継手・部品は名前と口径。全角・空白の違いは無視', () => {
@@ -53,6 +53,7 @@ describe('数量の照合（compareQuantities）', () => {
     expect(md).toContain('管の長さの誤差 17.5%（差の合計 7m ÷ 実際 40m）');
     expect(md).toContain('部品・器具の数の誤差（平均）25.0%');
     expect(md).toContain('実際の数量に無い品目 1');
+    expect(md).toContain('系統ごとの長さ（管種を問わない）: 給水・給湯 自動 12m / 実際 10m・排水 自動 25m / 実際 30m');
     expect(md).toContain('| HIVP 20 | m | 12 | 10 | +2 | +20.0% |');
     expect(md).toContain('| x | 個 | 1 | — | — | — |');
   });

@@ -8,6 +8,7 @@ import { withMember } from '../members';
 import { heavyWidth, detectStrips, significantWidths, WALL_STRIP, type StripOptions, type WSeg } from './strips';
 import { FIXTURE_CATALOG } from '../fixtures';
 import { guessFixtures, type FixtureCandidate } from './fixtureGuess';
+import { siteLabelItems } from './equipment';
 import { alignSite, readSite, type SiteItem } from './siteRead';
 import { DEFAULT_SLAB_BELOW_FOOTING, readHeights, readSlabOffset, slabMarks, type Heights } from './heights';
 import {
@@ -56,12 +57,15 @@ export class PlanReadError extends Error {
 const FOOTING_STRIP: StripOptions = { minT: 100, maxT: 420, minLen: WALL_STRIP.minLen };
 /** 立面図から読めなかったときの標準値(mm): GL〜1階の床、GL〜基礎の天端 */
 export const DEFAULT_GL_TO_FL = 600, DEFAULT_FOOTING_TOP = 400;
+/** 平面図の文字から配置図の物を拾う範囲（建物の周り）。公共ますは道路の近くにあるので広め。凡例は図面の端なので外れる */
+const SITE_LABEL_MARGIN = 12000;
+const SCAN_NOTE = '線や文字のデータが入っていません（スキャンした画像だけの PDF は自動で読めません）。「新しい工事」の「図面を取り込む」で下に敷いて、なぞって描いてください';
 /** 通り芯の外側で線を読む範囲(mm)。外にある表・詳細図を壁と取り違えない */
 const GRID_MARGIN = 2000;
 /** 線の入っていない PDF（スキャン）とみなす本数 */
 const MIN_SEGS = 200;
 
-type Read = { index: number; name: string; page: VectorPage; kind: SheetKind; floor: number; floors: number[]; roof: boolean; title: string; grid: Grid | null; scale: { scale: number; guessed: boolean } | null };
+type Read = { index: number; name: string; page: VectorPage; kind: SheetKind; floor: number; floors: number[]; roof: boolean; title: string; grid: Grid | null; scale: ReturnType<typeof sheetScale> };
 /** RC 造の壁の帯（木造の既定より厚い壁まで。柱（600 角など）は壁にしない） */
 const RC_WALL_STRIP: StripOptions = { minT: 100, maxT: 400, minLen: 400 };
 /** 図面の文字に RC 造と書いてあるか */
@@ -167,7 +171,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const reads: Read[] = inputs.map((s, index) => {
     const c = classifySheet(s.page.texts, s.name);
     const grid = readGrid(s.page.texts);
-    return { index, name: s.name, page: s.page, kind: c.kind, floor: c.floor, floors: c.floors, roof: c.roof, title: c.title, grid, scale: sheetScale(s.page.texts, grid) };
+    return { index, name: s.name, page: s.page, kind: c.kind, floor: c.floor, floors: c.floors, roof: c.roof, title: c.title, grid, scale: sheetScale(s.page.texts, grid, s.page.segs) };
   });
   const sheets: SheetReport[] = reads.map((r) => ({ name: r.name, kind: r.kind, label: SHEET_LABEL[r.kind], used: false, note: '' }));
   const found: string[] = [], check: string[] = [], levels: CheckLevel[] = [];
@@ -180,7 +184,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   // 屋上（R 階）の平面図は階にしない
   for (const r of plans.filter((p) => p.roof)) note(r, false, '屋上（R 階）の平面図は階にしていません');
   const strip = isRC(reads.map((r) => r.page)) ? RC_WALL_STRIP : WALL_STRIP;
-  for (const r of plans.filter((p) => !vector(p))) note(r, false, '線のデータが入っていません（スキャンした PDF は自動で読めません）');
+  for (const r of plans.filter((p) => !vector(p))) note(r, false, SCAN_NOTE);
   for (const r of plans.filter((p) => vector(p) && !p.scale)) note(r, false, '縮尺を読み取れませんでした');
   const usable = plans.filter((p) => vector(p) && p.scale && !p.roof);
   // 同じ階の平面図が複数あれば 1 枚: 平面図 → 平面詳細図 → 階段・部分の順、同じなら通り芯のあるもの。
@@ -194,6 +198,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const usedPlans = new Set(byFloor.values());
   for (const r of usable) if (!usedPlans.has(r)) note(r, false, `${(r.floors.length ? r.floors : [r.floor]).join('・')}階の平面図が複数あるため使っていません`);
   if (!byFloor.size) {
+    // 画像だけの PDF（スキャン）は文字も線も無いので種類も分からない
+    if (inputs.length && inputs.every((i) => !i.page.texts.length && i.page.segs.length < MIN_SEGS)) throw new PlanReadError(SCAN_NOTE);
     if (!plans.length) throw new PlanReadError('平面図が見つかりませんでした。図面名に「平面図」「平面詳細図」と入った PDF を選んでください');
     throw new PlanReadError(sheets.filter((s) => s.kind === 'plan').map((s) => s.note)[0] || '平面図を読み取れませんでした');
   }
@@ -268,7 +274,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     note(r, true, walls.length ? `壁 ${walls.length} 本（延べ ${(total / 1000).toFixed(1)}m）・開口部 ${op.count} か所` : '壁の線を見つけられませんでした');
     if (walls.length) found.push(`${n}階の壁 ${walls.length} 本・開口部 ${op.count} か所（1/${r.scale!.scale}${r.grid ? '、通り芯で位置合わせ' : ''}）`);
     else ask(`${n}階の壁を読み取れませんでした。図面を下に敷いてあるので、なぞって描いてください`, 'low');
-    if (r.scale!.guessed) ask(`${n}階平面図の縮尺は通り芯の間隔から 1/${r.scale!.scale} と推定しました。壁の長さを 1 か所確かめてください`);
+    if (r.scale!.guessed) ask(`${n}階平面図の縮尺は${r.scale!.byDims ? '寸法線と寸法の数字' : '通り芯の間隔'}から 1/${r.scale!.scale} と推定しました。壁の長さを 1 か所確かめてください`);
     if (!r.grid) ask(`${n}階平面図に通り芯（X1・Y1…）の文字が無いため、他の図面との位置合わせはしていません`);
   }
   if (Object.keys(b.walls).length) {
@@ -351,6 +357,24 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (!sr.legend) ask('配置図に凡例（汚水桝・雨水桝の記号）が見つからなかったので、ますは読んでいません', 'low');
     if (!n('publicSewage')) ask(`配置図に汚水公共ますの記号はありませんでした${r.page.texts.some((x) => /下水引込/.test(x.s)) ? '（「下水引込へ」の向きにあるはずです）' : ''}。公共ますは「器具」から置いてください`, 'low');
     if (dropped.length) ask(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
+  }
+  // 配置図が無いとき: 1 階の平面図（申請図など）に書かれた「量水器」「公共桝」「NO.1小口径桝」の文字の位置に置く（建物の周り 5m まで。凡例は除く）
+  if (!site && Object.keys(b.walls).length) {
+    const cs = wallsOnFloor(b, floor1).flatMap((w) => [b.corners[w.a], b.corners[w.b]]);
+    const M = SITE_LABEL_MARGIN;
+    const box = { x0: Math.min(...cs.map((c) => c.x)) - M, x1: Math.max(...cs.map((c) => c.x)) + M, y0: Math.min(...cs.map((c) => c.y)) - M, y1: Math.max(...cs.map((c) => c.y)) + M };
+    // 同じ階の別の平面図（給水平面図と排水平面図のように同じ下図の申請図）も、紙の上の壁が 1 階の壁と重なれば同じ位置として文字を使う
+    const refLen = refWalls.reduce((sum, w) => sum + len(w), 0);
+    const same = plans.filter((r) => r !== first && r.floor === floors[0] && vector(r) && !r.grid && r.page.widthPt === first.page.widthPt && r.page.heightPt === first.page.heightPt
+      && overlapLength(readWalls(r.page, firstT, null, strip), refWalls) >= refLen * 0.5);
+    const texts = [first, ...same].flatMap((r) => r.page.texts.map((x) => ({ x: toWorldX(firstT, x.x), y: toWorldY(firstT, x.y), s: x.s })));
+    const items = siteLabelItems(texts, box).map((i) => ({ ...i, x: Math.round(i.x), y: Math.round(i.y) }));
+    if (items.length) {
+      site = { items, levels: [] };
+      const c = (t: string) => items.filter((i) => i.type === t).length;
+      found.push(`平面図の文字から: ${[['waterMeter', '水道メーター'], ['publicSewage', '汚水公共ます'], ['manholeSewage', '汚水ます']].filter(([k]) => c(k)).map(([k, l]) => `${l} ${c(k)}`).join('・')}`);
+      ask(`水道メーター・公共ます・ますは、平面図${same.length ? `（${[first, ...same].map((r) => r.name).join('・')}）` : ''}の文字の位置に置きました（記号の位置と少しずれます。動かして合わせてください）`);
+    }
   }
   if (!reads.some((r) => r.kind === 'foundation')) ask('基礎伏図が無いので、基礎は入っていません', 'low');
   if (!reads.some((r) => r.kind === 'elevation' || r.kind === 'section')) ask('立面図が無いので、高さは標準値です');
