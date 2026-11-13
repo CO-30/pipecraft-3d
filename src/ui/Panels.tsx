@@ -16,7 +16,7 @@ import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN } from '../model/dropPipes';
 import { levelSummary, levelText } from '../model/levels';
 import { minSlopeFor, resolveProfile } from '../model/municipality';
 import { useProfiles } from './useProfiles';
-import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
+import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, type FixtureType, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
@@ -229,6 +229,14 @@ export function PropertyPanel() {
     return (
       <div className="props">
         <div className="ptitle">{def.label} <span className="muted small">{manhole ? `φ${size.w}` : `${size.w}×${size.d}mm`}・向き {f.rotation}°</span></div>
+        <div className="row" data-testid="fixture-type-row">
+          <label className="small">種類
+            <select data-testid="fixture-type-change" value={f.type} disabled={fixtureConnected(doc, f.id)} onChange={(e) => st.changeFixtureType(f.id, e.target.value as FixtureType)}>
+              {FIXTURE_GROUPS.map((g) => <optgroup key={g.label} label={g.label}>{g.types.map((t) => <option key={t} value={t}>{FIXTURE_CATALOG[t].label}</option>)}</optgroup>)}
+            </select>
+          </label>
+          {fixtureConnected(doc, f.id) && <span className="small muted">配管がつながっているので、種類は配管を外してから変えます</span>}
+        </div>
         {manhole && (
           <div className="row" data-testid="manhole-params">
             <NumField label="口径" value={f.params?.diameter ?? 300} min={100} max={2000} testId="manhole-diameter" onCommit={(v) => st.updateFixtureParams(f.id, { diameter: v })} />

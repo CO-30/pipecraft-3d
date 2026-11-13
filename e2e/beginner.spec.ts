@@ -16,9 +16,12 @@ const segCount = async (page: Page) => Object.keys((await doc(page)).network.seg
 
 async function placeFixture(page: Page, type: string, x: number, y: number, touch: Touch) {
   if (await page.getByTestId('sel-clear').isVisible()) await page.getByTestId('sel-clear').click();
+  // 置いたあとは選択（☝️）に戻るので、続けて置くときは「器具」をもう一度押す（2026-11-13）
+  if (!(await page.getByTestId(`fixture-${type}`).isVisible())) await page.getByTestId('tool-fixture').click();
   await page.getByTestId(`fixture-${type}`).click();
   await tapMm(page, x, y, touch);
   await expect(page.getByTestId('sel-bar')).toBeVisible(); // 置いた器具が「選択中」に出る
+  await expect(page.getByTestId('tool-select')).toHaveClass(/\bon\b/);
 }
 
 async function gotoFloor(page: Page, i: number) {

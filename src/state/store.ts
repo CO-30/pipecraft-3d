@@ -28,7 +28,7 @@ import { solveDrain, unpinNode, type DrainIssue } from '../model/drainSolve';
 import { buildDrainTrees } from '../model/drainSolve/tree';
 import { resolveDrainRules, type DrainRuleSet } from '../model/drainRules';
 import { STANDARD_PROFILE } from '../model/municipality';
-import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
+import { changeFixtureType as changeFixtureTypeOf, deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import { assignAutoMaterials } from '../model/materials';
 import * as B from '../model/building';
@@ -263,6 +263,8 @@ type State = {
   autoConnectAll(opts?: AutoConnectOpts): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
+  /** 置いた器具の種類を変える（配管がつながっていれば変えずに知らせる） */
+  changeFixtureType(id: string, type: FixtureType): void;
   rotateFixture(id: string): void;
   setNodeHeight(nodeId: string, z: number): void;
   updateSegment(segId: string, patch: Partial<SegmentAttrs>): void;
@@ -957,7 +959,16 @@ export const useStore = create<State>((set, get) => {
       const under = isUnderFloor(get());
       const mount = under && isHeader(fixtureType) ? Math.max(-1000, get().drawHeight - HEADER_PORT_DZ) : undefined;
       const r = placeFixture(doc, activeFloorId, fixtureType, p, 0, mount !== undefined ? { mountZ: mount } : undefined);
-      if (r.fixtureId) commit(r.doc, { selection: { kind: 'fixture', id: r.fixtureId }, ...(under && mount === undefined ? { notice: `${FIXTURE_CATALOG[fixtureType].label}は床の上に置きました（床下に置けるのはヘッダーです）` } : {}) });
+      if (!r.fixtureId) return;
+      // 置いたら選択（☝️）に戻す（まちがって次々に置かないように。続けて置くときは「器具」をもう一度押す）
+      const label = FIXTURE_CATALOG[fixtureType].label;
+      const msg = under && mount === undefined ? `${label}は床の上に置きました（床下に置けるのはヘッダーです）` : `${label}を置きました`;
+      commit(r.doc, { selection: { kind: 'fixture', id: r.fixtureId }, tool: 'select', notice: `${msg}（続けて置くときは「器具」をもう一度）` });
+    },
+    changeFixtureType: (id, type) => {
+      const next = changeFixtureTypeOf(get().doc, id, type);
+      if (!next) { set({ notice: '配管がつながっているため種類を変えられません（配管を外してから変えてください）' }); return; }
+      if (next !== get().doc) commit(next, { selection: { kind: 'fixture', id } });
     },
     rotateFixture: (id) => {
       const f = get().doc.fixtures[id];

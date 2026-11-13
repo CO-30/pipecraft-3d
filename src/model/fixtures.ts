@@ -217,6 +217,26 @@ export function deleteFixture(doc: Doc, id: string): Doc {
 /** 器具に配管がつながっているか */
 export const fixtureConnected = (doc: Doc, id: string) => portNodes(doc.network, id).some((n) => segmentsAt(doc.network, n.id).length > 0);
 
+/**
+ * 置いた器具の種類を変える（同じ番号・位置・向き・階のまま、接続口を付け替える）。配管がつながっていれば変えない（null）。
+ * 種類に付く設定（マスの深さなど）は引き継がない。ヘッダーどうしなら設置の高さは引き継ぐ
+ */
+export function changeFixtureType(doc: Doc, id: string, type: FixtureType): Doc | null {
+  const f0 = doc.fixtures[id];
+  const floor = f0 && floorById(doc.building, f0.floorId);
+  if (!f0 || !floor || !FIXTURE_CATALOG[type] || fixtureConnected(doc, id)) return null;
+  if (f0.type === type) return doc;
+  const keep = isHeader(type) && isHeader(f0.type) && f0.params?.mountZ !== undefined ? { mountZ: f0.params.mountZ } : undefined;
+  const f: Fixture = { id, floorId: f0.floorId, type, x: f0.x, y: f0.y, rotation: f0.rotation, ...(keep ? { params: keep } : {}) };
+  const nodes = { ...doc.network.nodes };
+  for (const n of portNodes(doc.network, id)) delete nodes[n.id];
+  for (const port of FIXTURE_CATALOG[type].ports) {
+    const nid = newId('n');
+    nodes[nid] = { id: nid, kind: 'fixture', fixedKind: true, fixtureId: id, portId: port.id, floorId: f0.floorId, pos: portWorldPos(f, floor, port, doc.site, doc.building) };
+  }
+  return { ...doc, fixtures: { ...doc.fixtures, [id]: f }, network: { ...doc.network, nodes } };
+}
+
 /** 器具と接続口ノードの整合性チェック */
 export function validateFixtures(doc: Doc): string[] {
   const errors: string[] = [];
