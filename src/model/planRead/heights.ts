@@ -26,6 +26,8 @@ function levelKey(s: string): string | null {
   if (/^(設計)?G\.?L$/.test(s)) return 'GL';
   const fl = /^(\d)(?:階|F)F?\.?L$/.exec(s);
   if (fl) return `FL${fl[1]}`;
+  // 屋上の床（RFL）。いちばん上の階の上の床として読む
+  if (/^R(階)?F\.?L$/.test(s)) return 'FLR';
   if (/軒高$/.test(s) || /^軒高さ?$/.test(s)) return 'EAVES';
   if (/^基礎(高さ?|天端)$/.test(s)) return 'FOOTING';
   return null;
@@ -48,6 +50,10 @@ export function readHeights(texts: PText[], k: number): Heights {
     const d = dimValue(s);
     if (d !== null) dims.push(d);
   }
+  // RFL は「いちばん上の階 + 1」の床
+  const topN = Math.max(0, ...levels.map((l) => /^FL(\d)$/.exec(l.key)).filter(Boolean).map((m) => Number(m![1])));
+  const hasRoof = topN > 0 && levels.some((l) => l.key === 'FLR');
+  if (hasRoof) for (const l of levels) if (l.key === 'FLR') l.key = `FL${topN + 1}`;
   const of = (key: string) => levels.filter((l) => l.key === key);
   /** 下の基準 lower から上の基準 upper までの高さ。立面ごと（近い文字どうし）に測って中央値を採る */
   const between = (lower: string, upper: string): number | undefined => {
@@ -78,6 +84,8 @@ export function readHeights(texts: PText[], k: number): Heights {
     h.floorToFloor.set(n, v);
     top = n + 1;
   }
+  // RFL があれば、いちばん上の階は RFL の下の階（RFL は屋上の床で、階ではない）
+  if (hasRoof && top === topN + 1) top = topN;
   h.topToEaves = between(`FL${top}`, 'EAVES');
   h.topFloor = top;
   return h;

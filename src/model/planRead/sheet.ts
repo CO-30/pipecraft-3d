@@ -10,10 +10,12 @@ export type PSeg = { x1: number; y1: number; x2: number; y2: number; w: number }
 /** 文字。x, y は文字の中心、h は文字の高さ */
 export type PText = { x: number; y: number; h: number; s: string };
 /** truncated: 線が多すぎて途中までしか読んでいない */
-export type VectorPage = { widthPt: number; heightPt: number; segs: PSeg[]; texts: PText[]; truncated?: boolean };
+export type VectorPage = { widthPt: number; heightPt: number; segs: PSeg[]; texts: PText[]; truncated?: boolean; /** 文字だけ読んで線は読まなかった（図面リスト・仕様書など） */ skipped?: boolean };
 
-export type SheetKind = 'plan' | 'foundation' | 'elevation' | 'site' | 'detail' | 'unknown';
-export const SHEET_LABEL: Record<SheetKind, string> = { plan: '平面図', foundation: '基礎伏図', elevation: '立面図', site: '配置図', detail: '展開図・詳細図', unknown: '種類不明' };
+export type SheetKind = 'plan' | 'foundation' | 'elevation' | 'section' | 'site' | 'detail' | 'other' | 'unknown';
+export const SHEET_LABEL: Record<SheetKind, string> = {
+  plan: '平面図', foundation: '基礎伏図', elevation: '立面図', section: '断面図', site: '配置図', detail: '展開図・詳細図', other: '図面リスト・仕様書など', unknown: '種類不明',
+};
 
 const norm = (s: string) => s.normalize('NFKC').replace(/\s+/g, '');
 const PT_MM = 25.4 / 72;
@@ -24,8 +26,62 @@ const TITLE_WORDS: [RegExp, SheetKind][] = [
   [/平面詳細図|平面図|間取り?図/, 'plan'],
   [/立面図/, 'elevation'],
   [/配置図|敷地図/, 'site'],
-  [/展開図|矩計図|断面図|詳細図|伏図|仕上表|建具表|面積表|案内図/, 'detail'],
+  // 「断面詳細図」は詳細図（「断面図」の文字を含まない）
+  [/断面図/, 'section'],
+  [/展開図|矩計図|詳細図|伏図|仕上表|建具表|面積表|案内図/, 'detail'],
 ];
+/** 表題欄の図面名がこれなら、平面図などの文字が入っていても読まない（図面リスト・仕様書・法規・日影・斜線・面積・建具・天井伏など） */
+const OTHER_TITLE = /図面(リスト|目録|一覧)|仕様書|法規|日影|斜線|天空率|平均地盤|求積|面積|建具|KEYPLAN|天井伏|展開図|仕上表|概要書/i;
+
+/**
+ * 表題欄の「図面名称」の値（同じ行の右、無ければすぐ下）。図面一式の PDF では、図面の中の文字（図面リストの「1階平面図」、
+ * 詳細の「S=1/20」など）より、表題欄の名前が確か
+ */
+export function titleBlockName(texts: PText[]): string | null {
+  const isLabel = (s: string) => /^(図面名称|図面名|図名|図面名称:)$/.test(s);
+  const stop = /^(図面番号|図番|縮尺|縮尺:|尺度|SCALE|工事名称|工事名|工事場所|日付|設計|製図|備考|承認|検図|NO\.?$)/i;
+  for (const lab of texts.filter((t) => isLabel(norm(t.s)))) {
+    const right = texts.filter((t) => t !== lab && Math.abs(t.y - lab.y) <= Math.max(lab.h, t.h) * 0.8 && t.x > lab.x && t.x - lab.x < 450).sort((a, b) => a.x - b.x);
+    for (const t of right) {
+      const s = norm(t.s);
+      if (stop.test(s)) break;
+      // 図面名は見出しより小さくない文字
+      if (s.length >= 2 && t.h >= lab.h * 0.9) return s;
+    }
+    const below = texts.filter((t) => t !== lab && t.y > lab.y && t.y - lab.y < lab.h * 4 && Math.abs(t.x - lab.x) < 80).sort((a, b) => a.y - b.y);
+    if (below[0] && !stop.test(norm(below[0].s))) return norm(below[0].s);
+  }
+  return null;
+}
+
+/**
+ * 図面名 → 階。「1階平面図」→[1]、「2~4階平面図」→[2,3,4]（同じ平面の階）、「R階平面図」「屋上」→ roof。無ければ []
+ */
+export function floorsOfTitle(title: string): { floors: number[]; roof: boolean } {
+  const t = norm(title);
+  // 屋上・塔屋（「R階平面図」「RF平面図」「屋上平面図」「PH階」）。「RC造…」などは屋上にしない
+  if (/^(R|PH)(階|F)(?!L)|^(屋上|塔屋|屋根伏)|R階|RF平面/.test(t)) return { floors: [], roof: true };
+  const r = /(\d{1,2})[~〜～\-－・,、](\d{1,2})(?:階|F)(?!建)/i.exec(t);
+  if (r) {
+    const a = Number(r[1]), b = Number(r[2]);
+    if (b >= a && b - a < 30) return { floors: Array.from({ length: b - a + 1 }, (_, i) => a + i), roof: false };
+  }
+  // 「2階建て」は階ではない
+  // 「1階・2階平面図」のように並べた階
+  const all = [...t.matchAll(/(\d{1,2})(?:階|F)(?!建)/gi)].map((x) => Number(x[1]));
+  if (all.length > 1 && /(\d{1,2})(?:階|F)[・、,](\d{1,2})(?:階|F)/i.test(t)) return { floors: [...new Set(all)].sort((a, b) => a - b), roof: false };
+  // 「2階建て」は階ではない
+  const m = /(\d{1,2})(?:階|F)(?!建)/i.exec(t);
+  return { floors: m ? [Number(m[1])] : [], roof: false };
+}
+
+/** 同じ階の平面図が複数あるときの順位（小さいほど使う）: 平面図 → 平面詳細図 → 階段・部分・KEY など */
+export function planRank(title: string): number {
+  const t = norm(title);
+  if (/階段|部分|KEY|建具|住戸|拡大/i.test(t)) return 2;
+  if (/詳細/.test(t)) return 1;
+  return 0;
+}
 
 function titleKind(s: string): SheetKind | null {
   // 「展開図参照」「別紙参照」は他の図面を指す注記
@@ -38,7 +94,18 @@ function titleKind(s: string): SheetKind | null {
  * 図面の種類を図面名の文字から決める。いちばん大きい文字の図面名を採る（同じ大きさなら TITLE_WORDS の順）。
  * 文字から決まらなければファイル名を見る。floor は「2階平面図」の 2（無ければ 1）。
  */
-export function classifySheet(texts: PText[], fileName = ''): { kind: SheetKind; floor: number; title: string } {
+export function classifySheet(texts: PText[], fileName = ''): { kind: SheetKind; floor: number; floors: number[]; roof: boolean; title: string } {
+  // 表題欄に図面名があればそれで決める
+  const tb = titleBlockName(texts);
+  if (tb) {
+    const tk = titleKind(tb);
+    const kind: SheetKind | null = OTHER_TITLE.test(tb) && tk !== 'site' ? 'other' : tk;
+    if (kind) {
+      const f = floorsOfTitle(tb);
+      const floors = kind === 'plan' && !f.floors.length && !f.roof ? [1] : f.floors;
+      return { kind, floor: floors[0] ?? 1, floors, roof: f.roof, title: tb };
+    }
+  }
   let best: { kind: SheetKind; h: number; title: string } | null = null;
   const order = (k: SheetKind) => TITLE_WORDS.findIndex(([, x]) => x === k);
   for (const t of texts) {
@@ -51,11 +118,13 @@ export function classifySheet(texts: PText[], fileName = ''): { kind: SheetKind;
     const kind = titleKind(norm(fileName.replace(/\.[^.]+$/, '')));
     if (kind) best = { kind, h: 0, title: norm(fileName) };
   }
-  if (!best) return { kind: 'unknown', floor: 1, title: '' };
+  if (!best) return { kind: 'unknown', floor: 1, floors: [], roof: false, title: '' };
   const all = texts.map((t) => norm(t.s));
-  // 「2階平面図」「2F平面図」。図面名に無ければ「2階」「2F」だけの文字（表題欄で分かれている図面）
-  const m = /(\d)(?:階|F)/i.exec(best.title) ?? (best.kind === 'plan' ? all.map((s) => /^(\d)(?:階|F)$/i.exec(s)).find(Boolean) ?? null : null);
-  return { kind: best.kind, floor: m ? Number(m[1]) : 1, title: best.title };
+  // 「2階平面図」「2~4階平面図」「2F平面図」。図面名に無ければ「2階」「2F」だけの文字（表題欄で分かれている図面）
+  const f = floorsOfTitle(best.title);
+  const lone = best.kind === 'plan' && !f.floors.length && !f.roof ? all.map((s) => /^(\d)(?:階|F)$/i.exec(s)).find(Boolean) : null;
+  const floors = f.floors.length ? f.floors : lone ? [Number(lone[1])] : best.kind === 'plan' && !f.roof ? [1] : [];
+  return { kind: best.kind, floor: floors[0] ?? 1, floors, roof: f.roof, title: best.title };
 }
 
 export type GridLine = { n: number; pos: number };
@@ -84,6 +153,31 @@ export function readGrid(texts: PText[]): Grid | null {
   return mono(xs, 1) && mono(ys, -1) ? { xs, ys } : null;
 }
 
+/** 寸法の数字（「8,500」「8500」）。300mm 以上 */
+const dimNumber = (s: string): number | null => {
+  const m = /^(\d{1,2}),(\d{3})$/.exec(s) ?? /^(\d{3,5})$/.exec(s);
+  const v = m ? Number(m.slice(1).join('')) : NaN;
+  return v >= 300 ? v : null;
+};
+
+/**
+ * 通り芯の間隔と寸法の数字から縮尺: 隣り合う通り芯の間の紙の長さ × 縮尺 に合う寸法の数字（±1%）がいちばん多い縮尺。
+ * RC の図面（通り芯の間隔が 910・1000 の倍数でない）や、詳細の「S=1/20」だけが書かれた図面でも、本体の縮尺が分かる。
+ * 合う間隔が 2 つ以上（間隔が 1 つなら 1 つ）で、ほかの縮尺より多いときだけ
+ */
+export function scaleFromGridDims(texts: PText[], grid: Grid): number | undefined {
+  const scored = PAPER_SCALES.map((n) => ({ n, hits: gridDimHits(texts, grid, n) })).sort((a, b) => b.hits - a.hits);
+  // 合う間隔が 2 つ以上（たまたま 1 つ合うだけでは決めない）で、ほかの縮尺よりはっきり多い
+  return scored[0].hits >= 2 && scored[0].hits > (scored[1]?.hits ?? 0) ? scored[0].n : undefined;
+}
+
+/** 縮尺 1/n のとき、隣り合う通り芯の間隔（紙の長さ × n）に合う寸法の数字（±1%）がある間隔の数 */
+export function gridDimHits(texts: PText[], grid: Grid, n: number): number {
+  const dims = texts.map((t) => dimNumber(norm(t.s))).filter((v): v is number => v !== null);
+  const gaps = (g: GridLine[]) => g.slice(1).map((l, i) => Math.abs(l.pos - g[i].pos)).filter((d) => d > 3);
+  return [...gaps(grid.xs), ...gaps(grid.ys)].filter((g) => { const mm = g * PT_MM * n; return dims.some((d) => Math.abs(d - mm) <= Math.max(15, d * 0.01)); }).length;
+}
+
 /** 通り芯の間隔（紙の pt）でいちばん多いもの */
 function modalPitch(g: GridLine[]): number {
   const d = g.slice(1).map((l, i) => Math.abs(l.pos - g[i].pos) / (l.n - g[i].n)).sort((a, b) => a - b);
@@ -96,6 +190,12 @@ function modalPitch(g: GridLine[]): number {
  */
 export function sheetScale(texts: PText[], grid: Grid | null): { scale: number; guessed: boolean } | null {
   const s = detectDrawingScale(texts.map((t) => t.s));
+  // 通り芯の間隔と寸法の数字が合う縮尺: 文字の縮尺が無いとき、または文字の縮尺では合う寸法がその半分以下
+  // （図の中の詳細の「S=1/20」だけが書かれていて、たまたま 1〜2 か所合う）ときに使う
+  if (grid) {
+    const d = scaleFromGridDims(texts, grid);
+    if (d && (!s || (s !== d && gridDimHits(texts, grid, s) * 2 <= gridDimHits(texts, grid, d)))) return { scale: d, guessed: false };
+  }
   if (s && !grid) return { scale: s, guessed: false };
   // 表題欄の「1/50」だけの文字（「SCALE」の欄と別の文字列になっている図面）。違う値が混ざるなら採らない
   const lone = new Set(texts.map((t) => /^1[/:](\d{2,3})$/.exec(norm(t.s))).filter(Boolean).map((m) => Number(m![1])));

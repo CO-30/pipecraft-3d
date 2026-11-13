@@ -20,6 +20,8 @@ export type OpCodes = Record<'save' | 'restore' | 'transform' | 'setLineWidth' |
 
 /** これより多い線は読まない（端末のメモリを守る。住宅の図面 1 枚は数万本） */
 export const MAX_PAGE_SEGS = 600_000;
+/** 文字だけ読むページの上限（図面一式の PDF） */
+export const MAX_TEXT_PAGES = 200;
 // constructPath の経路データ（pdf.js の DrawOPS）: 命令の番号 → 続く数値の個数
 const MOVE = 0, LINE = 1, CLOSE = 4;
 const ARGC = [2, 2, 6, 4, 0];
@@ -88,18 +90,25 @@ type PdfDocLike = { numPages: number; getPage(n: number): Promise<PdfPageLike> }
 type PdfPageLike = { cleanup?(): unknown; getViewport(o: { scale: number }): { width: number; height: number; transform: number[] }; getOperatorList(): Promise<OpList>; getTextContent(): Promise<{ items: unknown[] }> };
 
 /** PDF のページ（先頭から maxPages まで）を線と文字にする。lib は pdf.js（省略時はブラウザ用を読み込む。テストでは Node 用を渡す） */
-export async function readVectorPages(data: ArrayBuffer, lib?: unknown, maxPages = Infinity): Promise<VectorPage[]> {
+/**
+ * keep: 文字だけ見て、線も読むページか（図面リスト・仕様書・日影図など読まないページは線を読まない。枚数の多い図面一式でも軽く）。
+ * maxPages は線を読むページの数の上限
+ */
+export async function readVectorPages(data: ArrayBuffer, lib?: unknown, maxPages = Infinity, keep?: (texts: PText[]) => boolean): Promise<VectorPage[]> {
   const pdfjs = (lib ?? (await import('./pdf')).pdfjsLib) as PdfJs;
   const task = pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) });
   try {
     const doc = await task.promise;
     const pages: VectorPage[] = [];
-    for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
+    let withLines = 0;
+    for (let n = 1; n <= doc.numPages && (keep ? n <= MAX_TEXT_PAGES : n <= maxPages); n++) {
       const page = await doc.getPage(n);
       const vp = page.getViewport({ scale: 1 });
-      const segs = opsToSegments(await page.getOperatorList(), pdfjs.OPS as OpCodes, vp.transform);
       const texts = textItemsToTexts((await page.getTextContent()).items as TextItemLike[], vp.transform);
-      pages.push({ widthPt: vp.width, heightPt: vp.height, segs, texts, ...(segs.length >= MAX_PAGE_SEGS ? { truncated: true } : {}) });
+      const want = (!keep || keep(texts)) && withLines < maxPages;
+      if (want) withLines++;
+      const segs = want ? opsToSegments(await page.getOperatorList(), pdfjs.OPS as OpCodes, vp.transform) : [];
+      pages.push({ widthPt: vp.width, heightPt: vp.height, segs, texts, ...(segs.length >= MAX_PAGE_SEGS ? { truncated: true } : {}), ...(want ? {} : { skipped: true }) });
       page.cleanup?.(); // 描画命令の控えを手放す（枚数が多いとメモリを圧迫する）
     }
     return pages;
