@@ -172,7 +172,7 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
   const d4 = s.error ? d3.doc : s.doc;
   const v = addVentValves(d4);
   if (d1.pipes) summary.push(`器具の真下に配管を ${d1.pipes} 本落としました`);
-  if (d2.main === 'new' || d2.main === 'joined') summary.push(`${d2.notes.join('。')}${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`);
+  if ((d2.main === 'new' || d2.main === 'joined') && d2.notes.length) summary.push(`${d2.notes.join('。')}${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`);
   else if (d2.pipes) summary.push(`排水 ${d2.pipes} 本を床下から外の汚水マスへ出しました${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`, ...d2.notes);
   if (d2.skipped) summary.push(`排水 ${d2.skipped} 本は外へ出す出口を決められませんでした`);
   if (d3.connected) summary.push(`外の汚水マス ${d3.connected} 個を公共汚水マスまでつなぎました（勾配・曲がりのマスは自動）`);

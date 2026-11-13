@@ -17,6 +17,7 @@ import { MANHOLE_OFFSET, openDrainEnds, routeDrainsOut, type DrainRouteResult, t
 import { distToOutline, insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels, type UnderfloorLevels } from './underfloorSlope';
 import { KSA_STRAIGHT, ksaStandardHeights } from './kisoSleeve';
 import { isRiserLike } from './slope';
+import { membersOf } from './members';
 
 /** 床下の本管の太さ */
 export const MAIN_DIAMETER = 100;
@@ -32,6 +33,10 @@ const DROP_GAP = 60;
 const END_BEYOND = 200;
 /** 調べる点の間隔(mm) */
 const SAMPLE = 100;
+/** 内部の立上りを 1 か所貫通するのを、何 mm の遠回りとみなすか（まっすぐ通して 125 の貫通パイプ。迂回より少し重いだけ） */
+const CROSS_COST = 300;
+/** 管どうしが交わる・重なるとみなす離れ(mm) */
+const CROSS_GAP = 50;
 
 export type DrainMainResult = DrainRouteResult & {
   /** new: 本管を新しく通した / joined: 前の本管へ枝をつないだ / none: つなぐ排水が無い / fallback: 本管にできず器具ごとに外へ出した */
@@ -46,6 +51,16 @@ type ExtWall = { a: Vec2; b: Vec2; t: number; L: number; u: Vec2; out: Vec2 };
 const SIDE: Record<string, string> = { '1,0': '東', '-1,0': '西', '0,1': '北', '0,-1': '南' };
 const sideOf = (n: Vec2) => SIDE[`${Math.round(n.x)},${Math.round(n.y)}`] ?? '';
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2; };
+/** 線分どうしの交わり（端どうしが接するのは含まない: 合流点） */
+const segCross = (p: Vec2, q: Vec2, a: Vec2, b: Vec2) => {
+  const near = (u: Vec2, v: Vec2) => Math.hypot(u.x - v.x, u.y - v.y) < 1;
+  if (near(p, a) || near(p, b) || near(q, a) || near(q, b)) return false;
+  const d = (o: Vec2, s: Vec2, t: Vec2) => (s.x - o.x) * (t.y - o.y) - (s.y - o.y) * (t.x - o.x);
+  const d1 = d(a, b, p), d2 = d(a, b, q), d3 = d(p, q, a), d4 = d(p, q, b);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  // 平行に重なる（同じ線の上を通る）
+  return Math.min(pointSeg(p, a, b), pointSeg(q, a, b), pointSeg(a, p, q), pointSeg(b, p, q)) < CROSS_GAP && Math.abs(d1) < CROSS_GAP * Math.hypot(b.x - a.x, b.y - a.y) && Math.abs(d2) < CROSS_GAP * Math.hypot(b.x - a.x, b.y - a.y);
+};
 const pointSeg = (p: Vec2, a: Vec2, b: Vec2) => {
   const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
   const t = L2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / L2));
@@ -85,8 +100,9 @@ type Layout = {
   branches: { e: End; pts: Vec2[]; join: number }[];
 };
 
-/** 外壁 w から出す櫛の形の本管。器具の端から本管までの長さの合計が一番短い所。置けなければ null */
-function layoutFor(w: ExtWall, ends: End[], lv: UnderfloorLevels): Layout | null {
+/** 外壁 w から出す櫛の形の本管。器具の端から本管までの長さの合計が一番短い所。置けなければ null。feet: 内部の立上り（貫通を数える） */
+function layoutFor(w: ExtWall, ends: End[], lv: UnderfloorLevels, feet: [Vec2, Vec2][]): Layout | null {
+  const crossings = (p: Vec2, q: Vec2) => feet.filter(([a, b]) => segCross(p, q, a, b)).length;
   const vin = { x: -w.out.x, y: -w.out.y };
   const U = (p: Vec2) => (p.x - w.a.x) * w.u.x + (p.y - w.a.y) * w.u.y;
   const V = (p: Vec2) => (p.x - w.a.x) * vin.x + (p.y - w.a.y) * vin.y;
@@ -108,7 +124,8 @@ function layoutFor(w: ExtWall, ends: End[], lv: UnderfloorLevels): Layout | null
     // 合流点: 本管の上の器具はその場所、ほかは器具の奥行き（壁に近すぎれば本管の端の先）。重なれば奥へずらす
     const onLine = es.filter((x) => Math.abs(x.u - c) < 1 && x.v >= vP + JOIN_GAP);
     const taken = onLine.map((x) => x.v);
-    const rows = es.filter((x) => !onLine.includes(x)).sort((a, b) => a.v - b.v).map((x) => {
+    // 合流点は奥行きの順。壁に近くて同じ所へ寄せる器具は、本管に近い方を手前に（L 字の枝が交わらない）
+    const rows = es.filter((x) => !onLine.includes(x)).sort((a, b) => Math.max(a.v, vP + JOIN_GAP) - Math.max(b.v, vP + JOIN_GAP) || Math.abs(a.u - c) - Math.abs(b.u - c)).map((x) => {
       let vj = Math.max(x.v, vP + JOIN_GAP);
       for (let k = 0; k < 50 && taken.some((t) => Math.abs(t - vj) < JOIN_GAP); k++) vj += JOIN_GAP;
       taken.push(vj);
@@ -120,16 +137,21 @@ function layoutFor(w: ExtWall, ends: End[], lv: UnderfloorLevels): Layout | null
     // 本管: 土間の口から一番奥の合流点まで、建物の中で外周の壁から離れている。器具の落とした管の真下（本管の上の器具を除く）を通らない
     const offLine = endPts.filter((q) => !onLine.some((x) => x.e.node.pos === q));
     if (!along(P(c, vS), P(c, vTop), (x) => okIn(x) && offLine.every((q) => Math.hypot(q.x - x.x, q.y - x.y) >= DROP_GAP))) continue;
-    let ok = true, cost = vTop - vP;
+    let ok = true, cost = vTop - vP + CROSS_COST * crossings(P(c, vP), P(c, vTop));
     const branches: { e: End; pts: Vec2[]; vj: number }[] = [];
+    /** 引いた管（本管と、先に決めた枝）。後の枝はこれと交わらない */
+    const drawn: [Vec2, Vec2][] = [[P(c, vS), P(c, vTop)]];
     for (const x of rows) {
       const pts = [...(Math.abs(x.vj - x.v) >= 1 ? [P(x.u, x.vj)] : []), P(c, x.vj)];
       const from = { x: x.e.node.pos.x, y: x.e.node.pos.y };
       const chain = [from, ...pts];
       for (let i = 1; i < chain.length && ok; i++) {
-        ok = along(chain[i - 1], chain[i], (q) => okIn(q) && others(x).every((r) => Math.hypot(r.x - q.x, r.y - q.y) >= DROP_GAP), [from]);
+        ok = along(chain[i - 1], chain[i], (q) => okIn(q) && others(x).every((r) => Math.hypot(r.x - q.x, r.y - q.y) >= DROP_GAP), [from])
+          // 本管・ほかの枝と交わらない・重ならない（本管に着く所を除く）
+          && drawn.every(([a, b]) => !segCross(chain[i - 1], chain[i], a, b));
       }
       if (!ok) break;
+      for (let i = 1; i < chain.length; i++) { drawn.push([chain[i - 1], chain[i]]); cost += CROSS_COST * crossings(chain[i - 1], chain[i]); }
       cost += Math.abs(x.vj - x.v) + Math.abs(x.u - c);
       branches.push({ e: x.e, pts, vj: x.vj });
     }
@@ -169,12 +191,19 @@ function joinToMain(doc: Doc, e: End, lv: UnderfloorLevels): Doc | null {
   if (!mains.length) return null;
   const top = Math.max(...mains.map((s) => s.diameter));
   const E = e.node.pos;
-  const others = openDrainEnds(doc).filter((x) => x.node.id !== e.node.id).map((x) => x.node.pos);
+  // ほかの器具から落とした管（つないだものも）の真下は通らない
+  const others = Object.values(net.nodes).filter((n) => n.id !== e.node.id && !n.fixtureId && segmentsAt(net, n.id).some((s) => {
+    const o = net.nodes[s.a === n.id ? s.b : s.a];
+    return !!o.fixtureId && Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 && o.pos.z > n.pos.z;
+  })).map((n) => n.pos);
   const okIn = (x: Vec2) => insideBuilding(lv, x) && distToOutline(lv, x) >= EDGE_GAP && others.every((r) => Math.hypot(r.x - x.x, r.y - x.y) >= DROP_GAP);
+  /** 床下にもう引いてある排水の横管（新しい枝はこれと交わらない） */
+  const laid = Object.values(net.segments).filter((s) => (s.system === 'drain' || s.system === 'sewage') && isUnderfloorDrain(net, s, lv)).map((s) => [net.nodes[s.a].pos, net.nodes[s.b].pos] as [Vec2, Vec2]);
   let best: { sid: string; foot: Vec3; pts: Vec3[]; cost: number } | null = null;
   for (const s of mains) {
     const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos, L = Math.hypot(b.x - a.x, b.y - a.y);
-    if (L < 2 * JOIN_GAP) continue;
+    // 器具の管より細い管にはつながない（トイレの 75 を 50 の枝へ入れない）
+    if (L < 2 * JOIN_GAP || s.diameter < e.seg.diameter) continue;
     const u = { x: (b.x - a.x) / L, y: (b.y - a.y) / L };
     const t = Math.max(JOIN_GAP, Math.min(L - JOIN_GAP, (E.x - a.x) * u.x + (E.y - a.y) * u.y));
     const foot = { x: Math.round(a.x + u.x * t), y: Math.round(a.y + u.y * t), z: a.z + ((b.z - a.z) * t) / L };
@@ -182,7 +211,7 @@ function joinToMain(doc: Doc, e: End, lv: UnderfloorLevels): Doc | null {
     const bend = { x: E.x + (foot.x - E.x) * Math.abs(u.x), y: E.y + (foot.y - E.y) * Math.abs(u.y), z: E.z };
     const pts = Math.hypot(bend.x - E.x, bend.y - E.y) >= 1 && Math.hypot(bend.x - foot.x, bend.y - foot.y) >= 1 ? [bend, foot] : [foot];
     const chain = [E, ...pts];
-    if (!chain.every((p, i) => i === 0 || along(chain[i - 1], p, okIn, [E]))) continue;
+    if (!chain.every((p, i) => i === 0 || (along(chain[i - 1], p, okIn, [E]) && laid.every(([u, v]) => !segCross(chain[i - 1], p, u, v) || pointSeg(foot, u, v) < 1)))) continue;
     // 太い管（本管）を先に。同じ太さなら短い方
     const cost = chain.reduce((acc, p, i) => (i ? acc + Math.hypot(p.x - chain[i - 1].x, p.y - chain[i - 1].y) : 0), 0) + (s.diameter < top ? 1e6 : 0);
     if (!best || cost < best.cost) best = { sid: s.id, foot, pts, cost };
@@ -193,7 +222,34 @@ function joinToMain(doc: Doc, e: End, lv: UnderfloorLevels): Doc | null {
   const pts = [E, ...best.pts.slice(0, -1).map((p) => ({ ...p, z: at.z })), at];
   const attrs: SegmentAttrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
   const r = addPolyline(sp.net, pts, attrs, { startNodeId: e.node.id, endNodeId: sp.nodeId });
-  return r.segmentIds.length ? { ...doc, network: r.net } : null;
+  if (!r.segmentIds.length) return null;
+  // 汚水（トイレ）が雑排水だけの本管へ入るときは、合流点から外のマスまでを汚水にする
+  return { ...doc, network: e.seg.system === 'sewage' ? sewageDownstream(r.net, sp.nodeId, doc) : r.net };
+}
+
+/** 点 from から一番近い外のマスまでの排水の管を「汚水」にする（雑排水だけの本管に汚水が入ったとき） */
+function sewageDownstream(net: Doc['network'], from: string, doc: Doc): Doc['network'] {
+  const ports = new Set(Object.values(doc.fixtures).filter((f) => isManhole(f.type)).flatMap((f) => portNodes(net, f.id).map((n) => n.id)));
+  const prev = new Map<string, { node: string; seg: string }>();
+  const seen = new Set([from]), queue = [from];
+  let hit: string | undefined;
+  while (queue.length && !hit) {
+    const id = queue.shift()!;
+    for (const s of segmentsAt(net, id)) {
+      if (s.system !== 'drain' && s.system !== 'sewage') continue;
+      const o = s.a === id ? s.b : s.a;
+      if (seen.has(o)) continue;
+      seen.add(o); prev.set(o, { node: id, seg: s.id }); queue.push(o);
+      if (ports.has(o)) { hit = o; break; }
+    }
+  }
+  if (!hit) return net;
+  const segments = { ...net.segments };
+  for (let id = hit; id !== from; id = prev.get(id)!.node) {
+    const sid = prev.get(id)!.seg;
+    if (segments[sid].system === 'drain') segments[sid] = { ...segments[sid], system: 'sewage' };
+  }
+  return { ...net, segments };
 }
 
 /**
@@ -242,15 +298,18 @@ export function routeDrainMain(doc: Doc, rules: DrainRules = {}): DrainMainResul
     const out = !insideBuilding(lv, probe(1)) && insideBuilding(lv, probe(-1)) ? n : !insideBuilding(lv, probe(-1)) && insideBuilding(lv, probe(1)) ? { x: -n.x, y: -n.y } : null;
     return out ? [{ a, b: c, t: w.thickness, L, u, out }] : [];
   });
+  // 内部の立上り（外周の壁から離れた基礎）。本管・枝が横切る所は貫通（125 の貫通パイプ）
+  const feet: [Vec2, Vec2][] = membersOf(b).filter((m) => m.kind === 'footing' && m.floorId === base.id)
+    .map((m) => [m.a, m.b] as [Vec2, Vec2]).filter(([a, c]) => distToOutline(lv, { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 }) > 300);
   const target = exitTarget(doc);
   let chosen: Layout | null = null;
   if (target) {
     // 出口を向ける所に向いた外壁（外向きがその所の方を向く）を、近い順に
     const facing = walls.map((w) => ({ w, d: pointSeg(target.p, w.a, w.b), f: (target.p.x - (w.a.x + w.b.x) / 2) * w.out.x + (target.p.y - (w.a.y + w.b.y) / 2) * w.out.y }))
       .sort((p, q) => Number(q.f > 0) - Number(p.f > 0) || p.d - q.d);
-    for (const { w } of facing) { chosen = layoutFor(w, ends, lv); if (chosen) break; }
+    for (const { w } of facing) { chosen = layoutFor(w, ends, lv, feet); if (chosen) break; }
   } else {
-    for (const w of walls) { const l = layoutFor(w, ends, lv); if (l && (!chosen || l.cost < chosen.cost)) chosen = l; }
+    for (const w of walls) { const l = layoutFor(w, ends, lv, feet); if (l && (!chosen || l.cost < chosen.cost)) chosen = l; }
   }
   if (!chosen) return fallback('本管を通せる所が見つからない');
 
@@ -285,8 +344,14 @@ export function routeDrainMain(doc: Doc, rules: DrainRules = {}): DrainMainResul
   const r = routeDrainsOut(built, MANHOLE_OFFSET, rules, { ends: [{ node: endNode, seg }], wall: { a: chosen.wall.a, b: chosen.wall.b } });
   if (!r.pipes) return fallback('本管の出口から外へ出せなかった');
   const n = ends.length;
+  // 本管・枝が横切る内部の立上り（125 の貫通パイプ）
+  const legs: [Vec2, Vec2][] = [[chosen.end, chosen.joins[chosen.joins.length - 1].at], ...chosen.branches.flatMap((br) => {
+    const chain = [br.e.node.pos, ...br.pts];
+    return chain.slice(1).map((p, i) => [chain[i], p] as [Vec2, Vec2]);
+  })];
+  const inner = legs.reduce((acc, [p, q]) => acc + feet.filter(([a, c]) => segCross(p, q, a, c)).length, 0);
   return {
-    ...r, pipes: n, main: 'new',
+    ...r, pipes: n, main: 'new', sleeves: r.sleeves + inner,
     notes: [`床下に φ${MAIN_DIAMETER} の本管を通し、器具 ${n} 個の排水をつなぎました。${target ? target.why : '一番短く出せる'}${sideOf(chosen.wall.out)}の外壁から外の汚水マスへ出しています`],
   };
 }

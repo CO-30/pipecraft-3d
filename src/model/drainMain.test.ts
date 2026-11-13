@@ -111,3 +111,67 @@ describe('出口の向き', () => {
     expect(crossings(r.doc.network)).toHaveLength(1);
   });
 });
+
+/** 床下の排水の横管どうしが交わらない・重ならない（つながる点を除く）。4 本以上が 1 点に集まらない */
+function noCrossing(net: Network) {
+  const segs = Object.values(net.segments).filter((s) => isDrain(s) && !isRiserLike(net, s) && net.nodes[s.a].pos.z > -560 && net.nodes[s.b].pos.z > -560);
+  const P = (id: string) => net.nodes[id].pos;
+  const cross = (p: { x: number; y: number }, q: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const d = (o: typeof p, s: typeof p, t: typeof p) => (s.x - o.x) * (t.y - o.y) - (s.y - o.y) * (t.x - o.x);
+    const d1 = d(a, b, p), d2 = d(a, b, q), d3 = d(p, q, a), d4 = d(p, q, b);
+    return ((d1 > 1 && d2 < -1) || (d1 < -1 && d2 > 1)) && ((d3 > 1 && d4 < -1) || (d3 < -1 && d4 > 1));
+  };
+  for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+    const s = segs[i], t = segs[j];
+    if ([s.a, s.b].some((x) => x === t.a || x === t.b)) continue;
+    expect(cross(P(s.a), P(s.b), P(t.a), P(t.b))).toBe(false);
+  }
+  for (const n of Object.values(net.nodes)) expect(segmentsAt(net, n.id).filter(isDrain).length).toBeLessThanOrEqual(3);
+}
+
+describe('いろいろな器具の置き方でも、枝どうし・本管と交わらない', () => {
+  // 決まった乱数（毎回同じ置き方）
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const types = ['toilet', 'washbasin', 'kitchen', 'washer'] as const;
+  for (let k = 0; k < 12; k++) {
+    const n = 2 + Math.floor(rnd() * 4);
+    const pts = Array.from({ length: n }, () => ({ t: types[Math.floor(rnd() * types.length)], x: 400 + Math.round(rnd() * 72) * 100, y: 400 + Math.round(rnd() * 52) * 100 }));
+    test(`置き方 ${k + 1}（${pts.map((p) => `${p.t}@${p.x},${p.y}`).join(' ')}）`, () => {
+      const h = supplyHouse();
+      let d: Doc = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1500 }).doc;
+      for (const p of pts) d = placeFixture(d, h.floorId, p.t, { x: p.x, y: p.y }).doc;
+      const r = routeDrainMain(dropFixturePipes(d).doc);
+      expect(validateNetwork(r.doc.network)).toEqual([]);
+      expect(r.main).toBe('new');
+      noCrossing(r.doc.network);
+      expect(crossings(r.doc.network)).toHaveLength(1);
+    });
+  }
+});
+
+describe('あとから足した器具', () => {
+  test('雑排水だけの本管にトイレを足すと、トイレの枝から外のマスまでが汚水になる。トイレ（75）は細い枝（40・50）へつながない', () => {
+    const h = supplyHouse();
+    // トイレを除いた家（キッチン・洗面台）
+    const noToilet: Doc = { ...h.doc, fixtures: Object.fromEntries(Object.entries(h.doc.fixtures).filter(([id]) => id !== h.ids.toilet)),
+      network: { ...h.doc.network, nodes: Object.fromEntries(Object.entries(h.doc.network.nodes).filter(([, n]) => n.fixtureId !== h.ids.toilet)) } };
+    const d0 = placeFixture(noToilet, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1500 }).doc;
+    const r1 = routeDrainMain(dropFixturePipes(d0).doc);
+    expect(r1.main).toBe('new');
+    const t = placeFixture(r1.doc, h.floorId, 'toilet', { x: 1800, y: 2200 });
+    const r2 = routeDrainMain(dropFixturePipes(t.doc).doc);
+    expect(r2.main).toBe('joined');
+    const net = r2.doc.network;
+    const tp = portNodes(net, t.fixtureId!).find((n) => n.portId === 'sewage')!.id;
+    // トイレから外のマスまでたどって、通る管はすべて汚水・φ75 以上
+    const mh = new Set(Object.values(r2.doc.fixtures).filter((f) => f.type === 'manholeSewage').flatMap((f) => portNodes(net, f.id).map((n) => n.id)));
+    const prev = new Map<string, string>(), seen = new Set([tp]), q = [tp];
+    let hit: string | undefined;
+    while (q.length && !hit) { const id = q.shift()!; for (const s of segmentsAt(net, id)) { if (!isDrain(s)) continue; const o = s.a === id ? s.b : s.a; if (seen.has(o)) continue; seen.add(o); prev.set(o, s.id); q.push(o); if (mh.has(o)) { hit = o; break; } } }
+    expect(hit).toBeDefined();
+    for (let id = hit!; id !== tp;) { const s = net.segments[prev.get(id)!]; expect(s.system).toBe('sewage'); expect(s.diameter).toBeGreaterThanOrEqual(75); id = s.a === id ? s.b : s.a; }
+    noCrossing(net);
+  });
+});
+

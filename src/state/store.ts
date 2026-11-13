@@ -921,7 +921,7 @@ export const useStore = create<State>((set, get) => {
         set({ notice: r.skipped ? '出口を決められませんでした（外壁が途切れている・器具が建物の外にある・置いてあるマスが浅く管底が配管より高い／土かぶりが取れない、など）。配管の道具でつないでください' : 'つなぐ排水がありません。先に「器具の真下に配管を落とす」を押してください' });
         return 0;
       }
-      const parts = [r.main === 'new' || r.main === 'joined' ? `${r.notes.join('。')}${r.manholes ? `（マスを新しく ${r.manholes} 個）` : ''}（案）` : `排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, ...(r.main === 'fallback' ? r.notes : []), r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.buried ? `外では基礎を出てすぐ地中へ下ろし、土かぶり ${(rules?.cover ?? DEFAULT_COVER) / 10}cm 以上・最小勾配でマスへ下げています。床下は基礎を出る所（起点）から器具へ勾配をつけています` : '',
+      const parts = [(r.main === 'new' || r.main === 'joined') && r.notes.length ? `${r.notes.join('。')}${r.manholes ? `（マスを新しく ${r.manholes} 個）` : ''}（案）` : `排水 ${r.pipes} 本を外の汚水マス${r.manholes ? `（新しく ${r.manholes} 個）` : ''}へつなぎました（案）`, ...(r.main === 'fallback' ? r.notes : []), r.sleeves ? `基礎の立上りの貫通 ${r.sleeves} か所` : '', r.buried ? `外では基礎を出てすぐ地中へ下ろし、土かぶり ${(rules?.cover ?? DEFAULT_COVER) / 10}cm 以上・最小勾配でマスへ下げています。床下は基礎を出る所（起点）から器具へ勾配をつけています` : '',
         r.unsloped ? `${r.unsloped} か所は床下に勾配をつけられませんでした（流末の点を選んで勾配をつけてください）` : '', r.skipped ? `${r.skipped} 本は出口を決められず、そのままです` : '', 'マスの位置（敷地境界・他の設備との離れ）・マスどうしの接続・勾配は現場に合わせて直してください'];
       commit({ ...r.doc, network: tagNodeFloors(r.doc.network, r.doc.building.floors, get().activeFloorId) }, { selection: null, notice: parts.filter(Boolean).join('。') });
       return r.pipes;
