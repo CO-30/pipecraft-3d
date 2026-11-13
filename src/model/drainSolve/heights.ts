@@ -11,7 +11,7 @@ import type { Doc } from '../doc';
 import type { DrainRuleSet } from '../drainRules';
 import { groundZAt, isManhole } from '../fixtures';
 import { normalize, segmentsAt, validateNetwork, type Network, type Segment } from '../network';
-import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, planLength } from '../slope';
+import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, outerDiameter, planLength } from '../slope';
 import { distToOutline, insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels } from '../underfloorSlope';
 import { buildDrainTrees, type DrainTree } from './tree';
 
@@ -53,6 +53,8 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
   const fxOf = (id: string) => { const f = net0.nodes[id]?.fixtureId; return f ? doc.fixtures[f] : undefined; };
   /** 公共ますの手前のドロップ（勾配が強すぎるとき自動で付ける落差。マスの点 → mm） */
   const autoDrop = new Map<string, number>();
+  /** 管ごとのドロップ: 下流のマスへ高く着く管（区間 → mm）。マスの外で L で落としてつなぐ */
+  const segDrop = new Map<string, number>();
   /** マス（公共ます以外）の流入側の落差 */
   const dropOf = (id: string) => {
     const f = fxOf(id);
@@ -84,10 +86,13 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       const riser = segs.find((s) => vertical(s)), out = segs.find((s) => !vertical(s));
       if (!riser || !out) continue;
       const top = net0.nodes[riser.a === n.id ? riser.b : riser.a];
-      if (top.pos.z <= n.pos.z || !ufNodes.has(top.id)) continue;
-      if (!insideBuilding(lv, n.pos) || distToOutline(lv, n.pos) > EXIT_NEAR_OUTLINE) continue;
+      if (top.pos.z <= n.pos.z || !ufNodes.has(top.id) || !insideBuilding(lv, top.pos)) continue;
+      // 外周の基礎のすぐ内（真下へ下ろした形）か、外の面（45° で抜けた形）にあり、そこから建物の外へ出る点
+      if (distToOutline(lv, n.pos) > EXIT_NEAR_OUTLINE) continue;
       if (insideBuilding(lv, net0.nodes[out.a === n.id ? out.b : out.a].pos)) continue;
-      if (!floatExits?.has(n.id)) exitZ.set(n.id, Math.round(groundZAt(doc.building, doc.site, n.pos) - EXIT_BELOW_GL));
+      // GL−370。自治体の土かぶりが深ければそれを守り、床下の配管より 100 は下げる（器具の真下に深く落とした所など）
+      const g = groundZAt(doc.building, doc.site, n.pos);
+      if (!floatExits?.has(n.id)) exitZ.set(n.id, Math.round(Math.min(g - EXIT_BELOW_GL, g - rules.cover - outerDiameter(out.diameter), top.pos.z - 100)));
     }
     for (const [id, zz] of exitZ) z.set(id, zz);
   }
@@ -148,15 +153,21 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       const std = path.filter(isFree).reduce((sum, s) => sum + defaultFor(s) * planLength(net0, s), 0);
       const extra = Math.round(z.get(a)! - z.get(cur)! - drops - fixed - std);
       // ドロップは 1 つのマスに 1 回だけ（先に決めた経路の高さを変えない）。差が無ければ割り振る
-      if (cur === t.root && extra > 0 && !autoDrop.has(at) && path.some((s) => isFree(s) && r > steepLimit(rules, s.diameter))) {
+      const steep = extra > 0 && path.some((s) => isFree(s) && r > steepLimit(rules, s.diameter));
+      const fc = fxOf(cur);
+      if (cur === t.root && steep && !autoDrop.has(at)) {
         autoDrop.set(at, extra);
+        for (const s of path) if (isFree(s)) slopeOverride.set(s.id, defaultFor(s));
+      } else if (cur !== t.root && steep && fc && isManhole(fc.type)) {
+        // 先に決めたマス（合流・手で管底を入れたマス）へ高く着く: 標準の勾配で行き、マスの外で L で落としてつなぐ
+        segDrop.set(last.id, extra);
         for (const s of path) if (isFree(s)) slopeOverride.set(s.id, defaultFor(s));
       } else for (const s of path) if (isFree(s)) slopeOverride.set(s.id, r);
       // 経路の点の高さを下から決めて、後の経路の止まる所にする
       let lo = cur, zz = z.get(cur)!;
       for (let i = path.length - 1; i >= 0; i--) {
         const s = path[i], up = s.a === lo ? s.b : s.a;
-        zz = zz + dropOf(lo) + (isFree(s) ? slopeOverride.get(s.id)! : s.slope!) * planLength(net0, s);
+        zz = zz + dropOf(lo) + (segDrop.get(s.id) ?? 0) + (isFree(s) ? slopeOverride.get(s.id)! : s.slope!) * planLength(net0, s);
         // 器具の接続口（マス以外）は動かさない
         const fu = fxOf(up);
         if (up !== a && !(fu && !isManhole(fu.type))) { z.set(up, r1(zz)); settled.add(up); }
@@ -173,7 +184,7 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
         if (vertical(s)) continue; // 立て管: 今の高さのまま
         const r = isSlopePinned(s) && s.slope !== undefined ? s.slope : slopeOverride.get(s.id) ?? defaultFor(s);
         segSlopes[s.id] = r;
-        z.set(n, r1(z.get(p)! + dropOf(p) + r * planLength(net0, s)));
+        z.set(n, r1(z.get(p)! + dropOf(p) + (segDrop.get(s.id) ?? 0) + r * planLength(net0, s)));
       }
       // 割り振った区間（上端が固定点）の勾配も記録
       for (const [sid, r] of slopeOverride) segSlopes[sid] = r;
@@ -203,6 +214,14 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       const s = segments[sid];
       if (s && !isSlopePinned(s) && s.slope !== r) segments[sid] = { ...s, slope: r };
     }
+    // 管ごとのドロップ（計算の写し）。無くなった所は消す
+    for (const t of trees) for (const sid of t.parent.values()) {
+      const s = segments[sid];
+      if (!s) continue;
+      const d = Math.round(segDrop.get(sid) ?? 0);
+      if (d >= 1 && s.dropEnd !== d) segments[sid] = { ...s, dropEnd: d };
+      else if (d < 1 && s.dropEnd !== undefined) { const { dropEnd: _d, ...rest } = s; segments[sid] = rest; }
+    }
     return { nodes, segments };
   };
   let net = apply(net0);
@@ -221,7 +240,7 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
   const fixturesChanged = [...fixtureIds].some(([fid, zz]) => !doc.fixtures[fid].params?.invertPin && doc.fixtures[fid].params?.invertZ !== zz);
   // 何も変わらなければ同じ doc（履歴を増やさない・描き直しを起こさない）
   const same = (a: Network) => Object.values(a.nodes).every((n) => { const o = net0.nodes[n.id]; return o && o.pos.z === n.pos.z && o.dropIn === n.dropIn; })
-    && Object.values(a.segments).every((x) => net0.segments[x.id]?.slope === x.slope);
+    && Object.values(a.segments).every((x) => net0.segments[x.id]?.slope === x.slope && net0.segments[x.id]?.dropEnd === x.dropEnd);
   // 合流する枝で、KSA の高さに固定した出口から急になりすぎた所（2 回目は固定しない）
   const steepExits = new Set<string>();
   for (const id of exitZ.keys()) {

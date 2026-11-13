@@ -10,6 +10,7 @@ import { groundZ } from './fixtures';
 import { isBenrikan } from './materials';
 import { sleeveSchedule } from './sleeves';
 import { distToOutline, insideBuilding, underfloorLevels } from './underfloorSlope';
+import { dropLegs } from './dropLegs';
 
 export const SHEATH_DIAMETER = 40;
 /** 外壁からこの距離までの立て管を、立上りとして保護する(mm) */
@@ -53,5 +54,13 @@ export function outdoorRiserItems(doc: Doc): OutdoorRiserItem[] {
     (ben.get(s.diameter) ?? ben.set(s.diameter, []).get(s.diameter)!).push(Math.round(Math.hypot(A.x - B.x, A.y - B.y, A.z - B.z)));
   }
   for (const [d, ls] of [...ben].sort((a, b) => a[0] - b[0])) items.push({ key: `kiso|benrikan|${d}`, name: 'ベンリカン（給湯器の接続）', spec: `φ${d}`, count: ls.length, unit: '本', note: `長さ ${ls.join('・')}mm` });
+
+  // ドロップ（マスの外で L で落としてマスへ入れる）: 口径ごとに L（90°エルボ）2 個ずつと、落とす管の長さ
+  const legs = new Map<number, number[]>();
+  for (const leg of dropLegs(doc).values()) {
+    const d = net.segments[leg.segId]?.diameter;
+    if (d) (legs.get(d) ?? legs.set(d, []).get(d)!).push(leg.length);
+  }
+  for (const [d, ls] of [...legs].sort((a, b) => a[0] - b[0])) items.push({ key: `kiso|dropL|${d}`, name: 'ドロップ（マスの外で L で落とす）90°エルボ', spec: `φ${d}`, count: ls.length * 2, unit: '個', note: `${ls.length} か所（L 2 個ずつ）・落とす管 計 ${(ls.reduce((a, b) => a + b, 0) / 1000).toFixed(2)}m（各 ${ls.join('・')}mm）` });
   return items;
 }

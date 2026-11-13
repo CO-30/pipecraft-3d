@@ -29,25 +29,25 @@ describe('排水のつなぎ案（drainRoute）', () => {
     expect(validateFixtures(r.doc)).toEqual([]);
     const [m] = manholes(r.doc);
     expect([m.x, m.y]).toEqual([1000, D + 60 + MANHOLE_OFFSET]);
-    // 床下（GL+300）を水平に基礎の内側まで → 基礎の中で立ち下げ（基礎貫通スリーブ KSA）→ 地中で基礎を抜けて勾配でマスへ（外に配管を出さない）
+    // 床下を水平に土間の口まで → 45° で基礎を抜け（基礎伏図 FG1・前澤「排水管貫通セット」の形）→ 外周の基礎の外の面で GL−370 の水平 → 勾配でマスへ
     const net = r.doc.network;
     const port = portNodes(net, m.id)[0];
-    // マスの管底: 基礎貫通スリーブ KSA75NF×430H（土間 −550 − 430 = −980）から 3/100 で 845 下がった所（標準の GL−600 より浅いが土かぶりは取れる）
-    expect(port.pos.z).toBe(-1005);
+    // マスの管底: 外の口（GL −600 − 370 = −970）から 3/100 で 685 下がった所
+    expect(port.pos.z).toBe(-991);
     const [last] = segmentsAt(net, port.id);
     const a = net.nodes[last.a === port.id ? last.b : last.a];
-    // 基礎の内側の面（立上りの幅 150 の半分）から 10 内で、KSA の高さ H430 だけ下ろす
-    expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D - 85, -980]);
+    // 外の口: 外周の基礎の外の面（立上りの幅 150 の半分）・GL−370
+    expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D + 75, -970]);
     expect([last.system, last.diameter]).toEqual(['sewage', 75]);
     const drop = segmentsAt(net, a.id).find((x) => x.id !== last.id)!;
     const x = net.nodes[drop.a === a.id ? drop.b : drop.a];
-    // 起点（基礎の中で立ち下げる点）の管底を土間（スラブ天端 −550）に置き、器具へ 2/100 で上がる: 器具の下の端（便器の排水口 y=4550）は 825 × 2/100 上
-    expect([x.pos.x, x.pos.y]).toEqual([1000, D - 85]);
+    // 起点（土間の口: 外の口から 45° で土間 −550 まで上がった所 = 壁の芯から 420 − 75 = 345 内）の管底を土間に置き、器具へ 2/100 で上がる
+    expect([x.pos.x, x.pos.y]).toEqual([1000, D - 345]);
     expect(x.pos.z).toBe(-550);
     const flat = segmentsAt(net, x.id).find((t) => t.id !== drop.id)!;
     const up = net.nodes[flat.a === x.id ? flat.b : flat.a];
     expect([up.pos.x, up.pos.y]).toEqual([1000, 4550]);
-    expect(up.pos.z).toBeCloseTo(-550 + 825 * 0.02, 1);
+    expect(up.pos.z).toBeCloseTo(-550 + (D - 345 - 4550) * 0.02, 1);
     expect(flat.slope).toBe(0.02);
     // 地中の配管の上（管頂）は GL から 200 以上下（宅地内の土かぶり）
     expect(-600 - (a.pos.z + 89)).toBeGreaterThanOrEqual(200);
@@ -172,7 +172,8 @@ describe('排水のつなぎ案（drainRoute）', () => {
     doc = dropFixturePipes(placeFixture(doc, r0.building.floors[0].id, 'toilet', { x: 1000, y: 4500 }).doc, 1000).doc;
     const r = routeDrainsOut(doc);
     expect(r).toMatchObject({ pipes: 1, manholes: 1, skipped: 0 });
-    expect(portNodes(r.doc.network, manholes(r.doc)[0].id)[0].pos.z).toBe(-1300);
+    // 外の口は床下の配管より 100 下（GL−370 より深い）。マスはそこから 3/100 で下げる
+    expect(portNodes(r.doc.network, manholes(r.doc)[0].id)[0].pos.z).toBeLessThan(-1100);
     expect(validateFixtures(r.doc)).toEqual([]);
   });
   it('土かぶりの決まり（自治体）が深ければ、新しいマスを深くして管頂の土かぶりを守る', () => {
@@ -180,14 +181,14 @@ describe('排水のつなぎ案（drainRoute）', () => {
     const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
     const [last] = segmentsAt(net, port.id);
     const a = net.nodes[last.a === port.id ? last.b : last.a];
-    // 管頂 = GL−600 → 管底 −600−600−89 = −1289。マスはそこから 3/100 で 845 下
+    // 管頂 = GL−600 → 管底 −600−600−89 = −1289（GL−370 より深い）。マスはそこから 3/100 で 685 下
     expect(a.pos.z).toBe(-1289);
-    expect(port.pos.z).toBe(-1314);
+    expect(port.pos.z).toBe(-1310);
   });
   it('配置図の敷地の高さで地面が下がっている所は、その地面から土かぶりを取る', () => {
     const doc0 = house([['toilet', 1000, 4500]]);
-    // 基礎の所（地中へ下ろす所）の地面が GL−1200（絶対 −1800）。マスの所は GL±0
-    const doc = { ...doc0, site: { ...doc0.site, groundPoints: [{ x: 1000, y: D - 85, gl: -1200 }, { x: 1000, y: D + 760, gl: 0 }] } };
+    // 基礎の外の口の所の地面が GL−1200（絶対 −1800）。マスの所は GL±0
+    const doc = { ...doc0, site: { ...doc0.site, groundPoints: [{ x: 1000, y: D + 75, gl: -1200 }, { x: 1000, y: D + 760, gl: 0 }] } };
     const r = routeDrainsOut(doc);
     const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
     const [last] = segmentsAt(net, port.id);

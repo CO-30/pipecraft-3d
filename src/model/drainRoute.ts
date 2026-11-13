@@ -15,7 +15,7 @@ import { addPolyline, connectNodeToSegment, moveNode, segmentsAt, splitSegment, 
 import { applySlope, outerDiameter } from './slope';
 import { inUnderfloor, slopeUnderfloor, underfloorLevels } from './underfloorSlope';
 import { findFloorRoute, ROUTE_STEP, type RouteGoal, type RouteResult } from './floorRoute';
-import { ksaHeights } from './kisoSleeve';
+import { EXIT_BELOW_GL } from './drainSolve/heights';
 
 /** 外壁の芯からマスの中心までの距離の初期値(mm) */
 export const MANHOLE_OFFSET = 700;
@@ -67,10 +67,9 @@ export const DEFAULT_COVER = 200;
 const OUTDOOR_SLOPE: [number, number][] = [[75, 0.03], [100, 0.02], [125, 0.017], [150, 0.015], [200, 0.012]];
 export const outdoorSlope = (d: number) => OUTDOOR_SLOPE.find(([k]) => d <= k)?.[1] ?? 0.01;
 export { outerDiameter } from './slope';
-/** 基礎の内側の面から、立ち下げてスリーブ（KSA）へ入る点までの離れ(mm) */
-const KSA_IN = 10;
-/** 基礎貫通スリーブの高さに合わせるとき、外の管（スリーブ → マス）の勾配の上限 */
-const KSA_MAX_SLOPE = 0.1;
+
+/** 45° で基礎を抜けるとき、土間の口を壁の芯から内側へ置く距離の上限(mm) */
+const MAX_45_IN = 450;
 
 type Line = { a: Vec2; b: Vec2; t: number; exterior?: boolean };
 
@@ -201,14 +200,24 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const underfloor = (a: Vec3, c: Vec3) => { const L = Math.hypot(a.x - c.x, a.y - c.y); return L >= 1 && Math.abs(a.z - c.z) <= FLATISH * L && a.z > gl && c.z > gl; };
   const cover = rules.cover ?? DEFAULT_COVER;
   const slopeOf = (d: number) => Math.max(outdoorSlope(d), rules.slopeFor?.(d) ?? 0);
-  /** 基礎の中（内側の面の近く）で地中へ下ろす点と、そこからマスまでの水平距離 */
-  const dropOf = (plan: Plan): { x: Vec2; d: number } => {
-    const face = Math.max(plan.exit.wall.t, ...extFoot.filter((f) => pointSeg(plan.exit.foot, f.a, f.b) < f.t / 2 + 50).map((f) => f.t)) / 2;
-    // 基礎貫通スリーブ（前澤 KSA）の形: 基礎の内側の面のすぐ内で立ち下げ、地中で基礎を抜けて外へ（外に配管を出さない）
-    const k = plan.exit.wall.t / 2 + INSET - face - KSA_IN;
-    const x = { x: Math.round(plan.eIn.x + plan.exit.n.x * k), y: Math.round(plan.eIn.y + plan.exit.n.y * k) };
-    return { x, d: Math.hypot(plan.hp.x - x.x, plan.hp.y - x.y) };
+  /**
+   * 基礎の抜け方（基礎伏図 FG1・前澤「排水管貫通セット」の形）: 土間の口から 45° で基礎を抜け、外周の基礎の外の面で
+   * GL−370 の水平になって外へ出る。o: 外の口、zE: 外の口の管底、inset: 土間の口の、壁の芯からの内側への距離
+   */
+  const exitGeom = (exit: Exit, along: number, hp: Vec2, pz: number, d: number): { o: Vec2; zE: number; inset: number } => {
+    const face = Math.max(exit.wall.t, ...extFoot.filter((f) => pointSeg(exit.foot, f.a, f.b) < f.t / 2 + 50).map((f) => f.t)) / 2;
+    const u = { x: -exit.n.y, y: exit.n.x };
+    const o = { x: Math.round(exit.foot.x + u.x * along + exit.n.x * face), y: Math.round(exit.foot.y + u.y * along + exit.n.y * face) };
+    // GL−370。自治体の土かぶりが深ければそれを守り、床下の配管より 100 は下げる
+    const coverTop = Math.min(groundZAt(b, doc.site, o), groundZAt(b, doc.site, hp)) - cover - outerDiameter(d);
+    const zE = Math.round(Math.min(groundZAt(b, doc.site, o) - EXIT_BELOW_GL, coverTop, pz - 100));
+    // 45°: 土間の口は外の口から（土間 − 外の口）だけ内側（床下の配管が土間より下なら、その高さから）
+    // （外の口がとても深いときは 45° の長さを MAX_45_IN までにして、残りは急に下ろす）
+    const inset = Math.max(exit.wall.t / 2 + INSET, Math.min(MAX_45_IN, Math.round(Math.min(ufl?.slab ?? pz, pz) - zE - face)));
+    return { o, zE, inset };
   };
+  /** 外の口と、そこからマスまでの水平距離 */
+  const dropOf = (plan: Plan): { x: Vec2; d: number } => ({ x: plan.o, d: Math.hypot(plan.hp.x - plan.o.x, plan.hp.y - plan.o.y) });
   const xs = walls.flatMap((w) => [w.a.x, w.b.x]), ys = walls.flatMap((w) => [w.a.y, w.b.y]);
   const bounds = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
   /** 外周の壁・立上りから離れた建物の中 */
@@ -218,10 +227,6 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
 
   let cur: Doc = doc;
   let pipes = 0, manholes = 0, sleeves = 0, skipped = 0;
-  /** 土間（スラブ天端）の高さ。基礎貫通スリーブの床下の口 */
-  const slabZ = b.foundation?.slabTop !== undefined ? base.elevation + b.foundation.slabTop : undefined;
-  /** この出口の外周に基礎（立上り）があり、土間の高さが分かる（基礎貫通スリーブを使う） */
-  const ksaAt = (plan: Plan) => slabZ !== undefined && extFoot.some((f) => pointSeg(plan.exit.foot, f.a, f.b) < f.t / 2 + 50);
   type Hole = { id: string; x: number; y: number };
   /** この回につないだ配管の上の端（勾配をつけ直す起点を探す元） */
   const touched: string[] = [];
@@ -255,10 +260,10 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     return { segs: [...new Map(segs.map((x) => [x.id, x])).values()], otherDepth: otherDepth && !segs.length };
   };
 
-  type Plan = { exit: Exit; hole?: Hole; hp: Vec2; eIn: Vec2; route: RouteResult; trunk: Segment[]; kind: 'eIn' | 'node' | 'seg'; seg?: Segment };
+  type Plan = { exit: Exit; hole?: Hole; hp: Vec2; eIn: Vec2; o: Vec2; zE: number; route: RouteResult; trunk: Segment[]; kind: 'eIn' | 'node' | 'seg'; seg?: Segment };
   type GoalInfo = Omit<Plan, 'route'>;
   /** 出口の候補すべての終点をまとめて 1 回で探す（いちばん安い出口・合流先を選ぶ） */
-  const planFor = (p: Vec3, net: Doc['network']): Plan | null => {
+  const planFor = (p: Vec3, net: Doc['network'], d0: number): Plan | null => {
     const goals: RouteGoal[] = [], info: GoalInfo[] = [];
     const add = (g: Omit<RouteGoal, 'tag'>, gi: GoalInfo) => { goals.push({ ...g, tag: info.length }); info.push(gi); };
     for (const exit of [...holeExits(p), ...exitsFor(p).slice(0, MAX_EXITS)]) {
@@ -266,11 +271,11 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
       const hp = hole ? { x: hole.x, y: hole.y } : { x: Math.round(exit.m.x), y: Math.round(exit.m.y) };
       const u = { x: -exit.n.y, y: exit.n.x };
       const along = (hp.x - exit.foot.x) * u.x + (hp.y - exit.foot.y) * u.y;
-      const inset = exit.wall.t / 2 + INSET;
-      const eIn = { x: exit.foot.x + u.x * along - exit.n.x * inset, y: exit.foot.y + u.y * along - exit.n.y * inset };
+      const g = exitGeom(exit, along, hp, p.z, d0);
+      const eIn = { x: Math.round(exit.foot.x + u.x * along - exit.n.x * g.inset), y: Math.round(exit.foot.y + u.y * along - exit.n.y * g.inset) };
       const tr = hole ? trunkOf(net, hole.id, p.z) : { segs: [], otherDepth: false };
       if (tr.otherDepth) continue; // 落とした深さが違う配管どうしは自動ではまとめない
-      const base = { exit, hole, hp, eIn, trunk: tr.segs };
+      const base = { exit, hole, hp, eIn, o: g.o, zE: g.zE, trunk: tr.segs };
       const side = (a: Vec3, b: Vec3) => (Math.abs(a.y - b.y) < 1 ? [1, 3] as const : Math.abs(a.x - b.x) < 1 ? [0, 2] as const : [] as const);
       // 先の配管があれば、その途中へ横から、または点へ（重ならない向きで）合流
       let joins = 0;
@@ -313,7 +318,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const order = ends.map((e) => ({ ...e, near: exitsFor(e.node.pos)[0]?.cost ?? Infinity })).sort((p, q) => p.near - q.near);
   for (const e of order) {
     const p = e.node.pos;
-    const plan = planFor(p, cur.network);
+    const plan = planFor(p, cur.network, e.seg.diameter);
     if (!plan) { skipped++; continue; }
     const attrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
     // 外では管頂の土かぶりを守り、最小勾配でマスへ下る（出口から外へ出るときだけ）
@@ -336,28 +341,21 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
       if (z0 !== undefined) {
         let need = z0;
         if (p.z - need < 100) need = Math.round(p.z - INVERT_BELOW);
-        if (drop && need + slope * drop.d > buriedTop) need = Math.round(buriedTop - slope * drop.d);
-        // 基礎貫通スリーブ（KSA）の高さ H に合わせる: 土かぶりが取れる一番浅い品番の外の口から最小勾配で下がった所を、このマスの管底にする
-        // （標準の GL−600 より浅くても、土かぶりと床下の配管との差が取れればそちら。マスは自分で置くので深さを合わせられる）
-        const fit = drop && ksaAt(plan) ? ksaHeights(e.seg.diameter).map((H) => slabZ! - H).find((u) => u <= buriedTop && p.z - u >= 50) : undefined;
-        if (fit !== undefined && p.z - (fit - slope * drop!.d) >= 100) need = Math.round(fit - slope * drop!.d);
+        // 外の口（GL−370）から最小勾配で下がった所を、新しいマスの管底にする
+        if (drop) need = Math.round(plan.zE - slope * drop.d);
         if (need !== z0) next = moveFixture(next, hole.id, plan.hp, undefined, { invertZ: need });
       }
     }
     const port = portNodes(next.network, hole.id)[0];
     if (!port || p.z - port.pos.z < 10) { skipped++; continue; } // 置いてあるマスの管底が、床下の配管より高い
     // 置いてあるマスが浅く、外の配管の土かぶりと勾配が取れない
-    let buried = drop ? Math.round(port.pos.z + slope * drop.d) : 0;
-    // 基礎貫通スリーブ（KSA）: 外の口の高さ（土間 − H）が勾配・土かぶりの範囲にあれば、その高さに合わせる（なだらかな方）
-    if (drop && ksaAt(plan)) {
-      // 外の勾配が急になりすぎるものは使わない（急勾配にしない）
-      const u = ksaHeights(e.seg.diameter).map((H) => slabZ! - H)
-        .filter((z) => z >= buried - 0.5 && z <= buriedTop + 0.5 && p.z - z >= 50 && (z - port.pos.z) / Math.max(1, drop.d) <= KSA_MAX_SLOPE).sort((x, y) => x - y)[0];
-      if (u !== undefined) buried = Math.round(u);
-    }
+    // 外の口の管底は GL−370（いちばん上流の外の管底。高さは排水の自動計算でも同じ）
+    const buried = drop ? plan.zE : 0;
     if (drop && (buried > buriedTop + 0.5 || p.z - buried < 50)) { skipped++; continue; }
-    // 基礎の外で地中へ下ろす点（床下の高さ）。先の配管がここを通っていればここで合流
-    const top: Vec3 = drop ? { ...drop.x, z: p.z } : { x: hole.x, y: hole.y, z: p.z };
+    // 置いてあるマスが外の口より浅くて下りにならないときはつながない（深ければマスの外で L で落とす）
+    if (drop && port.pos.z > buried - slope * drop.d + 0.5) { skipped++; continue; }
+    // 土間の口（床下の配管の終わり）。先の配管がここを通っていればここで合流。外の口へは 45° で下りる
+    const top: Vec3 = drop ? { x: plan.eIn.x, y: plan.eIn.y, z: p.z } : { x: hole.x, y: hole.y, z: p.z };
     const under: Vec3 | null = drop ? { ...drop.x, z: buried } : null;
     const at = (q: Vec2): Vec3 => ({ x: Math.round(q.x), y: Math.round(q.y), z: p.z });
     let net = next.network;
@@ -378,7 +376,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
       const topNode = nodeAt(top);
       if (eNode) endId = eNode.id;
       else if (topNode) { endId = topNode.id; pts = [...pts, top]; }
-      else pts = [...pts, top, ...(under ? [under] : []), port.pos];
+      else pts = [...pts, ...(Math.hypot(top.x - pts[pts.length - 1].x, top.y - pts[pts.length - 1].y) >= 1 ? [top] : []), ...(under ? [under] : []), port.pos];
     } else {
       const sg = plan.seg!;
       if (pts.length === 1) {

@@ -72,6 +72,8 @@ export type Segment = SegmentAttrs & {
   slope?: number;
   /** 勾配固定: 上流端の高さが変わったら下流端を勾配から再計算する（下流端を手で動かすと解除） */
   slopeLocked?: boolean;
+  /** 排水の自動計算の結果: この管が下流のマスへ着く高さが、マスの流入の管底より上の分(mm)。マスの外で L で落としてつなぐ（ドロップ） */
+  dropEnd?: number;
   /** 排水: 使う人が手で固定した勾配（自動計算で変えない。slopeLocked も同じ意味に読む） */
   slopePin?: boolean;
   /** 排水: 使う人が手で固定した管径 */
