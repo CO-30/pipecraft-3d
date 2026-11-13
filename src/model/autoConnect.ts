@@ -162,7 +162,8 @@ export type AutoConnectResult = {
 /** まとめてつなぐ（1〜5）。何度呼んでも増えない */
 export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number; headers?: HeaderMode } = {}): AutoConnectResult {
   // ヘッダーはできるだけ足さない（分岐でつなぎ、どうしても通せない所があるときだけ聞く）
-  const headers = opts.headers ?? 'avoid';
+  // 給水・給湯は初期設定でヘッダー工法（2026-11-14 ユーザー指定: 実際の工事に多い、器具ごとに PB を引く形）
+  const headers = opts.headers ?? 'use';
   const summary: string[] = [];
   const d1 = dropFixturePipes(doc, opts.dropDepth);
   // 床下は φ100 の本管にまとめ、公共マスに近い側から 1 か所で外へ（外のマスはその出口から）

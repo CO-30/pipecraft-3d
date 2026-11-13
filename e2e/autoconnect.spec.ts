@@ -39,7 +39,7 @@ test('1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 
   expect(await state(page)).toEqual(before);
 });
 
-test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る。質問カードに答えられる', async ({ page }) => {
+test('給水・給湯はヘッダー工法で、排水は VU（2026-11-14 の初期設定）。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る', async ({ page }) => {
   await freshApp(page);
   await createProject(page, 'スリーブ');
   const h = supplyHouse();
@@ -47,9 +47,9 @@ test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリー�
   await page.evaluate((d) => { const s = (window as any).__pc.getState(); s.newDoc(d, s.meta); }, doc);
   await useTool(page, 'fixture');
   await page.getByTestId('auto-connect').click();
-  await expect(page.getByTestId('notice')).toContainText('ヘッダーは使っていません', { timeout: 15000 });
+  await expect(page.getByTestId('notice')).toContainText('ヘッダーでつなぎました', { timeout: 15000 });
   const headers = () => page.evaluate(() => Object.values((window as any).__pc.getState().doc.fixtures).filter((f: any) => f.type === 'waterHeader').length);
-  expect(await headers()).toBe(0);
+  expect(await headers()).toBeGreaterThan(0);
 
   await page.getByTestId('open-estimate').click();
   await page.getByTestId('tab-parts').click();
@@ -62,6 +62,8 @@ test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリー�
   await page.screenshot({ path: evidence('autoconnect-03-kiso') });
   await page.getByTestId('tab-quote').click();
   await expect(page.getByTestId('quote-table')).toContainText('基礎貫通スリーブ');
+  // 管種を決めていない排水は VU で積算する
+  await expect(page.getByTestId('quote-table')).toContainText('VU');
 });
 
 test('ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ', async ({ page }) => {
