@@ -88,6 +88,19 @@ describe('床下から外への排水の出し方', () => {
     for (const b of bases) { expect(b.center.z + b.size.z / 2).toBeCloseTo(-611 - 250, 0); expect(b.size.y).toBe(150 + 300); }
   });
 
+  test('もう一度計算しても同じ（管ごとのドロップが行ったり来たりしない）', () => {
+    const again = solveDrain(d, NAHA).doc;
+    expect(again.network).toBe(d.network);
+    expect(solveDrain(again, NAHA).doc.network).toBe(d.network);
+  });
+
+  test('管がつなぎ替わって不要になった管ごとのドロップは消す', () => {
+    const s0 = Object.values(d.network.segments).find((s) => (s.dropEnd ?? 0) > 0)!;
+    const net = { ...d.network, segments: { ...d.network.segments, [s0.id]: { ...s0, system: 'water' as const } } };
+    const out = solveDrain({ ...d, network: net }, NAHA).doc;
+    expect(out.network.segments[s0.id].dropEnd).toBeUndefined();
+  });
+
   test('積算の基礎貫通スリーブ（KSA）は 45° の高さ（土間 − 外の口 = 431）で選ぶ', () => {
     const k = kisoSleeveItems(d);
     expect(k.items.some((i) => i.spec.startsWith('KSA'))).toBe(true);

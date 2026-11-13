@@ -149,7 +149,7 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
     if (!seg) continue;
     // 45° で基礎を抜ける管は、その管の高さの差（土間まで）が H。真下へ下ろした形は、端につながる立て管の高さ
     const za = net.nodes[seg.a].pos.z, zb = net.nodes[seg.b].pos.z;
-    const H = isRiserLike(net, seg) ? Math.round(Math.min(Math.max(za, zb), capZ) - Math.min(za, zb)) : riseAt(net, seg, capZ);
+    const H = isRiserLike(net, seg) ? Math.max(0, Math.round(Math.min(Math.max(za, zb), capZ) - Math.min(za, zb))) : riseAt(net, seg, capZ);
     // 外周の基礎で、基礎の内側で立ち上がる（地中を抜ける）所はメーカーのスリーブ
     const p = r.part === 'footingOuter' && H >= 80 && r.point.z < floorZ
       ? (isDrain(r) ? pickKsa(r.diameter, H, opts.antiTermite) : isSupply(r) ? pickKss(r.od + (r.system === 'hotWater' ? 20 : 0), H, opts.antiTermite) : null)

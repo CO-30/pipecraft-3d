@@ -58,8 +58,8 @@ const dz = (net: Network, s: Segment) => Math.abs(endZ(net, s, 'a') - endZ(net, 
 /** 立て管（平面の長さが1mm未満、または高低差が平面の長さより大きい斜めの管） */
 export function isRiserLike(net: Network, s: Segment): boolean {
   const L = planLength(net, s);
-  // 45° の斜め（基礎を抜ける排水など）も、高さを勾配で決めない管として扱う
-  return L < 1 || dz(net, s) >= 0.9 * L;
+  // 45° の斜め（基礎を抜ける排水など）も、高さを勾配で決めない管として扱う。落差（dropIn・dropEnd）は含めない（点の高さだけで見る）
+  return L < 1 || Math.abs(net.nodes[s.a].pos.z - net.nodes[s.b].pos.z) >= 0.9 * L;
 }
 
 /** 勾配が足りているか（高さを0.1mmに丸めた誤差は許す） */

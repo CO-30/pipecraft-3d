@@ -90,8 +90,14 @@ describe('排水のつなぎ案（drainRoute）', () => {
     const net = r.doc.network, port = portNodes(net, manholes(r.doc)[0].id)[0];
     const [last] = segmentsAt(net, port.id);
     const under = net.nodes[last.a === port.id ? last.b : last.a];
-    const drop = segmentsAt(net, under.id).find((t) => t.id !== last.id)!;
-    const x = net.nodes[drop.a === under.id ? drop.b : drop.a];
+    // 外の口から上流へ。水平の区間（45° が収まらない浅い出口は、真下に下ろしてから水平に抜く）は飛ばして、立ち下がりの上端を見る
+    let prev = under, prevSeg = last, x = under;
+    for (let i = 0; i < 3; i++) {
+      const s = segmentsAt(net, prev.id).find((t) => t.id !== prevSeg.id)!;
+      x = net.nodes[s.a === prev.id ? s.b : s.a];
+      if (Math.abs(x.pos.z - under.pos.z) >= 1) break;
+      prev = x; prevSeg = s;
+    }
     expect(x.pos.z).toBeGreaterThan(under.pos.z + 40);
     expect(x.pos.z).toBeLessThanOrEqual(-1000);
   });

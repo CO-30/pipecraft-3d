@@ -214,13 +214,11 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       const s = segments[sid];
       if (s && !isSlopePinned(s) && s.slope !== r) segments[sid] = { ...s, slope: r };
     }
-    // 管ごとのドロップ（計算の写し）。無くなった所は消す
-    for (const t of trees) for (const sid of t.parent.values()) {
-      const s = segments[sid];
-      if (!s) continue;
-      const d = Math.round(segDrop.get(sid) ?? 0);
-      if (d >= 1 && s.dropEnd !== d) segments[sid] = { ...s, dropEnd: d };
-      else if (d < 1 && s.dropEnd !== undefined) { const { dropEnd: _d, ...rest } = s; segments[sid] = rest; }
+    // 管ごとのドロップ（計算の写し）。無くなった所（木から外れた管を含む）は消す
+    for (const s of Object.values(segments)) {
+      const d = Math.round(segDrop.get(s.id) ?? 0);
+      if (d >= 1 && s.dropEnd !== d) segments[s.id] = { ...s, dropEnd: d };
+      else if (d < 1 && s.dropEnd !== undefined) { const { dropEnd: _d, ...rest } = s; segments[s.id] = rest; }
     }
     return { nodes, segments };
   };
