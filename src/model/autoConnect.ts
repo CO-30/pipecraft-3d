@@ -161,7 +161,7 @@ export type AutoConnectResult = {
 
 /** まとめてつなぐ（1〜5）。何度呼んでも増えない */
 export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number; headers?: HeaderMode } = {}): AutoConnectResult {
-  // ヘッダーはできるだけ足さない（分岐でつなぎ、どうしても通せない所があるときだけ聞く）
+  // headers: 'avoid' を渡すと従来の形（ヘッダーを足さず分岐でつなぎ、通せない所があるときだけ聞く）
   // 給水・給湯は初期設定でヘッダー工法（2026-11-14 ユーザー指定: 実際の工事に多い、器具ごとに PB を引く形）
   const headers = opts.headers ?? 'use';
   const summary: string[] = [];
