@@ -141,13 +141,15 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       const isFree = (s: Segment) => !(isSlopePinned(s) && s.slope !== undefined);
       const r = (z.get(a)! - z.get(cur)! - drops - fixed) / free;
       // 公共ますまでの勾配が強すぎる: 標準の勾配のまま、差を公共ますの手前のマス（無ければ公共ますへ入る所）のドロップにする
-      if (cur === t.root && path.some((s) => isFree(s) && r > steepLimit(rules, s.diameter))) {
-        const last = path[path.length - 1];
-        const m = last.a === t.root ? last.b : last.a;
-        const fm = fxOf(m);
-        const at = fm && isManhole(fm.type) && !isPublicType(fm.type) && m !== a ? m : t.root;
-        const std = path.filter(isFree).reduce((sum, s) => sum + defaultFor(s) * planLength(net0, s), 0);
-        autoDrop.set(at, (autoDrop.get(at) ?? 0) + Math.round(z.get(a)! - z.get(cur)! - drops - fixed - std));
+      const last = path[path.length - 1];
+      const m = last.a === cur ? last.b : last.a;
+      const fm = fxOf(m);
+      const at = fm && isManhole(fm.type) && !isPublicType(fm.type) && m !== a ? m : t.root;
+      const std = path.filter(isFree).reduce((sum, s) => sum + defaultFor(s) * planLength(net0, s), 0);
+      const extra = Math.round(z.get(a)! - z.get(cur)! - drops - fixed - std);
+      // ドロップは 1 つのマスに 1 回だけ（先に決めた経路の高さを変えない）。差が無ければ割り振る
+      if (cur === t.root && extra > 0 && !autoDrop.has(at) && path.some((s) => isFree(s) && r > steepLimit(rules, s.diameter))) {
+        autoDrop.set(at, extra);
         for (const s of path) if (isFree(s)) slopeOverride.set(s.id, defaultFor(s));
       } else for (const s of path) if (isFree(s)) slopeOverride.set(s.id, r);
       // 経路の点の高さを下から決めて、後の経路の止まる所にする
@@ -155,7 +157,9 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       for (let i = path.length - 1; i >= 0; i--) {
         const s = path[i], up = s.a === lo ? s.b : s.a;
         zz = zz + dropOf(lo) + (isFree(s) ? slopeOverride.get(s.id)! : s.slope!) * planLength(net0, s);
-        if (up !== a) { z.set(up, r1(zz)); settled.add(up); }
+        // 器具の接続口（マス以外）は動かさない
+        const fu = fxOf(up);
+        if (up !== a && !(fu && !isManhole(fu.type))) { z.set(up, r1(zz)); settled.add(up); }
         lo = up;
       }
     }
@@ -224,7 +228,9 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
     const t = trees.find((x) => x.parent.has(id));
     const sid = t?.parent.get(id);
     const sg = sid ? net0.segments[sid] : undefined;
-    if (sg && (segSlopes[sg.id] ?? 0) > steepLimit(rules, sg.diameter)) steepExits.add(id);
+    // 急すぎる、または公共ますが浅くて下りにならない出口は、2 回目は固定しない（下流から決める）。緩いだけなら GL−370 のまま（検査で知らせる）
+    const sl = sg ? segSlopes[sg.id] ?? 0 : 0;
+    if (sg && (sl > steepLimit(rules, sg.diameter) || sl <= 0)) steepExits.add(id);
   }
   if (!fixturesChanged && same(net)) return { result: { doc, segSlopes, trees, underfloor, failed: false }, steepExits };
   // 高さが変わると継手の種類（直線の継ぎ目・曲がり）が変わることがあるので付け直す

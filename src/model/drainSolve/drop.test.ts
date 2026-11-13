@@ -70,6 +70,29 @@ describe('上流から決める・公共ますの手前でドロップ', () => {
     expect(a.doc.network.nodes[h.M2].dropIn! - b.doc.network.nodes[h.M2].dropIn!).toBeCloseTo(300, 0);
   });
 
+  it('公共ますへ直接入る急な経路が 2 つあっても、ドロップは 1 回だけで、先に決めた高さを変えない', () => {
+    const { doc, pub } = testSite(-2500);
+    const P0 = doc.network.nodes[pub].pos;
+    const r1 = addPolyline(doc.network, [P0, v(-700, 3000, -600)], S, { startNodeId: pub });
+    const r2 = addPolyline(r1.net, [P0, v(-10700, 8000, -300)], S, { startNodeId: pub });
+    const pinB = (n: typeof r2.net, id: string) => ({ ...n, nodes: { ...n.nodes, [id]: { ...n.nodes[id], zPin: true } } });
+    const net = pinB(pinB(r2.net, r1.nodeIds[1]), r2.nodeIds[1]);
+    const out = solveHeights({ ...doc, network: net }, NAHA);
+    const drop = out.doc.network.nodes[pub].dropIn!;
+    // 遠い方（10m）は標準の勾配 + ドロップ、近い方（5m）はそのドロップの上に割り振る（どちらも高さと勾配が合う）
+    expect(out.segSlopes[r1.segmentIds[0]]).toBeCloseTo(DEF, 6);
+    expect(-2500 + drop + DEF * 10000).toBeCloseTo(-600, 0);
+    expect(-2500 + drop + out.segSlopes[r2.segmentIds[0]] * 5000).toBeCloseTo(-300, 0);
+    expect(solveHeights(out.doc, NAHA).doc).toBe(out.doc);
+  });
+
+  it('公共ますが浅くて下りにならないときは、出口を固定せず下流から決める（上り勾配にしない）', () => {
+    const h = house(-800);
+    const out = solveHeights(h.doc, NAHA);
+    expect(z(out.doc, h.X)).toBeGreaterThan(z(out.doc, h.M1));
+    expect(z(out.doc, h.M1)).toBeGreaterThan(z(out.doc, h.M2));
+  });
+
   it('公共ますの手前にマスが無ければ、公共ますへ入る所でドロップ', () => {
     const { doc, pub } = testSite(-2500);
     const r = addPolyline(doc.network, [doc.network.nodes[pub].pos, v(-700, 3000, -600)], S, { startNodeId: pub });
