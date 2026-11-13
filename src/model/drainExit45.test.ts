@@ -4,7 +4,10 @@
  * 外の口が GL−370 より高ければ、基礎の外の面で L で落として GL−370 から外へ（真下に落として L で出さない）
  */
 import { describe, expect, test } from 'vitest';
-import { autoConnect } from './autoConnect';
+import { connectYard } from './autoConnect';
+import { dropFixturePipes } from './dropPipes';
+import { routeDrainsOut } from './drainRoute';
+import type { Doc } from './doc';
 import { supplyHouse } from './testSupplyHouse';
 import { placeFixture } from './fixtures';
 import { solveDrain } from './drainSolve';
@@ -20,11 +23,13 @@ import { analyzeFittings } from './fittings';
 
 const NAHA = resolveDrainRules(BUILTIN_PROFILES.find((p) => p.id === 'naha')!);
 const GL = -611, SLAB = -550;
+/** 器具ごとに一番近い外壁から出す形（本管にまとめない。routeDrainsOut の形を確かめる） */
+const perFixture = (doc: Doc) => connectYard(routeDrainsOut(dropFixturePipes(doc).doc).doc).doc;
 
 describe('床下から外への排水の出し方', () => {
   const h = supplyHouse(); // 土間 −550・GL −611・外周の立上り 150
   const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1500 });
-  const solved = solveDrain(autoConnect(p.doc).doc, NAHA);
+  const solved = solveDrain(perFixture(p.doc), NAHA);
   const d = solved.doc;
   const net = d.network;
   const isDrain = (s: { system: string }) => s.system === 'drain' || s.system === 'sewage';
@@ -142,7 +147,7 @@ describe('外の口が GL−370 より深いとき（床が地面に近い家）
     const h = supplyHouse();
     const d0 = { ...h.doc, site: { designGL: -300 } }; // 土間 −550 は GL より 250 下
     const p = placeFixture(d0, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1500 });
-    const d = solveDrain(autoConnect(p.doc).doc, NAHA).doc;
+    const d = solveDrain(perFixture(p.doc), NAHA).doc;
     const net = d.network;
     const bends = Object.values(net.nodes).filter((n) => n.fitting?.type === 'none' && segmentsAt(net, n.id).some((s) => s.system === 'drain' || s.system === 'sewage'));
     expect(bends.length).toBeGreaterThan(0);
