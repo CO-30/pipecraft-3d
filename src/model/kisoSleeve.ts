@@ -84,6 +84,28 @@ export function ksaHeights(diameter: number, antiTermite = false): number[] {
   const size = ksaSize(diameter);
   return size ? KISO_PRODUCTS.filter((p) => p.use === 'drain' && p.size === size && p.antiTermite === antiTermite).map((p) => p.H).sort((a, b) => a - b) : [];
 }
+/**
+ * 前澤 KSA（標準・45°）の形（KSA-B75N×280H の図 04702164）: 外の口（基礎の外の面）から基礎の内側へ水平に 255 進み、
+ * そこから 45° で土間へ上がる。H は外の口から土間の口までの高さ
+ */
+export const KSA_STRAIGHT = 255;
+/** 排水: 標準（45°）の KSA の高さ H（小さい順）。深基礎用（90°）は自動では使わない */
+export function ksaStandardHeights(diameter: number): number[] {
+  const size = ksaSize(diameter);
+  return size ? [...new Set(KISO_PRODUCTS.filter((p) => p.use === 'drain' && p.size === size && !p.deep).map((p) => p.H))].sort((a, b) => a - b) : [];
+}
+/**
+ * 外へ出る排水の KSA: 土間の口 topZ から H 下が外の口の管底。外の配管の始まりの目安 targetZ（GL−370・土かぶり）より
+ * 下へ行かない一番深い品（どれも下へ行くなら一番浅い品）。KSA の無い太さは null
+ */
+export function ksaExit(diameter: number, topZ: number, targetZ: number): { H: number; z: number } | null {
+  const hs = ksaStandardHeights(diameter);
+  if (!hs.length) return null;
+  const fit = hs.filter((H) => topZ - H >= targetZ - 1);
+  const H = fit.length ? fit[fit.length - 1] : hs[0];
+  return { H, z: Math.round(topZ - H) };
+}
+
 /** 給水用 KSS の高さ H（内径 56 の 50 の物。小さい順） */
 export const KSS_HEIGHTS = [230, 430];
 
@@ -105,7 +127,8 @@ export function riseAt(net: Network, seg: Segment, capZ = Infinity): number {
     for (const t of segmentsAt(net, nid)) {
       if (t.id === seg.id) continue;
       const o = net.nodes[t.a === nid ? t.b : t.a];
-      if (Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 && o.pos.z > n.pos.z) best = Math.max(best, Math.min(o.pos.z, capZ) - n.pos.z);
+      // 真上へ立ち上がる管、または 45° で上がる管（KSA の曲がりから土間へ）
+      if ((Math.hypot(o.pos.x - n.pos.x, o.pos.y - n.pos.y) < 1 || isRiserLike(net, t)) && o.pos.z > n.pos.z) best = Math.max(best, Math.min(o.pos.z, capZ) - n.pos.z);
     }
   }
   return Math.round(best);
@@ -143,16 +166,21 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
   // スリーブの床下の口は土間（スラブ天端）。その上は床下の配管なので H に入れない
   const slab = doc.building.foundation?.slabTop;
   const capZ = slab !== undefined ? floorZ + slab : Infinity;
+  /** KSA を数えた管の点（45° の管と、その下の横の管が両方とも外周の基礎を横切るときに 2 つ数えない） */
+  const ksaNodes = new Set<string>();
   for (const r of rows) {
     if (r.part !== 'footingOuter' && r.part !== 'footing') continue;
     const seg = net.segments[r.segId];
     if (!seg) continue;
+    if (r.part === 'footingOuter' && isDrain(r) && (ksaNodes.has(seg.a) || ksaNodes.has(seg.b))) continue;
     // 45° で基礎を抜ける管は、その管の高さの差（土間まで）が H。真下へ下ろした形は、端につながる立て管の高さ
     const za = net.nodes[seg.a].pos.z, zb = net.nodes[seg.b].pos.z;
     const H = isRiserLike(net, seg) ? Math.max(0, Math.round(Math.min(Math.max(za, zb), capZ) - Math.min(za, zb))) : riseAt(net, seg, capZ);
     // 外周の基礎で、基礎の内側で立ち上がる（地中を抜ける）所はメーカーのスリーブ
+    // KSA の太さは基礎の中を通る管（45° の管）で選ぶ（外の管は自治体の決まりで太くなることがある）
+    const riser = isRiserLike(net, seg) ? seg : [seg.a, seg.b].flatMap((nid) => segmentsAt(net, nid)).find((t) => t.id !== seg.id && isRiserLike(net, t) && (t.system === 'drain' || t.system === 'sewage'));
     const p = r.part === 'footingOuter' && H >= 80 && r.point.z < floorZ
-      ? (isDrain(r) ? pickKsa(r.diameter, H, opts.antiTermite) : isSupply(r) ? pickKss(r.od + (r.system === 'hotWater' ? 20 : 0), H, opts.antiTermite) : null)
+      ? (isDrain(r) ? pickKsa(riser?.diameter ?? r.diameter, H, opts.antiTermite) : isSupply(r) ? pickKss(r.od + (r.system === 'hotWater' ? 20 : 0), H, opts.antiTermite) : null)
       : null;
     if (p) {
       const key = `kiso|${p.code}`;
@@ -162,6 +190,7 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
       }).get(key)!;
       it.count++;
       it.rows.push(r.no);
+      if (p.use === 'drain') for (const nid of [seg.a, seg.b]) { ksaNodes.add(nid); for (const t of segmentsAt(net, nid)) if (isRiserLike(net, t)) { ksaNodes.add(t.a); ksaNodes.add(t.b); } }
       if (Math.abs(p.H - H) > H_TOLERANCE) {
         checks.push({ segId: r.segId, message: `基礎貫通スリーブ ${p.code} の高さ H${p.H} と図の高さ ${H}mm が ${Math.abs(p.H - H)}mm 違います。パッキンの位置（2cm）とフレキ管の出し（3cm）では合わせきれません。地中の管・マスの深さを直すか、長さを調整できる普及型（KSA-E）やメーカーに合う品番を問い合わせてください（スリーブ表 No.${r.no}）` });
       }

@@ -41,7 +41,7 @@ export type EstimateSettings = {
   supports?: SupportSettings;
   /** シールテープ・接着剤の設定（未設定なら既定値） */
   consumables?: ConsumableSettings;
-  /** 基礎貫通スリーブ（前澤 KSA・KSS、立上りの VU 管）を積算に入れるか・防蟻品を使うか（未設定なら入れる・防蟻なし） */
+  /** 基礎貫通スリーブ（前澤 KSA・KSS、立上りの VU 管）を積算に入れるか・防蟻品を使うか（未設定なら入れる・防蟻品） */
   kisoSleeve?: { enabled: boolean; antiTermite: boolean };
   client?: string;
   title?: string;
@@ -386,7 +386,8 @@ export function computeEstimate(doc: Doc): Estimate {
   }
 
   // --- 基礎貫通スリーブ（外周の基礎は前澤 KSA・KSS、内部の立上りは VU 管） ---
-  const kst = st.kisoSleeve ?? { enabled: true, antiTermite: false };
+  // 防蟻品（KSA-B・KSS-B）が既定（2026-11-13 ユーザーの使う品: 前澤 KSA-B75N×280H）
+  const kst = st.kisoSleeve ?? { enabled: true, antiTermite: true };
   const kiso: SupportLine[] = [];
   if (kst.enabled) {
     const k = kisoSleeveItems(doc, { antiTermite: kst.antiTermite });

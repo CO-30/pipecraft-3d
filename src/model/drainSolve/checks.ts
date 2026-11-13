@@ -128,6 +128,8 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
       if (lv && insideBuilding(lv, n.pos)) continue;
       const segs = nodeSegs.get(id) ?? [];
       if (!segs.length || segs.every((s) => planLength(net, s) < 1)) continue;
+      // 基礎の外の面の口（KSA の外の口）: 横の管は基礎の中だけで、すぐ L で落とす所は土かぶりを見ない
+      if (lv && segs.every((s) => isRiserLike(net, s) || insideBuilding(lv, net.nodes[s.a === id ? s.b : s.a].pos))) continue;
       const od = Math.max(...segs.map((s) => outerDiameter(s.diameter)));
       const gz = groundZAt(doc.building, doc.site, n.pos);
       const f = fxOf(id);

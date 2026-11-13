@@ -29,25 +29,36 @@ describe('排水のつなぎ案（drainRoute）', () => {
     expect(validateFixtures(r.doc)).toEqual([]);
     const [m] = manholes(r.doc);
     expect([m.x, m.y]).toEqual([1000, D + 60 + MANHOLE_OFFSET]);
-    // 床下を水平に土間の口まで → 45° で基礎を抜け（基礎伏図 FG1・前澤「排水管貫通セット」の形）→ 外周の基礎の外の面で GL−370 の水平 → 勾配でマスへ
+    // 床下を水平に土間の口まで → 45° で下り（前澤 KSA-B75N×280H の形: H280・外の面から 255 内で水平）→ 外の面で L で GL−370 へ落とす → 勾配でマスへ
     const net = r.doc.network;
     const port = portNodes(net, m.id)[0];
-    // マスの管底: 外の口（GL −600 − 370 = −970）から 3/100 で 685 下がった所
+    // マスの管底: 外の配管の始まり（GL −600 − 370 = −970）から 3/100 で 685 下がった所
     expect(port.pos.z).toBe(-991);
     const [last] = segmentsAt(net, port.id);
+    const nb = (id: string, not: string) => { const t = segmentsAt(net, id).find((x) => x.id !== not)!; return { t, n: net.nodes[t.a === id ? t.b : t.a] }; };
     const a = net.nodes[last.a === port.id ? last.b : last.a];
-    // 外の口: 外周の基礎の外の面（立上りの幅 150 の半分）・GL−370
+    // 外の配管の始まり: 外周の基礎の外の面（立上りの幅 150 の半分）・GL−370
     expect([a.pos.x, a.pos.y, a.pos.z]).toEqual([1000, D + 75, -970]);
     expect([last.system, last.diameter]).toEqual(['sewage', 75]);
-    const drop = segmentsAt(net, a.id).find((x) => x.id !== last.id)!;
-    const x = net.nodes[drop.a === a.id ? drop.b : drop.a];
-    // 起点（土間の口: 外の口から 45° で土間 −550 まで上がった所 = 壁の芯から 420 − 75 = 345 内）の管底を土間に置き、器具へ 2/100 で上がる
-    expect([x.pos.x, x.pos.y]).toEqual([1000, D - 345]);
+    // その真上が KSA の外の口（土間 −550 − H280 = −830 から、255 の水平で少し下がる）
+    const mouth = nb(a.id, last.id);
+    expect([mouth.n.pos.x, mouth.n.pos.y]).toEqual([1000, D + 75]);
+    expect(mouth.n.pos.z).toBeLessThan(-830);
+    expect(mouth.n.pos.z).toBeGreaterThan(-840);
+    // KSA の曲がり: 外の面から 255 内（壁の芯から 180 内）・−830（エルボは数えない）
+    const bend = nb(mouth.n.id, mouth.t.id);
+    expect([bend.n.pos.x, bend.n.pos.y, bend.n.pos.z]).toEqual([1000, D - 180, -830]);
+    expect(bend.n.fitting).toEqual({ type: 'none', degree: 2 });
+    // 起点（土間の口: 曲がりから 45° で土間まで上がった所 = 壁の芯から 180 + 280 = 460 内）の管底を土間に置き、器具へ 2/100 で上がる
+    const drop = bend.t;
+    const x = nb(bend.n.id, drop.id).n;
+    const s45 = nb(bend.n.id, drop.id).t;
+    expect([x.pos.x, x.pos.y]).toEqual([1000, D - 460]);
     expect(x.pos.z).toBe(-550);
-    const flat = segmentsAt(net, x.id).find((t) => t.id !== drop.id)!;
+    const flat = segmentsAt(net, x.id).find((t) => t.id !== s45.id)!;
     const up = net.nodes[flat.a === x.id ? flat.b : flat.a];
     expect([up.pos.x, up.pos.y]).toEqual([1000, 4550]);
-    expect(up.pos.z).toBeCloseTo(-550 + (D - 345 - 4550) * 0.02, 1);
+    expect(up.pos.z).toBeCloseTo(-550 + (D - 460 - 4550) * 0.02, 1);
     expect(flat.slope).toBe(0.02);
     // 地中の配管の上（管頂）は GL から 200 以上下（宅地内の土かぶり）
     expect(-600 - (a.pos.z + 89)).toBeGreaterThanOrEqual(200);

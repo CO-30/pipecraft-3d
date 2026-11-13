@@ -190,23 +190,24 @@ test.describe('図面から自動で3Dにする', () => {
     // もう一度押しても増えない
     await page.getByTestId('drop-run').click();
     expect(Object.keys((await full(page)).network.segments)).toHaveLength(2);
-    // 排水を外の桝までつなぐ（案）: 北の外壁の外に汚水マスが置かれ、床下を水平に出て基礎の外ですぐ地中へ下ろし、勾配をつけてマスへ
+    // 排水を外の桝までつなぐ（案）: 便器は北の壁に近く（芯から 360）、前澤 KSA の土間の口（外の面から 255 + H 内）より壁側なので、
+    // 西の外壁から出す。床下を水平に土間の口へ → 45° で下り → 基礎を水平に抜けて外の汚水マスへ
     await page.getByTestId('drain-route').click();
     await expect(page.locator('.toast.notice')).toContainText('排水 1 本を外の汚水マス（新しく 1 個）へつなぎました');
     doc = await full(page);
     const mh = (Object.values(doc.fixtures) as { type: string; x: number; y: number }[]).filter((f) => f.type === 'manholeSewage');
     expect(mh).toHaveLength(1);
-    expect(mh[0].y).toBe(5460 + 60 + 700);
-    expect(Math.abs(mh[0].x - 900)).toBeLessThan(200);
-    // 落とした 2 本 + 床下の横 + 立ち下げ + 基礎を水平に抜ける管 + マスへの管（浅いので 45° は収まらず、土間の口から真下に下ろしてから抜く）
-    expect(Object.keys(doc.network.segments)).toHaveLength(6);
-    // 基礎貫通スリーブ（KSA）の形: 基礎の内側で立ち下げ、地中で基礎を抜けてマスへ。建物の外（北の外壁より外）に配管の点は無い。地面より下の点は管頂の土かぶり 20cm 以上
+    expect(mh[0].x).toBe(-60 - 700);
+    expect(Math.abs(mh[0].y - 5100)).toBeLessThan(200);
+    // 落とした 2 本 + 床下の横 + 45° + 基礎を抜けてマスへ（GL が仮なので外の口は GL−370 より深く、外で落とさない）
+    expect(Object.keys(doc.network.segments)).toHaveLength(5);
+    // 基礎貫通スリーブ（KSA）の形: 基礎の内側で 45° で下り、地中で基礎を抜けてマスへ。建物の外（西の外壁より外）に配管の点は無い。地面より下の点は管頂の土かぶり 20cm 以上
     const gl = doc.site?.designGL ?? 0; // この工事は立面図が無いので GL は仮（床の高さ）
     const nodes = (Object.values(doc.network.nodes) as { pos: { y: number; z: number }; fixtureId?: string }[]).filter((n) => !n.fixtureId);
-    expect(nodes.filter((n) => n.pos.y > 5460 + 60)).toHaveLength(0);
+    expect(nodes.filter((n) => (n.pos as { x?: number }).x! < -60)).toHaveLength(0);
     expect(nodes.filter((n) => n.pos.z < gl - 300).every((n) => gl - (n.pos.z + 89) >= 200)).toBe(true);
     await page.getByTestId('drain-route').click(); // もう一度押しても増えない
-    expect(Object.keys((await full(page)).network.segments)).toHaveLength(6);
+    expect(Object.keys((await full(page)).network.segments)).toHaveLength(5);
     await show(page, '3D');
     if (!isMobile()) await page.getByRole('button', { name: '設備だけ' }).click(); // スマホは 👁 の中
     await page.waitForTimeout(600);

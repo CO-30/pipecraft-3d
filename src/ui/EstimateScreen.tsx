@@ -525,7 +525,7 @@ function ConsumableSettingsForm() {
 
 function KisoSettingsForm() {
   const raw = useStore((s) => s.doc.estimate?.kisoSleeve);
-  const k = raw ?? { enabled: true, antiTermite: false };
+  const k = raw ?? { enabled: true, antiTermite: true };
   const st = useStore.getState();
   const set = (patch: Partial<typeof k>) => st.updateEstimate({ kisoSleeve: { ...k, ...patch } });
   return (
