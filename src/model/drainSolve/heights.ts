@@ -13,6 +13,7 @@ import { groundZAt, isManhole } from '../fixtures';
 import { normalize, segmentsAt, validateNetwork, type Network, type Segment } from '../network';
 import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, outerDiameter, planLength } from '../slope';
 import { distToOutline, insideBuilding, isUnderfloorDrain, slopeUnderfloor, underfloorLevels } from '../underfloorSlope';
+import { ksaExit } from '../kisoSleeve';
 import { buildDrainTrees, type DrainTree } from './tree';
 
 export type SolveHeightsResult = {
@@ -29,6 +30,12 @@ export type SolveHeightsResult = {
 const r1 = (z: number) => Math.round(z * 10) / 10;
 /** いちばん上流の外の管底（床下から外へ出る所）の初期値: GL − 370（ユーザーの標準 2026-11-13） */
 export const EXIT_BELOW_GL = 370;
+/** 外の口から L で落とす最小の差(mm)。これより小さければ落とさず、外の口の高さのまま外へ（土かぶりが足りなければ落とす） */
+export const EXIT_DROP_MIN = 100;
+/** 外の配管の始まりの管底: 外の口 zK が目安 target（GL−370・土かぶり）より EXIT_DROP_MIN 以上高い、または土かぶりの限度 hard より高ければ、目安まで L で落とす */
+export function exitOutZ(zK: number, target: number, hard: number): number {
+  return zK - target >= EXIT_DROP_MIN || zK > hard + 0.5 ? Math.min(zK, target) : zK;
+}
 /** 床下から外へ出る所（基礎の内側で地中へ下ろした点）とみなす、外周からの距離(mm) */
 const EXIT_NEAR_OUTLINE = 400;
 /** 公共ますまでの勾配がこれより強ければドロップにする: 標準の 2 倍（2/100 より緩ければ 2/100）、最大勾配は超えない */
@@ -78,6 +85,8 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
    * 高さは GL − 370（ユーザーの標準）。ここから公共ますへ下る
    */
   const exitZ = new Map<string, number>();
+  /** KSA の外の口（基礎の外の面。そこから L で落とす点）。勾配の検査で急すぎる出口に数えない */
+  const mouths = new Set<string>();
   if (lv?.outline.length) {
     for (const n of Object.values(net0.nodes)) {
       if (n.fixtureId || n.zPin || n.pos.z >= lv.slab - 1) continue;
@@ -89,10 +98,28 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       if (top.pos.z <= n.pos.z || !ufNodes.has(top.id) || !insideBuilding(lv, top.pos)) continue;
       // 外周の基礎のすぐ内（真下へ下ろした形）か、外の面（45° で抜けた形）にあり、そこから建物の外へ出る点
       if (distToOutline(lv, n.pos) > EXIT_NEAR_OUTLINE) continue;
-      if (insideBuilding(lv, net0.nodes[out.a === n.id ? out.b : out.a].pos)) continue;
-      // GL−370。自治体の土かぶりが深ければそれを守り、床下の配管より 100 は下げる（器具の真下に深く落とした所など）
-      const g = groundZAt(doc.building, doc.site, n.pos);
-      if (!floatExits?.has(n.id)) exitZ.set(n.id, Math.round(Math.min(g - EXIT_BELOW_GL, g - rules.cover - outerDiameter(out.diameter), top.pos.z - 100)));
+      const far = net0.nodes[out.a === n.id ? out.b : out.a];
+      if (insideBuilding(lv, far.pos)) continue;
+      // 外の口の管底は、前澤 KSA（45°）の H で決まる（土間の口から H 下）。目安は GL−370（自治体の土かぶりが深ければそれ）
+      const g = groundZAt(doc.building, doc.site, n.pos), hard = g - rules.cover - outerDiameter(out.diameter);
+      const target = Math.min(g - EXIT_BELOW_GL, hard);
+      const topZ = Math.min(lv.slab, top.pos.z);
+      // KSA の太さは基礎の中を通る管（45° の管）で選ぶ（外の管は自治体の決まりで太くなることがある）
+      const k = ksaExit(riser.diameter, topZ, target);
+      const zK = k ? k.z : Math.round(Math.min(target, top.pos.z - 100));
+      // 外の口が高ければ、基礎の外の面で L で落として目安の高さから外へ（外の口 → 真下 → 外の配管）
+      const fs = segmentsAt(net0, far.id).filter((s) => s.system === 'drain' || s.system === 'sewage');
+      const fall = fs.length === 2 && !far.fixtureId ? fs.find((s) => s.id !== out.id && vertical(s)) : undefined;
+      const low = fall && net0.nodes[fall.a === far.id ? fall.b : fall.a];
+      const chain = !!(fall && low && low.pos.z < far.pos.z && !low.fixtureId);
+      // 落とす管が無い形（真下へ下ろした形・落とさずに出した形）は、落とす必要があれば外の口ごと目安の高さへ
+      if (!floatExits?.has(n.id)) exitZ.set(n.id, chain ? zK : Math.round(exitOutZ(zK, target, hard)));
+      if (chain && low) {
+        const zMouth = Math.round(zK - rules.defaultSlope(out.diameter) * planLength(net0, out));
+        exitZ.set(far.id, zMouth);
+        mouths.add(far.id);
+        if (!low.zPin && !floatExits?.has(low.id)) exitZ.set(low.id, Math.min(Math.round(target), zMouth - 10));
+      }
     }
     for (const [id, zz] of exitZ) z.set(id, zz);
   }
@@ -242,6 +269,7 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
   // 合流する枝で、KSA の高さに固定した出口から急になりすぎた所（2 回目は固定しない）
   const steepExits = new Set<string>();
   for (const id of exitZ.keys()) {
+    if (mouths.has(id)) continue;
     const t = trees.find((x) => x.parent.has(id));
     const sid = t?.parent.get(id);
     const sg = sid ? net0.segments[sid] : undefined;
