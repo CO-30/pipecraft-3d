@@ -9,14 +9,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeFloorElevation, branchDeletionPreview, isUnderFloor, presetVisibility, useStore, VIS_CATEGORIES, type FloorFilter, type Tool, type VisMode, type VisPreset } from '../state/store';
 import { clampSection, sectionRange, type SectionMode } from '../model/section';
 import { connectedComponent, segmentLength, segmentsAt, type SystemType } from '../model/network';
-import { floorById, roomArea, wallLength } from '../model/building';
+import { floorById, roomArea, wallLength, wallsOnFloor } from '../model/building';
 import { MEMBER_LABEL, stairSteps } from '../model/members';
 import { detour, findHits } from '../model/obstacles';
 import { DEFAULT_DROP_DEPTH, DROP_MAX, DROP_MIN } from '../model/dropPipes';
 import { levelSummary, levelText } from '../model/levels';
 import { minSlopeFor, resolveProfile } from '../model/municipality';
 import { useProfiles } from './useProfiles';
-import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
+import { FIXTURE_CATALOG, FIXTURE_GROUPS, fixtureConnected, type FixtureType, fixtureSize, groundZ, isHeader, isManhole, manholeDepth, manholeInvertZ, portNodes } from '../model/fixtures';
 import { portCandidates } from '../model/portRoute';
 import { UnderlayPanel } from './UnderlayPanel';
 import { WallPhotoDialog } from './WallPhotoDialog';
@@ -229,6 +229,14 @@ export function PropertyPanel() {
     return (
       <div className="props">
         <div className="ptitle">{def.label} <span className="muted small">{manhole ? `φ${size.w}` : `${size.w}×${size.d}mm`}・向き {f.rotation}°</span></div>
+        <div className="row" data-testid="fixture-type-row">
+          <label className="small">種類
+            <select data-testid="fixture-type-change" value={f.type} disabled={fixtureConnected(doc, f.id)} onChange={(e) => st.changeFixtureType(f.id, e.target.value as FixtureType)}>
+              {FIXTURE_GROUPS.map((g) => <optgroup key={g.label} label={g.label}>{g.types.map((t) => <option key={t} value={t}>{FIXTURE_CATALOG[t].label}</option>)}</optgroup>)}
+            </select>
+          </label>
+          {fixtureConnected(doc, f.id) && <span className="small muted">配管がつながっているので、種類は配管を外してから変えます</span>}
+        </div>
         {manhole && (
           <div className="row" data-testid="manhole-params">
             <NumField label="口径" value={f.params?.diameter ?? 300} min={100} max={2000} testId="manhole-diameter" onCommit={(v) => st.updateFixtureParams(f.id, { diameter: v })} />
@@ -275,7 +283,17 @@ export function PropertyPanel() {
     const openFace = (mode: 'pipe' | 'build') => { const err = st.openWallFace(w.id, mode); if (err) useStore.setState({ notice: err }); };
     return (
       <div className="props">
-        <div className="ptitle">{w.kind === 'exterior' ? '外壁' : '内壁'} 長さ <b data-testid="wall-length">{Math.round(wallLength(b, w.id))}</b>mm{w.lengthSet === false && <span className="tag-warn">寸法未確定</span>}</div>
+        <div className="ptitle">{w.kind === 'exterior' ? '外壁' : '内壁'} 長さ <b data-testid="wall-length">{Math.round(wallLength(b, w.id))}</b>mm{w.lengthSet === false && <span className="tag-warn">寸法未確定</span>}{w.locked && <span className="small muted"> 🔒</span>}</div>
+        <div className="row" data-testid="wall-lock-row">
+          <label className="small inline" title="位置をロックした壁は、ドラッグ・長さの入力・削除で動きません（厚さ・外壁/内壁は変えられます）">
+            <input type="checkbox" data-testid="wall-lock" checked={!!w.locked} onChange={(e) => st.setWallsLocked([w.id], e.target.checked)} /> 🔒 位置をロック
+          </label>
+          {(() => {
+            const all = wallsOnFloor(b, w.floorId);
+            const allLocked = all.every((x) => x.locked);
+            return <button className="small" data-testid="wall-lock-all" onClick={() => st.setWallsLocked(all.map((x) => x.id), !allLocked)}>{allLocked ? 'この階の壁のロックをまとめて外す' : 'この階の壁をまとめてロック'}</button>;
+          })()}
+        </div>
         <div className="face-open" data-testid="face-open">
           <div className="small muted">🧱 この壁を正面から見る（壁の幅・高さはそのまま使います）</div>
           <div className="row">
@@ -294,7 +312,7 @@ export function PropertyPanel() {
           <button onClick={() => st.setTool('window')}>窓を付ける</button>
           {w.kind === 'exterior' && <button data-testid="wall-dims" onClick={() => st.openDimWizard(w.floorId, w.id)}>📏 外形の寸法を順番に入れる</button>}
           <button data-testid="wall-photo" onClick={() => setPhotoWall(w.id)}>📷 写真から窓・ドア</button>
-          <button className="danger" onClick={() => st.deleteSelected()}>壁を削除</button>
+          <button className="danger" disabled={!!w.locked} title={w.locked ? '位置をロックしているので消せません（🔒 を外すと消せます）' : undefined} onClick={() => st.deleteSelected()}>壁を削除</button>
         </div>
         {photoWall === w.id && <WallPhotoDialog wallId={w.id} onClose={() => setPhotoWall(null)} />}
       </div>

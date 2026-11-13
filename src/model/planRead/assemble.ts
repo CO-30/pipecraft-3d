@@ -3,7 +3,7 @@
  * 平面図の壁、基礎伏図の立上り、立面図の高さを、通り芯で位置を合わせて 1 つの建物にする。純粋関数。
  * 読み取れなかった項目は標準値で埋め、何を読めて何が標準値かを report に残す（使う人が確認できるように）。
  */
-import { DEFAULT_FLOOR_HEIGHT, DEFAULT_SLAB, OPENING_DEFAULTS, addFloor, addOpening, addWall, clearHeight, emptyBuilding, wallsOnFloor, type Building, type Vec2 } from '../building';
+import { DEFAULT_FLOOR_HEIGHT, DEFAULT_SLAB, OPENING_DEFAULTS, addFloor, addOpening, addWall, clearHeight, emptyBuilding, setWallsLocked, wallsOnFloor, type Building, type Vec2 } from '../building';
 import { withMember } from '../members';
 import { heavyWidth, detectStrips, WALL_STRIP, type StripOptions, type WSeg } from './strips';
 import { FIXTURE_CATALOG } from '../fixtures';
@@ -212,6 +212,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     const { t, specs } = al;
     if (al.shifted) check.push(`${n}階平面図: ${SHIFT_NOTE}`);
     for (const w of specs) b = addWall(b, f.floorId, w.a, w.b, { thickness: w.thickness, kind: w.kind }).b;
+    // 読み取った壁は、まちがって動かさないようロックする（直すときは壁を選んで 🔒 を外す）
+    b = setWallsLocked(b, wallsOnFloor(b, f.floorId).map((w) => w.id), true);
     const op = addOpenings(b, f.floorId, specs);
     b = op.b;
     const walls = wallsOnFloor(b, f.floorId);
@@ -233,6 +235,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (!r.grid) check.push(`${n}階平面図に通り芯（X1・Y1…）の文字が無いため、他の図面との位置合わせはしていません`);
   }
   if (Object.keys(b.walls).length) {
+    check.push('読み取った壁は、まちがって動かさないようロックしています（位置を直すときは壁を選んで「🔒 位置をロック」を外します）');
     check.push('外壁・内壁の区別は目安です。開口部は外壁なら窓・内壁ならドアとして標準の高さで入れています（玄関・掃き出し窓は選んで直してください）。斜めの壁・曲がった壁は読み取りません');
   }
 

@@ -193,6 +193,9 @@ describe('図面一式 → 建物（assemble）', () => {
     expect(r.plans).toHaveLength(1);
     expect(r.report.sheets.map((s) => s.used)).toEqual([true, true, true]);
     expect(r.report.found.join()).toContain('基礎の立上り 6 本');
+    // 読み取った壁は、まちがって動かさないようロック（2026-11-13）。保存しても残る
+    expect(walls.every((w) => w.locked === true)).toBe(true);
+    expect(buildingSchema.parse(b).walls[walls[0].id].locked).toBe(true);
   });
   it('床下の底（スラブ天端）を 基礎の高さ + 基礎伏図の印 で決める。印が無ければ標準値にして確かめてもらう', () => {
     const r = buildFromSheets([sheets()[0], { name: 'b', page: foundationSheet({ slab: '-350' }) }, sheets()[2]]);

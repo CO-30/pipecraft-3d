@@ -39,7 +39,7 @@ test('1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 
   expect(await state(page)).toEqual(before);
 });
 
-test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリーブが積算に入る。質問カードに答えられる', async ({ page }) => {
+test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る。質問カードに答えられる', async ({ page }) => {
   await freshApp(page);
   await createProject(page, 'スリーブ');
   const h = supplyHouse();
@@ -55,7 +55,10 @@ test('ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリー�
   await page.getByTestId('tab-parts').click();
   await expect(page.getByTestId('kiso-table')).toContainText('基礎貫通スリーブ（排水用）');
   await expect(page.getByTestId('kiso-table')).toContainText('KSA');
-  await expect(page.getByTestId('kiso-table')).toContainText('KSS');
+  // 給水・給湯は外で立ち上げて基礎を抜ける（コーキング）。給湯器はベンリカン、立上りは φ40 さや管（2026-11-13）
+  await expect(page.getByTestId('kiso-table')).toContainText('コーキング');
+  await expect(page.getByTestId('kiso-table')).toContainText('ベンリカン');
+  await expect(page.getByTestId('kiso-table')).toContainText('さや管');
   await page.screenshot({ path: evidence('autoconnect-03-kiso') });
   await page.getByTestId('tab-quote').click();
   await expect(page.getByTestId('quote-table')).toContainText('基礎貫通スリーブ');

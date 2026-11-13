@@ -28,7 +28,7 @@ import { solveDrain, unpinNode, type DrainIssue } from '../model/drainSolve';
 import { buildDrainTrees } from '../model/drainSolve/tree';
 import { resolveDrainRules, type DrainRuleSet } from '../model/drainRules';
 import { STANDARD_PROFILE } from '../model/municipality';
-import { deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
+import { changeFixtureType as changeFixtureTypeOf, deleteFixture, FIXTURE_CATALOG, isHeader, isManhole, moveFixture, placeFixture, syncAllFixturePorts, type FixtureParams, type FixtureType, type Rotation } from '../model/fixtures';
 import { floorIndexForZ, followFloors, tagNodeFloors } from '../model/pipeFloors';
 import { assignAutoMaterials } from '../model/materials';
 import * as B from '../model/building';
@@ -138,6 +138,8 @@ const isOutletNode = (doc: Doc, nodeId: string): boolean => {
 };
 const defaultSlopeFor = (diameter: number) => defaultSlope(diameter);
 const lockedCount = (net: Network) => Object.values(net.segments).filter((x) => x.slopeLocked).length;
+/** ロックした壁を動かそうとしたとき */
+export const WALL_LOCK_NOTICE = 'この壁は位置をロックしています（図面から読み取った壁）。動かす・消すときは、壁を選んで「🔒 位置をロック」を外してください';
 const UNLOCK_NOTICE = '勾配を保てない区間の固定を外しました（区間を選ぶと勾配を付け直せます）';
 
 export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {}, site: {} });
@@ -263,6 +265,8 @@ type State = {
   autoConnectAll(opts?: AutoConnectOpts): number;
   // 設備機器
   placeFixtureAt(p: Vec2): void;
+  /** 置いた器具の種類を変える（配管がつながっていれば変えずに知らせる） */
+  changeFixtureType(id: string, type: FixtureType): void;
   rotateFixture(id: string): void;
   setNodeHeight(nodeId: string, z: number): void;
   updateSegment(segId: string, patch: Partial<SegmentAttrs>): void;
@@ -375,6 +379,8 @@ type State = {
   addRoom(p: Vec2, q: Vec2): void;
   addOpening(wallId: string, type: OpeningType, offset: number): void;
   updateWall(wallId: string, patch: Partial<Pick<B.Wall, 'thickness' | 'kind'>>): void;
+  /** 壁の位置のロックを切り替える（図面から読み取った壁は最初からロック） */
+  setWallsLocked(wallIds: string[], locked: boolean): void;
   updateOpening(id: string, patch: Partial<Pick<B.Opening, 'offset' | 'width' | 'height' | 'sill'>>): void;
   renameRoom(id: string, name: string): void;
   /** p→q の直線で部屋を分割。withWall なら切断線に内壁も作る（1つの履歴） */
@@ -957,7 +963,16 @@ export const useStore = create<State>((set, get) => {
       const under = isUnderFloor(get());
       const mount = under && isHeader(fixtureType) ? Math.max(-1000, get().drawHeight - HEADER_PORT_DZ) : undefined;
       const r = placeFixture(doc, activeFloorId, fixtureType, p, 0, mount !== undefined ? { mountZ: mount } : undefined);
-      if (r.fixtureId) commit(r.doc, { selection: { kind: 'fixture', id: r.fixtureId }, ...(under && mount === undefined ? { notice: `${FIXTURE_CATALOG[fixtureType].label}は床の上に置きました（床下に置けるのはヘッダーです）` } : {}) });
+      if (!r.fixtureId) return;
+      // 置いたら選択（☝️）に戻す（まちがって次々に置かないように。続けて置くときは「器具」をもう一度押す）
+      const label = FIXTURE_CATALOG[fixtureType].label;
+      const msg = under && mount === undefined ? `${label}は床の上に置きました（床下に置けるのはヘッダーです）` : `${label}を置きました`;
+      commit(r.doc, { selection: { kind: 'fixture', id: r.fixtureId }, tool: 'select', notice: `${msg}（続けて置くときは「器具」をもう一度）` });
+    },
+    changeFixtureType: (id, type) => {
+      const next = changeFixtureTypeOf(get().doc, id, type);
+      if (!next) { set({ notice: '配管がつながっているため種類を変えられません（配管を外してから変えてください）' }); return; }
+      if (next !== get().doc) commit(next, { selection: { kind: 'fixture', id } });
     },
     rotateFixture: (id) => {
       const f = get().doc.fixtures[id];
@@ -1302,10 +1317,18 @@ export const useStore = create<State>((set, get) => {
       const next = target.type === 'node' ? mergeNodes(net, target.id, nodeId) : connectNodeToSegment(net, nodeId, target.id);
       if (next !== net) set({ doc: withNet(next), selection: null });
     },
-    dragCorner: (cornerId, p) => { if (get().dragBase) set({ doc: withBld(B.moveCorner(get().doc.building, cornerId, p)) }); },
+    dragCorner: (cornerId, p) => {
+      if (!get().dragBase) return;
+      const next = B.moveCorner(get().doc.building, cornerId, p);
+      if (B.lockedWallsMoved(get().doc.building, next)) { if (get().notice !== WALL_LOCK_NOTICE) set({ notice: WALL_LOCK_NOTICE }); return; }
+      set({ doc: withBld(next) });
+    },
     dragWall: (wallId, dx, dy) => {
       const base = get().dragBase;
-      if (base) set({ doc: { ...get().doc, building: B.moveWall(base.building, wallId, dx, dy) } });
+      if (!base) return;
+      const next = B.moveWall(base.building, wallId, dx, dy);
+      if (B.lockedWallsMoved(base.building, next)) { if (get().notice !== WALL_LOCK_NOTICE) set({ notice: WALL_LOCK_NOTICE }); return; }
+      set({ doc: { ...get().doc, building: next } });
     },
     cancelDrag: () => {
       const base = get().dragBase;
@@ -1342,6 +1365,7 @@ export const useStore = create<State>((set, get) => {
     },
     setOutlineLength: (wallId, mm, fixed, force = false) => {
       const r = applyOutlineLength(get().doc, wallId, mm, fixed, force);
+      if (r.ok && B.lockedWallsMoved(get().doc.building, r.doc.building)) { set({ notice: WALL_LOCK_NOTICE }); return { ok: false, error: WALL_LOCK_NOTICE }; }
       if (r.ok) commit(r.doc, { selection: { kind: 'wall', id: wallId } });
       return r;
     },
@@ -1391,6 +1415,8 @@ export const useStore = create<State>((set, get) => {
         ? bumpFace(b, el, r, what === 'bump' ? size : -size)
         : addFaceMember(b, el, what, r, size);
       if (!res.ok) return res.error;
+      // 押し込み・張り出しで、位置をロックした壁は動かさない
+      if ((what === 'bump' || what === 'setback') && (B.lockedWallsMoved(b, res.b) || Object.values(b.walls).some((w) => w.locked && !res.b.walls[w.id]))) return WALL_LOCK_NOTICE;
       let elevations = doc.elevations;
       if (what === 'bump' || what === 'setback') {
         // 立面の元の壁が分割・移動したら、立面をこの面の上の壁に付け替える（面の位置も合わせる）
@@ -1454,6 +1480,10 @@ export const useStore = create<State>((set, get) => {
       if (r.openingId) commit(withBld(r.b), { selection: { kind: 'opening', id: r.openingId } });
     },
     updateWall: (id, patch) => { commit(withBld(B.updateWall(get().doc.building, id, patch))); },
+    setWallsLocked: (ids, locked) => {
+      const next = B.setWallsLocked(get().doc.building, ids, locked);
+      if (next !== get().doc.building) commit(withBld(next));
+    },
     updateOpening: (id, patch) => { commit(withBld(B.updateOpening(get().doc.building, id, patch))); },
     renameRoom: (id, name) => { commit(withBld(B.renameRoom(get().doc.building, id, name))); },
     splitRoomAt: (roomId, p, q, withWall) => {
@@ -1505,7 +1535,10 @@ export const useStore = create<State>((set, get) => {
         // 自動で置いたマスを消したら、そこには自動で置き直さない
         if (f && isManhole(f.type) && f.params?.auto) next = { ...next, site: { ...(next.site ?? {}), manholeSuppressed: [...(next.site?.manholeSuppressed ?? []), { x: f.x, y: f.y }] } };
       }
-      else if (sel.kind === 'wall') next = withBld(B.deleteWall(building, sel.id));
+      else if (sel.kind === 'wall') {
+        if (building.walls[sel.id]?.locked) { set({ notice: WALL_LOCK_NOTICE }); return; }
+        next = withBld(B.deleteWall(building, sel.id));
+      }
       else if (sel.kind === 'opening') next = withBld(B.deleteOpening(building, sel.id));
       else if (sel.kind === 'room') next = withBld(B.deleteRoom(building, sel.id));
       else if (sel.kind === 'member') next = withBld(deleteMember(building, sel.id));

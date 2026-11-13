@@ -19,8 +19,8 @@ export type Floor = {
 };
 export type Corner = { id: string; floorId: string; x: number; y: number };
 export type WallKind = 'exterior' | 'interior';
-/** lengthSet: false = 手描きで寸法未確定（「?」表示）。省略は確定扱い */
-export type Wall = { id: string; floorId: string; a: string; b: string; thickness: number; kind: WallKind; lengthSet?: boolean };
+/** lengthSet: false = 手描きで寸法未確定（「?」表示）。省略は確定扱い。locked: 位置をロック（図面から読み取った壁。動かす・消す・長さを変えるをしない） */
+export type Wall = { id: string; floorId: string; a: string; b: string; thickness: number; kind: WallKind; lengthSet?: boolean; locked?: boolean };
 export type OpeningType = 'door' | 'window';
 export type Opening = {
   id: string;
@@ -330,6 +330,29 @@ export function moveWall(b: Building, wallId: string, dx: number, dy: number): B
   const affected = Object.values(b.walls).filter((x) => [w.a, w.b].includes(x.a) || [w.a, w.b].includes(x.b)).map((x) => x.id);
   if (!wallsOk(next, affected)) return b;
   return followRooms(unsetLengths(next, affected.filter((id) => id !== wallId)), [w.a, w.b].map((cid) => ({ floorId: w.floorId, from: b.corners[cid], to: corners[cid] }))) ?? b;
+}
+
+/** ロックした壁の角が、b0 から b1 で動いたか（壁を消す・分けるは別。消すのは画面の側で止める） */
+export function lockedWallsMoved(b0: Building, b1: Building): boolean {
+  if (b0 === b1 || b0.corners === b1.corners) return false;
+  return Object.values(b0.walls).some((w) => w.locked && [w.a, w.b].some((c) => {
+    const p = b0.corners[c], q = b1.corners[c];
+    return !!p && !!q && (p.x !== q.x || p.y !== q.y);
+  }));
+}
+
+/** 壁の位置のロックを切り替える */
+export function setWallsLocked(b: Building, ids: string[], locked: boolean): Building {
+  const walls = { ...b.walls };
+  let changed = false;
+  for (const id of ids) {
+    const w = walls[id];
+    if (!w || !!w.locked === locked) continue;
+    const { locked: _l, ...rest } = w;
+    walls[id] = locked ? { ...rest, locked: true } : rest;
+    changed = true;
+  }
+  return changed ? { ...b, walls } : b;
 }
 
 export function updateWall(b: Building, wallId: string, patch: Partial<Pick<Wall, 'thickness' | 'kind'>>): Building {
