@@ -4,8 +4,8 @@
       "/opt/node22/bin/node",
       "/home/claude/pipecraft-3d/node_modules/.bin/playwright",
       "test",
-      "e2e/zz-tmp-drain45.spec.ts",
-      "--project=pc-chrome"
+      "e2e/faucet.spec.ts",
+      "e2e/autoconnect.spec.ts"
     ],
     "configFile": "/home/claude/pipecraft-3d/playwright.config.ts",
     "rootDir": "/home/claude/pipecraft-3d/e2e",
@@ -107,6 +107,94 @@
         "dependencies": [],
         "ignoreSnapshots": false,
         "__projectId": "pc-chrome"
+      },
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/home/claude/pipecraft-3d/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "mobile-iphone-emu",
+        "testDir": "/home/claude/pipecraft-3d/e2e",
+        "snapshotDir": "/home/claude/pipecraft-3d/e2e",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://localhost:4173",
+          "channel": "chrome",
+          "screenshot": "only-on-failure",
+          "launchOptions": {
+            "args": [
+              "--use-gl=angle",
+              "--use-angle=swiftshader",
+              "--enable-unsafe-swiftshader"
+            ]
+          },
+          "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1",
+          "viewport": {
+            "width": 390,
+            "height": 664
+          },
+          "screen": {
+            "width": 390,
+            "height": 844
+          },
+          "deviceScaleFactor": 3,
+          "isMobile": true,
+          "hasTouch": true,
+          "defaultBrowserType": "chromium"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "mobile-iphone-emu"
+      },
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/home/claude/pipecraft-3d/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "mobile-android-emu",
+        "testDir": "/home/claude/pipecraft-3d/e2e",
+        "snapshotDir": "/home/claude/pipecraft-3d/e2e",
+        "testIgnore": [],
+        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
+        "timeout": 30000,
+        "use": {
+          "baseURL": "http://localhost:4173",
+          "channel": "chrome",
+          "screenshot": "only-on-failure",
+          "launchOptions": {
+            "args": [
+              "--use-gl=angle",
+              "--use-angle=swiftshader",
+              "--enable-unsafe-swiftshader"
+            ]
+          },
+          "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.8127.18 Mobile Safari/537.36",
+          "viewport": {
+            "width": 412,
+            "height": 839
+          },
+          "screen": {
+            "width": 412,
+            "height": 915
+          },
+          "deviceScaleFactor": 2.625,
+          "isMobile": true,
+          "hasTouch": true,
+          "defaultBrowserType": "chromium"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "mobile-android-emu"
       }
     ],
     "quiet": false,
@@ -141,13 +229,13 @@
   },
   "suites": [
     {
-      "title": "zz-tmp-drain45.spec.ts",
-      "file": "zz-tmp-drain45.spec.ts",
+      "title": "autoconnect.spec.ts",
+      "file": "autoconnect.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "shot",
+          "title": "1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 1 回で戻る",
           "ok": true,
           "tags": [],
           "tests": [
@@ -162,16 +250,58 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 16648,
+                  "duration": 6857,
                   "errors": [],
-                  "stdout": [
-                    {
-                      "text": "[{\"a\":{\"x\":1500,\"y\":5644,\"z\":-550},\"b\":{\"x\":1500,\"y\":6075,\"z\":-981},\"L\":431,\"dz\":431}]\n"
-                    }
-                  ],
+                  "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-11-13T04:35:25.832Z",
+                  "startTime": "2026-11-13T05:28:25.976Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6476,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:46.041Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6967,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:29:01.217Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -179,9 +309,257 @@
               "status": "expected"
             }
           ],
-          "id": "b19f545aa461112b6f42-d350d6d31ad9b366d274",
-          "file": "zz-tmp-drain45.spec.ts",
-          "line": 6,
+          "id": "1ebec89ca25a15ed94e0-2cfbaac0511ef9086187",
+          "file": "autoconnect.spec.ts",
+          "line": 16,
+          "column": 1
+        },
+        {
+          "title": "ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る。質問カードに答えられる",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6780,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:33.066Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2667,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:52.741Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2812,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:29:08.412Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1ebec89ca25a15ed94e0-385f6bccb9e8ea23b943",
+          "file": "autoconnect.spec.ts",
+          "line": 42,
+          "column": 1
+        },
+        {
+          "title": "ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2426,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:39.896Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2260,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:55.433Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2602,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:29:11.265Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "1ebec89ca25a15ed94e0-7661a8e1fc89cf405b17",
+          "file": "autoconnect.spec.ts",
+          "line": 67,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "faucet.spec.ts",
+      "file": "faucet.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "水栓を置いて給水管をつなぐ → ネジ継手・シールテープ・接着剤が積算に入り、部材図PDFを保存",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "pc-chrome",
+              "projectName": "pc-chrome",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3193,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:42.355Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-iphone-emu",
+              "projectName": "mobile-iphone-emu",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2966,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:28:57.735Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            },
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "mobile-android-emu",
+              "projectName": "mobile-android-emu",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3088,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-11-13T05:29:13.888Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6e36aa866a8388685401-5781e5036151764c8127",
+          "file": "faucet.spec.ts",
+          "line": 8,
           "column": 1
         }
       ]
@@ -189,9 +567,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-13T04:35:19.376Z",
-    "duration": 23473.351,
-    "expected": 1,
+    "startTime": "2026-11-13T05:28:19.627Z",
+    "duration": 57476.957,
+    "expected": 12,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
