@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildFromSheets } from '../model/planRead/assemble';
 import { elevationSheet, foundationSheet, planSheet, siteSheet } from '../model/planRead/testHouse';
+import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
+import { resolveProfile } from '../model/municipality';
 import { designFromReading } from './design';
 
 describe('読み取り結果から自動で配管をつなぐ（数量の照合の「自動」側）', () => {
@@ -13,5 +15,11 @@ describe('読み取り結果から自動で配管をつなぐ（数量の照合�
     const pipes = d.summary.sections.flatMap((s) => s.items).filter((i) => i.kind === 'pipe');
     expect(pipes.length).toBeGreaterThan(0);
     expect(pipes.every((p) => p.total > 0)).toBe(true);
+  });
+  it('画面の「まとめてつなぐ」と同じ決まり（標準の自治体の土かぶり・勾配、埋設深さ）でつなぐ', () => {
+    const r = buildFromSheets([{ name: 'p', page: planSheet() }]);
+    const d = designFromReading(r);
+    expect(d.rules.burial).toBe(resolveSupplyRules({}).burial.v);
+    expect(d.rules.cover).toBe(resolveProfile(undefined, []).profileTable.minCover);
   });
 });

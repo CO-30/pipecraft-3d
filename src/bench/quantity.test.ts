@@ -15,6 +15,11 @@ describe('品目の合わせ方（qtyKey）', () => {
     expect(qtyKey('給水管', 'PB保温10mm φ13', 'm')).toBe(qtyKey('PB', '13', 'm'));
     expect(qtyKey('給水管', 'PB保温5mm φ20', 'm')).not.toBe(qtyKey('給水管', 'PB保温5mm φ13', 'm'));
   });
+  it('管種は語として合わせる（「PEX」「CHIP」を PE・HI にしない）', () => {
+    expect(qtyKey('架橋ポリエチレン管', 'PEX φ13', 'm')).not.toBe(qtyKey('PE', '13', 'm'));
+    expect(qtyKey('HI', '20', 'm')).not.toBe(qtyKey('HIVP', '20', 'm'));
+    expect(qtyKey('VP40 L=4m', '', 'm')).toBe(qtyKey('VP', 'φ40', 'm'));
+  });
   it('継手・部品は名前と口径。全角・空白の違いは無視', () => {
     expect(qtyKey('エルボ', '給水 HIVP φ20', '個')).toBe(qtyKey('ｴﾙﾎﾞ', 'HIVP 20', '個'));
     expect(qtyKey('止水栓', '', '個')).toBe(qtyKey('止水栓', '', '個'));
@@ -38,9 +43,16 @@ describe('数量の照合（compareQuantities）', () => {
       { label: 'エルボ（給水 HIVP φ20）', unit: '個', design: 3, actual: null, diff: null, rate: null },
     ]);
   });
-  it('表（Markdown）: 合う品目の誤差（率の絶対値の平均）を見出しに', () => {
-    const md = formatQuantities([{ label: 'HIVP 20', unit: 'm', design: 12, actual: 10, diff: 2, rate: 0.2 }, { label: 'x', unit: '個', design: 1, actual: null, diff: null, rate: null }]);
-    expect(md).toContain('数量の誤差（平均）20.0%');
+  it('表（Markdown）: 管は長さの合計で見た誤差、部品は品目ごとの誤差の平均、実際に無い品目の数を見出しに', () => {
+    const md = formatQuantities([
+      { label: 'HIVP 20', unit: 'm', design: 12, actual: 10, diff: 2, rate: 0.2 },
+      { label: 'VU 100', unit: 'm', design: 25, actual: 30, diff: -5, rate: -0.167 },
+      { label: '止水栓', unit: '個', design: 3, actual: 4, diff: -1, rate: -0.25 },
+      { label: 'x', unit: '個', design: 1, actual: null, diff: null, rate: null },
+    ]);
+    expect(md).toContain('管の長さの誤差 17.5%（差の合計 7m ÷ 実際 40m）');
+    expect(md).toContain('部品・器具の数の誤差（平均）25.0%');
+    expect(md).toContain('実際の数量に無い品目 1');
     expect(md).toContain('| HIVP 20 | m | 12 | 10 | +2 | +20.0% |');
     expect(md).toContain('| x | 個 | 1 | — | — | — |');
   });

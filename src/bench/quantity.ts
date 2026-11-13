@@ -7,8 +7,8 @@ import type { Truth } from './truth';
 
 export type QtyRow = { label: string; unit: string; design: number; actual: number | null; diff: number | null; rate: number | null };
 
-/** 管種（長い名前を先に） */
-const MATERIALS = ['HIVP', 'HTVP', 'VU', 'VP', 'PB', 'SGP', 'PE', 'SUS', 'HI'];
+/** 管種（語として。「PEX」「CHIP」を PE・HI にしない）。長い名前を先に */
+const MATERIAL_RE = /(?<![A-Z])(HIVP|HTVP|VU|VP|PB|SGP|PE|SUS|HI)(?![A-Z])/;
 const norm = (s: string) => s.normalize('NFKC').toUpperCase().replace(/\s+/g, '');
 const nums = (s: string) => (s.normalize('NFKC').match(/\d+(?:\.\d+)?/g) ?? []);
 /** 口径: φ の後ろの数字があればそれ（「PB保温10mm φ13」→ 13）、無ければ最初の数字 */
@@ -17,8 +17,8 @@ const dias = (s: string) => { const f = s.normalize('NFKC').match(/[φΦ]\s*\d+(
 function parse(name: string, spec: string, unit: string): { key: string; label: string } {
   const all = norm(`${name} ${spec}`);
   if (unit === 'm') {
-    const mat = MATERIALS.find((m) => all.includes(m)) ?? norm(name);
-    const d = dias(spec)[0] ?? nums(name)[0] ?? '';
+    const mat = MATERIAL_RE.exec(all)?.[1] ?? norm(name).replace(/\d.*$/, '');
+    const d = dias(spec)[0] ?? dias(name)[0] ?? '';
     return { key: `m|${mat}|${d}`, label: `${mat} ${d}`.trim() };
   }
   const word = norm(name).replace(/\d+/g, '');
@@ -54,10 +54,19 @@ export function compareQuantities(actual: NonNullable<Truth['quantities']>, desi
 const sign = (v: number, f: (x: number) => string) => `${v > 0 ? '+' : ''}${f(v)}`;
 
 export function formatQuantities(rows: QtyRow[]): string {
-  const rated = rows.filter((r) => r.rate !== null);
-  const avg = rated.length ? rated.reduce((s, r) => s + Math.abs(r.rate!), 0) / rated.length : null;
+  // 管: 長さの合計で見た誤差（短い管の大きな率に引っぱられない）。部品・器具: 品目ごとの率の平均。実際の数量に無い品目（自動が足した物）は数を出す
+  const pipes = rows.filter((r) => r.unit === 'm' && r.actual !== null);
+  const sumAct = pipes.reduce((s, r) => s + r.actual!, 0), sumDiff = pipes.reduce((s, r) => s + Math.abs(r.diff!), 0);
+  const parts = rows.filter((r) => r.unit !== 'm' && r.rate !== null);
+  const partAvg = parts.length ? parts.reduce((s, r) => s + Math.abs(r.rate!), 0) / parts.length : null;
+  const extra = rows.filter((r) => r.actual === null).length;
+  const head = [
+    sumAct ? `管の長さの誤差 ${(sumDiff / sumAct * 100).toFixed(1)}%（差の合計 ${round(sumDiff)}m ÷ 実際 ${round(sumAct)}m）` : '',
+    partAvg === null ? '' : `部品・器具の数の誤差（平均）${(partAvg * 100).toFixed(1)}%`,
+    extra ? `実際の数量に無い品目 ${extra}` : '',
+  ].filter(Boolean).join('・');
   return [
-    `### 数量の照合（自動でつないだ配管 ↔ 実際）${avg === null ? '' : ` 数量の誤差（平均）${(avg * 100).toFixed(1)}%`}`,
+    `### 数量の照合（自動でつないだ配管 ↔ 実際）${head ? ` ${head}` : ''}`,
     '',
     '| 品目 | 単位 | 自動 | 実際 | 差 | 率 |',
     '|---|---|---|---|---|---|',
