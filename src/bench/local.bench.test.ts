@@ -12,9 +12,11 @@ import { describe, expect, it } from 'vitest';
 import { readPlanInputs } from '../import/planSet';
 import { parseProject } from '../storage/repository';
 import { buildFromSheets } from '../model/planRead/assemble';
+import { designFromReading } from './design';
 import { evaluate } from './evaluate';
 import { truthFromDoc } from './fromDoc';
 import { readingOf } from './reading';
+import { compareQuantities, formatQuantities } from './quantity';
 import { formatScore } from './report';
 import { parseTruth } from './truth';
 
@@ -35,7 +37,10 @@ describe.skipIf(!dir)('実物の図面で精度を測る（BENCH_DIR）', () => 
         .map((n) => { const b = readFileSync(join(dir!, c, n)); return { name: n, data: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer }; });
       try {
         const { inputs } = await readPlanInputs(files, pdfjs);
-        out.push(formatScore(truth, evaluate(readingOf(buildFromSheets(inputs), inputs), truth)));
+        const res = buildFromSheets(inputs);
+        out.push(formatScore(truth, evaluate(readingOf(res, inputs), truth)));
+        // 実際の数量があれば、読み取り結果から自動でつないだ配管の材料と比べる
+        if (truth.quantities?.length) out.push(formatQuantities(compareQuantities(truth.quantities, designFromReading(res).summary)));
       } catch (e) {
         out.push(`## ${truth.id}\n\n読み取りに失敗: ${(e as Error).message}\n`);
       }
