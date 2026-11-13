@@ -239,6 +239,12 @@ describe('図面一式 → 建物（assemble）', () => {
     expect(() => buildFromSheets([sheets()[2]])).toThrow(/平面図が見つかりません/);
     const scan = { name: '1階平面図', page: { ...planSheet(), segs: [] } };
     expect(() => buildFromSheets([scan])).toThrow(/スキャン/);
+    // 代わりの道（下に敷いてなぞる）を案内する
+    expect(() => buildFromSheets([scan])).toThrow(/「図面を取り込む」/);
+    // 画像だけの PDF（文字も線も無い。図面の種類も分からない）も、スキャンと分かる文で
+    expect(() => buildFromSheets([{ name: 'scan001', page: { widthPt: 1191, heightPt: 842, segs: [], texts: [] } }])).toThrow(/スキャン.*「図面を取り込む」/);
+    // 文字が線（アウトライン）になった PDF: 線はあるが文字が無いので、種類も縮尺も分からない
+    expect(() => buildFromSheets([{ name: 'p1', page: { ...planSheet(), texts: [] } }])).toThrow(/文字が線になっている.*「図面を取り込む」/);
     expect(() => buildFromSheets([])).toThrow(PlanReadError);
   });
   it('通り芯の無い平面図も壁は読める（位置合わせ無しと知らせる）。文字が無ければファイル名で見分ける', () => {

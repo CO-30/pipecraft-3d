@@ -10,7 +10,8 @@
     "preview": "vite preview --host",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:pwa": "playwright test -c playwright.pwa.config.ts"
+    "test:pwa": "playwright test -c playwright.pwa.config.ts",
+    "bench": "node -e \"process.env.BENCH_DIR=require('path').resolve(process.argv[1]||'bench-data');require('child_process').execSync('npx vitest run src/bench/local.bench.test.ts',{stdio:'inherit',env:process.env})\""
   },
   "dependencies": {
     "@pdf-lib/fontkit": "1.1.1",

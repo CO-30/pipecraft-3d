@@ -457,3 +457,8 @@ header .lbl { margin-left: 2px; }
 .question-card .qc-options { display: flex; flex-direction: column; gap: 6px; }
 .question-card .qc-options button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; min-height: 44px; padding: 8px 10px; }
 .question-card .qc-later { align-self: flex-end; background: transparent; border: 0; color: #6b7280; text-decoration: underline; min-height: 32px; }
+
+/* 読み取り結果の確からしさ（ImportReportDialog） */
+.import-report .ir-summary { background: #fef3c7; border-left: 4px solid #d97706; padding: 6px 10px; border-radius: 6px; font-weight: 600; color: #78350f; }
+.import-report .warn li.lv-low { color: #b91c1c; font-weight: 600; }
+.import-report .warn li.lv-info { color: #475569; }
