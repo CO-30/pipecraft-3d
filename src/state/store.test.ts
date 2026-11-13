@@ -715,7 +715,8 @@ describe('落差桝', () => {
     s().updateSite({ designGL: -100 });
     const place = (type: 'manholeSewage' | 'publicSewage', x: number) => { s().setFixtureType(type); s().placeFixtureAt({ x, y: 0 }); return Object.values(s().doc.fixtures).filter((f) => f.type === type).pop()!.id; };
     const port = (fid: string) => Object.values(s().doc.network.nodes).find((n) => n.fixtureId === fid)!;
-    const m1 = place('manholeSewage', 0); s().updateFixtureParams(m1, { invertZ: -700 });
+    // 上流のマスは公共ますまでの勾配が強すぎない高さ（強すぎると自動でドロップが付く）
+    const m1 = place('manholeSewage', 0); s().updateFixtureParams(m1, { invertZ: -800 });
     const m2 = place('publicSewage', 5000); s().updateFixtureParams(m2, { invertZ: -900 });
     s().setDrawAttrs({ system: 'sewage', diameter: 100 });
     s().drawPolyline([port(m1).pos, { x: 2500, y: 0, z: -800 }, port(m2).pos], { startNodeId: port(m1).id, endNodeId: port(m2).id });

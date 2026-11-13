@@ -242,7 +242,7 @@ describe('排水のつなぎ案（drainRoute）', () => {
       else expect(Math.hypot(a.x - c.x, a.y - c.y)).toBeLessThan(4200); // 外へ出る区間は 1 つの壁を越えるだけ
     }
   });
-  it('内部の立上りは人通口を通って避ける（貫通は外周の 1 か所だけ）', () => {
+  it('内部の立上りは、人通口へ回らず貫通パイプでまっすぐ抜ける（2026-11-13: 迂回は極力しない）', () => {
     // 中央に立上りで囲まれた区画（x 2000〜5280・y 1000〜4460）。西の辺だけ y 2500〜3100 が人通口
     let doc = house([]);
     const f1 = doc.building.floors[0].id;
@@ -254,9 +254,10 @@ describe('排水のつなぎ案（drainRoute）', () => {
     doc = { ...doc, building: b };
     doc = dropFixturePipes(placeFixture(doc, f1, 'washer', { x: 4000, y: 1500 }).doc).doc;
     const r = routeDrainsOut(doc);
-    expect(r).toMatchObject({ pipes: 1, manholes: 1, skipped: 0, sleeves: 1 });
+    expect(r).toMatchObject({ pipes: 1, manholes: 1, skipped: 0 });
+    expect(r.sleeves).toBeGreaterThan(1);
     expect(validateNetwork(r.doc.network)).toEqual([]);
-    // 床下の水平な配管は、外周の立上りより内側では、どの内部の立上りも横切らない
+    // 床下の水平な配管は、内部の立上りを横切る（人通口へ回り込まない）
     const net = r.doc.network;
     const inner = membersOf(r.doc.building).filter((m) => m.kind === 'footing' && m.a.x > 100 && m.a.x < 7180 && m.b.x > 100 && m.b.x < 7180 && m.a.y > 100 && m.a.y < D - 100 && m.b.y > 100 && m.b.y < D - 100);
     const cross = (p: { x: number; y: number }, q: { x: number; y: number }, a: { x: number; y: number }, c: { x: number; y: number }) => {
@@ -267,8 +268,10 @@ describe('排水のつなぎ案（drainRoute）', () => {
     };
     // 床下の横の配管（勾配つき。立て管を除く）
     const flat = Object.values(net.segments).filter((s) => { const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos, L = Math.hypot(a.x - b.x, a.y - b.y); return s.system === 'drain' && L >= 1 && Math.abs(a.z - b.z) < L * 0.1; });
-    expect(flat.length).toBeGreaterThan(1);
-    for (const s of flat) for (const m of inner) expect(cross(net.nodes[s.a].pos, net.nodes[s.b].pos, m.a, m.b)).toBe(false);
+    expect(flat.length).toBeGreaterThan(0);
+    expect(flat.some((s) => inner.some((m) => cross(net.nodes[s.a].pos, net.nodes[s.b].pos, m.a, m.b)))).toBe(true);
+    // 人通口（x 2000・y 2500〜3100）は通らない
+    expect(flat.every((s) => !([s.a, s.b].some((id) => { const q = net.nodes[id].pos; return Math.abs(q.x - 2000) < 200 && q.y > 2400 && q.y < 3200; })))).toBe(true);
   });
   it('先の配管が外周の壁ぎわから出ていても、その点へ合流する（飛ばさない・重ねない）', () => {
     let doc = house([['toilet', 1000, 4200]]);

@@ -45,8 +45,11 @@ describe('排水の検査（checkDrain）', () => {
     expect(kinds(fixFirst(doc, 'minSlope'))).not.toContain('minSlope');
   });
 
-  it('急すぎる → maxSlope。固定を外すと消える。下流がマスなら落差ますの候補', () => {
-    const { doc } = pinned(-2500, -600);
+  it('急すぎる所は自動でドロップにするので maxSlope は出ない。手で固定した急な勾配 → maxSlope。固定を外すと消える。下流がマスなら落差ますの候補', () => {
+    expect(kinds(pinned(-2500, -600).doc)).not.toContain('maxSlope');
+    const p = pinned(-2500, -600);
+    const { zPin: _z, ...free } = p.doc.network.nodes[p.B];
+    const doc = { ...p.doc, network: { nodes: { ...p.doc.network.nodes, [p.B]: free }, segments: { ...p.doc.network.segments, [p.seg]: { ...p.doc.network.segments[p.seg], slope: 0.19, slopePin: true } } } };
     expect(kinds(doc)).toContain('maxSlope');
     expect(kinds(fixFirst(doc, 'maxSlope'))).not.toContain('maxSlope');
     // 下流がマス: 公共ます → マス（5m）→ 固定点（5m 上流、マスより 1000 高い）
@@ -57,9 +60,10 @@ describe('排水の検査（checkDrain）', () => {
     const b = addPolyline(a.net, [m.doc.network.nodes[mh].pos, v(-700, 3000, -1200)], S, { startNodeId: mh });
     const B = b.nodeIds[1];
     const doc2 = { ...m.doc, network: { ...b.net, nodes: { ...b.net.nodes, [B]: { ...b.net.nodes[B], zPin: true } } } };
-    const fix = run(doc2).issues.filter((i) => i.kind === 'maxSlope').flatMap((i) => i.fixes).find((f) => f.label.includes('落差ます'))!;
-    expect(fix).toBeDefined();
-    expect(kinds(fix.apply(run(doc2).doc))).not.toContain('maxSlope');
+    // 下流がマスなら、そのマスが自動でドロップ（落差ます）になり、急な勾配は出ない
+    const r2 = run(doc2);
+    expect(r2.issues.map((i) => i.kind)).not.toContain('maxSlope');
+    expect(r2.doc.network.nodes[mh].dropIn).toBeGreaterThan(500);
   });
 
   it('土かぶりが足りない（公共ますが浅い）→ cover と「勾配を緩める」', () => {

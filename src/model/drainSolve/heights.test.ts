@@ -59,12 +59,14 @@ describe('高さの計算（solveHeights）', () => {
     expect(out.segSlopes[r.segmentIds[0]]).toBeCloseTo(0.001, 6);
   });
 
-  it('急すぎ: 公共ます −2500・固定 −600 の 10m は 19/100 を割り振る（検査で知らせる）', () => {
+  it('急すぎ: 公共ます −2500・固定 −600 の 10m は 19/100 にせず、標準の勾配で公共ますへ入る所をドロップ（2026-11-13）', () => {
     const { doc, pub } = site(-2500);
     const r = addPolyline(doc.network, [doc.network.nodes[pub].pos, v(-700, 3000, -600)], S, { startNodeId: pub });
     const B = r.nodeIds[1];
     const net = { ...r.net, nodes: { ...r.net.nodes, [B]: { ...r.net.nodes[B], zPin: true } } };
-    expect(solveHeights({ ...doc, network: net }, NAHA).segSlopes[r.segmentIds[0]]).toBeCloseTo(0.19, 6);
+    const out = solveHeights({ ...doc, network: net }, NAHA);
+    expect(out.segSlopes[r.segmentIds[0]]).toBeCloseTo(NAHA.defaultSlope(100), 6);
+    expect(out.doc.network.nodes[pub].dropIn).toBeGreaterThan(1000);
   });
 
   it('手で固定した勾配（3/100）は変えない', () => {

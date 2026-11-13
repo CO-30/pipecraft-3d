@@ -715,7 +715,12 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     }
   }
 
-  // 止水栓: つないだ器具の給水・給湯と給湯器の入口の、口のすぐ先（150mm、短ければ半分）
+  // ヘッダーの手前（外から入ってきた給水・給湯の、ヘッダーの入口のすぐ先）にも必ず止水栓（ユーザーの施工 2026-11-13）
+  for (const f of headerFixtures()) {
+    const inNode = nodeOf(f.id, 'in');
+    if (inNode && segmentsAt(cur.network, inNode.id).length === 1) valvePorts.push(inNode.id);
+  }
+  // 止水栓: つないだ器具の給水・給湯と給湯器の入口・ヘッダーの入口の、口のすぐ先（150mm、短ければ半分）
   for (const pid of valvePorts) {
     const port = cur.network.nodes[pid];
     const seg = port && segmentsAt(cur.network, pid)[0];
