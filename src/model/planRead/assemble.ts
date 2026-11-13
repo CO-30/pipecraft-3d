@@ -24,7 +24,10 @@ export type ImportReport = {
   found: string[];
   /** 標準値で埋めた・読めなかったこと（確認してほしいこと） */
   check: string[];
+  /** check と同じ順の確からしさ: low = 読めなかった（人が入れる・直す）、mid = 推定・標準値・目安、info = お知らせ。無い・足りない所は mid */
+  levels?: CheckLevel[];
 };
+export type CheckLevel = 'low' | 'mid' | 'info';
 /** 下敷きにする平面図: sheets の番号と、紙の座標 → 図面座標の変換 */
 export type PlanPlacement = { index: number; floorId: string; toWorld: ToWorld; scale: number; /** 配置図（下に薄く敷く） */ site?: boolean };
 /** 配置図から読んだもの（図面座標 mm）。levels: 敷地の高さ（設計 GL からの mm）、bm: BM から GL±0 までの高さ(mm) */
@@ -167,7 +170,9 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     return { index, name: s.name, page: s.page, kind: c.kind, floor: c.floor, floors: c.floors, roof: c.roof, title: c.title, grid, scale: sheetScale(s.page.texts, grid) };
   });
   const sheets: SheetReport[] = reads.map((r) => ({ name: r.name, kind: r.kind, label: SHEET_LABEL[r.kind], used: false, note: '' }));
-  const found: string[] = [], check: string[] = [];
+  const found: string[] = [], check: string[] = [], levels: CheckLevel[] = [];
+  /** 確かめてほしいことを足す（level: 確からしさ） */
+  const ask = (text: string, level: CheckLevel = 'mid') => { check.push(text); levels.push(level); };
   const note = (r: Read, used: boolean, text: string) => { sheets[r.index] = { ...sheets[r.index], used, note: text }; };
 
   const vector = (r: Read) => r.page.segs.length >= MIN_SEGS;
@@ -235,14 +240,14 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     const f = addFloor(b, { height, slabThickness: DEFAULT_SLAB });
     b = f.b;
     if (height === fromDrawing) found.push(`${n}階の高さ ${mm(height)}mm（立面図）`);
-    else check.push(`${n}階の高さは立面図から読めなかったので ${mm(height)}mm にしています（「階の設定」で直せます）`);
+    else ask(`${n}階の高さは立面図から読めなかったので ${mm(height)}mm にしています（「階の設定」で直せます）`);
     const r = byFloor.get(n);
-    if (!r) { check.push(`${n}階の平面図がありません（壁は空です）`); continue; }
+    if (!r) { ask(`${n}階の平面図がありません（壁は空です）`, 'low'); continue; }
     // 同じ図面を複数の階に使うとき（2～4階平面図）は 1 回だけ読む
     const al = r === first ? { t: firstT, specs: refWalls, shifted: false } : aligned.has(r) ? aligned.get(r)! : aligned.set(r, r.grid && base ? alignedWalls(r.page, r.grid, base, refWalls, strip) : null).get(r)!;
-    if (!al) { note(r, false, '1階の平面図と共通の通り芯（X1・Y1 など）が無く、位置を合わせられませんでした'); check.push(`${n}階の壁は読み取れていません`); continue; }
+    if (!al) { note(r, false, '1階の平面図と共通の通り芯（X1・Y1 など）が無く、位置を合わせられませんでした'); ask(`${n}階の壁は読み取れていません`, 'low'); continue; }
     const { t, specs } = al;
-    if (al.shifted) check.push(`${n}階平面図: ${SHIFT_NOTE}`);
+    if (al.shifted) ask(`${n}階平面図: ${SHIFT_NOTE}`);
     for (const w of specs) b = addWall(b, f.floorId, w.a, w.b, { thickness: w.thickness, kind: w.kind }).b;
     // 読み取った壁は、まちがって動かさないようロックする（直すときは壁を選んで 🔒 を外す）
     b = setWallsLocked(b, wallsOnFloor(b, f.floorId).map((w) => w.id), true);
@@ -262,13 +267,13 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     fixtures.push(...cands.filter((c) => n === floors[0] || (c.type !== 'outdoorFaucet' && c.type !== 'waterHeater')).map((c) => ({ ...c, floorId: f.floorId })));
     note(r, true, walls.length ? `壁 ${walls.length} 本（延べ ${(total / 1000).toFixed(1)}m）・開口部 ${op.count} か所` : '壁の線を見つけられませんでした');
     if (walls.length) found.push(`${n}階の壁 ${walls.length} 本・開口部 ${op.count} か所（1/${r.scale!.scale}${r.grid ? '、通り芯で位置合わせ' : ''}）`);
-    else check.push(`${n}階の壁を読み取れませんでした。図面を下に敷いてあるので、なぞって描いてください`);
-    if (r.scale!.guessed) check.push(`${n}階平面図の縮尺は通り芯の間隔から 1/${r.scale!.scale} と推定しました。壁の長さを 1 か所確かめてください`);
-    if (!r.grid) check.push(`${n}階平面図に通り芯（X1・Y1…）の文字が無いため、他の図面との位置合わせはしていません`);
+    else ask(`${n}階の壁を読み取れませんでした。図面を下に敷いてあるので、なぞって描いてください`, 'low');
+    if (r.scale!.guessed) ask(`${n}階平面図の縮尺は通り芯の間隔から 1/${r.scale!.scale} と推定しました。壁の長さを 1 か所確かめてください`);
+    if (!r.grid) ask(`${n}階平面図に通り芯（X1・Y1…）の文字が無いため、他の図面との位置合わせはしていません`);
   }
   if (Object.keys(b.walls).length) {
-    check.push('読み取った壁は、まちがって動かさないようロックしています（位置を直すときは壁を選んで「🔒 位置をロック」を外します）');
-    check.push('外壁・内壁の区別は目安です。開口部は外壁なら窓・内壁ならドアとして標準の高さで入れています（玄関・掃き出し窓は選んで直してください）。斜めの壁・曲がった壁は読み取りません');
+    ask('読み取った壁は、まちがって動かさないようロックしています（位置を直すときは壁を選んで「🔒 位置をロック」を外します）', 'info');
+    ask('外壁・内壁の区別は目安です。開口部は外壁なら窓・内壁ならドアとして標準の高さで入れています（玄関・掃き出し窓は選んで直してください）。斜めの壁・曲がった壁は読み取りません');
   }
 
   // 器具の候補の数（配置図を読んだあと、配置図で置いた物と重なる候補を除いて数え直す）
@@ -286,9 +291,9 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   for (const r of reads.filter((x) => x.kind === 'foundation')) {
     if (!vector(r)) { note(r, false, '線のデータが入っていません'); continue; }
     const al = r.grid && base ? alignedWalls(r.page, r.grid, base, refWalls, FOOTING_STRIP) : null;
-    if (!al) { note(r, false, '平面図と共通の通り芯が無く、位置を合わせられませんでした'); check.push('基礎伏図は位置を合わせられなかったため、基礎は入っていません'); continue; }
+    if (!al) { note(r, false, '平面図と共通の通り芯が無く、位置を合わせられませんでした'); ask('基礎伏図は位置を合わせられなかったため、基礎は入っていません', 'low'); continue; }
     const { specs } = al;
-    if (al.shifted) check.push(`基礎伏図: ${SHIFT_NOTE}`);
+    if (al.shifted) ask(`基礎伏図: ${SHIFT_NOTE}`);
     const z0 = -(gl ?? DEFAULT_GL_TO_FL);
     const top = heights.footingTop && heights.footingTop < (gl ?? DEFAULT_GL_TO_FL) ? heights.footingTop : Math.min(DEFAULT_FOOTING_TOP, (gl ?? DEFAULT_GL_TO_FL) - 50);
     let n = 0;
@@ -305,8 +310,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     note(r, n > 0, n ? `基礎の立上り ${n} 本` : '立上りの線を見つけられませんでした');
     if (n) {
       found.push(`基礎の立上り ${n} 本（GL〜GL+${mm(top)}mm）`);
-      if (gl === undefined) check.push(`GL の高さが立面図から読めなかったので、1階の床を GL+${DEFAULT_GL_TO_FL}mm として基礎を置いています`);
-      if (!heights.footingTop) check.push(`基礎の高さは読めなかったので GL+${mm(top)}mm にしています`);
+      if (gl === undefined) ask(`GL の高さが立面図から読めなかったので、1階の床を GL+${DEFAULT_GL_TO_FL}mm として基礎を置いています`);
+      if (!heights.footingTop) ask(`基礎の高さは読めなかったので GL+${mm(top)}mm にしています`);
       // 床下の底: 区画の「基礎天端 −350」の印（スラブ天端は基礎天端のその分下）。床下の配管はこの上〜基礎天端の間を通る
       const off = readSlabOffset(r.page.texts);
       const raw = top + (off ?? -DEFAULT_SLAB_BELOW_FOOTING);
@@ -314,10 +319,10 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
       b = { ...b, foundation: { slabTop: z0 + slabGL } };
       const minus = (v: number) => `−${-v}`;
       if (off !== undefined) found.push(`床下の底（基礎のスラブの上）は GL+${mm(slabGL)}mm（基礎伏図の「基礎天端 ${minus(off)}」）。1階の床まで ${mm(-(z0 + slabGL))}mm`);
-      else check.push(`床下の底（基礎のスラブの上）は読めなかったので GL+${mm(slabGL)}mm（基礎天端の ${DEFAULT_SLAB_BELOW_FOOTING}mm 下）にしています`);
+      else ask(`床下の底（基礎のスラブの上）は読めなかったので GL+${mm(slabGL)}mm（基礎天端の ${DEFAULT_SLAB_BELOW_FOOTING}mm 下）にしています`);
       const kinds = [...new Set(slabMarks(r.page.texts))];
-      if (kinds.length > 1) check.push(`基礎伏図のスラブの高さの印が区画で違います（${kinds.map(minus).join('・')}）。いちばん多い ${minus(off!)} にしています。区画ごとの違い（玄関・浴室の下など）は入っていません`);
-      if (raw < 0) check.push(`床下の底が GL より下になる値だったので、GL+0 にしています（基礎の高さ・スラブの印を確かめてください）`);
+      if (kinds.length > 1) ask(`基礎伏図のスラブの高さの印が区画で違います（${kinds.map(minus).join('・')}）。いちばん多い ${minus(off!)} にしています。区画ごとの違い（玄関・浴室の下など）は入っていません`);
+      if (raw < 0) ask(`床下の底が GL より下になる値だったので、GL+0 にしています（基礎の高さ・スラブの印を確かめてください）`);
     }
   }
   // 配置図: 家の外形（1 階の外壁）で位置を合わせ、ます・メーター・敷地の高さを読む
@@ -327,7 +332,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     const ref = wallsOnFloor(b, floor1).filter((w) => w.kind === 'exterior').map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], t: w.thickness }));
     const scale = r.scale?.scale ?? 100;
     const t = alignSite(r.page, PT_TO_MM * scale, ref);
-    if (!t) { note(r, false, '家の外形と重ならず、位置を合わせられませんでした'); check.push('配置図は家の外形と重ならず、位置を合わせられませんでした（ます・メーター・敷地の高さは入っていません）'); continue; }
+    if (!t) { note(r, false, '家の外形と重ならず、位置を合わせられませんでした'); ask('配置図は家の外形と重ならず、位置を合わせられませんでした（ます・メーター・敷地の高さは入っていません）', 'low'); continue; }
     const sr = readSite(r.page);
     const at = (p: Vec2) => ({ x: Math.round(toWorldX(t, p.x)), y: Math.round(toWorldY(t, p.y)) });
     // 1 階の床より高い高さは、隣地・擁壁の高さとみて使わない（家のすぐ横の地面が床より高いことはまず無い）
@@ -343,13 +348,13 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     note(r, true, parts.length ? parts.join('・') : '家の外形で位置を合わせました');
     found.push(`配置図: ${parts.join('・') || 'ますの記号なし'}${levels.length ? `、敷地の高さ ${levels.length} か所（${sgl(Math.min(...gls))}〜${sgl(Math.max(...gls))}）` : ''}（家の外形で位置を合わせました）`);
     if (sr.bm !== undefined) found.push(`配置図: BM は GL−${mm(sr.bm)}（「BM+${sr.bm}=GL±0」）`);
-    if (!sr.legend) check.push('配置図に凡例（汚水桝・雨水桝の記号）が見つからなかったので、ますは読んでいません');
-    if (!n('publicSewage')) check.push(`配置図に汚水公共ますの記号はありませんでした${r.page.texts.some((x) => /下水引込/.test(x.s)) ? '（「下水引込へ」の向きにあるはずです）' : ''}。公共ますは「器具」から置いてください`);
-    if (dropped.length) check.push(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
+    if (!sr.legend) ask('配置図に凡例（汚水桝・雨水桝の記号）が見つからなかったので、ますは読んでいません', 'low');
+    if (!n('publicSewage')) ask(`配置図に汚水公共ますの記号はありませんでした${r.page.texts.some((x) => /下水引込/.test(x.s)) ? '（「下水引込へ」の向きにあるはずです）' : ''}。公共ますは「器具」から置いてください`, 'low');
+    if (dropped.length) ask(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
   }
-  if (!reads.some((r) => r.kind === 'foundation')) check.push('基礎伏図が無いので、基礎は入っていません');
-  if (!reads.some((r) => r.kind === 'elevation' || r.kind === 'section')) check.push('立面図が無いので、高さは標準値です');
-  for (const r of reads) if (r.page.truncated) check.push(`${r.name} は線が多すぎて途中までしか読んでいません。壁が欠けていないか確かめてください`);
+  if (!reads.some((r) => r.kind === 'foundation')) ask('基礎伏図が無いので、基礎は入っていません', 'low');
+  if (!reads.some((r) => r.kind === 'elevation' || r.kind === 'section')) ask('立面図が無いので、高さは標準値です');
+  for (const r of reads) if (r.page.truncated) ask(`${r.name} は線が多すぎて途中までしか読んでいません。壁が欠けていないか確かめてください`, 'low');
   for (const r of reads) {
     if (sheets[r.index].note) continue;
     if (r.kind === 'detail') note(r, false, '展開図は読み取りません（器具の高さは標準値です）');
@@ -361,5 +366,5 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (kept.length) found[countAt] = countLine(kept);
     else found.splice(countAt, 1);
   }
-  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures: kept, report: { sheets, found, check }, ...(site ? { site } : {}) };
+  return { building: b, designGL: gl === undefined ? undefined : -gl, plans: placements, fixtures: kept, report: { sheets, found, check, levels }, ...(site ? { site } : {}) };
 }

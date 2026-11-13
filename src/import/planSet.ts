@@ -53,7 +53,9 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
   if (!inputs.length) throw new PlanReadError(failed.length ? `PDF を開けませんでした（${failed.join('、')}）。PDF のファイルを選んでください` : '図面の PDF を選んでください');
   const r = buildFromSheets(inputs);
   const report: ImportReport = { ...r.report, check: [...r.report.check, ...failed.map((n) => `${n} は PDF として開けなかったので使っていません`), ...(skipped.length ? [`一度に読めるのは ${MAX_PLAN_PAGES} ページまでです。${skipped.join('、')} は読んでいません`] : []),
-    ...(textOnly.length ? [`図面リスト・仕様書・日影図・展開図など、壁を読まない図面は飛ばしました: ${textOnly.join('、')}`] : [])] };
+    ...(textOnly.length ? [`図面リスト・仕様書・日影図・展開図など、壁を読まない図面は飛ばしました: ${textOnly.join('、')}`] : [])],
+    // 確からしさ: 開けなかった・読まなかった PDF は「読めなかった」、飛ばした図面はお知らせ
+    levels: [...r.report.check.map((_, i) => r.report.levels?.[i] ?? 'mid'), ...failed.map(() => 'low' as const), ...(skipped.length ? ['low' as const] : []), ...(textOnly.length ? ['info' as const] : [])] };
 
   // 読み取った平面図を下に敷く（読み違いを見比べて直せるように、器具の位置も見えるように）
   const underlays: Record<string, Underlay> = {};
@@ -78,6 +80,7 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
       }
     } catch {
       report.check.push(`${inputs[p.index].name} を下に敷けませんでした（壁は読み取れています）`);
+      report.levels?.push('mid');
     }
   }
   return { building: r.building, designGL: r.designGL, underlays, fixtures: r.fixtures, report, ...(r.site ? { site: r.site } : {}) };
