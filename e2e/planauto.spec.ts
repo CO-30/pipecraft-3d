@@ -110,9 +110,17 @@ test.describe('図面から自動で3Dにする', () => {
     await expect(report).toBeHidden();
 
     const doc = await full(page);
-    const walls = Object.values(doc.building.walls) as { kind: string; thickness: number }[];
+    const walls = Object.values(doc.building.walls) as { id: string; kind: string; thickness: number; locked?: boolean }[];
     expect(walls).toHaveLength(7);
     expect(walls.filter((w) => w.kind === 'interior')).toHaveLength(1);
+    // 読み取った壁はロック（2026-11-13）: 選ぶと 🔒 にチェック、削除は押せない。外すと消せる
+    expect(walls.every((w) => w.locked)).toBe(true);
+    await page.evaluate((id) => (window as any).__pc.getState().select({ kind: 'wall', id }), walls[0].id);
+    await expect(page.getByTestId('wall-lock')).toBeChecked();
+    await page.getByTestId('wall-lock').uncheck();
+    expect(await page.evaluate((id) => (window as any).__pc.getState().doc.building.walls[id].locked, walls[0].id)).toBeFalsy();
+    await page.getByTestId('wall-lock').check();
+    await page.evaluate(() => (window as any).__pc.getState().select(null));
     expect((Object.values(doc.building.openings) as { type: string }[]).map((o) => o.type).sort()).toEqual(['door', 'window']);
     const members = Object.values(doc.building.members) as { kind: string; z0: number; z1: number }[];
     expect(members).toHaveLength(6);

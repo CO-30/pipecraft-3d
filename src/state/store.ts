@@ -138,6 +138,8 @@ const isOutletNode = (doc: Doc, nodeId: string): boolean => {
 };
 const defaultSlopeFor = (diameter: number) => defaultSlope(diameter);
 const lockedCount = (net: Network) => Object.values(net.segments).filter((x) => x.slopeLocked).length;
+/** ロックした壁を動かそうとしたとき */
+export const WALL_LOCK_NOTICE = 'この壁は位置をロックしています（図面から読み取った壁）。動かす・消すときは、壁を選んで「🔒 位置をロック」を外してください';
 const UNLOCK_NOTICE = '勾配を保てない区間の固定を外しました（区間を選ぶと勾配を付け直せます）';
 
 export const emptyDoc = (): Doc => ({ building: B.addFloor(B.emptyBuilding()).b, network: emptyNetwork(), fixtures: {}, estimate: defaultEstimate(), underlays: {}, elevations: {}, site: {} });
@@ -377,6 +379,8 @@ type State = {
   addRoom(p: Vec2, q: Vec2): void;
   addOpening(wallId: string, type: OpeningType, offset: number): void;
   updateWall(wallId: string, patch: Partial<Pick<B.Wall, 'thickness' | 'kind'>>): void;
+  /** 壁の位置のロックを切り替える（図面から読み取った壁は最初からロック） */
+  setWallsLocked(wallIds: string[], locked: boolean): void;
   updateOpening(id: string, patch: Partial<Pick<B.Opening, 'offset' | 'width' | 'height' | 'sill'>>): void;
   renameRoom(id: string, name: string): void;
   /** p→q の直線で部屋を分割。withWall なら切断線に内壁も作る（1つの履歴） */
@@ -1313,10 +1317,18 @@ export const useStore = create<State>((set, get) => {
       const next = target.type === 'node' ? mergeNodes(net, target.id, nodeId) : connectNodeToSegment(net, nodeId, target.id);
       if (next !== net) set({ doc: withNet(next), selection: null });
     },
-    dragCorner: (cornerId, p) => { if (get().dragBase) set({ doc: withBld(B.moveCorner(get().doc.building, cornerId, p)) }); },
+    dragCorner: (cornerId, p) => {
+      if (!get().dragBase) return;
+      const next = B.moveCorner(get().doc.building, cornerId, p);
+      if (B.lockedWallsMoved(get().doc.building, next)) { if (get().notice !== WALL_LOCK_NOTICE) set({ notice: WALL_LOCK_NOTICE }); return; }
+      set({ doc: withBld(next) });
+    },
     dragWall: (wallId, dx, dy) => {
       const base = get().dragBase;
-      if (base) set({ doc: { ...get().doc, building: B.moveWall(base.building, wallId, dx, dy) } });
+      if (!base) return;
+      const next = B.moveWall(base.building, wallId, dx, dy);
+      if (B.lockedWallsMoved(base.building, next)) { if (get().notice !== WALL_LOCK_NOTICE) set({ notice: WALL_LOCK_NOTICE }); return; }
+      set({ doc: { ...get().doc, building: next } });
     },
     cancelDrag: () => {
       const base = get().dragBase;
@@ -1353,6 +1365,7 @@ export const useStore = create<State>((set, get) => {
     },
     setOutlineLength: (wallId, mm, fixed, force = false) => {
       const r = applyOutlineLength(get().doc, wallId, mm, fixed, force);
+      if (r.ok && B.lockedWallsMoved(get().doc.building, r.doc.building)) { set({ notice: WALL_LOCK_NOTICE }); return { ok: false, error: WALL_LOCK_NOTICE }; }
       if (r.ok) commit(r.doc, { selection: { kind: 'wall', id: wallId } });
       return r;
     },
@@ -1465,6 +1478,10 @@ export const useStore = create<State>((set, get) => {
       if (r.openingId) commit(withBld(r.b), { selection: { kind: 'opening', id: r.openingId } });
     },
     updateWall: (id, patch) => { commit(withBld(B.updateWall(get().doc.building, id, patch))); },
+    setWallsLocked: (ids, locked) => {
+      const next = B.setWallsLocked(get().doc.building, ids, locked);
+      if (next !== get().doc.building) commit(withBld(next));
+    },
     updateOpening: (id, patch) => { commit(withBld(B.updateOpening(get().doc.building, id, patch))); },
     renameRoom: (id, name) => { commit(withBld(B.renameRoom(get().doc.building, id, name))); },
     splitRoomAt: (roomId, p, q, withWall) => {
@@ -1516,7 +1533,10 @@ export const useStore = create<State>((set, get) => {
         // 自動で置いたマスを消したら、そこには自動で置き直さない
         if (f && isManhole(f.type) && f.params?.auto) next = { ...next, site: { ...(next.site ?? {}), manholeSuppressed: [...(next.site?.manholeSuppressed ?? []), { x: f.x, y: f.y }] } };
       }
-      else if (sel.kind === 'wall') next = withBld(B.deleteWall(building, sel.id));
+      else if (sel.kind === 'wall') {
+        if (building.walls[sel.id]?.locked) { set({ notice: WALL_LOCK_NOTICE }); return; }
+        next = withBld(B.deleteWall(building, sel.id));
+      }
       else if (sel.kind === 'opening') next = withBld(B.deleteOpening(building, sel.id));
       else if (sel.kind === 'room') next = withBld(B.deleteRoom(building, sel.id));
       else if (sel.kind === 'member') next = withBld(deleteMember(building, sel.id));
