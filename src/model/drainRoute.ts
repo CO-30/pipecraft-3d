@@ -113,10 +113,13 @@ export function openDrainEnds(doc: Doc): { node: PipeNode; seg: Segment }[] {
   return out;
 }
 
-export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRules = {}): DrainRouteResult {
+/**
+ * opts.ends: つなぐ端（無ければ器具から落とした立て管の下の端すべて）。opts.wall: この外壁からだけ出す（床下の本管の出口）
+ */
+export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRules = {}, opts: { ends?: { node: PipeNode; seg: Segment }[]; wall?: { a: Vec2; b: Vec2 } } = {}): DrainRouteResult {
   const none: DrainRouteResult = { doc, pipes: 0, manholes: 0, sleeves: 0, skipped: 0 };
   const base = doc.building.floors[0];
-  const ends = openDrainEnds(doc);
+  const ends = opts.ends ?? openDrainEnds(doc);
   if (!base || !ends.length) return none;
   const b = doc.building;
   const walls: Line[] = wallsOnFloor(b, base.id).map((w) => ({ a: b.corners[w.a], b: b.corners[w.b], t: w.thickness, exterior: w.kind === 'exterior' }));
@@ -139,13 +142,16 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
    * 置いたマスの出口: マスに直角に向かい合う外周の壁の点（器具の真横でなくてよい）。
    * マスから壁まで HOLE_REACH 以内で、壁の点からマスまでの間に壁・基礎が無いもの
    */
+  /** 出す壁が決まっているとき（床下の本管）、その壁か */
+  const wallOk = (w: Line) => !opts.wall || (Math.hypot(w.a.x - opts.wall.a.x, w.a.y - opts.wall.a.y) < 1 && Math.hypot(w.b.x - opts.wall.b.x, w.b.y - opts.wall.b.y) < 1)
+    || (Math.hypot(w.a.x - opts.wall.b.x, w.a.y - opts.wall.b.y) < 1 && Math.hypot(w.b.x - opts.wall.a.x, w.b.y - opts.wall.a.y) < 1);
   const holeExits = (p: Vec3): Exit[] => {
     if (!inside(p)) return [];
     const out: Exit[] = [];
     for (const h of placedHoles) {
       let best: Exit | null = null;
       for (const w of walls) {
-        if (!w.exterior) continue;
+        if (!w.exterior || !wallOk(w)) continue;
         const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
         if (L < 1) continue;
         const u = { x: (w.b.x - w.a.x) / L, y: (w.b.y - w.a.y) / L };
@@ -170,6 +176,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
     if (!inside(p)) return [];
     const out: Exit[] = [];
     for (const w of walls) {
+      if (!wallOk(w)) continue;
       const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
       if (L < 1) continue;
       const u = { x: (w.b.x - w.a.x) / L, y: (w.b.y - w.a.y) / L };
