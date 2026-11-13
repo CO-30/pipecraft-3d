@@ -161,6 +161,25 @@ describe('立水栓は床下に入れず、地中で外の HI に分岐', () => 
   });
 });
 
+describe('床が地面から高い家の立水栓（2026-11-13 不具合: 立水栓がつながらない）', () => {
+  test('GL が床の 800 下でも、まとめてつなぐで真下に落とした立水栓の管を地中の HI へつなぐ', async () => {
+    const { autoConnect } = await import('./autoConnect');
+    const h = supplyHouse();
+    const d0: Doc = { ...h.doc, site: { designGL: -800 } };
+    const p = placeFixture(d0, h.floorId, 'outdoorFaucet', { x: -1000, y: 800 });
+    const r = autoConnect(p.doc);
+    const net = r.doc.network;
+    let cur = port(r.doc, p.fixtureId!, 'water').id, prev: string | null = null;
+    for (let i = 0; i < 20; i++) {
+      const segs = segmentsAt(net, cur).filter((s) => s.id !== prev);
+      if (segs.length !== 1) break;
+      prev = segs[0].id; cur = other(net, segs[0], cur).id;
+    }
+    expect(segmentsAt(net, cur)).toHaveLength(3);
+    expect(r.summary.join()).toMatch(/立水栓 1 個/);
+  });
+});
+
 describe('給湯器が無い家・床下が GL より低い家', () => {
   test('給湯器が無ければ、メーターに近い外壁で立ち上げて床下へ（コーキング）', () => {
     const h = supplyHouse();

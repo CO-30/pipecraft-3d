@@ -367,11 +367,13 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
   /** 立水栓（床下に入れず、地中で外の給水管に分岐する） */
   const faucets: Fixture[] = [];
   for (const f of Object.values(cur.fixtures)) {
-    if (!SUPPLY_TYPES.has(f.type) && f.type !== 'outdoorFaucet') continue;
+    // 立水栓は床下に入れない（下の「外回り」で地中の HI へ）。床下の立て管の深さで「つないである」と決めない
+    // （床が地面から高い家では、真下に落とした管の下の端が床から 1m より深くなるため、ここで外すとつながらなかった）
+    if (f.type === 'outdoorFaucet') { faucets.push(f); continue; }
+    if (!SUPPLY_TYPES.has(f.type)) continue;
     const ports = portNodes(cur.network, f.id).filter((n) => { const sys = FIXTURE_CATALOG[f.type].ports.find((p) => p.id === n.portId)?.system; return sys === 'water' || sys === 'hotWater'; });
     const states = ports.map((n) => ({ n, st: portState(n) }));
-    if (states.every((x) => x.st.kind === 'used')) { if (f.type !== 'outdoorFaucet' && inside(f)) indoorSeen++; continue; }
-    if (f.type === 'outdoorFaucet') { faucets.push(f); continue; }
+    if (states.every((x) => x.st.kind === 'used')) { if (inside(f)) indoorSeen++; continue; }
     if (!inside(f)) { outdoor++; continue; }
     indoorSeen++;
     if (f.floorId !== base.id) { upper++; continue; }
