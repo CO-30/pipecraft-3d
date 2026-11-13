@@ -46,18 +46,20 @@ export function planLength(net: Network, s: Segment): number {
  */
 export function endZ(net: Network, s: Segment, side: 'a' | 'b', down?: 'a' | 'b'): number {
   const n = net.nodes[side === 'a' ? s.a : s.b], o = net.nodes[side === 'a' ? s.b : s.a];
-  // dropIn はマスの接続口（fixtureId あり）だけで有効
-  if (!n.dropIn || !n.fixtureId || !o) return n.pos.z;
+  // dropIn・dropEnd はマスの接続口（fixtureId あり）だけで有効
+  const up = (n.dropIn ?? 0) + (s.dropEnd ?? 0);
+  if (!up || !n.fixtureId || !o) return n.pos.z;
   // 向きが分かっていれば（固定勾配の計算など）、この端が下流端のときだけ流入側
-  if (down) return side === down ? n.pos.z + n.dropIn : n.pos.z;
-  return o.pos.z > n.pos.z + 0.05 ? n.pos.z + n.dropIn : n.pos.z;
+  if (down) return side === down ? n.pos.z + up : n.pos.z;
+  return o.pos.z > n.pos.z + 0.05 ? n.pos.z + up : n.pos.z;
 }
 const dz = (net: Network, s: Segment) => Math.abs(endZ(net, s, 'a') - endZ(net, s, 'b'));
 
 /** 立て管（平面の長さが1mm未満、または高低差が平面の長さより大きい斜めの管） */
 export function isRiserLike(net: Network, s: Segment): boolean {
   const L = planLength(net, s);
-  return L < 1 || dz(net, s) > L;
+  // 45° の斜め（基礎を抜ける排水など）も、高さを勾配で決めない管として扱う。落差（dropIn・dropEnd）は含めない（点の高さだけで見る）
+  return L < 1 || Math.abs(net.nodes[s.a].pos.z - net.nodes[s.b].pos.z) >= 0.9 * L;
 }
 
 /** 勾配が足りているか（高さを0.1mmに丸めた誤差は許す） */

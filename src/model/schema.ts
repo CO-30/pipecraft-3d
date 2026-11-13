@@ -34,6 +34,7 @@ export const segmentSchema = z.object({
   note: z.string().optional(),
   slope: z.number().finite().min(0).max(1).optional(),
   slopeLocked: z.boolean().optional(),
+  dropEnd: z.number().nonnegative().optional(),
   slopePin: z.boolean().optional(),
   diameterPin: z.boolean().optional(),
   existing: z.boolean().optional(),

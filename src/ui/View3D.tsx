@@ -18,6 +18,7 @@ import { clampSection, sectionPlane } from '../model/section';
 import { SELECT_COLOR, systemColor, useColors } from './colors';
 import { analyzeFittings } from '../model/fittings';
 import { arcPoints, pbBendArcs, trimmedEnds, type BendArc } from '../model/pbBends';
+import { dropLegs } from '../model/dropLegs';
 import { portSystem, fixtureBaseZ, fixtureSize, groundZAt, isManhole, type Fixture } from '../model/fixtures';
 import { fixtureParts, type Mat, type Part3D } from '../model/fixtureShapes';
 import { photoPlane } from '../model/facadePhoto';
@@ -246,6 +247,9 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
   const activeFloorId = useStore((s) => s.activeFloorId);
   const fixtures = useStore((s) => s.doc.fixtures);
   const bendArcs = useMemo(() => pbBendArcs(net, analyzeFittings(net, fixtures)), [net, fixtures]);
+  // マスへ高く着く排水は、マスの外で L で落としてマスへ入れる（ドロップ）
+  const legDoc = useStore((s) => s.doc);
+  const legs = useMemo(() => dropLegs(legDoc), [legDoc]);
   const elevations = useStore((s) => s.doc.elevations);
   useColors((c) => c.overrides);
   const siteGL = useStore((s) => s.doc.site);
@@ -423,11 +427,19 @@ function Scene({ setOrbit }: { setOrbit: (v: boolean) => void }) {
           );
         });
       })()}
-      {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => (
-        <Pipe clip={clip} key={s.id} {...(([a, b]) => ({ a, b }))(trimmedEnds(net, bendArcs, s.id))} radius={Math.max(0.025, s.diameter / 1500)}
-          color={systemColor(s.system)} selected={sel?.kind === 'segment' && sel.id === s.id} traced={!!trace?.segs.has(s.id)} glow={segGlow(s.id)} mode={diffMode(!!segGlow(s.id), tracedMode(!!trace?.segs.has(s.id), pipeMode))}
-          onSelect={() => useStore.getState().select({ kind: 'segment', id: s.id })} />
-      ))}
+      {Object.values(net.segments).filter((s) => zIn(net.nodes[s.a].pos.z) || zIn(net.nodes[s.b].pos.z)).map((s) => {
+        const leg = legs.get(s.id);
+        const [a0, b0] = trimmedEnds(net, bendArcs, s.id);
+        const [a, b] = leg ? (leg.side === 'a' ? [leg.top, b0] : [a0, leg.top]) : [a0, b0];
+        const common = { clip, radius: Math.max(0.025, s.diameter / 1500), color: systemColor(s.system), selected: sel?.kind === 'segment' && sel.id === s.id, traced: !!trace?.segs.has(s.id), glow: segGlow(s.id), mode: diffMode(!!segGlow(s.id), tracedMode(!!trace?.segs.has(s.id), pipeMode)), onSelect: () => useStore.getState().select({ kind: 'segment', id: s.id }) };
+        return (
+          <group key={s.id}>
+            <Pipe {...common} a={a} b={b} />
+            {leg && <Pipe {...common} a={leg.top} b={leg.bottom} />}
+            {leg && <Pipe {...common} a={leg.bottom} b={leg.into} />}
+          </group>
+        );
+      })}
       {Object.values(fixtures).filter((f) => floorFilter === 'all' || shownFloorIds.has(f.floorId)).map((f) => (
         <FixtureMesh key={f.id} f={f} clip={clip} selected={sel?.kind === 'fixture' && sel.id === f.id} mode={diffMode(!!(cmp?.addedFx.has(f.id) || cmp?.movedFx.has(f.id)), tracedMode(!!trace?.fixtures.has(f.id), modeFor('fixtures', f.id)))} />
       ))}

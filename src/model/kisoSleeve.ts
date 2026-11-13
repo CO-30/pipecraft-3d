@@ -6,6 +6,7 @@
  */
 import type { Doc } from './doc';
 import { segmentsAt, type Network, type Segment } from './network';
+import { isRiserLike } from './slope';
 import { FOOTING_SLEEVE, SUPPLY_PER_SLEEVE, sleeveSchedule, type SleeveRow } from './sleeves';
 /** 同じ φ50 の貫通パイプにまとめる、立上りを通る給水・給湯の管どうしの離れ(mm) */
 const BUNDLE_MM = 200;
@@ -146,7 +147,9 @@ export function kisoSleeveItems(doc: Doc, opts: { antiTermite?: boolean } = {}):
     if (r.part !== 'footingOuter' && r.part !== 'footing') continue;
     const seg = net.segments[r.segId];
     if (!seg) continue;
-    const H = riseAt(net, seg, capZ);
+    // 45° で基礎を抜ける管は、その管の高さの差（土間まで）が H。真下へ下ろした形は、端につながる立て管の高さ
+    const za = net.nodes[seg.a].pos.z, zb = net.nodes[seg.b].pos.z;
+    const H = isRiserLike(net, seg) ? Math.max(0, Math.round(Math.min(Math.max(za, zb), capZ) - Math.min(za, zb))) : riseAt(net, seg, capZ);
     // 外周の基礎で、基礎の内側で立ち上がる（地中を抜ける）所はメーカーのスリーブ
     const p = r.part === 'footingOuter' && H >= 80 && r.point.z < floorZ
       ? (isDrain(r) ? pickKsa(r.diameter, H, opts.antiTermite) : isSupply(r) ? pickKss(r.od + (r.system === 'hotWater' ? 20 : 0), H, opts.antiTermite) : null)

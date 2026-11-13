@@ -198,14 +198,15 @@ test.describe('図面から自動で3Dにする', () => {
     expect(mh).toHaveLength(1);
     expect(mh[0].y).toBe(5460 + 60 + 700);
     expect(Math.abs(mh[0].x - 900)).toBeLessThan(200);
-    expect(Object.keys(doc.network.segments)).toHaveLength(5);
+    // 落とした 2 本 + 床下の横 + 立ち下げ + 基礎を水平に抜ける管 + マスへの管（浅いので 45° は収まらず、土間の口から真下に下ろしてから抜く）
+    expect(Object.keys(doc.network.segments)).toHaveLength(6);
     // 基礎貫通スリーブ（KSA）の形: 基礎の内側で立ち下げ、地中で基礎を抜けてマスへ。建物の外（北の外壁より外）に配管の点は無い。地面より下の点は管頂の土かぶり 20cm 以上
     const gl = doc.site?.designGL ?? 0; // この工事は立面図が無いので GL は仮（床の高さ）
     const nodes = (Object.values(doc.network.nodes) as { pos: { y: number; z: number }; fixtureId?: string }[]).filter((n) => !n.fixtureId);
     expect(nodes.filter((n) => n.pos.y > 5460 + 60)).toHaveLength(0);
     expect(nodes.filter((n) => n.pos.z < gl - 300).every((n) => gl - (n.pos.z + 89) >= 200)).toBe(true);
     await page.getByTestId('drain-route').click(); // もう一度押しても増えない
-    expect(Object.keys((await full(page)).network.segments)).toHaveLength(5);
+    expect(Object.keys((await full(page)).network.segments)).toHaveLength(6);
     await show(page, '3D');
     if (!isMobile()) await page.getByRole('button', { name: '設備だけ' }).click(); // スマホは 👁 の中
     await page.waitForTimeout(600);
