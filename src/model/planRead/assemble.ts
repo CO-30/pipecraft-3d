@@ -5,13 +5,13 @@
  */
 import { DEFAULT_FLOOR_HEIGHT, DEFAULT_SLAB, OPENING_DEFAULTS, addFloor, addOpening, addWall, clearHeight, emptyBuilding, setWallsLocked, wallsOnFloor, type Building, type Vec2 } from '../building';
 import { withMember } from '../members';
-import { heavyWidth, detectStrips, WALL_STRIP, type StripOptions, type WSeg } from './strips';
+import { heavyWidth, detectStrips, significantWidths, WALL_STRIP, type StripOptions, type WSeg } from './strips';
 import { FIXTURE_CATALOG } from '../fixtures';
 import { guessFixtures, type FixtureCandidate } from './fixtureGuess';
 import { alignSite, readSite, type SiteItem } from './siteRead';
 import { DEFAULT_SLAB_BELOW_FOOTING, readHeights, readSlabOffset, slabMarks, type Heights } from './heights';
 import {
-  PT_TO_MM, SHEET_LABEL, alignTransform, baseTransform, classifySheet, gridWorld, readGrid, sheetScale, toWorldX, toWorldY,
+  PT_TO_MM, SHEET_LABEL, alignTransform, baseTransform, classifySheet, gridWorld, planRank, readGrid, sheetScale, toWorldX, toWorldY,
   type Grid, type GridWorld, type SheetKind, type ToWorld, type VectorPage,
 } from './sheet';
 import { wallsFromStrips, type WallSpec } from './walls';
@@ -58,7 +58,11 @@ const GRID_MARGIN = 2000;
 /** 線の入っていない PDF（スキャン）とみなす本数 */
 const MIN_SEGS = 200;
 
-type Read = { index: number; name: string; page: VectorPage; kind: SheetKind; floor: number; grid: Grid | null; scale: { scale: number; guessed: boolean } | null };
+type Read = { index: number; name: string; page: VectorPage; kind: SheetKind; floor: number; floors: number[]; roof: boolean; title: string; grid: Grid | null; scale: { scale: number; guessed: boolean } | null };
+/** RC 造の壁の帯（木造の既定より厚い壁まで。柱（600 角など）は壁にしない） */
+const RC_WALL_STRIP: StripOptions = { minT: 100, maxT: 400, minLen: 400 };
+/** 図面の文字に RC 造と書いてあるか */
+const isRC = (pages: VectorPage[]) => pages.some((p) => p.texts.some((t) => /RC造|ＲＣ造|鉄筋コンクリート|壁式構造/.test(t.s.normalize('NFKC').replace(/\s+/g, ''))));
 
 function worldSegs(page: VectorPage, t: ToWorld, gw: GridWorld | null): WSeg[] {
   const all = page.segs.map((s) => ({ x1: toWorldX(t, s.x1), y1: toWorldY(t, s.y1), x2: toWorldX(t, s.x2), y2: toWorldY(t, s.y2), w: s.w }));
@@ -68,10 +72,22 @@ function worldSegs(page: VectorPage, t: ToWorld, gw: GridWorld | null): WSeg[] {
   return all.filter((s) => Math.min(s.x1, s.x2) >= x0 && Math.max(s.x1, s.x2) <= x1 && Math.min(s.y1, s.y2) >= y0 && Math.max(s.y1, s.y2) <= y1);
 }
 
-function readWalls(page: VectorPage, t: ToWorld, gw: GridWorld | null, o: StripOptions): WallSpec[] {
+function readWalls(page: VectorPage, t: ToWorld, gw: GridWorld | null, o: StripOptions, adaptive = o === RC_WALL_STRIP): WallSpec[] {
   const segs = worldSegs(page, t, gw);
   if (!heavyWidth(segs)) return [];
-  return wallsFromStrips(detectStrips(segs, o), segs, gw ? { gridX: [...gw.xs.values()], gridY: [...gw.ys.values()] } : {});
+  const grid = gw ? { gridX: [...gw.xs.values()], gridY: [...gw.ys.values()] } : {};
+  const walls = wallsFromStrips(detectStrips(segs, o), segs, grid);
+  // いちばん太い線が柱・枠など一部だけで、壁を次の太さで描いている図面（RC の図面に多い）: 外周の壁が通り芯の外周の
+  // 半分にも満たなければ、次の太さの線まで含めて読み、壁がはっきり多くなるならそちらを採る
+  const ws = significantWidths(segs);
+  if (!adaptive || !gw || ws.length < 2) return walls;
+  const xs = [...gw.xs.values()], ys = [...gw.ys.values()];
+  const perimeter = 2 * (Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys));
+  const lenOf = (v: WallSpec[]) => v.reduce((s, w) => s + len(w), 0);
+  if (lenOf(walls.filter((w) => w.kind === 'exterior')) >= perimeter * 0.5) return walls;
+  const more = wallsFromStrips(detectStrips(segs, o, 0, ws[1] * 0.9), segs, grid);
+  const ext = (v: WallSpec[]) => lenOf(v.filter((w) => w.kind === 'exterior'));
+  return ext(more) >= ext(walls) * 1.5 && ext(more) > perimeter * 0.3 ? more : walls;
 }
 
 /** 2 つの図面の壁（立上り）の芯が重なっている長さの合計(mm)。位置合わせの確からしさ */
@@ -148,7 +164,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const reads: Read[] = inputs.map((s, index) => {
     const c = classifySheet(s.page.texts, s.name);
     const grid = readGrid(s.page.texts);
-    return { index, name: s.name, page: s.page, kind: c.kind, floor: c.floor, grid, scale: sheetScale(s.page.texts, grid) };
+    return { index, name: s.name, page: s.page, kind: c.kind, floor: c.floor, floors: c.floors, roof: c.roof, title: c.title, grid, scale: sheetScale(s.page.texts, grid) };
   });
   const sheets: SheetReport[] = reads.map((r) => ({ name: r.name, kind: r.kind, label: SHEET_LABEL[r.kind], used: false, note: '' }));
   const found: string[] = [], check: string[] = [];
@@ -156,16 +172,22 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
 
   const vector = (r: Read) => r.page.segs.length >= MIN_SEGS;
   const plans = reads.filter((r) => r.kind === 'plan').sort((a, b) => a.floor - b.floor);
+  // 屋上（R 階）の平面図は階にしない
+  for (const r of plans.filter((p) => p.roof)) note(r, false, '屋上（R 階）の平面図は階にしていません');
+  const strip = isRC(reads.map((r) => r.page)) ? RC_WALL_STRIP : WALL_STRIP;
   for (const r of plans.filter((p) => !vector(p))) note(r, false, '線のデータが入っていません（スキャンした PDF は自動で読めません）');
   for (const r of plans.filter((p) => vector(p) && !p.scale)) note(r, false, '縮尺を読み取れませんでした');
-  const usable = plans.filter((p) => vector(p) && p.scale);
-  // 同じ階の平面図が複数あれば、通り芯のあるものを優先して 1 枚
+  const usable = plans.filter((p) => vector(p) && p.scale && !p.roof);
+  // 同じ階の平面図が複数あれば 1 枚: 平面図 → 平面詳細図 → 階段・部分の順、同じなら通り芯のあるもの。
+  // 「2～4階平面図」のように 1 枚が複数の階なら、その階すべてに使う
+  const better = (r: Read, cur: Read) => planRank(r.title) - planRank(cur.title) || Number(!!cur.grid) - Number(!!r.grid);
   const byFloor = new Map<number, Read>();
-  for (const r of usable) {
-    const cur = byFloor.get(r.floor);
-    if (!cur || (!cur.grid && r.grid)) { if (cur) note(cur, false, `${r.floor}階の平面図が複数あるため使っていません`); byFloor.set(r.floor, r); }
-    else note(r, false, `${r.floor}階の平面図が複数あるため使っていません`);
+  for (const r of usable) for (const n of r.floors.length ? r.floors : [r.floor]) {
+    const cur = byFloor.get(n);
+    if (!cur || better(r, cur) < 0) byFloor.set(n, r);
   }
+  const usedPlans = new Set(byFloor.values());
+  for (const r of usable) if (!usedPlans.has(r)) note(r, false, `${(r.floors.length ? r.floors : [r.floor]).join('・')}階の平面図が複数あるため使っていません`);
   if (!byFloor.size) {
     if (!plans.length) throw new PlanReadError('平面図が見つかりませんでした。図面名に「平面図」「平面詳細図」と入った PDF を選んでください');
     throw new PlanReadError(sheets.filter((s) => s.kind === 'plan').map((s) => s.note)[0] || '平面図を読み取れませんでした');
@@ -176,20 +198,28 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const base: GridWorld | null = first.grid ? gridWorld(first.grid, baseTransform(first.grid, first.scale!.scale)) : null;
   const firstT: ToWorld = first.grid ? baseTransform(first.grid, first.scale!.scale) : { ox: 0, oy: first.page.heightPt, k: PT_TO_MM * first.scale!.scale };
   /** 1 階の壁（他の図面の位置合わせの基準） */
-  const refWalls = readWalls(first.page, firstT, base, WALL_STRIP);
+  const refWalls = readWalls(first.page, firstT, base, strip);
   const SHIFT_NOTE = '通り芯の番号が 1 階平面図と 1 つずれていたので、壁の重なりで位置を合わせました';
 
   // 高さ（立面図）
   const heights: Heights = { floorToFloor: new Map(), topFloor: 1 };
-  for (const r of reads.filter((x) => x.kind === 'elevation')) {
+  // 立面図・断面図の高さ（複数枚あれば、いちばん多い値）
+  const votes = new Map<number, number[]>();
+  // 立面図を先に（GL・軒高・基礎の高さは立面図の値。断面図は詳細の縮尺が混ざりやすいので、立面図に無いときだけ）
+  for (const r of [...reads.filter((x) => x.kind === 'elevation'), ...reads.filter((x) => x.kind === 'section')]) {
     if (!r.scale) { note(r, false, '縮尺を読み取れませんでした'); continue; }
     const h = readHeights(r.page.texts, PT_TO_MM * r.scale.scale);
     heights.glToFl ??= h.glToFl;
     heights.footingTop ??= h.footingTop;
     if (heights.topToEaves === undefined && h.topToEaves !== undefined) { heights.topToEaves = h.topToEaves; heights.topFloor = h.topFloor; }
-    for (const [n, v] of h.floorToFloor) if (!heights.floorToFloor.has(n)) heights.floorToFloor.set(n, v);
+    for (const [n, v] of h.floorToFloor) (votes.get(n) ?? votes.set(n, []).get(n)!).push(v);
     const got = [h.glToFl && `GL〜1階の床 ${mm(h.glToFl)}`, h.topToEaves && `床〜軒高 ${mm(h.topToEaves)}`, h.footingTop && `基礎の高さ ${mm(h.footingTop)}`].filter(Boolean);
-    note(r, got.length > 0, got.length ? `高さを読みました（${got.join('、')}）` : '高さの文字（GL・1階FL・軒高）が見つかりませんでした');
+    note(r, got.length > 0 || h.floorToFloor.size > 0, got.length || h.floorToFloor.size ? `高さを読みました（${[...got, ...[...h.floorToFloor].map(([k, v]) => `${k}階 ${mm(v)}`)].join('、')}）` : '高さの文字（GL・1階FL・軒高）が見つかりませんでした');
+  }
+  for (const [n, v] of votes) {
+    const c = new Map<number, number>();
+    for (const x of v) c.set(x, (c.get(x) ?? 0) + 1);
+    heights.floorToFloor.set(n, [...c].sort((p, q) => q[1] - p[1] || p[0] - q[0])[0][0]);
   }
 
   // 階と壁
@@ -197,6 +227,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   const placements: PlanPlacement[] = [];
   const fixtures: PlacedCandidate[] = [];
   const topFloor = floors.at(-1)!;
+  const aligned = new Map<Read, { t: ToWorld; specs: WallSpec[]; shifted: boolean } | null>();
   for (let n = 1; n <= topFloor; n++) {
     // 軒高までの高さは、立面図の最上階がこの建物の最上階と同じときだけ使う（2 階建てで「1FL」しか無い立面図の値を 1 階分にしない）
     const fromDrawing = heights.floorToFloor.get(n) ?? (n === topFloor && heights.topFloor === topFloor ? heights.topToEaves : undefined);
@@ -207,7 +238,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     else check.push(`${n}階の高さは立面図から読めなかったので ${mm(height)}mm にしています（「階の設定」で直せます）`);
     const r = byFloor.get(n);
     if (!r) { check.push(`${n}階の平面図がありません（壁は空です）`); continue; }
-    const al = r === first ? { t: firstT, specs: refWalls, shifted: false } : r.grid && base ? alignedWalls(r.page, r.grid, base, refWalls, WALL_STRIP) : null;
+    // 同じ図面を複数の階に使うとき（2～4階平面図）は 1 回だけ読む
+    const al = r === first ? { t: firstT, specs: refWalls, shifted: false } : aligned.has(r) ? aligned.get(r)! : aligned.set(r, r.grid && base ? alignedWalls(r.page, r.grid, base, refWalls, strip) : null).get(r)!;
     if (!al) { note(r, false, '1階の平面図と共通の通り芯（X1・Y1 など）が無く、位置を合わせられませんでした'); check.push(`${n}階の壁は読み取れていません`); continue; }
     const { t, specs } = al;
     if (al.shifted) check.push(`${n}階平面図: ${SHIFT_NOTE}`);
@@ -316,11 +348,12 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (dropped.length) check.push(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
   }
   if (!reads.some((r) => r.kind === 'foundation')) check.push('基礎伏図が無いので、基礎は入っていません');
-  if (!reads.some((r) => r.kind === 'elevation')) check.push('立面図が無いので、高さは標準値です');
+  if (!reads.some((r) => r.kind === 'elevation' || r.kind === 'section')) check.push('立面図が無いので、高さは標準値です');
   for (const r of reads) if (r.page.truncated) check.push(`${r.name} は線が多すぎて途中までしか読んでいません。壁が欠けていないか確かめてください`);
   for (const r of reads) {
     if (sheets[r.index].note) continue;
     if (r.kind === 'detail') note(r, false, '展開図は読み取りません（器具の高さは標準値です）');
+    else if (r.kind === 'other') note(r, false, '図面リスト・仕様書・法規などは読み取りません');
     else if (r.kind === 'unknown') note(r, false, '図面の種類が分かりませんでした（図面名の文字が読めない PDF）');
   }
   const kept = dropSiteDuplicates(fixtures, site);

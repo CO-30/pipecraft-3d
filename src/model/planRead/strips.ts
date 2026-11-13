@@ -23,6 +23,11 @@ const SAME_POS = 4, JOIN_GAP = 12;
  * 「十分な長さを占める太さのうち最も太いもの」を採る（枠や印の数本だけの極太線は除く）。
  */
 export function heavyWidth(segs: WSeg[]): number {
+  return significantWidths(segs)[0] ?? 0;
+}
+
+/** 十分な長さ（全体の 4% 以上）を占める線の太さ（太い順） */
+export function significantWidths(segs: WSeg[]): number[] {
   const total = new Map<number, number>();
   let sum = 0;
   for (const s of segs) {
@@ -31,8 +36,7 @@ export function heavyWidth(segs: WSeg[]): number {
     total.set(w, (total.get(w) ?? 0) + len);
     sum += len;
   }
-  const big = [...total].filter(([, len]) => len >= sum * 0.04).map(([w]) => w);
-  return big.length ? Math.max(...big) : 0;
+  return [...total].filter(([, len]) => len >= sum * 0.04).map(([w]) => w).sort((a, b) => b - a);
 }
 
 function axisLines(segs: WSeg[], minW: number): { h: Line[]; v: Line[] } {
@@ -102,7 +106,7 @@ export function subtract(r: [number, number], cuts: [number, number][]): [number
 }
 
 /** 太い線の組から帯を取り出す。minWidthRatio: 「太い線」とみなす下限（最も太い線に対する比） */
-export function detectStrips(segs: WSeg[], o: StripOptions = WALL_STRIP, minWidthRatio = 0.85): Strip[] {
-  const { h, v } = axisLines(segs, heavyWidth(segs) * minWidthRatio);
+export function detectStrips(segs: WSeg[], o: StripOptions = WALL_STRIP, minWidthRatio = 0.85, minW?: number): Strip[] {
+  const { h, v } = axisLines(segs, minW ?? heavyWidth(segs) * minWidthRatio);
   return [...pairLines(h, 'h', o), ...pairLines(v, 'v', o)];
 }
