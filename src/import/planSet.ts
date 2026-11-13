@@ -16,17 +16,18 @@ export const MAX_PLAN_PAGES = 40;
 
 const baseName = (n: string) => n.replace(/\.[^.]+$/, '');
 
-export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
+/** PDF の中身（名前とバイト列）→ 読み取りに渡す図面。精度の測定（src/bench）でも同じ読み方をするため分けてある。lib: pdf.js（Node で使うとき） */
+export async function readPlanInputs(files: { name: string; data: ArrayBuffer }[], lib?: unknown) {
   const inputs: SheetInput[] = [];
   const source: { data: ArrayBuffer; page: number }[] = [];
   const failed: string[] = [], skipped: string[] = [], textOnly: string[] = [];
   for (const f of files) {
     try {
-      const data = await f.arrayBuffer();
+      const data = f.data;
       const room = MAX_PLAN_PAGES - inputs.length;
       if (room <= 0) { skipped.push(f.name); continue; }
       // 図面一式の PDF: 平面図・基礎伏図・立面図・断面図・配置図だけ線を読む（図面リスト・仕様書・日影図などは文字だけ）
-      const pages = await readVectorPages(data, undefined, room, (texts) => ['plan', 'foundation', 'elevation', 'section', 'site', 'unknown'].includes(classifySheet(texts, f.name).kind));
+      const pages = await readVectorPages(data, lib, room, (texts) => ['plan', 'foundation', 'elevation', 'section', 'site', 'unknown'].includes(classifySheet(texts, f.name).kind));
       const off = pages.map((p, i) => (p.skipped ? i + 1 : 0)).filter(Boolean);
       if (off.length) textOnly.push(`${f.name} の ${off.length} ページ（p${off.join('・')}）`);
       pages.forEach((page, i) => {
@@ -38,6 +39,17 @@ export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
       failed.push(f.name);
     }
   }
+  return { inputs, source, failed, skipped, textOnly };
+}
+
+export async function importPlanSet(files: File[]): Promise<PlanSetImport> {
+  const read: { name: string; data: ArrayBuffer }[] = [];
+  const unreadable: string[] = [];
+  for (const f of files) {
+    try { read.push({ name: f.name, data: await f.arrayBuffer() }); } catch { unreadable.push(f.name); }
+  }
+  const { inputs, source, failed: notPdf, skipped, textOnly } = await readPlanInputs(read);
+  const failed = [...unreadable, ...notPdf];
   if (!inputs.length) throw new PlanReadError(failed.length ? `PDF を開けませんでした（${failed.join('、')}）。PDF のファイルを選んでください` : '図面の PDF を選んでください');
   const r = buildFromSheets(inputs);
   const report: ImportReport = { ...r.report, check: [...r.report.check, ...failed.map((n) => `${n} は PDF として開けなかったので使っていません`), ...(skipped.length ? [`一度に読めるのは ${MAX_PLAN_PAGES} ページまでです。${skipped.join('、')} は読んでいません`] : []),
