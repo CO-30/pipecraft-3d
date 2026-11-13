@@ -21,12 +21,16 @@ export const PB_MATERIAL_LABEL: Record<(typeof PB_MATERIALS)[number], string> = 
   PB: 'PB 裸管（プッシュマスター）',
   PBさや管付: 'PB さや管付（らく楽コルゲート）',
 };
+/** 給湯器の口と止水栓をつなぐ、曲げられる短い管（本数で数える。管の長さには入れない） */
+export const BENRIKAN = 'ベンリカン';
+export const isBenrikan = (m?: string) => (m ?? '').trim() === BENRIKAN;
 /** 給水・給湯で選べる管種（先頭の '' は「自動」） */
 export const WATER_MATERIAL_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: '自動（屋内PB・屋外HI）' },
   ...PB_MATERIALS.map((m) => ({ value: m, label: PB_MATERIAL_LABEL[m] })),
   { value: 'HIVP', label: 'HIVP（耐衝撃塩ビ）' },
   { value: 'HTVP', label: 'HTVP（耐熱塩ビ）' },
+  { value: BENRIKAN, label: 'ベンリカン（給湯器の接続）' },
 ];
 
 export const isPB = (m?: string) => !!m && m.trim().toUpperCase().startsWith('PB');

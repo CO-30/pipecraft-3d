@@ -173,7 +173,7 @@ function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
           </tbody>
         </table>
       )}
-      <h3 className="h-sub">基礎貫通スリーブ</h3>
+      <h3 className="h-sub">基礎の貫通・屋外の立上り</h3>
       {est.kiso.length === 0 ? <p className="empty">基礎を通る配管がありません（または「単価」タブで集計しない設定）。</p> : (
         <table className="est-table" data-testid="kiso-table">
           <thead><tr><th>品名</th><th>仕様</th><th>数量</th><th>備考</th></tr></thead>
@@ -184,7 +184,7 @@ function PartsTab({ est, onIssue }: { est: Estimate; onIssue: () => void }) {
           </tbody>
         </table>
       )}
-      <p className="muted small">外まわりの基礎を地面の下でくぐる排水は前澤化成「基礎貫通スリーブ」排水用 KSA、給水・給湯は給水用 KSS（さや管・フレキ管・パッキン・スリーブホルダー 2 個のセット）。高さ H は図の立ち下げの高さに一番近い品番。床下で中の基礎（立上り）を通る所はスリーブ用の VU 管を切って使う本数です。</p>
+      <p className="muted small">外まわりの基礎を地面の下でくぐる排水は前澤化成「基礎貫通スリーブ」排水用 KSA、給水・給湯は給水用 KSS（さや管・フレキ管・パッキン・スリーブホルダー 2 個のセット）。高さ H は図の立ち下げの高さに一番近い品番。床下で中の基礎（立上り）を通る所はスリーブ用の VU 管を切って使う本数です。外で立ち上げて基礎を抜ける給水・給湯はコーキングのか所、屋外の立上りは地上の部分を φ40 のさや管で保護する長さ、給湯器の口はベンリカンの本数です。</p>
       <p className="muted small">シールテープは水栓・給湯器などネジでつなぐ箇所ごと（13・16 は0.5m、20 は0.7m、25 は0.9m、それ以上 1.2m）、接着剤は塩ビ継手の受口ごとの目安量（φ13 約1g〜φ100 約20g）から巻・缶に切り上げ。HIVP=HI用、VP・VU=VP用、HTVP=HT用。</p>
       <p className="muted small">床から400mm以内の排水横管はレベルバンド、その他の配管はサドルバンド。継手で区切られた区間ごとに「長さ÷支持間隔」（最低1個）。区間ごとの変更は図面で配管を選んで「支持金具」から。</p>
     </div>

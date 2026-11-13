@@ -77,9 +77,9 @@ describe('給水・給湯を床下でつなぐ（案）', () => {
     expect(hs.every((f) => f.params?.mountZ === -400)).toBe(true);
     expect(r.headers).toBe(2);
   });
-  test('内部の立上りは人通口を通って貫通しない。外周の貫通は 3（引込・給湯器の入口と出口）', () => {
+  test('内部の立上りは人通口を通って貫通しない。外周の貫通は 2（床下への給水・給湯の入口。給湯器の入口は外の HI から）', () => {
     expect(r.crossings).toBe(0);
-    expect(r.sleeves).toBe(3);
+    expect(r.sleeves).toBe(2);
   });
   test('床下の給水管は PB、地中の管は HIVP', () => {
     const net = r.doc.network;
@@ -95,18 +95,18 @@ describe('給水・給湯を床下でつなぐ（案）', () => {
     expect(buried.every((s) => s.material === 'HIVP')).toBe(true);
   });
   test('床下の管どうしを平行に重ねない', () => expect(overlaps(r.doc)).toEqual([]));
-  test('各器具の給水・給湯と給湯器の入口に止水栓（口のすぐ先）。水理計算にも入る', () => {
+  test('各器具の給水・給湯と給湯器の入口・出口に止水栓（口のすぐ先。給湯器はベンリカンの先）。水理計算にも入る', () => {
     const net = r.doc.network;
     const ports = Object.values(net.nodes).filter((n) => n.fixtureId && ['kitchen', 'washbasin', 'toilet'].includes(r.doc.fixtures[n.fixtureId].type) && (n.portId === 'water' || n.portId === 'hot'));
-    ports.push(Object.values(net.nodes).find((n) => n.fixtureId === h.ids.heater && n.portId === 'in')!);
-    expect(ports).toHaveLength(6);
+    ports.push(...Object.values(net.nodes).filter((n) => n.fixtureId === h.ids.heater && (n.portId === 'in' || n.portId === 'out')));
+    expect(ports).toHaveLength(7);
     for (const p of ports) {
       const segs = Object.values(net.segments).filter((s) => s.a === p.id || s.b === p.id);
       expect(segs).toHaveLength(1);
       const o = net.nodes[segs[0].a === p.id ? segs[0].b : segs[0].a];
       expect(o.kind).toBe('valve');
     }
-    expect(r.valves).toBe(6);
+    expect(r.valves).toBe(7);
     const c = calcSupply(r.doc, resolveSupplyRules({}), { flows: {} });
     expect('error' in c ? [] : c.rows.filter((x) => x.label.startsWith('バルブ'))).not.toEqual([]);
   });
@@ -124,11 +124,11 @@ describe('条件を変える', () => {
     expect(Object.values(r.doc.fixtures).filter((f) => f.type === 'waterHeader')).toHaveLength(1);
     expect(tree(r.doc).outlets).toHaveLength(4);
   });
-  test('給水口が 7 つ（給湯器を含む）ならヘッダーは 2 台、全部つながる', () => {
-    const h = supplyHouse({ extraWater: 3 });
+  test('床下の給水口が 7 つならヘッダーは 2 台、全部つながる（外の給湯器は地中の HI から）', () => {
+    const h = supplyHouse({ extraWater: 4 });
     const r = routeSupplies(h.doc);
     expect(Object.values(r.doc.fixtures).filter((f) => f.type === 'waterHeader')).toHaveLength(2);
-    expect(tree(r.doc).outlets).toHaveLength(7);
+    expect(tree(r.doc).outlets).toHaveLength(8);
   });
   test('先に「器具の真下に配管を落とす」を押していても、その立て管を使ってつなぐ（深さが違えば床下の高さまで足す）', () => {
     const h = supplyHouse();
@@ -167,7 +167,7 @@ describe('条件を変える', () => {
     const h = supplyHouse();
     const d = moveFixture(h.doc, h.ids.heater, { x: 2000, y: -300 }, 90);
     const r = routeSupplies(d);
-    expect(r.sleeves).toBe(3);
+    expect(r.sleeves).toBe(2);
     expect(overlaps(r.doc)).toEqual([]);
   });
   test('建物の中の給湯器（東の壁ぎわ）でも給湯ヘッダーを置いてつなぐ', () => {

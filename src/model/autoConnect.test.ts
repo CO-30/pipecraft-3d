@@ -269,7 +269,7 @@ describe('手で置いたヘッダーを使う（2026-11-13 不具合: 1 階に�
       expect([f.x, f.y]).toEqual([h.doc.fixtures[id].x, h.doc.fixtures[id].y]);
       expect(segmentsAt(r.doc.network, port(r.doc, id, 'in')).length).toBeGreaterThan(0);
     }
-    expect(outsUsed(r.doc, h.water)).toBe(4); // キッチン・洗面台・トイレ・給湯器
+    expect(outsUsed(r.doc, h.water)).toBe(3); // キッチン・洗面台・トイレ（外の給湯器は地中の HI から）
     expect(outsUsed(r.doc, h.hot)).toBeGreaterThan(0);
     expect(r.questions).toEqual([]);
     expect(r.summary.join()).toContain('床下へ下ろして');
@@ -278,7 +278,7 @@ describe('手で置いたヘッダーを使う（2026-11-13 不具合: 1 階に�
   });
 
   test('出口が足りないときに足すヘッダーは、置いたヘッダーのそばに置く（メーターの近くへ勝手に置かない）', () => {
-    const h = house(3); // 給水口 7（ヘッダー 1 台は出口 6）
+    const h = house(4); // 床下の給水口 7（ヘッダー 1 台は出口 6）
     const r = autoConnect(h.doc);
     const ws = Object.values(r.doc.fixtures).filter((f) => f.type === 'waterHeader');
     expect(ws).toHaveLength(2);

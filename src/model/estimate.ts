@@ -11,7 +11,8 @@ import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
 import { catalogFittingPrice, catalogPipePrice, catalogSupportPrice, effectiveMaterial, pbRollLength } from './priceCatalog';
-import { isPB } from './materials';
+import { isBenrikan, isPB } from './materials';
+import { outdoorRiserItems } from './outdoorRiser';
 import { computeConsumables, defaultConsumableSettings, GLUE_LABEL, type ConsumableSettings, type GlueKind } from './consumables';
 import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportMark, type SupportSettings } from './supports';
 import { orderChain, pointsAlong } from './chain';
@@ -273,7 +274,8 @@ export function computeEstimate(doc: Doc): Estimate {
 
   // --- 材料（配管・配線） ---
   const groups = new Map<string, Segment[]>();
-  for (const s of Object.values(net.segments)) { const k = pipeKey(s); const arr = groups.get(k); if (arr) arr.push(s); else groups.set(k, [s]); }
+  // ベンリカンは管の長さではなく本数で数える（下の基礎の貫通・屋外の立上りの欄）
+  for (const s of Object.values(net.segments)) { if (isBenrikan(s.material)) continue; const k = pipeKey(s); const arr = groups.get(k); if (arr) arr.push(s); else groups.set(k, [s]); }
   const stockJointsByKey = new Map<string, { count: number; seg: Segment }>();
   const stockJointMarks: Estimate['stockJointMarks'] = [];
   const pipes: PipeLine[] = [];
@@ -398,6 +400,11 @@ export function computeEstimate(doc: Doc): Estimate {
       });
     }
     for (const c of k.checks) issues.push({ kind: 'sleeve', target: { kind: 'segment', id: c.segId }, message: c.message });
+  }
+  // 屋外の立上り（コーキング・φ40 さや管・ベンリカン）。スリーブの設定に関係なく入れる
+  for (const it of outdoorRiserItems(doc)) {
+    const user = st.prices[it.key];
+    kiso.push({ ...it, price: user, priceSource: user ? 'user' : 'none', materialAmount: roundYen(it.count * (user?.material ?? 0)), laborAmount: roundYen(it.count * (user?.labor ?? 0)) });
   }
 
   // --- 単価未登録 ---
