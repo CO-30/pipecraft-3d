@@ -186,31 +186,35 @@ const dimValue = (s: string): number | null => {
 };
 
 /**
- * 寸法線から縮尺: 寸法の数字のすぐ横（真ん中あたり）にある水平・垂直の線の紙の長さ × 縮尺 が数字に合う（±1.5%）縮尺。
- * 2 か所以上で合い、ほかの縮尺より多いときだけ。通り芯も縮尺の文字も無い図面のため
+ * 寸法線から縮尺: 寸法の数字のすぐ横（真ん中あたり）のいちばん近い水平・垂直の線の紙の長さ × 縮尺 が数字に合う（±1.5%）縮尺。
+ * たまたま合うのを避けるため、3 か所以上で合い、寸法の数字の半分以上が同じ縮尺で、ほかの縮尺より多いときだけ。
+ * 通り芯も縮尺の文字も無い図面のため（重い図面では数字・線の数で打ち切る）
  */
 export function scaleFromDimLines(texts: PText[], segs: PSeg[]): number | undefined {
   const dims = texts.flatMap((t) => { const v = dimValue(t.s); return v === null ? [] : [{ t, v }]; });
-  if (dims.length < 2) return undefined;
+  if (dims.length < 3 || dims.length > 600) return undefined;
   const lines = segs.filter((g) => (Math.abs(g.x2 - g.x1) < 0.5 || Math.abs(g.y2 - g.y1) < 0.5) && Math.hypot(g.x2 - g.x1, g.y2 - g.y1) >= 10);
+  if (lines.length * dims.length > 40_000_000) return undefined;
   const votes = new Map<number, number>();
   for (const { t, v } of dims) {
     const near = Math.max(8, t.h * 1.5);
-    const hit = new Set<number>();
+    let best: { off: number; /** 合った縮尺 */ L: number } | null = null;
     for (const g of lines) {
       const hz = Math.abs(g.y2 - g.y1) < 0.5;
       const L = hz ? Math.abs(g.x2 - g.x1) : Math.abs(g.y2 - g.y1);
       const [lo, hi] = hz ? [Math.min(g.x1, g.x2), Math.max(g.x1, g.x2)] : [Math.min(g.y1, g.y2), Math.max(g.y1, g.y2)];
       const along = hz ? t.x : t.y, off = hz ? Math.abs(t.y - g.y1) : Math.abs(t.x - g.x1);
       if (off > near || along < lo + L * 0.25 || along > hi - L * 0.25) continue;
+      // 縮尺に合う線のうち、数字にいちばん近い 1 本だけ（1 つの数字が複数の縮尺に票を入れない）
       const n = v / (L * PT_MM);
       const sc = PAPER_SCALES.find((p) => Math.abs(n - p) / p <= 0.015);
-      if (sc) hit.add(sc);
+      if (sc && (!best || off < best.off)) best = { off, L: sc };
     }
-    for (const sc of hit) votes.set(sc, (votes.get(sc) ?? 0) + 1);
+    if (best) votes.set(best.L, (votes.get(best.L) ?? 0) + 1);
   }
   const ranked = [...votes].sort((a, b) => b[1] - a[1]);
-  return ranked[0] && ranked[0][1] >= 2 && ranked[0][1] > (ranked[1]?.[1] ?? 0) ? ranked[0][0] : undefined;
+  const top = ranked[0];
+  return top && top[1] >= 3 && top[1] * 2 >= dims.length && top[1] > (ranked[1]?.[1] ?? 0) ? top[0] : undefined;
 }
 
 /** 通り芯の間隔（紙の pt）でいちばん多いもの */

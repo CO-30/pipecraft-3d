@@ -59,6 +59,7 @@ const FOOTING_STRIP: StripOptions = { minT: 100, maxT: 420, minLen: WALL_STRIP.m
 export const DEFAULT_GL_TO_FL = 600, DEFAULT_FOOTING_TOP = 400;
 /** 平面図の文字から配置図の物を拾う範囲（建物の周り）。公共ますは道路の近くにあるので広め。凡例は図面の端なので外れる */
 const SITE_LABEL_MARGIN = 12000;
+const OUTLINE_NOTE = '文字が線になっている PDF（CAD から印刷したときに文字が図形になったもの）で、図面の名前・縮尺・通り芯が読めません。「新しい工事」の「図面を取り込む」で下に敷き、縮尺を合わせてなぞってください。元の CAD で「文字を文字のまま」PDF にできれば自動で読めます';
 const SCAN_NOTE = '線や文字のデータが入っていません（スキャンした画像だけの PDF は自動で読めません）。「新しい工事」の「図面を取り込む」で下に敷いて、なぞって描いてください';
 /** 通り芯の外側で線を読む範囲(mm)。外にある表・詳細図を壁と取り違えない */
 const GRID_MARGIN = 2000;
@@ -200,6 +201,8 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
   if (!byFloor.size) {
     // 画像だけの PDF（スキャン）は文字も線も無いので種類も分からない
     if (inputs.length && inputs.every((i) => !i.page.texts.length && i.page.segs.length < MIN_SEGS)) throw new PlanReadError(SCAN_NOTE);
+    // 線はあるが文字が 1 つも無い（CAD から印刷したときに文字が線＝アウトラインになった PDF）
+    if (inputs.length && inputs.every((i) => !i.page.texts.length)) throw new PlanReadError(OUTLINE_NOTE);
     if (!plans.length) throw new PlanReadError('平面図が見つかりませんでした。図面名に「平面図」「平面詳細図」と入った PDF を選んでください');
     throw new PlanReadError(sheets.filter((s) => s.kind === 'plan').map((s) => s.note)[0] || '平面図を読み取れませんでした');
   }
@@ -358,15 +361,17 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     if (!n('publicSewage')) ask(`配置図に汚水公共ますの記号はありませんでした${r.page.texts.some((x) => /下水引込/.test(x.s)) ? '（「下水引込へ」の向きにあるはずです）' : ''}。公共ますは「器具」から置いてください`, 'low');
     if (dropped.length) ask(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
   }
-  // 配置図が無いとき: 1 階の平面図（申請図など）に書かれた「量水器」「公共桝」「NO.1小口径桝」の文字の位置に置く（建物の周り 5m まで。凡例は除く）
+  // 配置図が無いとき: 1 階の平面図（申請図など）に書かれた「量水器」「公共桝」「NO.1小口径桝」の文字の位置に置く（建物の周り SITE_LABEL_MARGIN まで）
   if (!site && Object.keys(b.walls).length) {
     const cs = wallsOnFloor(b, floor1).flatMap((w) => [b.corners[w.a], b.corners[w.b]]);
     const M = SITE_LABEL_MARGIN;
     const box = { x0: Math.min(...cs.map((c) => c.x)) - M, x1: Math.max(...cs.map((c) => c.x)) + M, y0: Math.min(...cs.map((c) => c.y)) - M, y1: Math.max(...cs.map((c) => c.y)) + M };
     // 同じ階の別の平面図（給水平面図と排水平面図のように同じ下図の申請図）も、紙の上の壁が 1 階の壁と重なれば同じ位置として文字を使う
     const refLen = refWalls.reduce((sum, w) => sum + len(w), 0);
-    const same = plans.filter((r) => r !== first && r.floor === floors[0] && vector(r) && !r.grid && r.page.widthPt === first.page.widthPt && r.page.heightPt === first.page.heightPt
-      && overlapLength(readWalls(r.page, firstT, null, strip), refWalls) >= refLen * 0.5);
+    // 壁を読むのは重いので、配置図の物の文字があるときだけ
+    const hasLabel = (r: Read) => siteLabelItems(r.page.texts.map((x) => ({ x: 0, y: 0, s: x.s })), { x0: -1, x1: 1, y0: -1, y1: 1 }).length > 0;
+    const same = plans.filter((r) => r !== first && r.floor === floors[0] && vector(r) && !r.grid && !r.page.truncated && r.page.widthPt === first.page.widthPt && r.page.heightPt === first.page.heightPt
+      && hasLabel(r) && overlapLength(readWalls(r.page, firstT, null, strip), refWalls) >= refLen * 0.5);
     const texts = [first, ...same].flatMap((r) => r.page.texts.map((x) => ({ x: toWorldX(firstT, x.x), y: toWorldY(firstT, x.y), s: x.s })));
     const items = siteLabelItems(texts, box).map((i) => ({ ...i, x: Math.round(i.x), y: Math.round(i.y) }));
     if (items.length) {

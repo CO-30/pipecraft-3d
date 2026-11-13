@@ -18,6 +18,14 @@ describe('設備図（申請図）の表示を数量の正解にする', () => {
       { name: 'PE', spec: 'φ20', unit: 'm', qty: 4.3 },
     ]);
   });
+  it('平面図どうし（1 階と 2 階、給水と排水）は足す。平面図の合計と立面図の合計の多い方', () => {
+    const q = quantitiesFromSheets([
+      { name: '1階給水平面図', page: page(['PB13×7.0', 'PB13×1.0', 'PB13×2.0']) },
+      { name: '2階給水平面図', page: page(['PB13×5.0', 'PB13×1.0', 'PB13×1.0']) },
+      { name: '給水立面図', page: page(['PB13×12.1', 'PB13×1.0', 'PB13×1.0']) },
+    ]);
+    expect(q).toEqual([{ name: 'PB', spec: 'φ13', unit: 'm', qty: 17 }]);
+  });
   it('設備図が無ければ空', () => {
     expect(quantitiesFromSheets([{ name: 'a', page: page(['トイレ']) }])).toEqual([]);
   });

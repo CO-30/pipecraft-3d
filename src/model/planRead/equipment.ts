@@ -103,7 +103,8 @@ export function equipmentQuantities(r: EquipmentRead): { name: string; spec: str
 
 /** 平面図（申請図）の文字から置く、配置図の物。凡例を避けるため box（建物の周り）の中だけ */
 const SITE_WORDS: [RegExp, 'waterMeter' | 'publicSewage' | 'manholeSewage'][] = [
-  [/^(量水器|水道メーター)/, 'waterMeter'], [/^(新設)?(汚水)?公共[桝枡ます]/, 'publicSewage'], [/^NO\.?\d+(小口径)?[桝枡]|^汚水[桝枡]$/, 'manholeSewage'],
+  // 1 つの物の名前だけの文字（「量水器20mm(壁埋込型)」）。「量水器BOX」「水道メーター室」、凡例の「汚水桝」、注記の文は置かない
+  [/^(量水器|水道メーター)(\d+(MM)?)?(\(.*\))?$/, 'waterMeter'], [/^(新設)?(汚水)?公共[桝枡ます](Φ\d+)?$/, 'publicSewage'], [/^NO\.?\d+(小口径)?[桝枡](Φ\d+)?$/, 'manholeSewage'],
 ];
 export function siteLabelItems(texts: { x: number; y: number; s: string }[], box: { x0: number; x1: number; y0: number; y1: number }): { type: 'waterMeter' | 'publicSewage' | 'manholeSewage'; x: number; y: number }[] {
   const out: { type: 'waterMeter' | 'publicSewage' | 'manholeSewage'; x: number; y: number }[] = [];

@@ -74,4 +74,10 @@ describe('配置図が無いとき、平面図（申請図）の文字から メ
     r.site!.items.forEach((i, k) => expect(Math.hypot(i.x - want[k][1], i.y - want[k][2])).toBeLessThan(100));
     expect(r.report.check.some((c) => c.includes('文字の位置'))).toBe(true);
   });
+  it('ふつうの平面図の「量水器BOX」「水道メーター室」「汚水桝」（凡例・注記）では置かない', async () => {
+    const { siteLabelItems } = await import('./equipment');
+    const box = { x0: -1e6, x1: 1e6, y0: -1e6, y1: 1e6 };
+    expect(siteLabelItems(['量水器BOX', '水道メーター室', '汚水桝', '既設公共桝', '公共桝の位置は外構図参照'].map((s, i) => ({ x: i * 1000, y: 0, s })), box)).toEqual([]);
+    expect(siteLabelItems(['汚水公共桝', '量水器20mm(壁埋込型)', 'NO.2小口径桝'].map((s, i) => ({ x: i * 1000, y: 0, s })), box).map((i) => i.type)).toEqual(['publicSewage', 'waterMeter', 'manholeSewage']);
+  });
 });
