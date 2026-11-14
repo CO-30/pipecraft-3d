@@ -253,6 +253,10 @@ test.describe('図面から自動で3Dにする', () => {
     await expect(page.getByTestId('import-report')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('ir-check')).toContainText('基礎伏図が無い');
     await expect(page.getByTestId('ir-check')).toContainText('立面図が無い');
+    // 確からしさ: 読めなかった物（基礎伏図が無い）は ❗ で上に、要確認の数を見出しに
+    await expect(page.getByTestId('ir-check').locator('li').first()).toHaveAttribute('data-level', 'low');
+    await expect(page.getByTestId('ir-summary')).toContainText('読めなかった');
+    await page.getByTestId('import-report').screenshot({ path: evidence('planauto-confidence') });
     expect(Object.keys((await full(page)).building.walls)).toHaveLength(7);
   });
 

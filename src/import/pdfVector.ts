@@ -94,11 +94,12 @@ type PdfPageLike = { cleanup?(): unknown; getViewport(o: { scale: number }): { w
  * keep: 文字だけ見て、線も読むページか（図面リスト・仕様書・日影図など読まないページは線を読まない。枚数の多い図面一式でも軽く）。
  * maxPages は線を読むページの数の上限
  */
-export async function readVectorPages(data: ArrayBuffer, lib?: unknown, maxPages = Infinity, keep?: (texts: PText[]) => boolean): Promise<VectorPage[]> {
+export async function readVectorPages(data: ArrayBuffer, lib?: unknown, maxPages = Infinity, keep?: (texts: PText[]) => boolean, info?: { total?: number }): Promise<VectorPage[]> {
   const pdfjs = (lib ?? (await import('./pdf')).pdfjsLib) as PdfJs;
   const task = pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) });
   try {
     const doc = await task.promise;
+    if (info) info.total = doc.numPages;
     const pages: VectorPage[] = [];
     let withLines = 0;
     for (let n = 1; n <= doc.numPages && (keep ? n <= MAX_TEXT_PAGES : n <= maxPages); n++) {

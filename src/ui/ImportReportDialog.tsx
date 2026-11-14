@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FIXTURE_CATALOG } from '../model/fixtures';
 import type { ImportReport, PlacedCandidate } from '../model/planRead/assemble';
+import { checkItems } from '../model/planRead/confidence';
 
 /** learned: 直し方の記録に合わせて置き直した候補（参考にした記録の数） */
 export type LearnedCandidate = PlacedCandidate & { learned?: number };
@@ -18,10 +19,19 @@ export function ImportReportDialog({ report, fixtures, floorNames, learnedCount 
   const [on, setOn] = useState(() => fixtures.map(() => true));
   const picked = fixtures.filter((_, i) => on[i]);
   const multiFloor = new Set(fixtures.map((f) => f.floorId)).size > 1;
+  const checks = checkItems(report);
+  /** 位置が大まかな器具（部屋の名前から出した候補）の数 */
+  const rough = fixtures.filter((f) => !f.near).length;
+  const ICON = { low: '❗', mid: '⚠', info: 'ℹ' } as const;
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="図面の読み取り結果">
       <div className="modal import-report" data-testid="import-report">
         <h2>図面を読み取りました</h2>
+        {(checks.count.low > 0 || checks.count.mid > 0 || rough > 0) && (
+          <p className="ir-summary" data-testid="ir-summary">
+            要確認: {[checks.count.low && `❗ 読めなかった ${checks.count.low} 件`, checks.count.mid && `⚠ 推定・目安 ${checks.count.mid} 件`, rough && `器具の位置が大まか ${rough} 個`].filter(Boolean).join('・')}
+          </p>
+        )}
         {report.found.length > 0 && (
           <>
             <div className="field-label">読み取れたもの</div>
@@ -52,7 +62,8 @@ export function ImportReportDialog({ report, fixtures, floorNames, learnedCount 
         {report.check.length > 0 && (
           <>
             <div className="field-label">確かめてほしいこと</div>
-            <ul className="warn" data-testid="ir-check">{report.check.map((t) => <li key={t}>⚠ {t}</li>)}</ul>
+            <ul className="warn" data-testid="ir-check">{checks.items.map((c) => <li key={c.text} className={`lv-${c.level}`} data-level={c.level}>{ICON[c.level]} {c.text}</li>)}</ul>
+            <p className="hint">❗ は読めなかったので人が入れる・直す所、⚠ は推定や標準値で埋めた所です。上から順に確かめてください。</p>
           </>
         )}
         <div className="field-label">選んだ図面</div>

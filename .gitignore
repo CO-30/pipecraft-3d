@@ -30,3 +30,6 @@ dist-e2e/
 dist-pwa/
 test-results-pwa/
 .superpowers/
+
+# 精度の測定に使う実物の図面（個人情報を含むので入れない）
+bench-data/

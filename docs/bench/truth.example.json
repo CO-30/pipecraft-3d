@@ -1,0 +1,19 @@
+{
+  "id": "case-001",
+  "kind": "detached",
+  "structure": "wood",
+  "confirmedBy": "確認した人",
+  "confirmedAt": "2026-11-13",
+  "note": "数値だけ。氏名・住所・図面の絵は書かない",
+  "sheets": [
+    { "name": "平面図", "kind": "plan", "scale": 50 },
+    { "name": "基礎伏図", "kind": "foundation", "scale": 75 },
+    { "name": "立面図", "kind": "elevation", "scale": 100 },
+    { "name": "配置図", "kind": "site", "scale": 100 }
+  ],
+  "quantities": [
+    { "name": "HIVP", "spec": "20", "unit": "m", "qty": 12 },
+    { "name": "VU", "spec": "100", "unit": "m", "qty": 24 },
+    { "name": "止水栓", "spec": "", "unit": "個", "qty": 4 }
+  ]
+}
