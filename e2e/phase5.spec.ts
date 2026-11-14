@@ -134,6 +134,8 @@ test.describe('Phase 5 図面読み込み・実用化', () => {
     await page.route('**/overpass-api.de/**', (r) => r.fulfill({ json: { elements: [{ type: 'way', id: 9, tags: { building: 'house' }, geometry: [
       { lat: 26.19996, lon: 127.67995 }, { lat: 26.19996, lon: 127.67995 + d }, { lat: 26.19996 + d * 0.8, lon: 127.67995 + d }, { lat: 26.19996 + d * 0.8, lon: 127.67995 }, { lat: 26.19996, lon: 127.67995 }] }] } }));
     await page.route('**/cyberjapandata.gsi.go.jp/**', (r) => r.fulfill({ body: tile, contentType: 'image/jpeg', headers: { 'access-control-allow-origin': '*' } }));
+    // 地番図のデータは取れなかったことにする（取れなくても航空写真・外壁は入り、知らせが出る）
+    await page.route('**/data.source.coop/**', (r) => r.abort());
 
     await createProject(page, '航空写真テスト', { blank: true });
     await show(page, '2D');
@@ -144,8 +146,10 @@ test.describe('Phase 5 図面読み込み・実用化', () => {
     await expect(page.getByTestId('site-chosen')).toContainText('沖縄県那覇市テスト');
     await expect(page.getByTestId('site-fp')).toContainText('検索地点の建物');
     await page.getByTestId('site-eave').fill('450');
+    await expect(page.getByTestId('site-parcels')).toBeChecked();
     await page.getByTestId('site-import').click();
     await expect(page.getByTestId('site-dialog')).toBeHidden();
+    await expect(page.getByTestId('notice')).toContainText('地番図を取得できませんでした');
     const { bld } = await state(page);
     const walls = Object.values(bld.walls);
     expect(walls).toHaveLength(4);
