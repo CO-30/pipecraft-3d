@@ -5,7 +5,8 @@
  */
 import type { Vec2 } from './building';
 
-export type UnderlayKind = 'image' | 'pdf' | 'aerial';
+/** parcels: 地番図（法務省 登記所備付地図データ。透明な PNG） */
+export type UnderlayKind = 'image' | 'pdf' | 'aerial' | 'parcels';
 export type Underlay = {
   id: string;
   floorId: string;

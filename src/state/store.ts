@@ -306,7 +306,8 @@ type State = {
   /** 2点の実寸(mm)で縮尺を確定 */
   applyScale(realMm: number): boolean;
   /** 建物外形（外壁）と下敷きを1操作で取り込む。外壁が作れなかった辺の数を返す */
-  importSite(opts: { polygon?: Vec2[]; underlay?: Omit<Underlay, 'id'> }): { walls: number; failed: number } | null;
+  /** underlays: 航空写真と地番図など複数の下敷きを 1 操作で（最後のものを選ぶ） */
+  importSite(opts: { polygon?: Vec2[]; underlay?: Omit<Underlay, 'id'>; underlays?: Omit<Underlay, 'id'>[] }): { walls: number; failed: number } | null;
   /** 写真から作った開口部を1操作で追加。作れなかった数を返す */
   addOpeningsBatch(wallId: string, list: { type: OpeningType; offset: number; width: number; height: number; sill: number }[]): { added: number; failed: number; failedIdx: number[] };
 
@@ -1148,7 +1149,7 @@ export const useStore = create<State>((set, get) => {
       commit({ ...doc, underlays: { ...doc.underlays, [u.id]: n } }, { scalePick: null });
       return true;
     },
-    importSite: ({ polygon, underlay }) => {
+    importSite: ({ polygon, underlay: one, underlays: many }) => {
       const doc = get().doc;
       const floorId = get().activeFloorId;
       let b = doc.building, walls = 0, failed = 0;
@@ -1160,14 +1161,15 @@ export const useStore = create<State>((set, get) => {
       }
       let underlays = doc.underlays ?? {};
       let activeUnderlayId = get().activeUnderlayId;
-      if (underlay) {
+      const list = [...(one ? [one] : []), ...(many ?? [])];
+      for (const underlay of list) {
         const room = underlayRoom(underlay.src);
         if (room) { set({ notice: room }); return null; }
         const id = newId('u');
         underlays = { ...underlays, [id]: { ...underlay, id } };
         activeUnderlayId = id;
       }
-      if (!walls && !underlay) return null;
+      if (!walls && !list.length) return null;
       commit({ ...doc, building: b, underlays }, { activeUnderlayId, selection: null });
       return { walls, failed };
     },

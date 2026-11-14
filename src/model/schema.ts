@@ -123,7 +123,7 @@ export const estimateSchema = z.object({
 export const underlaySchema = z.object({
   id: z.string().min(1),
   floorId: z.string().min(1),
-  kind: z.enum(['image', 'pdf', 'aerial']),
+  kind: z.enum(['image', 'pdf', 'aerial', 'parcels']),
   label: z.string(),
   // 画像のみ（SVG 等は受け付けない）
   src: z.string().max(MAX_UNDERLAY_SRC).regex(/^data:image\/(jpeg|png|webp);base64,/),

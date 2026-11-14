@@ -1,11 +1,13 @@
 /**
- * 住所から 航空写真（国土地理院）と 建物外形（OpenStreetMap）を取り込むダイアログ。
+ * 住所から 航空写真（国土地理院）・地番図（法務省 登記所備付地図）・建物外形（OpenStreetMap）を取り込むダイアログ。
  */
 import { useState } from 'react';
 import { useStore } from '../state/store';
 import { GSI_ATTRIBUTION, OSM_ATTRIBUTION, polygonArea, pointInRing, rotatePoint, type Footprint } from '../model/geo';
 import { planSiteImport } from '../model/siteImport';
 import { fetchAerial, fetchFootprints, searchAddress, type Place } from '../import/site';
+import { PARCEL_ATTRIBUTION, PARCEL_NOTE } from '../model/parcels';
+import type { Underlay } from '../model/underlay';
 
 const LATLON = /^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/;
 
@@ -16,6 +18,8 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
   const [fps, setFps] = useState<Footprint[] | null>(null);
   const [fpIdx, setFpIdx] = useState(0);
   const [aerial, setAerial] = useState(true);
+  // 地番図: 現場で隣地・道路との境が分かる（2026-11-14 ユーザー要望）
+  const [parcels, setParcels] = useState(true);
   const [outline, setOutline] = useState(true);
   const [eave, setEave] = useState('0');
   const [align, setAlign] = useState(true);
@@ -62,10 +66,31 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
         attribution: fp ? `${GSI_ATTRIBUTION}／${OSM_ATTRIBUTION}` : GSI_ATTRIBUTION,
       };
     }
-    if (!plan.polygon && !underlay) throw new Error('取り込むものがありません');
-    const r = useStore.getState().importSite({ polygon: plan.polygon, underlay });
+    // 地番図は航空写真の上に重ねる（同じ中心・同じ回転。地点が原点）
+    let parcelUnderlay: Omit<Underlay, 'id'> | undefined;
+    let parcelNote = '';
+    if (parcels) {
+      try {
+        // 地番図の読み込み部品は使うときだけ読む（最初の表示を重くしない）
+        const { drawParcels, fetchParcels } = await import('../import/parcels');
+        const list = await fetchParcels(place);
+        if (list.length) {
+          const d = drawParcels(list);
+          parcelUnderlay = {
+            floorId: st.activeFloorId, kind: 'parcels', label: `地番図 ${place.title}`.slice(0, 60), src: d.src, widthPx: d.widthPx, heightPx: d.heightPx,
+            center: plan.aerialCenter, mmPerPx: d.mmPerPx, rotation: plan.rotation, opacity: 0.9, scaled: true, attribution: `${PARCEL_ATTRIBUTION}。${PARCEL_NOTE}`,
+          };
+        } else parcelNote = 'この場所の地番図はありません（地図に重ねられない「公図」の地域など）';
+      } catch {
+        parcelNote = '地番図を取得できませんでした（通信を確認してください）';
+      }
+    }
+    const list = [underlay, parcelUnderlay].filter((x): x is NonNullable<typeof x> => !!x);
+    if (!plan.polygon && !list.length) throw new Error(parcelNote || '取り込むものがありません');
+    const r = useStore.getState().importSite({ polygon: plan.polygon, underlays: list });
     if (!r) throw new Error(useStore.getState().notice ?? '取り込めませんでした');
-    if (missing) useStore.setState({ notice: `航空写真の一部（${missing}/9 区画）を取得できず灰色になっています` });
+    const notes = [missing ? `航空写真の一部（${missing}/9 区画）を取得できず灰色になっています` : '', parcelNote].filter(Boolean);
+    if (notes.length) useStore.setState({ notice: notes.join('。') });
     if (plan.polygon) st.setTool('select');
     onClose();
   });
@@ -87,6 +112,7 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
           <>
             <div className="small" data-testid="site-chosen">📍 {place.title}（{place.lat.toFixed(5)}, {place.lon.toFixed(5)}）</div>
             <label className="field inline"><input type="checkbox" checked={aerial} onChange={(e) => setAerial(e.target.checked)} /> 航空写真を下敷きにする（国土地理院・約0.5m/画素）</label>
+            <label className="field inline"><input type="checkbox" data-testid="site-parcels" checked={parcels} onChange={(e) => setParcels(e.target.checked)} /> 地番図（隣地・道路との境と地番）を重ねる（法務省・参考）</label>
             <label className="field inline"><input type="checkbox" checked={outline} onChange={(e) => { setOutline(e.target.checked); if (e.target.checked && !fps) void choose(place); }} /> 建物外形から外壁を作る（OpenStreetMap）</label>
             {outline && fps && (fps.length === 0
               ? <p className="warn small">この付近の建物外形が OpenStreetMap にありません。航空写真をなぞって壁を描いてください。</p>
@@ -105,11 +131,11 @@ export function SiteImportDialog({ onClose }: { onClose: () => void }) {
         )}
         {busy && <p className="muted">{busy}中…</p>}
         {err && <p className="err" role="alert">{err}</p>}
-        <p className="muted small">{GSI_ATTRIBUTION}。{OSM_ATTRIBUTION}（ODbL）。Google マップ・ストリートビューは利用規約上、取り込みに使えません。</p>
-        <p className="muted small" data-testid="site-privacy">検索のため、入力した住所を国土地理院（住所検索）に、選んだ地点の緯度・経度を OpenStreetMap（Overpass API）と国土地理院（地図タイル）に送信します。現場名などそれ以外の情報は送りません。</p>
+        <p className="muted small">{GSI_ATTRIBUTION}。{PARCEL_ATTRIBUTION}（{PARCEL_NOTE}）。{OSM_ATTRIBUTION}（ODbL）。Google マップ・ストリートビューは利用規約上、取り込みに使えません。</p>
+        <p className="muted small" data-testid="site-privacy">検索のため、入力した住所を国土地理院（住所検索）に、選んだ地点の緯度・経度を OpenStreetMap（Overpass API）と国土地理院（地図タイル）、地番図のデータの置き場所（Source Cooperative）に送信します。現場名などそれ以外の情報は送りません。</p>
         <div className="modal-btns">
           <button onClick={onClose}>閉じる</button>
-          <button className="primary" data-testid="site-import" disabled={!place || !!busy || (!aerial && !(outline && fps?.length))} onClick={() => void doImport()}>取り込む</button>
+          <button className="primary" data-testid="site-import" disabled={!place || !!busy || (!aerial && !parcels && !(outline && fps?.length))} onClick={() => void doImport()}>取り込む</button>
         </div>
       </div>
     </div>
