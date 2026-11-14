@@ -17,9 +17,9 @@ import { KISO_PRODUCTS } from './kisoSleeve';
 
 export const CATALOG_SOURCE = '積水化学工業 エスロン 設計積算価格（2026年度・税抜）';
 
-/** 材質が未指定の配管に使う既定の管種 */
+/** 材質が未指定の配管に使う既定の管種。排水・汚水は床下も屋外も VU（2026-11-14 ユーザー指定: 実際の工事で普通） */
 export const DEFAULT_MATERIAL: Partial<Record<SystemType, string>> = {
-  water: 'HIVP', hotWater: 'HTVP', drain: 'VP', sewage: 'VP', vent: 'VP', condensate: 'VP',
+  water: 'HIVP', hotWater: 'HTVP', drain: 'VU', sewage: 'VU', vent: 'VP', condensate: 'VP',
 };
 
 /** 直管 4m 1本の価格（円/本） */

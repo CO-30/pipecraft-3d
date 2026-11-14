@@ -428,7 +428,7 @@ function DropPipes() {
   return (
     <div className="drop-pipes" data-testid="drop-pipes">
       <div className="row">
-        <button className="primary auto-connect" data-testid="auto-connect" title="器具の真下に管を下ろす → 排水を床下で集めて基礎貫通スリーブで外の汚水マスへ（置いたマスがあればそこへ）→ 外のマスを公共汚水マスまで → 水・お湯を床下で枝分かれさせて（止水栓も）→ キッチン・洗面台に通気弁、を 1 回で。元に戻す 1 回で全部戻ります" onClick={() => {
+        <button className="primary auto-connect" data-testid="auto-connect" title="器具の真下に管を下ろす → 排水を床下で集めて基礎貫通スリーブで外の汚水マスへ（置いたマスがあればそこへ）→ 外のマスを公共汚水マスまで → 水・お湯を床下のヘッダーから器具ごとに（止水栓も）→ キッチン・洗面台に通気弁、を 1 回で。元に戻す 1 回で全部戻ります" onClick={() => {
           // 外の排水管の土かぶり・勾配、給水の埋設深さは、申請図面で選んでいる自治体と現場の住所に合わせる
           const st = useStore.getState();
           const p = resolveProfile(st.doc.site?.municipalityProfileId, useProfiles.getState().user);
@@ -444,7 +444,7 @@ function DropPipes() {
           }, 30);
         }}>🔗 汚水・水・湯をまとめてつなぐ（案）</button>
       </div>
-      <div className="muted small">器具・公共汚水マス・水道メーターを置いてから押すと、床下に管を下ろして、排水は公共マスまで、水・お湯は床下で枝分かれさせて、止水栓・通気弁も入れてつなぎます。汚水マスを自分で置いておくと、その近くの基礎から外へ出して、そこへ集めます。水を分ける部品（ヘッダー）がどうしても要るときは、質問でお聞きします。下のボタンで 1 つずつもできます。</div>
+      <div className="muted small">器具・公共汚水マス・水道メーターを置いてから押すと、床下に管を下ろして、排水は公共マスまで、水・お湯は床下に置いたヘッダーから器具ごとに引いて、止水栓・通気弁も入れてつなぎます。汚水マスを自分で置いておくと、その近くの基礎から外へ出して、そこへ集めます。ヘッダー（水を分ける部品）は自分で置いておくと、それを使います。下のボタンで 1 つずつもできます。</div>
       <div className="row">
         <label className="field inline">床から下へ
           <span className="unit-input"><input type="number" inputMode="numeric" data-testid="drop-depth" value={text} min={DROP_MIN} max={DROP_MAX} onChange={(e) => setText(e.target.value)} /><span>mm</span></span>

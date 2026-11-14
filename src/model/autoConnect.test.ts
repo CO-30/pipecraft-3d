@@ -192,11 +192,22 @@ describe('公共マスまで必ず届く（2026-11-12）', () => {
   });
 });
 
-describe('ヘッダーはできるだけ足さない（2026-11-12）', () => {
-  test('まとめてつなぐではヘッダーを置かずに枝分かれでつなぎ、聞くことは無い', () => {
+describe('ヘッダー工法が初期設定（2026-11-14 ユーザー指定: 実際の工事に多い、器具ごとに PB を引く形）', () => {
+  test('まとめてつなぐは、ヘッダーを床下に置いて器具ごとにつなぐ', () => {
     const h = supplyHouse();
     const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
     const r = autoConnect(p.doc);
+    expect(r.headers).toBeGreaterThan(0);
+    expect(Object.values(r.doc.fixtures).some((f) => f.type === 'waterHeader')).toBe(true);
+    expect(r.summary.join()).toContain('ヘッダーでつなぎました');
+  });
+});
+
+describe('ヘッダーを使わない形（headers: avoid を選んだとき。2026-11-12）', () => {
+  test('ヘッダーを置かずに枝分かれでつなぎ、聞くことは無い', () => {
+    const h = supplyHouse();
+    const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+    const r = autoConnect(p.doc, { headers: 'avoid' });
     expect(r.headers).toBe(0);
     expect(r.questions).toEqual([]);
     expect(r.summary.join()).toContain('ヘッダーは使っていません');
