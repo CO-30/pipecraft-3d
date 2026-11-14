@@ -8,7 +8,7 @@ import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 import { PMTiles } from 'pmtiles';
 import type { LatLon } from '../model/geo';
-import { parcelsFromTile, parcelTiles, type Parcel, type TileFeature } from '../model/parcels';
+import { parcelLabels, parcelsFromTile, parcelTiles, type Parcel, type TileFeature } from '../model/parcels';
 import type { Raster } from './image';
 
 export const PARCEL_PMTILES_URL = 'https://data.source.coop/smartmaps/amx-2024-04/MojMap_amx_2024.pmtiles';
@@ -17,7 +17,14 @@ let archive: PMTiles | null = null;
 const pm = () => (archive ??= new PMTiles(PARCEL_PMTILES_URL));
 
 /** 地点の周り sizeM 四方の筆（図面の座標 mm） */
-export async function fetchParcels(p: LatLon, sizeM = 120): Promise<Parcel[]> {
+/** timeoutMs で打ち切る（通信が止まっても取り込みを待たせない） */
+export async function fetchParcels(p: LatLon, sizeM = 120, timeoutMs = 20000): Promise<Parcel[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('時間切れ')), timeoutMs); });
+  try { return await Promise.race([readParcels(p, sizeM), late]); } finally { clearTimeout(timer); }
+}
+
+async function readParcels(p: LatLon, sizeM: number): Promise<Parcel[]> {
   const a = pm();
   const h = await a.getHeader();
   // データのいちばん細かい段（細かいほど形が正確。18 まで）
@@ -70,14 +77,11 @@ export function drawParcels(parcels: Parcel[], sizeM = 120, px = 1024): Raster &
   ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  for (const p of parcels) {
-    if (!p.label || !p.rings[0]?.length) continue;
-    const ring = p.rings[0];
-    const cx = ring.reduce((s, q) => s + q.x, 0) / ring.length, cy = ring.reduce((s, q) => s + q.y, 0) / ring.length;
-    const x = X(cx), y = Y(cy);
+  for (const { label, at } of parcelLabels(parcels)) {
+    const x = X(at.x), y = Y(at.y);
     if (x < 10 || y < 10 || x > px - 10 || y > px - 10) continue;
-    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.strokeText(p.label, x, y);
-    ctx.fillStyle = '#1e3a8a'; ctx.fillText(p.label, x, y);
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.strokeText(label, x, y);
+    ctx.fillStyle = '#1e3a8a'; ctx.fillText(label, x, y);
   }
   return { src: c.toDataURL('image/png'), widthPx: px, heightPx: px, mmPerPx };
 }

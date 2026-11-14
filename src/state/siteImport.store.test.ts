@@ -24,4 +24,15 @@ describe('共通ストア: 住所から取り込む（航空写真＋地番図�
     const p = s().toProjectData()!;
     expect(Object.values(parseProject(JSON.stringify(p)).underlays ?? {})[0].kind).toBe('parcels');
   });
+
+  it('2 枚を足すと下敷きの上限を超えるときは、どちらも入れずに知らせる（1 枚ずつなら入る大きさでも）', async () => {
+    const sized = (k: 'aerial' | 'parcels', n: number) => ({ ...u(k, k), src: 'data:image/png;base64,' + 'A'.repeat(n) });
+    // すでに 7.8MB ある現場に 3MB を 2 枚（1 枚ずつなら 10.8MB で入るが、2 枚で 13.8MB > 12MB）
+    s().importSite({ underlays: [sized('aerial', 3_900_000), sized('aerial', 3_900_000)] });
+    const before = Object.keys(s().doc.underlays ?? {}).length;
+    const big = (k: 'aerial' | 'parcels') => sized(k, 3_000_000);
+    expect(s().importSite({ underlays: [big('aerial'), big('parcels')] })).toBeNull();
+    expect(s().notice).toContain('下敷きが多すぎます');
+    expect(Object.keys(s().doc.underlays ?? {})).toHaveLength(before);
+  });
 });

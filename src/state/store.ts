@@ -447,11 +447,12 @@ export const useStore = create<State>((set, get) => {
   /** 配管ノードのうち、設備の接続口でないもの（接続口は器具と一緒にしか動かさない） */
   const movable = (net: Network, ids: string[]) => ids.filter((id) => net.nodes[id] && !net.nodes[id].fixtureId);
   /** 下敷きを追加できるか（大きさ・合計）。だめなら理由 */
-  const underlayRoom = (src: string, excludeElevationId?: string): string | null => {
+  /** pending: 同じ操作で先に足す下敷きの大きさ（まだ doc に入っていない分） */
+  const underlayRoom = (src: string, excludeElevationId?: string, pending = 0): string | null => {
     if (src.length > MAX_UNDERLAY_SRC) return '画像が大きすぎて保存できません';
     const total = Object.values(get().doc.underlays ?? {}).reduce((a, x) => a + x.src.length, 0)
       + Object.values(get().doc.elevations ?? {}).reduce((a, x) => a + (x.id === excludeElevationId ? 0 : x.photo?.src.length ?? 0), 0);
-    return total + src.length > MAX_UNDERLAYS_TOTAL ? 'この現場の下敷きが多すぎます。不要な下敷きを削除してください' : null;
+    return total + pending + src.length > MAX_UNDERLAYS_TOTAL ? 'この現場の下敷きが多すぎます。不要な下敷きを削除してください' : null;
   };
   /** 描画の終点を既存の配管につなぐ前に種類を確認。つなげないなら接続しない */
   const checkEnd = (system: SystemType, endNodeId?: string, endSegId?: string): { endNodeId?: string; endSegId?: string; notice?: string } => {
@@ -1162,8 +1163,10 @@ export const useStore = create<State>((set, get) => {
       let underlays = doc.underlays ?? {};
       let activeUnderlayId = get().activeUnderlayId;
       const list = [...(one ? [one] : []), ...(many ?? [])];
+      let pending = 0;
       for (const underlay of list) {
-        const room = underlayRoom(underlay.src);
+        const room = underlayRoom(underlay.src, undefined, pending);
+        pending += underlay.src.length;
         if (room) { set({ notice: room }); return null; }
         const id = newId('u');
         underlays = { ...underlays, [id]: { ...underlay, id } };

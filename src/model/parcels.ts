@@ -6,7 +6,7 @@
  * 境界の証明ではない（参考）。表示には出典と「参考」を必ず付ける。
  */
 import type { Vec2 } from './building';
-import { toLocalMm, worldPx, type LatLon } from './geo';
+import { pointInRing, polygonArea, toLocalMm, worldPx, type LatLon } from './geo';
 
 /** タイルの段の目安（読むときはデータのいちばん細かい段を使う。import/parcels.ts） */
 export const PARCEL_ZOOM = 16;
@@ -58,4 +58,38 @@ export function parcelsFromTile(features: TileFeature[], tile: TileKey & { exten
       ...(label ? { label } : {}),
     };
   });
+}
+
+/** 多角形の重心（面積の重心） */
+function centroid(r: Vec2[]): Vec2 {
+  let a = 0, cx = 0, cy = 0;
+  r.forEach((p, i) => { const q = r[(i + 1) % r.length]; const k = p.x * q.y - q.x * p.y; a += k; cx += (p.x + q.x) * k; cy += (p.y + q.y) * k; });
+  return a ? { x: cx / (3 * a), y: cy / (3 * a) } : r[0];
+}
+
+/** 筆の中の、文字を置く点: 重心が中ならそれ、外（L 字など）なら重心の高さの横線で筆の中にいちばん長くある所の真ん中 */
+function inside(r: Vec2[]): Vec2 {
+  const c = centroid(r);
+  if (pointInRing(c, r)) return c;
+  const xs: number[] = [];
+  r.forEach((p, i) => { const q = r[(i + 1) % r.length]; if ((p.y > c.y) !== (q.y > c.y)) xs.push(p.x + ((c.y - p.y) * (q.x - p.x)) / (q.y - p.y)); });
+  xs.sort((a, b) => a - b);
+  let best: Vec2 = r[0], w = -1;
+  for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > w) { w = xs[i + 1] - xs[i]; best = { x: (xs[i] + xs[i + 1]) / 2, y: c.y }; }
+  return best;
+}
+
+/** 地番の文字: 地番ごとに 1 つ（タイルの境で分かれた筆も）。いちばん大きい部分の中の点に */
+export function parcelLabels(parcels: Parcel[]): { label: string; at: Vec2 }[] {
+  // 同じ地番で 50m 以内の部分を 1 つの筆とみる（別の字の同じ地番は離れている）
+  const groups: { label: string; ring: Vec2[]; c: Vec2 }[] = [];
+  for (const p of parcels) {
+    const r = p.rings[0];
+    if (!p.label || !r || r.length < 3) continue;
+    const c = centroid(r);
+    const g = groups.find((x) => x.label === p.label && Math.hypot(x.c.x - c.x, x.c.y - c.y) < 50_000);
+    if (!g) groups.push({ label: p.label, ring: r, c });
+    else if (polygonArea(r) > polygonArea(g.ring)) { g.ring = r; g.c = c; }
+  }
+  return groups.map(({ label, ring }) => { const c = inside(ring); return { label, at: { x: Math.round(c.x), y: Math.round(c.y) } }; });
 }

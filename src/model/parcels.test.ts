@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { toLocalMm, worldPx } from './geo';
-import { parcelLabel, parcelsFromTile, parcelTiles, PARCEL_ZOOM, type TileFeature } from './parcels';
+import { pointInRing, toLocalMm, worldPx } from './geo';
+import { parcelLabel, parcelLabels, parcelsFromTile, parcelTiles, PARCEL_ZOOM, type TileFeature } from './parcels';
 
 const origin = { lat: 26.2124, lon: 127.6809 }; // 那覇市の辺り
 
@@ -56,5 +56,23 @@ describe('地番図のタイル（登記所備付地図）', () => {
     const [p] = parcelsFromTile([{ type: 3, rings: [ring], props: {} }], tile, origin);
     // 辺 0: 中→外へ（描く）、辺 1: タイルの外の縦線（描かない）、辺 2: 外→中（描く）、辺 3: 中の縦線（描く）
     expect(p.hidden[0]).toEqual([false, true, false, false]);
+  });
+
+  it('地番の文字は筆ごとに 1 つ（タイルの境で 2 つに分かれた筆も）。いちばん大きい部分の重心に', () => {
+    const sq = (x: number, y: number, w: number, h: number) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+    // L 字の筆: 点の平均は筆の外に出るが、重心は中
+    const L = [{ x: 0, y: 0 }, { x: 10000, y: 0 }, { x: 10000, y: 1000 }, { x: 1000, y: 1000 }, { x: 1000, y: 10000 }, { x: 0, y: 10000 }];
+    const r = parcelLabels([
+      { rings: [sq(0, 20000, 4000, 4000)], hidden: [[]], label: '5-1' },
+      { rings: [sq(4000, 20000, 1000, 4000)], hidden: [[]], label: '5-1' },
+      { rings: [L], hidden: [[]], label: '7' },
+      { rings: [sq(0, 0, 10, 10)], hidden: [[]] },
+    ]);
+    expect(r.map((x) => x.label)).toEqual(['5-1', '7']);
+    expect(r[0].at).toEqual({ x: 2000, y: 22000 });
+    expect(pointInRing(r[1].at, L)).toBe(true);
+    // 別の字（大字）の同じ地番は離れているので別々に出す
+    const two = parcelLabels([{ rings: [sq(0, 0, 1000, 1000)], hidden: [[]], label: '1' }, { rings: [sq(90000, 0, 1000, 1000)], hidden: [[]], label: '1' }]);
+    expect(two).toHaveLength(2); // L 字の重心は筆の外に出るので、筆の中の点にする
   });
 });
