@@ -379,6 +379,15 @@ header .lbl { margin-left: 2px; }
 .shinsei-forms-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .shinsei-forms-group { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
 .shinsei-forms-group h3 { margin: 0 0 8px; font-size: 14px; }
+.road-toggle { width: 100%; text-align: left; font-size: 14px; font-weight: 600; background: none; border: none; padding: 4px 0; cursor: pointer; min-height: 40px; }
+.road-body { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.road-body h3 { margin: 6px 0; font-size: 14px; }
+.road-check { display: flex; gap: 8px; align-items: flex-start; }
+.road-check input { margin-top: 3px; flex: none; }
+.road-note { display: block; }
+.road-checklist li.late { background: #fff1f2; }
+.road-warnings { margin: 0; padding-left: 18px; }
+.road-group textarea { width: 100%; font: inherit; }
 .shinsei-forms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; }
 .shinsei-forms-grid .field { display: flex; flex-direction: column; gap: 3px; }
 .shinsei-forms-grid .field input, .shinsei-forms-grid .field select { font-size: 14px; padding: 6px 8px; }

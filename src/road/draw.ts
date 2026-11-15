@@ -62,7 +62,7 @@ export function table(sheet: Sheet, x: number, y: number, labelW: number, valueW
   return cy;
 }
 
-/** 令和の日付（YYYY-MM-DD）。読めなければ空欄の「令和　年　月　日」 */
+/** 令和の日付（YYYY-MM-DD）。読めなければ空欄の日付 */
 export function jaDate(iso: string | undefined): string {
   const r = iso ? reiwa(iso) : undefined;
   return r ? `令和${r.year}年${r.month}月${r.day}日` : '令和　　年　　月　　日';

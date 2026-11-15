@@ -9,6 +9,7 @@ import type { MunicipalityProfile } from '../model/municipality';
 import { EMPTY_CONTRACTOR, todayIso, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
 import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS, waterSheetFor } from '../forms/formSets';
 import type { Sheet } from '../export/sheet';
+import { RoadPermitPanel } from './RoadPermitPanel';
 
 const CONTRACTOR_FIELDS: { id: keyof Contractor; label: string; hint?: string }[] = [
   { id: 'name', label: '商号又は名称' },
@@ -110,39 +111,47 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
     } finally { setBusy(''); }
   };
 
+  const contractorMissing = contractorLoaded && !contractor.name;
+  const contractorToggle = <button data-testid="forms-contractor-toggle" onClick={() => setShowContractor((v) => !v)}>{showContractor ? '工事店の情報を閉じる' : `🏢 工事店の情報${contractorMissing ? '（未入力）' : ''}`}</button>;
+  const contractorUi = showContractor ? (
+    <section className="shinsei-forms-group" data-testid="forms-contractor">
+      <h3>工事店の情報（この端末に保存。現場ファイルやバックアップには入りません）</h3>
+      <div className="shinsei-forms-grid">
+        {CONTRACTOR_FIELDS.map((f) => (
+          <label key={f.id} className="field">{f.label}
+            <input data-testid={`contractor-${f.id}`} value={contractor[f.id]} onChange={(e) => setContractor({ ...contractor, [f.id]: e.target.value })} />
+          </label>
+        ))}
+      </div>
+      <button className="primary" data-testid="contractor-save" onClick={saveContractor}>保存</button>
+    </section>
+  ) : null;
   if (!set) {
     return (
       <div className="shinsei-forms" data-testid="shinsei-forms">
         <p className="est-provisional" data-testid="shinsei-forms-none">「{profile.name}」の申請書の様式はまだ登録していません（今は沖縄市のみ）。申請担当者から様式（Excel / PDF）と記入例が届いたら追加できます。</p>
+        <p className="muted small">道路の手続き（道路占用・道路使用許可）は全国共通の様式で作れます。申請者（会社）の欄には工事店の情報が入ります</p>
+        <div className="shinsei-forms-actions">{contractorToggle}</div>
+        {err && <p className="est-provisional" role="alert">{err}</p>}
+        {msg && <p className="small muted" data-testid="forms-msg">{msg}</p>}
+        {contractorUi}
+        <RoadPermitPanel contractor={contractor} siteName={siteName} date={date} />
       </div>
     );
   }
-  const contractorMissing = contractorLoaded && !contractor.name;
   return (
     <div className="shinsei-forms" data-testid="shinsei-forms">
       <div className="shinsei-forms-actions">
         <button className="primary" data-testid="forms-water" disabled={!!busy || !contractorLoaded} onClick={() => run('water')}>{busy === 'water' ? '作成中…' : '給水申請書 (Excel)'}</button>
         <button className="primary" data-testid="forms-sewer" disabled={!!busy || !contractorLoaded} onClick={() => run('sewer')}>{busy === 'sewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>
         <button data-testid="forms-products" disabled={!!busy || !contractorLoaded} onClick={() => run('products')}>{busy === 'products' ? '作成中…' : '製品一覧表 (PDF)'}</button>
-        <button data-testid="forms-contractor-toggle" onClick={() => setShowContractor((v) => !v)}>{showContractor ? '工事店の情報を閉じる' : `🏢 工事店の情報${contractorMissing ? '（未入力）' : ''}`}</button>
+        {contractorToggle}
       </div>
       {err && <p className="est-provisional" role="alert">{err}</p>}
       {msg && <p className="small muted" data-testid="forms-msg">{msg}</p>}
       {contractorMissing && !showContractor && <p className="small warn" data-testid="forms-contractor-missing">⚠ 工事店の情報が未入力です。「工事店の情報」から入れると申請書に入ります（この端末だけに保存）</p>}
       <p className="small muted">申請者の氏名・住所などの入力は現場に保存され、現場ファイルとバックアップにも入ります。工事店の情報はこの端末だけに保存されます</p>
-      {showContractor && (
-        <section className="shinsei-forms-group" data-testid="forms-contractor">
-          <h3>工事店の情報（この端末に保存。現場ファイルやバックアップには入りません）</h3>
-          <div className="shinsei-forms-grid">
-            {CONTRACTOR_FIELDS.map((f) => (
-              <label key={f.id} className="field">{f.label}
-                <input data-testid={`contractor-${f.id}`} value={contractor[f.id]} onChange={(e) => setContractor({ ...contractor, [f.id]: e.target.value })} />
-              </label>
-            ))}
-          </div>
-          <button className="primary" data-testid="contractor-save" onClick={saveContractor}>保存</button>
-        </section>
-      )}
+      {contractorUi}
       {groups.map((g) => (
         <section key={g.name} className="shinsei-forms-group">
           <h3>{g.name}</h3>
@@ -171,6 +180,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
           ))}
         </ul>
       </section>
+      <RoadPermitPanel contractor={contractor} siteName={siteName} date={date} />
     </div>
   );
 }
