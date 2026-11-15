@@ -3,7 +3,7 @@
  * 長さ・面積は mm・mm²（入力は m）。
  */
 import type { ApplicationValues } from '../forms/types';
-import { num, STEPS, YES } from './fields';
+import { num, numM, STEPS, YES } from './fields';
 
 export type Takeoff = { kind: 'water' | 'sewer'; label: string; pipe: string; dia: number; main: string; length: number; width: number; depth: number; digArea: number; restoreArea: number };
 export type CheckItem = { label: string; to: string; app: boolean; due?: string; late?: boolean; note?: string };
@@ -12,7 +12,7 @@ export type Layer = { name: string; t: number };
 /** 期限の目安（着工日の何日前までに出すか）。役所によって違うので画面では「目安」と書く */
 export const ROAD_LEAD_DAYS = { occupancy: 21, use: 7, notice: 3, buried: 7 } as const;
 
-const mm = (v: string | undefined) => Math.round((num(v) ?? 0) * 1000);
+const mm = (v: string | undefined) => Math.round((numM(v) ?? 0) * 1000);
 
 export function roadTakeoffs(v: ApplicationValues): Takeoff[] {
   const out: Takeoff[] = [];
@@ -66,16 +66,21 @@ export function roadChecklist(v: ApplicationValues, today: string): CheckItem[] 
 export function roadWarnings(v: ApplicationValues): string[] {
   const w: string[] = [];
   if (!v['road.roadKind']) w.push('道路の種類が未選択です');
-  const width = num(v['road.roadWidth']);
+  const width = numM(v['road.roadWidth']);
   for (const [k, name] of [['water', '給水'], ['sewer', '下水']] as const) {
     if (v[`road.${k}`] !== YES) continue;
-    const at = num(v[`road.${k}MainAt`]);
+    const at = numM(v[`road.${k}MainAt`]);
     if (at === undefined) w.push(`${name}: 本管の位置が未入力です（道路の中の長さが出せません）`);
     else if (width !== undefined && at > width) w.push(`${name}: 本管の位置（${at} m）が道路の幅（${width} m）より遠くになっています`);
-    if (num(v[`road.${k}Depth`]) === undefined) w.push(`${name}: 深さが未入力です`);
+    if (numM(v[`road.${k}Depth`]) === undefined) w.push(`${name}: 深さが未入力です`);
   }
   if (!isIso(v['road.start'])) w.push('着工日が未入力です（期限の目安と工程表が出せません）');
-  if (!num(v['road.digWidth'])) w.push('掘削の幅が未入力です');
+  else if (isIso(v['road.end'])) {
+    const last = schedule(v).at(-1)?.to;
+    if (v['road.end'] < v['road.start']) w.push('完了日が着工日より前になっています');
+    else if (last && v['road.end'] < last) w.push(`完了日（${v['road.end']}）が、作業の日数から出した終わり（${last}）より前です。日数か完了日を直してください`);
+  }
+  if (!numM(v['road.digWidth'])) w.push('掘削の幅が未入力です');
   return w;
 }
 
@@ -127,7 +132,9 @@ export function schedule(v: ApplicationValues): ScheduleRow[] {
 export function workPeriod(v: ApplicationValues): { from?: string; to?: string; days?: number } {
   const from = isIso(v['road.start']) ? v['road.start'] : undefined;
   if (!from) return {};
-  const to = isIso(v['road.end']) ? v['road.end'] : schedule(v).at(-1)?.to ?? from;
+  const last = schedule(v).at(-1)?.to ?? from;
+  // 完了日が着工日より前なら使わない（作業の日数から出した終わりにする）
+  const to = isIso(v['road.end']) && v['road.end'] >= from ? v['road.end'] : last;
   const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
   return { from, to, days };
 }

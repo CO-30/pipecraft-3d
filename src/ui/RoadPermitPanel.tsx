@@ -103,7 +103,7 @@ export function RoadPermitPanel({ contractor, siteName, date }: { contractor: Co
           {warnings.length > 0 && <ul className="small warn road-warnings" data-testid="road-warnings">{warnings.map((w) => <li key={w}>⚠ {w}</li>)}</ul>}
           <div className="shinsei-forms-actions">
             <button className="primary" data-testid="road-pdf" disabled={busy || !canMake} onClick={make}>{busy ? '作成中…' : '道路の申請書類一式 (PDF)'}</button>
-            <span className="muted small">占用許可申請書・道路使用許可申請書・位置図・平面図・横断図・交通規制図・工程表・占用内訳調書・着手届・完了届</span>
+            <span className="muted small">{values['road.roadKind'] === '私道' ? '道路使用許可申請書・位置図・平面図・横断図・交通規制図・工程表・占用内訳調書（私道なので占用許可と届は入れません）' : '占用許可申請書・道路使用許可申請書・位置図・平面図・横断図・交通規制図・工程表・占用内訳調書・着手届・完了届'}</span>
           </div>
           {err && <p className="est-provisional" role="alert">{err}</p>}
           {msg && <p className="small muted" data-testid="road-msg">{msg}</p>}

@@ -6,7 +6,7 @@
 import { around, at, LabelPlacer, spread1D, textWidth } from '../export/labelLayout';
 import { drawFrame, GRAY, INK, RED, type Sheet } from '../export/sheet';
 import type { ApplicationValues } from '../forms/types';
-import { num } from './fields';
+import { num, numM } from './fields';
 import { renderNoticeForms, renderOccupancyForm, renderTakeoffTable, renderUseForm } from './formSheets';
 import { label, titleBlock, wrap, type RoadMeta } from './draw';
 import { addDays, roadLayers, roadTakeoffs, schedule, workPeriod, type Takeoff } from './model';
@@ -31,12 +31,13 @@ const note = (s: Sheet, y: number, lines: string[], w = 150) => {
 export function renderRoadPlan(v: ApplicationValues, t: Takeoff[], m: RoadMeta): Sheet {
   const s = A4L();
   const mainAts = t.map((x) => x.length);
-  const roadW = (num(v['road.roadWidth']) ?? 0) * 1000 || Math.max(4000, ...mainAts.map((a) => a + 1000));
+  const roadW = (numM(v['road.roadWidth']) ?? 0) * 1000 || Math.max(4000, ...mainAts.map((a) => a + 1000));
   const both = t.length === 2;
-  const gapIn = (num(v['road.gap']) ?? 0) * 1000;
+  const gapIn = (numM(v['road.gap']) ?? 0) * 1000;
   const gap = both ? (gapIn >= 1000 ? gapIn : 2000) : 0;
   const yard = 2500, span = gap + 6000;
-  const sc = pickScale((k) => span / k <= 200 && (roadW + yard) / k <= 100);
+  const extent = Math.max(roadW, ...mainAts.map((a) => a + 500));
+  const sc = pickScale((k) => span / k <= 200 && (extent + yard) / k <= 100);
   head(s, '占用平面図', `縮尺 1/${sc}（A4）`);
   const L = 25, R = 272, top = 32;
   const by = top + yard / sc, fy = by + roadW / sc, cx = (L + R) / 2;
@@ -110,9 +111,10 @@ export function renderRoadPlan(v: ApplicationValues, t: Takeoff[], m: RoadMeta):
 export function renderRoadSection(v: ApplicationValues, t: Takeoff[], m: RoadMeta): Sheet {
   const s = A4L();
   head(s, '横断図・復旧断面図');
-  const roadW = (num(v['road.roadWidth']) ?? 0) * 1000 || Math.max(4000, ...t.map((x) => x.length + 1000));
+  const roadW = (numM(v['road.roadWidth']) ?? 0) * 1000 || Math.max(4000, ...t.map((x) => x.length + 1000));
   const deep = Math.max(600, ...t.map((x) => x.depth + x.dia + 300));
-  const sc = pickScale((k) => (roadW + 1500) / k <= 150 && deep / k <= 90);
+  const extent = Math.max(roadW, ...t.map((x) => x.length + 500));
+  const sc = pickScale((k) => (extent + 1500) / k <= 150 && deep / k <= 90);
   s.ops.push({ t: 'text', x: 20, y: 32, s: `横断図　縮尺 1/${sc}`, size: 3.4, bold: true });
   const P = new LabelPlacer(s, { x1: 14, y1: 26, x2: 172, y2: 150 });
   const yg = 50, x0 = 22 + 1000 / sc, xr = x0 + roadW / sc;
@@ -146,7 +148,7 @@ export function renderRoadSection(v: ApplicationValues, t: Takeoff[], m: RoadMet
   const panel = (ph: 'temp' | 'final', py: number) => {
     const name = ph === 'temp' ? '仮復旧' : '本復旧';
     s.ops.push({ t: 'text', x: 180, y: py, s: `${name}断面図　縮尺 1/${sc2}`, size: 3.4, bold: true });
-    const tx = 184, ty = py + 5, tw = Math.max(6, Math.min(40, (t[0]?.width || (num(v['road.digWidth']) ?? 0.6) * 1000) / sc2));
+    const tx = 184, ty = py + 5, tw = Math.max(6, Math.min(40, (t[0]?.width || (numM(v['road.digWidth']) ?? 0.6) * 1000) / sc2));
     const layers = roadLayers(v, ph);
     const pipeD = Math.max(1, ...t.map((x) => x.dia)) / sc2;
     const bottom = ty + depth / sc2 + 4;
@@ -167,7 +169,7 @@ export function renderRoadSection(v: ApplicationValues, t: Takeoff[], m: RoadMet
       s.ops.push({ t: 'line', x1: tx + tw, y1: mids[i], x2: tx + tw + 4, y2: y - 0.9, w: 0.12, color: GRAY });
       label(s, tx + tw + 5, y, names[i], 2.5, 280 - (tx + tw + 5));
     });
-    const wtxt = `掘削幅 ${m1(t[0]?.width ?? (num(v['road.digWidth']) ?? 0) * 1000)}　深さ ${m1(depth)}（mm 表示は層の厚さ）`;
+    const wtxt = `掘削幅 ${m1(t[0]?.width ?? (numM(v['road.digWidth']) ?? 0) * 1000)}　深さ ${m1(depth)}（mm 表示は層の厚さ）`;
     label(s, tx, Math.max(bottom, ys.at(-1) ?? bottom) + 5, wtxt, 2.4, 96, { color: GRAY });
   };
   panel('temp', 32);
@@ -180,16 +182,17 @@ export function renderRoadSection(v: ApplicationValues, t: Takeoff[], m: RoadMet
 export function renderTrafficPlan(v: ApplicationValues, m: RoadMeta): Sheet {
   const s = A4L();
   const kind = v['road.traffic'] || '片側交互通行';
-  const n = Math.max(0, Math.min(6, Math.round(num(v['road.guards']) ?? 0)));
+  const entered = Math.max(0, Math.round(num(v['road.guards']) ?? 0));
+  const n = Math.min(6, entered);
   head(s, '交通規制図（保安施設配置図）', '縮尺なし');
-  label(s, 20, 31, `規制のしかた: ${kind}　交通誘導員: ${n} 人　作業時間: ${v['road.hours'] || '（未入力）'}`, 3.2, 255);
+  label(s, 20, 31, `規制のしかた: ${kind}　交通誘導員: ${entered} 人${entered > n ? '（図は 6 人まで）' : ''}　作業時間: ${v['road.hours'] || '（未入力）'}`, 3.2, 255);
   const top = 62, bot = 122, mid = 92, L = 20, R = 277;
   s.ops.push({ t: 'line', x1: L, y1: top, x2: R, y2: top, w: 0.5 });
   s.ops.push({ t: 'line', x1: L, y1: bot, x2: R, y2: bot, w: 0.5 });
   if (kind !== '通行止め') s.ops.push({ t: 'line', x1: L, y1: mid, x2: R, y2: mid, w: 0.25, dash: true, color: GRAY });
   s.ops.push({ t: 'text', x: L + 2, y: top - 2, s: '宅地側（官民境界）', size: 2.6, color: GRAY });
   label(s, L + 2, bot + 4.5, `道路${v['road.routeName'] ? `（${v['road.routeName']}）` : ''}`, 2.6, 90, { color: GRAY });
-  const cone = (x: number, y: number) => s.ops.push({ t: 'poly', pts: [[x, y - 1.6], [x - 1.2, y + 0.9], [x + 1.2, y + 0.9]], close: true, fill: ORANGE, color: ORANGE, w: 0.1 });
+  const cone = (x: number, y: number) => s.ops.push({ t: 'poly', pts: [[x, y - 1.6], [x - 1.2, y + 0.9], [x + 1.2, y + 0.9]], close: true, fill: ORANGE, color: ORANGE, w: 0.4 });
   const sign = (cx: number, y: number, text: string) => {
     const w = textWidth(text, 2.8) + 4;
     s.ops.push({ t: 'rect', x: cx - w / 2, y: y - 4, w, h: 5.6, lw: 0.35, fill: '#ffffff' });
@@ -229,7 +232,7 @@ export function renderTrafficPlan(v: ApplicationValues, m: RoadMeta): Sheet {
   const arrow = (x1: number, x2: number, y: number) => {
     s.ops.push({ t: 'line', x1, y1: y, x2, y2: y, w: 0.35, color: GRAY });
     const d = x2 > x1 ? -1 : 1;
-    s.ops.push({ t: 'poly', pts: [[x2, y], [x2 + d * 2.4, y - 1.2], [x2 + d * 2.4, y + 1.2]], close: true, fill: GRAY, color: GRAY, w: 0.1 });
+    s.ops.push({ t: 'poly', pts: [[x2, y], [x2 + d * 2.4, y - 1.2], [x2 + d * 2.4, y + 1.2]], close: true, fill: GRAY, color: GRAY, w: 0.35 });
   };
   if (kind !== '通行止め') { arrow(30, 52, kind === '路肩規制' ? 82 : 112); arrow(267, 245, 112); }
   // 凡例
@@ -252,7 +255,8 @@ export function renderSchedule(v: ApplicationValues, m: RoadMeta): Sheet {
   const p = workPeriod(v);
   label(s, 20, 31, `工事の期間: ${p.from ? `${p.from.replace(/-/g, '/')} 〜 ${p.to!.replace(/-/g, '/')}（${p.days}日間）` : '（着工日を入れると棒が入ります）'}`, 3.2, 255);
   const x0 = 20, top = 38, nameW = 52, dayW = 14, hh = 12, rh = 9;
-  const ndays = Math.max(10, p.days ?? 10);
+  const lastDay = rows.length && p.from ? Math.round((Date.parse(rows[rows.length - 1].to) - Date.parse(p.from)) / 86400000) + 1 : 0;
+  const ndays = Math.max(10, p.days ?? 10, lastDay);
   const gridW = 277 - x0 - nameW - dayW;
   const cw = gridW / ndays, every = Math.max(1, Math.ceil(4.2 / cw));
   const nrows = Math.max(6, rows.length);
@@ -265,14 +269,14 @@ export function renderSchedule(v: ApplicationValues, m: RoadMeta): Sheet {
   s.ops.push({ t: 'text', x: x0 + nameW / 2, y: top + 7.5, s: '作業', size: 3, anchor: 'middle' });
   s.ops.push({ t: 'text', x: x0 + nameW + dayW / 2, y: top + 7.5, s: '日数', size: 3, anchor: 'middle' });
   const gx = x0 + nameW + dayW;
-  let lastMonth = '';
+  let lastMonth = '', monthRight = -Infinity;
   for (let d = 0; d < ndays; d++) {
     const iso = p.from ? addDays(p.from, d) : '';
     const x = gx + d * cw;
     if (d) s.ops.push({ t: 'line', x1: x, y1: top + hh / 2, x2: x, y2: top + H, w: 0.1, color: GRAY });
     if (iso) {
       const mo = `${Number(iso.slice(5, 7))}月`;
-      if (mo !== lastMonth && x + textWidth(mo, 2.6) < x0 + W - 1) { s.ops.push({ t: 'text', x: x + 0.8, y: top + 4.4, s: mo, size: 2.6 }); lastMonth = mo; }
+      if (mo !== lastMonth && x + 0.8 > monthRight + 1 && x + 0.8 + textWidth(mo, 2.6) < x0 + W - 1) { s.ops.push({ t: 'text', x: x + 0.8, y: top + 4.4, s: mo, size: 2.6 }); lastMonth = mo; monthRight = x + 0.8 + textWidth(mo, 2.6); }
       if (d % every === 0) s.ops.push({ t: 'text', x: x + cw / 2, y: top + hh - 1.8, s: String(Number(iso.slice(8, 10))), size: 2.4, anchor: 'middle' });
     }
   }
@@ -289,9 +293,12 @@ export function renderSchedule(v: ApplicationValues, m: RoadMeta): Sheet {
   return s;
 }
 
-/** 一式（位置図を除く 9 枚）: 占用許可申請書・使用許可申請書・平面図・横断図・交通規制図・工程表・内訳調書・着手届・完了届 */
+/** 一式（位置図を除く 9 枚。私道は 6 枚）: 占用許可申請書・使用許可申請書・平面図・横断図・交通規制図・工程表・内訳調書・着手届・完了届 */
 export function roadSheets(v: ApplicationValues, m: RoadMeta): Sheet[] {
   const t = roadTakeoffs(v);
-  return [renderOccupancyForm(v, t, m), renderUseForm(v, m), renderRoadPlan(v, t, m), renderRoadSection(v, t, m), renderTrafficPlan(v, m), renderSchedule(v, m), renderTakeoffTable(t, v, m), ...renderNoticeForms(v, m)];
+  const drawings = [renderRoadPlan(v, t, m), renderRoadSection(v, t, m), renderTrafficPlan(v, m), renderSchedule(v, m), renderTakeoffTable(t, v, m)];
+  // 私道は道路管理者への占用許可・届が無い（所有者の承諾。警察の道路使用許可は要ることがある）
+  if (v['road.roadKind'] === '私道') return [renderUseForm(v, m), ...drawings];
+  return [renderOccupancyForm(v, t, m), renderUseForm(v, m), ...drawings, ...renderNoticeForms(v, m)];
 }
 

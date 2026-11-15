@@ -77,13 +77,21 @@ export const ROAD_FIELDS: FormField[] = [
   F('siteManagerTel', '現場責任者の携帯', G_TO),
 ];
 
-/** 数として読む（全角・前後の空白・末尾の単位 m / mm / 人 / 日 を許す）。読めなければ undefined */
-export function num(s: string | undefined): number | undefined {
+/**
+ * 数として読む（全角・前後の空白・末尾の単位 m / mm / 人 / 日 を許す）。読めなければ undefined。
+ * unit = 'm' の欄では「600mm」を 0.6 として読む（深さなどを mm で入れる人が多いため）
+ */
+export function num(s: string | undefined, unit?: 'm'): number | undefined {
   if (s === undefined) return undefined;
-  const t = s.replace(/[０-９．－]/g, (c) => (c === '．' ? '.' : c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xfee0))).trim().replace(/(mm|m|ｍ|人|日)$/i, '').trim();
+  const z = s.replace(/[０-９．－−ｍＭ]/g, (c) => (c === '．' ? '.' : c === '－' || c === '−' ? '-' : c === 'ｍ' || c === 'Ｍ' ? 'm' : String.fromCharCode(c.charCodeAt(0) - 0xfee0))).trim();
+  const m = /^(.*?)\s*(mm|m|人|日)?$/i.exec(z);
+  const t = (m?.[1] ?? '').trim();
   if (!t || !/^-?\d+(\.\d+)?$/.test(t)) return undefined;
-  return Number(t);
+  const v = Number(t);
+  return unit === 'm' && m?.[2]?.toLowerCase() === 'mm' ? v / 1000 : v;
 }
+/** m の欄の値（「600mm」は 0.6） */
+export const numM = (s: string | undefined) => num(s, 'm');
 
 /** メーターの入口につながる管（無ければ undefined） */
 function meterInletPipe(doc: Doc): { diameter: number; material?: string } | undefined {

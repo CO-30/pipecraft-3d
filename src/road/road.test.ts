@@ -234,3 +234,68 @@ test('折り返しは英数字の続きを途中で切らない', () => {
     for (let i = 1; i < lines.length; i++) expect(/[A-Za-z0-9.]$/.test(lines[i - 1]) && /^[A-Za-z0-9.]/.test(lines[i])).toBe(false);
   }
 });
+
+import { numM } from './fields';
+
+/** 線・四角・円・文字が用紙の内側（余白 5mm）にあるか */
+const opsOutside = (s: Sheet) => s.ops.filter((o) => {
+  const xs: number[] = [], ys: number[] = [];
+  if (o.t === 'line') { xs.push(o.x1, o.x2); ys.push(o.y1, o.y2); }
+  else if (o.t === 'rect') { xs.push(o.x, o.x + o.w); ys.push(o.y, o.y + o.h); }
+  else if (o.t === 'circle') { xs.push(o.cx - o.r, o.cx + o.r); ys.push(o.cy - o.r, o.cy + o.r); }
+  else if (o.t === 'poly') for (const [x, y] of o.pts) { xs.push(x); ys.push(y); }
+  return xs.some((x) => x < 5 || x > s.width - 5) || ys.some((y) => y < 5 || y > s.height - 5);
+});
+
+describe('道路の手続き: 監査の指摘', () => {
+  test('交通規制図のコーン・矢印は PDF でも見える太さ（塗りが出ないため）', () => {
+    for (const traffic of ['片側交互通行', '路肩規制', '通行止め']) {
+      const polys = renderTrafficPlan({ ...full, 'road.traffic': traffic }, rm).ops.filter((o) => o.t === 'poly');
+      expect(polys.length).toBeGreaterThan(0);
+      for (const p of polys) expect((p as { w?: number }).w ?? 0.25).toBeGreaterThanOrEqual(0.35);
+    }
+  });
+  test('完了日が工程より早い・着工日より前でも、工程表は用紙に収まり、注意が出る', () => {
+    const v = { ...full, 'road.start': '2026-12-01', 'road.end': '2026-12-05', 'road.days.final': '30' };
+    const s = renderSchedule(v, rm);
+    expect(opsOutside(s)).toEqual([]);
+    expect(outside(s)).toEqual([]);
+    expect(roadWarnings(v).join()).toContain('完了日');
+    const back = { ...full, 'road.start': '2026-12-10', 'road.end': '2026-12-01' };
+    expect(roadWarnings(back).join()).toContain('完了日');
+    expect(workPeriod(back).days).toBeGreaterThan(0);
+    expect(texts(renderOccupancyForm(back, roadTakeoffs(back), rm))).not.toMatch(/-\d+日間/);
+  });
+  test('m の欄に「600mm」と入れても 0.6 m として読む', () => {
+    expect(numM('600mm')).toBe(0.6);
+    expect(numM('600ｍｍ')).toBe(0.6);
+    expect(numM('1.5m')).toBe(1.5);
+    expect(numM('１．５')).toBe(1.5);
+    expect(roadTakeoffs({ ...base, 'road.waterDepth': '600mm' })[0].depth).toBe(600);
+    expect(roadTakeoffs({ ...base, 'road.waterMainAt': '3000mm' })[0].length).toBe(3000);
+  });
+  test('私道: 占用許可申請書と道路管理者への届は入れない', () => {
+    const all = roadSheets({ ...full, 'road.roadKind': '私道' }, rm);
+    const t = all.map(texts).join('\n');
+    expect(t).not.toContain('道路占用許可申請書');
+    expect(t).not.toContain('工事着手届');
+    expect(t).toContain('道路使用許可申請書');
+    expect(all.length).toBe(6);
+  });
+  test('本管の位置が幅員より遠くても、図は用紙からはみ出さない', () => {
+    const v = { ...full, 'road.roadWidth': '4', 'road.waterMainAt': '20', 'road.sewerMainAt': '15' };
+    for (const s of [renderRoadPlan(v, roadTakeoffs(v), rm), renderRoadSection(v, roadTakeoffs(v), rm)]) {
+      expect(opsOutside(s)).toEqual([]);
+      expect(findTextOverlaps(s)).toEqual([]);
+    }
+  });
+  test('誘導員の人数は入力どおり書く（図は 6 人まで）', () => {
+    const t = texts(renderTrafficPlan({ ...full, 'road.guards': '9' }, rm));
+    expect(t).toContain('交通誘導員: 9 人');
+    expect(t).toContain('図は 6 人まで');
+  });
+  test('月末に始まる長い工事でも、工程表の月の文字が重ならない', () => {
+    const s = renderSchedule({ ...full, 'road.start': '2026-11-30', 'road.days.final': '120' }, rm);
+    expect(findTextOverlaps(s)).toEqual([]);
+  });
+});
