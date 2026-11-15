@@ -67,3 +67,75 @@ describe('道路の手続き: 項目と既定値', () => {
     expect(v['road.routeName']).toBe('町道1号線');
   });
 });
+
+import { roadChecklist, roadLayers, roadTakeoffs, roadWarnings, schedule, workPeriod } from './model';
+
+const base = { 'road.roadKind': '町道', 'road.water': 'する', 'road.sewer': 'しない', 'road.waterMainAt': '3.0', 'road.digWidth': '0.6', 'road.restoreMargin': '0', 'road.waterPipe': 'HIVP', 'road.waterPipeDia': '20', 'road.waterDepth': '0.6', 'road.roadWidth': '6', 'road.start': '2026-12-01', 'road.pavement': 'アスファルト' };
+
+describe('道路の手続き: 数量・チェックリスト', () => {
+  test('道路内の長さ・掘削面積・復旧面積（mm・mm²）', () => {
+    const [t] = roadTakeoffs(base);
+    expect(t.kind).toBe('water');
+    expect(t.length).toBe(3000);
+    expect(t.width).toBe(600);
+    expect(t.digArea).toBe(1.8e6);
+    expect(t.restoreArea).toBe(1.8e6);
+    expect(t.depth).toBe(600);
+    const [m] = roadTakeoffs({ ...base, 'road.restoreMargin': '0.1' });
+    expect(m.restoreArea).toBe(3200 * 800);
+  });
+
+  test('下水もするなら 2 件、どちらもしないなら 0 件', () => {
+    expect(roadTakeoffs({ ...base, 'road.sewer': 'する', 'road.sewerMainAt': '2', 'road.sewerPipeDia': '150' }).map((t) => t.kind)).toEqual(['water', 'sewer']);
+    expect(roadTakeoffs({ ...base, 'road.water': 'しない' })).toEqual([]);
+  });
+
+  test('どちらもしない → 「道路の手続きは要りません」だけ', () => {
+    const c = roadChecklist({ ...base, 'road.water': 'しない' }, '2026-11-16');
+    expect(c).toHaveLength(1);
+    expect(c[0].label).toContain('要りません');
+  });
+
+  test('町道: 占用・使用許可・着手届・完了届。期限の目安と遅れ', () => {
+    const c = roadChecklist(base, '2026-11-16');
+    const occ = c.find((x) => x.label.includes('道路占用許可'))!;
+    expect(occ.app).toBe(true);
+    expect(occ.due).toBe('2026-11-10');
+    expect(occ.late).toBe(true);
+    const use = c.find((x) => x.label.includes('道路使用許可'))!;
+    expect(use.due).toBe('2026-11-24');
+    expect(use.late).toBe(false);
+    expect(c.some((x) => x.label.includes('着手届'))).toBe(true);
+    expect(c.some((x) => x.label.includes('完了届'))).toBe(true);
+    expect(c.some((x) => x.label.includes('道路工事施行承認'))).toBe(false);
+  });
+
+  test('私道 → 所有者の承諾。占用許可は要らない', () => {
+    const c = roadChecklist({ ...base, 'road.roadKind': '私道' }, '2026-11-16');
+    expect(c.some((x) => x.label.includes('承諾'))).toBe(true);
+    expect(c.some((x) => x.label.includes('道路占用許可'))).toBe(false);
+  });
+
+  test('側溝や縁石を壊す → 道路工事施行承認', () => {
+    expect(roadChecklist({ ...base, 'road.curb': 'はい' }, '2026-11-16').some((x) => x.label.includes('道路工事施行承認'))).toBe(true);
+  });
+
+  test('注意: 本管の位置が道路の幅より遠い・着工日が無い', () => {
+    expect(roadWarnings({ ...base, 'road.waterMainAt': '8' }).join()).toContain('道路の幅');
+    expect(roadWarnings({ ...base, 'road.start': '' }).join()).toContain('着工日');
+    expect(roadWarnings(base)).toEqual([]);
+  });
+
+  test('舗装の層: 既定と手入力の上書き', () => {
+    expect(roadLayers(base, 'final').map((l) => l.t)).toEqual([50, 150, 200]);
+    expect(roadLayers({ ...base, 'road.layersFinal': '表層 密粒As 40\n路盤 RC-40 250' }, 'final')).toEqual([{ name: '表層 密粒As', t: 40 }, { name: '路盤 RC-40', t: 250 }]);
+  });
+
+  test('工程: 着工日から作業ごとの日付、工期', () => {
+    const s = schedule({ ...base, 'road.days.prep': '1', 'road.days.dig': '1', 'road.days.branch': '1', 'road.days.backfill': '1', 'road.days.temp': '1', 'road.days.final': '2' });
+    expect(s[0]).toMatchObject({ from: '2026-12-01', to: '2026-12-01' });
+    expect(s.at(-1)).toMatchObject({ from: '2026-12-06', to: '2026-12-07' });
+    expect(workPeriod({ ...base, 'road.days.prep': '1', 'road.days.dig': '1', 'road.days.branch': '1', 'road.days.backfill': '1', 'road.days.temp': '1', 'road.days.final': '2' })).toEqual({ from: '2026-12-01', to: '2026-12-07', days: 7 });
+    expect(workPeriod({ ...base, 'road.end': '2026-12-20' }).to).toBe('2026-12-20');
+  });
+});
