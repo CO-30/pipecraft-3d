@@ -139,3 +139,43 @@ describe('道路の手続き: 数量・チェックリスト', () => {
     expect(workPeriod({ ...base, 'road.end': '2026-12-20' }).to).toBe('2026-12-20');
   });
 });
+
+import { renderNoticeForms, renderOccupancyForm, renderTakeoffTable, renderUseForm } from './formSheets';
+import type { Sheet } from '../export/sheet';
+import { findTextOverlaps } from '../export/labelLayout';
+import { textRects } from '../export/labelLayout';
+
+const texts = (s: Sheet) => s.ops.filter((o) => o.t === 'text').map((o) => (o as { s: string }).s).join('\n');
+/** 文字が用紙の内側（余白 5mm）に収まっているか */
+export const outside = (s: Sheet) => s.ops.filter((o) => o.t === 'text').flatMap((o) => textRects(o as never)).filter((r) => r.x1 < 5 || r.y1 < 5 || r.x2 > s.width - 5 || r.y2 > s.height - 5);
+const rm = { siteName: 'A邸新築工事', address: '沖縄県島尻郡与那原町字与那原1番地', date: new Date(2026, 10, 16) };
+const full = { ...base, 'road.sewer': 'する', 'road.sewerMainAt': '2.5', 'road.sewerPipe': 'VU', 'road.sewerPipeDia': '150', 'road.sewerDepth': '1.2', 'road.routeName': '町道与那原1号線', 'road.roadAdmin': '与那原町長', 'road.police': '与那原警察署長', 'road.applicantName': '(株)テスト設備', 'road.applicantAddress': '沖縄県那覇市1-1', 'road.applicantRep': '代表取締役 水道 太郎', 'road.applicantTel': '098-000-0000', 'road.siteManager': '水道 次郎', 'road.siteManagerTel': '090-0000-0000', 'road.place': '与那原町字与那原1番地先', 'road.period': '許可の日から10年', 'road.traffic': '片側交互通行', 'road.guards': '2', 'road.hours': '9:00〜17:00' };
+
+describe('道路の手続き: 申請書・届・内訳調書', () => {
+  const sheets = () => [renderOccupancyForm(full, roadTakeoffs(full), rm), renderUseForm(full, rm), ...renderNoticeForms(full, rm), renderTakeoffTable(roadTakeoffs(full), full, rm)];
+  test('見出しと値が入る', () => {
+    const [occ, use, start, done, table] = sheets();
+    expect(texts(occ)).toContain('道路占用許可申請書');
+    expect(texts(occ)).toContain('町道与那原1号線');
+    expect(texts(occ)).toContain('与那原町長');
+    expect(texts(occ)).toContain('給水管');
+    expect(texts(use)).toContain('道路使用許可申請書');
+    expect(texts(use)).toContain('与那原警察署長');
+    expect(texts(use)).toContain('水道 次郎');
+    expect(texts(start)).toContain('工事着手届');
+    expect(texts(done)).toContain('工事完了届');
+    expect(texts(table)).toContain('占用内訳調書');
+    expect(texts(table)).toContain('3.00');
+  });
+  test('A4 縦・文字の重なり 0・用紙からはみ出さない（長い名前でも）', () => {
+    const long = { ...full, 'road.routeName': '町道与那原東西線（与那原町字与那原から字板良敷まで）第二工区南側車道部分', 'road.applicantAddress': '沖縄県島尻郡与那原町字与那原三千八百九十番地の二 与那原ビルディング三階三〇一号室' };
+    for (const s of [renderOccupancyForm(long, roadTakeoffs(long), rm), renderUseForm(long, rm), ...renderNoticeForms(long, rm), renderTakeoffTable(roadTakeoffs(long), long, rm), ...sheets()]) {
+      expect([s.width, s.height]).toEqual([210, 297]);
+      expect(findTextOverlaps(s)).toEqual([]);
+      expect(outside(s)).toEqual([]);
+    }
+  });
+  test('何も入力していなくても描ける', () => {
+    expect(() => [renderOccupancyForm({}, [], rm), renderUseForm({}, rm), ...renderNoticeForms({}, rm), renderTakeoffTable([], {}, rm)]).not.toThrow();
+  });
+});
