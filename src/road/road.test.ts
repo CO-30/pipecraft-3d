@@ -179,3 +179,58 @@ describe('道路の手続き: 申請書・届・内訳調書', () => {
     expect(() => [renderOccupancyForm({}, [], rm), renderUseForm({}, rm), ...renderNoticeForms({}, rm), renderTakeoffTable([], {}, rm)]).not.toThrow();
   });
 });
+
+import { renderRoadPlan, renderRoadSection, renderSchedule, renderTrafficPlan, roadSheets } from './drawSheets';
+
+describe('道路の手続き: 図面', () => {
+  const tk = roadTakeoffs(full);
+  test('平面図: 寸法と数量の表', () => {
+    const s = renderRoadPlan(full, tk, rm);
+    expect([s.width, s.height]).toEqual([297, 210]);
+    const t = texts(s);
+    expect(t).toContain('占用平面図');
+    expect(t).toContain('官民境界');
+    expect(t).toContain('3.00');
+    expect(t).toContain('2.50');
+    expect(t).toContain('1.80');
+  });
+  test('横断図・復旧断面図: 層の名前と深さ', () => {
+    const t = texts(renderRoadSection(full, tk, rm));
+    expect(t).toContain('表層 アスファルト');
+    expect(t).toContain('仮舗装 常温合材');
+    expect(t).toContain('0.60');
+  });
+  test('交通規制図: 誘導員の数と規制の種類', () => {
+    const count = (s: Sheet) => s.ops.filter((o) => o.t === 'text' && (o as { s: string }).s === '誘導員').length;
+    expect(count(renderTrafficPlan({ ...full, 'road.guards': '3' }, rm))).toBe(3);
+    expect(texts(renderTrafficPlan({ ...full, 'road.traffic': '通行止め' }, rm))).toContain('通行止');
+    expect(texts(renderTrafficPlan({ ...full, 'road.traffic': '路肩規制' }, rm))).toContain('路肩規制');
+  });
+  test('工程表: 作業ごとの棒', () => {
+    const s = renderSchedule(full, rm);
+    expect(texts(s)).toContain('工程表');
+    expect(texts(s)).toContain('本復旧');
+    expect(s.ops.filter((o) => o.t === 'rect' && (o as { fill?: string }).fill === '#d91e18').length).toBe(6);
+  });
+  test('一式は 9 枚（位置図は呼ぶ側で入れる）。どの組み合わせでも重なり 0・はみ出し 0', () => {
+    for (const traffic of ['片側交互通行', '路肩規制', '通行止め']) for (const [w, sw] of [['する', 'する'], ['する', 'しない'], ['しない', 'する']]) for (const g of ['0.5', '0', '']) {
+      const v = { ...full, 'road.traffic': traffic, 'road.water': w, 'road.sewer': sw, 'road.gap': g };
+      const all = roadSheets(v, rm);
+      expect(all).toHaveLength(9);
+      for (const s of all) { expect(findTextOverlaps(s)).toEqual([]); expect(outside(s)).toEqual([]); }
+    }
+  });
+  test('何も入力していなくても描ける', () => {
+    for (const s of roadSheets({}, rm)) { expect(findTextOverlaps(s)).toEqual([]); expect(outside(s)).toEqual([]); }
+  });
+});
+
+import { wrap } from './draw';
+test('折り返しは英数字の続きを途中で切らない', () => {
+  const src = '本復旧: 下層路盤 再生砕石 200mm、HIVP φ20';
+  for (let w = 20; w <= 80; w += 0.5) {
+    const lines = wrap(src, 3.2, w, 9);
+    expect(lines.join('')).toBe(src);
+    for (let i = 1; i < lines.length; i++) expect(/[A-Za-z0-9.]$/.test(lines[i - 1]) && /^[A-Za-z0-9.]/.test(lines[i])).toBe(false);
+  }
+});

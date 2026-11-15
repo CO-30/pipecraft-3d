@@ -224,3 +224,11 @@ describe('スリーブ表でも文字が重ならない', () => {
     for (const sh of out.sheets) expect(findTextOverlaps(sh)).toEqual([]);
   });
 });
+
+describe('道路の申請書類（占用・使用許可・平面図・横断図・交通規制図・工程表・内訳・届）', () => {
+  test('給水と下水が近い現場でも、規制方法 3 種の全シートで文字の重なりが 0', async () => {
+    const { roadSheets } = await import('../road/drawSheets');
+    const v = { 'road.roadKind': '町道', 'road.routeName': '町道与那原東西線（第二工区）', 'road.water': 'する', 'road.sewer': 'する', 'road.waterMainAt': '1.2', 'road.sewerMainAt': '1.0', 'road.gap': '1.0', 'road.roadWidth': '4', 'road.waterPipe': 'HIVP', 'road.waterPipeDia': '25', 'road.waterDepth': '0.6', 'road.sewerPipe': 'VU', 'road.sewerPipeDia': '150', 'road.sewerDepth': '0.9', 'road.digWidth': '0.5', 'road.start': '2026-12-28', 'road.days.final': '30', 'road.guards': '6' };
+    for (const traffic of ['片側交互通行', '路肩規制', '通行止め']) for (const s of roadSheets({ ...v, 'road.traffic': traffic }, meta)) expect(findTextOverlaps(s)).toEqual([]);
+  });
+});

@@ -11,7 +11,12 @@ export function wrap(s: string, size: number, maxW: number, maxLines = 3): strin
   for (const para of s.split('\n')) {
     let cur = '';
     for (const ch of [...para]) {
-      if (cur && textWidth(cur + ch, size) > maxW) { out.push(cur); cur = ch; } else cur += ch;
+      if (cur && textWidth(cur + ch, size) > maxW) {
+        // 英数字の続き（200mm・HIVP など）は途中で切らず、まとめて次の行へ
+        const m = /[A-Za-z0-9.φ]+$/.exec(cur);
+        if (/[A-Za-z0-9.]/.test(ch) && m && m.index > 0) { out.push(cur.slice(0, m.index)); cur = m[0] + ch; }
+        else { out.push(cur); cur = ch; }
+      } else cur += ch;
     }
     out.push(cur);
   }
