@@ -3,8 +3,9 @@
  * 平面図の壁、基礎伏図の立上り、立面図の高さを、通り芯で位置を合わせて 1 つの建物にする。純粋関数。
  * 読み取れなかった項目は標準値で埋め、何を読めて何が標準値かを report に残す（使う人が確認できるように）。
  */
-import { DEFAULT_FLOOR_HEIGHT, DEFAULT_SLAB, OPENING_DEFAULTS, addFloor, addOpening, addWall, clearHeight, emptyBuilding, setWallsLocked, wallsOnFloor, type Building, type Vec2 } from '../building';
-import { withMember } from '../members';
+import { DEFAULT_FLOOR_HEIGHT, DEFAULT_SLAB, OPENING_DEFAULTS, addFloor, addOpening, addWall, clearHeight, emptyBuilding, resolveCorner, setWallsLocked, updateWall, wallsOnFloor, type Building, type Vec2 } from '../building';
+import { membersOf, withMember } from '../members';
+import { closeOutline } from './closeOutline';
 import { heavyWidth, detectStrips, significantWidths, WALL_STRIP, type StripOptions, type WSeg } from './strips';
 import { FIXTURE_CATALOG } from '../fixtures';
 import { guessFixtures, type FixtureCandidate } from './fixtureGuess';
@@ -333,6 +334,29 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
       if (kinds.length > 1) ask(`基礎伏図のスラブの高さの印が区画で違います（${kinds.map(minus).join('・')}）。いちばん多い ${minus(off!)} にしています。区画ごとの違い（玄関・浴室の下など）は入っていません`);
       if (raw < 0) ask(`床下の底が GL より下になる値だったので、GL+0 にしています（基礎の高さ・スラブの印を確かめてください）`);
     }
+  }
+  // 1 階の外壁が窓・出入口の所で切れて 1 周つながっていなければ、基礎の立上りに沿ってつなぐ（行き止まりの壁は内壁に）。
+  // 外周がつながらないと建物の内外が分からず、床下の排水の本管・基礎を抜ける所・マスの深さを自動で決められない（2026-11-16）
+  {
+    const ext = wallsOnFloor(b, floor1).filter((w) => w.kind === 'exterior');
+    const cl = ext.length >= 3 ? closeOutline(ext.map((w) => ({ a: b.corners[w.a], b: b.corners[w.b] })), membersOf(b).filter((m) => m.kind === 'footing' && m.floorId === floor1).map((m) => ({ a: m.a, b: m.b }))) : null;
+    if (cl && (cl.add.length || cl.demote.length)) {
+      const t = [...ext.map((w) => w.thickness)].sort((p, q) => p - q)[Math.floor(ext.length / 2)];
+      for (const i of cl.demote) b = updateWall(b, ext[i].id, { kind: 'interior' });
+      const before = new Set(Object.keys(b.walls));
+      for (const g of cl.add) {
+        // 同じ所に内壁（間仕切りの線・基礎の上の壁）があれば、それを外壁にする。無ければ外壁を足す
+        const c1 = resolveCorner(b, floor1, g.a), c2 = resolveCorner(c1.b, floor1, g.b);
+        const A = c2.b.corners[c1.cornerId], B = c2.b.corners[c2.cornerId];
+        const on = (p: Vec2) => { const L = Math.hypot(B.x - A.x, B.y - A.y), tt = ((p.x - A.x) * (B.x - A.x) + (p.y - A.y) * (B.y - A.y)) / (L * L); return tt > -1e-6 && tt < 1 + 1e-6 && Math.abs((p.x - A.x) * (B.y - A.y) - (p.y - A.y) * (B.x - A.x)) / L < 5; };
+        const lying = wallsOnFloor(c2.b, floor1).filter((w) => on(c2.b.corners[w.a]) && on(c2.b.corners[w.b]));
+        if (lying.length) { b = c2.b; for (const w of lying) b = updateWall(b, w.id, { kind: 'exterior' }); }
+        else b = addWall(b, floor1, g.a, g.b, { thickness: t, kind: 'exterior' }).b;
+      }
+      b = setWallsLocked(b, Object.keys(b.walls).filter((id) => !before.has(id)), true);
+      if (cl.add.length) ask(`1 階の外壁が窓・出入口の所で切れていたので、${membersOf(b).some((m) => m.kind === 'footing') ? '基礎の立上りに沿って' : '同じ線上で'} ${cl.add.length} か所つないで外周を 1 周にしました（床下の排水・基礎の貫通を決めるため）。外周の形を確かめてください`);
+      if (cl.demote.length) ask(`外周から外れる短い外壁 ${cl.demote.length} 本（出窓の出っぱり・内側の壁など）は内壁にしました`, 'info');
+    } else if (ext.length >= 3 && !cl) ask('1 階の外壁が 1 周つながっていません（窓・出入口の所で切れています）。外壁をつなぐと、床下の排水を本管にまとめて外へ出せます', 'low');
   }
   // 配置図: 家の外形（1 階の外壁）で位置を合わせ、ます・メーター・敷地の高さを読む
   let site: SiteResult | undefined;

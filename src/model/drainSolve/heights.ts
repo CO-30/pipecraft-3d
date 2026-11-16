@@ -146,6 +146,24 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
     };
     const down = (id: string) => { const sid = t.parent.get(id)!; const s = net0.segments[sid]; return { s, p: s.a === id ? s.b : s.a }; };
     const slopeOverride = new Map<string, number>();
+    // 根が公共ますでなく、管底を手で入れていないマス（配置図から置いた・既定の GL−600 のまま）: 深さはまだ決まっていない。
+    // 既定の深さに引っぱられて床下から外へ出る所（KSA）を深くしないよう、上流の固定点から標準の勾配で下った深さにする（2026-11-16）
+    const rootFx = fxOf(t.root);
+    if (rootFx && isManhole(rootFx.type) && !isPublicType(rootFx.type) && !rootFx.params?.invertPin) {
+      let deepest: number | null = null;
+      for (const a of t.order) {
+        if (a === t.root || !(net0.nodes[a].zPin || exitZ.has(a) || (fxOf(a) && isManhole(fxOf(a)!.type) && fxOf(a)!.params?.invertPin))) continue;
+        let cur = a, zz = z.get(a)!, ok = true;
+        while (cur !== t.root) {
+          const { s, p } = down(cur);
+          if (vertical(s) || ufSegs.has(s.id)) { ok = false; break; }
+          zz -= (isSlopePinned(s) && s.slope !== undefined ? s.slope : defaultFor(s)) * planLength(net0, s) + dropOf(p);
+          cur = p;
+        }
+        if (ok) deepest = deepest === null ? zz : Math.min(deepest, zz);
+      }
+      if (deepest !== null) z.set(t.root, r1(deepest));
+    }
     // 2. 固定点の間に勾配を割り振る（間に立て管・床下があれば割り振らない）。公共ますから遠い固定点から（幹を先に決める）
     const distRoot = new Map<string, number>([[t.root, 0]]);
     for (const n of t.order) if (n !== t.root) { const { s, p } = down(n); distRoot.set(n, (distRoot.get(p) ?? 0) + planLength(net0, s)); }

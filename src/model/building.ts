@@ -227,7 +227,7 @@ function splitWallAt(b: Building, wallId: string, sIn: number): { b: Building; c
 }
 
 /** 点を既存の角／壁にスナップして角IDを得る（必要なら壁を分割、なければ新しい角） */
-function resolveCorner(b: Building, floorId: string, p: Vec2): { b: Building; cornerId: string } {
+export function resolveCorner(b: Building, floorId: string, p: Vec2): { b: Building; cornerId: string } {
   let best: Corner | null = null, bestD = SNAP_CORNER_MM;
   for (const c of Object.values(b.corners)) {
     if (c.floorId !== floorId) continue;
