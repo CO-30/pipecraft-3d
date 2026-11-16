@@ -485,3 +485,9 @@ header .lbl { margin-left: 2px; }
 .bundle-list li.ng { background: #f8fafc; color: #64748b; }
 /* 一覧が長くても「PDF にする」がいつも見える（スマホ） */
 .modal.bundle .modal-btns { position: sticky; bottom: -16px; margin: 0 -16px -16px; padding: 10px 16px 16px; background: #fff; border-top: 1px solid #e5e7eb; }
+
+/* 積算の要確認: 単価の未登録のまとめ（配管・部品の確かめる所と色を分ける） */
+.issues li.prices { border-color: #cbd5e1; background: #f8fafc; }
+.issues li.prices .tag { background: #64748b; }
+.issues li.prices .row { display: flex; gap: 8px; align-items: center; }
+[data-testid="issues-design-ok"] { color: #15803d; margin: 4px 0 8px; }

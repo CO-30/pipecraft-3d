@@ -1,7 +1,8 @@
 /**
  * 配管どうしの干渉（3D で管が重なっている所）。管は外径の円柱として、中心線どうしの最短距離 < 半径の和 で判定する。
  * つながっている区間（同じ点を持つ・ごく短い継手をはさんで続く）は除く。
- * 柔らかい管（PB・架橋ポリ）どうしが角度をもって交わる所は、上下にずらして通すので除く（平行に重なる・立て管が貫くのは干渉）。
+ * 柔らかい管（PB・架橋ポリ）どうしが角度をもって交わる所、柔らかい管がほかの横の管の上を横切る所は、上下にずらして（またいで）通すので除く
+ * （平行に重なる・立て管が貫く・下をくぐるのは干渉）。
  * 同じ重なりが分割された区間ごとに出ないよう、隣り合う区間どうしの干渉は 1 つにまとめる（重なりのいちばん大きいもの）。
  */
 import type { Doc } from './doc';
@@ -77,6 +78,9 @@ export function findPipeClashes(doc: Doc): PipeClash[] {
       if (connected(A.s, B.s, sum * 2)) continue;
       if (flexible(A.s) && flexible(B.s) && horizontal(A.s) && horizontal(B.s) && crossing(A.s, B.s)) continue;
       const c = closestPoints(net.nodes[A.s.a].pos, net.nodes[A.s.b].pos, net.nodes[B.s.a].pos, net.nodes[B.s.b].pos);
+      // 柔らかい管（PB）が横の管の上を角度をもって横切る所は、またいで通す（床下で排水管の上を越えるのはふつう）
+      // （PB の立て管が横の管の上で止まって横へ曲がる所も同じ。横の管を貫く・下をくぐる所は干渉）
+      if (crossing(A.s, B.s) && ((flexible(A.s) && horizontal(B.s) && c.c1.z > c.c2.z + 5) || (flexible(B.s) && horizontal(A.s) && c.c2.z > c.c1.z + 5))) continue;
       const overlap = sum - c.dist;
       if (overlap <= 1) continue;
       out.push({ segA: A.s.id, segB: B.s.id, point: { x: (c.c1.x + c.c2.x) / 2, y: (c.c1.y + c.c2.y) / 2, z: (c.c1.z + c.c2.z) / 2 }, overlap });
