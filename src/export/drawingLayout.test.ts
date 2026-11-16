@@ -73,3 +73,18 @@ describe('部材図の記号を重ねない', () => {
     expect(sheetViews(sparse.pages[0])).toHaveLength(1);
   });
 });
+
+describe('拡大図にできないとき・多すぎるとき', () => {
+  it('1/20 でも読めない小さな図: 記号は全体図に残す（どのページからも消さない）', () => {
+    // 1m 四方の範囲に 40 か所の曲がり（全体図がもう 1/20）
+    const b = addFloor(emptyBuilding(), { height: 3000 }).b;
+    const path: Vec3[] = [];
+    for (let i = 0; i < 20; i++) { const y = i * 30; path.push(...(i % 2 ? [{ x: 400, y, z: -300 }, { x: 0, y, z: -300 }] : [{ x: 0, y, z: -300 }, { x: 400, y, z: -300 }])); }
+    const net = addPolyline(emptyNetwork(), path, { system: 'water', diameter: 20, material: 'HIVP' }).net;
+    const page = buildDrawing({ building: b, network: net, fixtures: {}, estimate: defaultEstimate() }).pages[0];
+    const views = sheetViews(page);
+    const fit = page.marks.filter((m) => m.kind !== 'support').length;
+    const shown = views.reduce((s, v) => s + v.placed.reduce((n, q) => n + q.items.length, 0), 0);
+    expect(shown).toBe(fit);
+  });
+});

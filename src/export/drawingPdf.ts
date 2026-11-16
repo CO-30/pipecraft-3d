@@ -82,6 +82,8 @@ const AREA = { x: M, y: M + 30, w: PAGE[0] - M * 2 - LEGEND_W - 10, h: PAGE[1] -
 export const LEAD_MAX = 40;
 /** 拡大図の枚数の上限（1 つの階） */
 const MAX_DETAILS = 8;
+/** 1 つの階の拡大図の合計の上限（超える分は全体図に残す） */
+const MAX_DETAILS_TOTAL = 12;
 const markR = (code: string) => (code.length > 1 ? 6.2 : 5);
 
 type Box = { x1: number; y1: number; x2: number; y2: number };
@@ -270,7 +272,7 @@ export function sheetViews(p: DrawPage): SheetView[] {
       const x0 = Math.min(...group.map((m) => m.p.x)), y0 = Math.min(...group.map((m) => m.p.y));
       const cells = new Map<string, DrawMark[]>();
       for (const m of group) { const key = `${Math.floor((m.p.y - y0) / th)},${Math.floor((m.p.x - x0) / tw)}`; (cells.get(key) ?? cells.set(key, []).get(key)!).push(m); }
-      if (cells.size > MAX_DETAILS && n !== SCALES[0]) continue;
+      if (cells.size > MAX_DETAILS || details.length + cells.size > MAX_DETAILS_TOTAL) continue;
       const keys = [...cells.keys()].sort((a, b) => { const [ay, ax] = a.split(',').map(Number), [by, bx] = b.split(',').map(Number); return ay - by || ax - bx; });
       const views = keys.map((key): SheetView => {
         const ms = cells.get(key)!;
@@ -286,7 +288,8 @@ export function sheetViews(p: DrawPage): SheetView[] {
       if (nb < pickBad) { pick = views; pickBad = nb; }
       if (nb === 0) break;
     }
-    if (pick) details.push(...pick);
+    // 拡大図にできない（もう大きい縮尺が無い・枚数が多すぎる）まとまりは、全体図に残す（記号を消さない）
+    if (pick) details.push(...pick); else for (const m of group) inDetail.delete(m);
   }
   details.forEach((v, i) => { const label = String.fromCharCode(65 + (i % 26)); v.title = `${p.title} 拡大${label}`; v.details = [{ label, bounds: v.bounds }]; });
   // 全体図: 拡大図に回した記号は点だけ、ほかはそのまま置く
@@ -333,7 +336,12 @@ function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, v: SheetView, d:
   /** 範囲で切った線を描く（拡大図） */
   const line = (a: P2, b: P2, o: { thickness: number; color: RGB }) => { const s = clipSeg(a, b, cl); if (s) page.drawLine({ start: P(s[0]), end: P(s[1]), ...o }); };
 
-  if (p.frame) {
+  if (p.frame && cl) {
+    // 拡大図: 外形と GL の線も見えている所だけ
+    const { w: fw, h: fh } = p.frame;
+    for (const [a, b] of [[{ x: 0, y: 0 }, { x: fw, y: 0 }], [{ x: fw, y: 0 }, { x: fw, y: fh }], [{ x: fw, y: fh }, { x: 0, y: fh }], [{ x: 0, y: fh }, { x: 0, y: 0 }]] as const) line(a, b, { thickness: 1.2, color: WALL });
+    line({ x: cl.minX, y: fh }, { x: cl.maxX, y: fh }, { thickness: 1.5, color: INK });
+  } else if (p.frame) {
     const a = P({ x: 0, y: 0 }), b = P({ x: p.frame.w, y: p.frame.h });
     page.drawRectangle({ x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y, borderColor: WALL, borderWidth: 1.2, color: rgb(0.97, 0.97, 0.98) });
     page.drawLine({ start: { x: a.x - 10, y: b.y }, end: { x: b.x + 10, y: b.y }, thickness: 1.5, color: INK });
@@ -353,7 +361,7 @@ function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, v: SheetView, d:
   // 支持金具 → 継手の順（継手を上に）
   for (const m of v.marks) if (m.kind === 'support' && inside(m.p, cl)) { const q = P(m.p); drawSupport(c, q.x, q.y, m.support, m.dir ? { x: m.dir.x, y: -m.dir.y } : undefined); }
   // 点だけの記号（全体図: 拡大図に描くもの＝黒の点。拡大図: ほかの図に描くもの＝薄い点）
-  for (const m of v.dotMarks ?? []) { const q = P(m.p); page.drawCircle({ x: q.x, y: q.y, size: 1.3, color: m.kind === 'confirm' ? RED : v.clip ? rgb(0.75, 0.77, 0.8) : INK }); }
+  for (const m of v.dotMarks ?? []) { const q = P(m.p); page.drawCircle({ x: q.x, y: q.y, size: 1.3, color: m.kind === 'confirm' ? RED : v.clip ? rgb(0.58, 0.6, 0.64) : INK }); }
   if (v.dots) {
     for (const dt of v.details) {
       const a = P({ x: dt.bounds.minX, y: dt.bounds.maxY }), b = P({ x: dt.bounds.maxX, y: dt.bounds.minY });
@@ -394,7 +402,7 @@ function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, v: SheetView, d:
   txt(c, fit(font, d.name, 11, LEGEND_W - 4), lx, y, 11); y -= 16;
   txt(c, fit(font, `部材図　${v.title}`, 9, LEGEND_W - 4), lx, y, 9); y -= 13;
   txt(c, dateJa(d.date), lx, y, 7.5, GRAY); y -= 18;
-  txt(c, p.kind === 'elevation' ? '凡例（この図の個数・平面図と重複）' : v.clip ? '凡例（この拡大図の個数）' : '凡例（この図の個数）', lx, y, 8.5); y -= 6;
+  txt(c, v.clip ? '凡例（この拡大図の個数）' : p.kind === 'elevation' ? '凡例（この図の個数・平面図と重複）' : '凡例（この図の個数）', lx, y, 8.5); y -= 6;
   page.drawLine({ start: { x: lx, y }, end: { x: lx + LEGEND_W - 4, y }, thickness: 0.5, color: GRAY }); y -= 13;
   const bottom = M + 70;
   // 入りきらなければ記号ごとにまとめる（仕様ごとの個数は拡大図・部材一覧で）
