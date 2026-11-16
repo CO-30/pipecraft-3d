@@ -483,3 +483,5 @@ header .lbl { margin-left: 2px; }
 .bundle-list li.ok { border-color: #bbf7d0; }
 .bundle-list li.warn { border-color: #fde68a; background: #fffbeb; }
 .bundle-list li.ng { background: #f8fafc; color: #64748b; }
+/* 一覧が長くても「PDF にする」がいつも見える（スマホ） */
+.modal.bundle .modal-btns { position: sticky; bottom: -16px; margin: 0 -16px -16px; padding: 10px 16px 16px; background: #fff; border-top: 1px solid #e5e7eb; }

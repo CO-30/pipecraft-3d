@@ -63,7 +63,7 @@ export function ShinseiBundleDialog({ buildFor, busy, asBuilt, onPdf, onShow, on
         <div className="modal-btns">
           <button type="button" className="big" onClick={onClose}>閉じる</button>
           <button type="button" className="primary big" data-testid="shinsei-bundle-pdf" disabled={busy || chosen.length === 0} onClick={() => onPdf(chosen.map((r) => r.b))}>
-            {busy ? '作成中…' : `🖨 ${chosen.length} 種類（${pages} 枚）を 1 つの PDF に`}
+            {busy ? '作成中…' : `🖨 PDF にする（${chosen.length} 種類・${pages} 枚）`}
           </button>
         </div>
       </div>

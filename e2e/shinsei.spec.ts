@@ -228,3 +228,29 @@ test.describe('申請図面', () => {
     await page.screenshot({ path: evidence('shinsei-07-old-data') });
   });
 });
+
+test.describe('申請図面: まとめてPDF', () => {
+  test.beforeEach(async ({ page }) => freshApp(page));
+
+  test('サンプル工事: 一覧で作れる図面が分かり、1 押しで「申請図面一式」の PDF', async ({ page }) => {
+    await openSample(page);
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-bundle').click();
+    const dlg = page.getByTestId('shinsei-bundle-dialog');
+    await expect(dlg).toBeVisible();
+    await expect(page.getByTestId('shinsei-bundle-row-profile').getByRole('checkbox')).toBeChecked();
+    await expect(page.getByTestId('shinsei-bundle-row-riser').getByRole('checkbox')).toBeChecked();
+    await expect(page.getByTestId('shinsei-bundle-row-mitori')).toContainText('作れません');
+    await page.screenshot({ path: evidence('shinsei-bundle-01-dialog') });
+    const btn = page.getByTestId('shinsei-bundle-pdf');
+    await expect(btn).toBeEnabled();
+    if (!isMobile()) {
+      const [dl] = await Promise.all([page.waitForEvent('download'), btn.click()]);
+      expect(dl.suggestedFilename()).toMatch(/申請図面一式.*\.pdf$/);
+      await expect(dlg).toHaveCount(0);
+      await expect(page.getByTestId('shinsei-info')).toContainText('1 つの PDF');
+    }
+    // 既存の個別出力はそのまま
+    await expect(page.getByTestId('shinsei-pdf')).toBeVisible();
+  });
+});
