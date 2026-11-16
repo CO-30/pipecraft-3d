@@ -136,7 +136,8 @@ const len = (w: { a: Vec2; b: Vec2 }) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y
 const mm = (v: number) => Math.round(v).toLocaleString('ja-JP');
 
 /** 壁を足したあとで、開口部を「その位置にある壁」へ付ける（T 字で壁が分かれているため） */
-function addOpenings(b: Building, floorId: string, specs: WallSpec[]): { b: Building; count: number } {
+/** 壁の候補の開口（外壁は窓・内壁はドア）を、その位置の壁に入れる */
+export function addOpenings(b: Building, floorId: string, specs: WallSpec[]): { b: Building; count: number } {
   let count = 0;
   const maxH = clearHeight(b, floorId);
   for (const spec of specs) {
