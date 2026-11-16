@@ -14,7 +14,7 @@ import type { SystemType, Vec3 } from '../model/network';
 
 export type P2 = { x: number; y: number };
 export type MarkKind = 'fitting' | 'confirm' | 'support';
-export type DrawMark = { p: P2; code: string; kind: MarkKind; support?: SupportKind; /** 支持金具の向き（配管の向き） */ dir?: P2 };
+export type DrawMark = { p: P2; code: string; kind: MarkKind; support?: SupportKind; /** 支持金具の向き（配管の向き） */ dir?: P2; /** 凡例の名前・仕様（拡大図の凡例を作り直すため） */ name?: string; spec?: string };
 export type DrawPipe = { a: P2; b: P2; system: SystemType; diameter: number };
 export type LegendRow = { code: string; name: string; spec: string; count: number; kind: MarkKind; support?: SupportKind };
 export type DrawPage = {
@@ -54,12 +54,12 @@ function bounds(ps: P2[], pad: number) {
   return { minX: Math.min(...xs) - pad, minY: Math.min(...ys) - pad, maxX: Math.max(...xs) + pad, maxY: Math.max(...ys) + pad };
 }
 
-function legendOf(marks: (DrawMark & { name: string; spec: string })[]): LegendRow[] {
+export function legendOf(marks: DrawMark[]): LegendRow[] {
   const m = new Map<string, LegendRow>();
   for (const k of marks) {
     const key = `${k.kind}|${k.code}|${k.name}|${k.spec}`;
     const r = m.get(key);
-    if (r) r.count++; else m.set(key, { code: k.code, name: k.name, spec: k.spec, count: 1, kind: k.kind, support: k.support });
+    if (r) r.count++; else m.set(key, { code: k.code, name: k.name ?? '', spec: k.spec ?? '', count: 1, kind: k.kind, support: k.support });
   }
   return [...m.values()].sort((a, b) => (a.kind === b.kind ? a.code.localeCompare(b.code) || a.spec.localeCompare(b.spec, 'ja') : a.kind.localeCompare(b.kind)));
 }
