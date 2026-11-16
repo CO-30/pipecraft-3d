@@ -85,4 +85,12 @@ describe('部材図を 1 枚で見やすく', () => {
     const net = addPolyline(emptyNetwork(), [{ x: 0, y: 0, z: -300 }, { x: 3000, y: 0, z: -300 }, { x: 3000, y: 2000, z: -300 }], { system: 'drain', diameter: 75, material: 'VP' }).net;
     expect(sheetPlan(buildDrawing({ building: b, network: net, fixtures: {}, estimate: defaultEstimate() }).pages[0]).spots).toHaveLength(0);
   });
+
+  it('接続部が右の欄に入りきらない図: 続きのページに書く（番号を落とさない）', async () => {
+    const doc = faucets(70);
+    const plan = sheetPlan(buildDrawing(doc).pages[0]);
+    expect(plan.spots.length).toBe(70);
+    const pdf = await PDFDocument.load(await buildDrawingPdf(buildDrawing(doc), { name: 'x', date: new Date(2026, 10, 16) }, colors, font()));
+    expect(pdf.getPageCount()).toBe(3); // 図 → 一覧の続き → 部材一覧
+  });
 });

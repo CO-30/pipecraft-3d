@@ -1,7 +1,8 @@
 /**
  * 部材図 PDF（A4 横）。見積書とは別に印刷する施工用の図。
  * 1ページ目以降: 階ごとの平面図・外配管の立面図に、継手・支持金具（サドル等）・ネジ継手・器具を記号で描き、右に凡例と個数。
- * 記号は重ならない所に置き（離したときは短い引出線）、混み合って読めない図は「全体図＋拡大図」にする（2026-11-16）。
+ * 1 つの図はいつも 1 枚: エルボは記号なし、配管の途中の部品は小さな形、器具の口などは番号の札（中身は右の一覧）（2026-11-16）。
+ * 一覧が右の欄に入りきらなければ、続きのページに書く（番号・要確認を落とさない）。
  * 最後: 部材一覧（金額なし。現場への持ち出し・発注のチェック用）。
  * 縮尺は 1/20〜1/1000 の切りのよい値から、図が収まるいちばん大きいものを選ぶ（A4 で印刷したときの縮尺）。
  */
@@ -65,7 +66,7 @@ function drawSupport(c: Ctx, x: number, y: number, kind: DrawMark['support'], di
 
 /** 図を描く範囲（用紙 pt。右は凡例） */
 const AREA = { x: M, y: M + 30, w: PAGE[0] - M * 2 - LEGEND_W - 10, h: PAGE[1] - M * 2 - 40 };
-/** 記号を元の位置から離してよい長さ（pt）。これより遠くなる図は拡大図にする */
+/** 番号の札を元の位置から離してよい長さの目安（pt）。札を探す範囲はこの 3 倍まで */
 export const LEAD_MAX = 40;
 
 type Box = { x1: number; y1: number; x2: number; y2: number };
@@ -186,9 +187,10 @@ const CODE_NAME: Record<string, string> = {
 /** 部品の並びを短く: 「WL・V・L×2・A」 */
 function codeSummary(ms: DrawMark[]): string {
   const order = ['!', 'WL', 'WS', 'VS', 'A', 'HA', 'AV', 'V', 'T', 'Y', '+', 'RS', 'S', '45', 'L', 'L*', 'J', 'C', '?'];
+  const rank = (c: string) => (order.includes(c) ? order.indexOf(c) : order.length);
   const n = new Map<string, number>();
   for (const m of ms) n.set(m.code, (n.get(m.code) ?? 0) + 1);
-  return [...n].sort((a, b) => (order.indexOf(a[0]) + 99) % 199 - (order.indexOf(b[0]) + 99) % 199).map(([c, k]) => (k > 1 ? `${c}×${k}` : c)).join('・');
+  return [...n].sort((a, b) => rank(a[0]) - rank(b[0])).map(([c, k]) => (k > 1 ? `${c}×${k}` : c)).join('・');
 }
 
 /** 1 つの図（階の平面・立面）の記号の描き分けと、番号の札の置き場所。いつも 1 枚 */
@@ -249,7 +251,8 @@ export function sheetPlan(p: DrawPage): SheetPlan {
     return { no: k + 1, p: centers[i], points: g.pts, label: g.label, codes: codeSummary(g.marks.map((m) => (m.kind === 'confirm' ? { ...m, code: '!' } : m))), confirm: g.marks.some((m) => m.kind === 'confirm'), marks: g.marks };
   });
   const anchors = spots.map((sp) => P(sp.p));
-  const obstacles = fixtureLabels(p, P).map((l) => l.box);
+  // 札は器具の名前と、配管の上の部品の形（●・‖・▶・⋈）をなるべく隠さない
+  const obstacles = [...fixtureLabels(p, P).map((l) => l.box), ...glyphs.filter((g) => g.kind !== 'elbow').map((g) => { const q = P(g.m.p); return { x1: q.x - 3.5, y1: q.y - 3.5, x2: q.x + 3.5, y2: q.y + 3.5 }; })];
   const pl = layoutMarks(anchors.map((a) => ({ ...a, w: 2 * TAG_R + 0.6, h: 2 * TAG_R + 0.6 })), obstacles, { x1: AREA.x, y1: AREA.y, x2: AREA.x + AREA.w, y2: AREA.y + AREA.h });
   return { scale: n, glyphs, spots, tags: pl.map((q, i) => ({ ...q, ax: anchors[i].x, ay: anchors[i].y })) };
 }
@@ -271,7 +274,9 @@ function drawTag(c: Ctx, x: number, y: number, no: number | string, confirm: boo
   txt(c, s, x, y - size * 0.36, size, confirm ? RED : INK, true);
 }
 
-function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, d: { name: string; date: Date }, colors: Record<SystemType, string>) {
+/** 1 つの図を 1 枚に描く。右の欄に入りきらなかった接続部（と略号）を返す（続きのページに書く） */
+function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, d: { name: string; date: Date }, colors: Record<SystemType, string>): { rest: Spot[]; codes: string[] } {
+  let rest: Spot[] = [], restCodes: string[] = [];
   const page = pdf.addPage(PAGE);
   const c: Ctx = { page, font };
   page.drawRectangle({ x: M - 6, y: M - 6, width: PAGE[0] - (M - 6) * 2, height: PAGE[1] - (M - 6) * 2, borderColor: INK, borderWidth: 0.8 });
@@ -351,35 +356,37 @@ function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, d: { name: strin
     y -= 12.5;
   }
   txt(c, '品名・仕様ごとの個数は最後の「部材一覧」', lx, y, 6.5, GRAY); y -= 14;
-  // 接続部の一覧（入りきらなければ 2 列に）
+  // 接続部の一覧（入りきらなければ 2 列に。要確認の札を先に）。それでも入らなければ続きのページへ
   if (plan.spots.length) {
     head('接続部の一覧');
+    const list = [...plan.spots].sort((a, b) => Number(b.confirm) - Number(a.confirm) || a.no - b.no);
+    const used = [...new Set(plan.spots.flatMap((sp) => sp.marks.map((m) => (m.kind === 'confirm' ? '!' : m.code))))].filter((k) => CODE_NAME[k]);
     const bottom = M + 56, lineH = 9.2;
     const rowsPerCol = Math.max(1, Math.floor((y - bottom) / lineH) + 1);
-    const cols = plan.spots.length > rowsPerCol ? 2 : 1;
+    const cols = list.length > rowsPerCol ? 2 : 1;
     const colW = (LEGEND_W - 4) / cols;
-    plan.spots.forEach((sp, i) => {
+    const cap = rowsPerCol * cols - (list.length > rowsPerCol * cols ? 1 : 0);
+    list.slice(0, cap).forEach((sp, i) => {
       const col = Math.floor(i / rowsPerCol);
-      if (col >= cols) return;
       const yy = y - (i % rowsPerCol) * lineH, x0 = lx + col * colW;
       drawTag(c, x0 + 5, yy + 2.3, sp.no, sp.confirm);
       const text = `${sp.label ? `${sp.label}　` : ''}${sp.codes}`;
       txt(c, fit(font, text, cols > 1 ? 5.6 : 6.6, colW - 14), x0 + 12, yy, cols > 1 ? 5.6 : 6.6, sp.confirm ? RED : INK);
     });
-    const shown = Math.min(plan.spots.length, rowsPerCol * cols);
-    if (shown < plan.spots.length) txt(c, `ほか ${plan.spots.length - shown} か所（部材一覧を参照）`, lx, bottom - 10, 6.5, GRAY);
-    // 略号の意味（一覧に出てくるものだけ。入る所まで折り返す）
-    const used = [...new Set(plan.spots.flatMap((sp) => sp.marks.map((m) => (m.kind === 'confirm' ? '!' : m.code))))].filter((k) => CODE_NAME[k]);
-    let ky = y - Math.min(plan.spots.length, rowsPerCol) * lineH - 6;
-    if (used.length && ky > bottom + 4) {
-      const parts = used.map((k) => `${k} ${CODE_NAME[k]}`);
-      let lineS = '略号: ';
-      for (const part of parts) {
-        const next = lineS === '略号: ' ? lineS + part : `${lineS}、${part}`;
-        if (font.widthOfTextAtSize(next, 6) > LEGEND_W - 6 && lineS !== '略号: ') { txt(c, lineS, lx, ky, 6, GRAY); ky -= 8.5; lineS = part; if (ky < bottom) break; } else lineS = next;
-      }
-      if (ky >= bottom) txt(c, lineS, lx, ky, 6, GRAY);
+    rest = list.slice(cap);
+    if (rest.length) txt(c, `ほか ${rest.length} か所は次のページ（接続部の一覧の続き）`, lx + (cols - 1) * colW, y - (rowsPerCol - 1) * lineH, 6, RED);
+    // 略号の意味（一覧に出てくるものだけ）。入りきらなければ続きのページへ
+    let ky = y - Math.min(list.length, rowsPerCol) * lineH - 6;
+    const parts = used.map((k) => `${k} ${CODE_NAME[k]}`);
+    const lines: string[] = [];
+    let lineS = '略号: ';
+    for (const part of parts) {
+      const next = lineS === '略号: ' ? lineS + part : `${lineS}、${part}`;
+      if (font.widthOfTextAtSize(next, 6) > LEGEND_W - 6 && lineS !== '略号: ') { lines.push(lineS); lineS = part; } else lineS = next;
     }
+    if (parts.length) lines.push(lineS);
+    if (!rest.length && ky - (lines.length - 1) * 8.5 >= bottom) for (const l of lines) { txt(c, l, lx, ky, 6, GRAY); ky -= 8.5; }
+    else restCodes = used;
   }
   // 線の色
   const sys = [...new Set([...p.pipes.map((q) => q.system), ...p.risers.map((q) => q.system)])];
@@ -393,6 +400,25 @@ function drawPage(pdf: PDFDocument, font: PDFFont, p: DrawPage, d: { name: strin
     if (sx > lx + LEGEND_W - 30) break;
   }
   txt(c, '○ 縦管　記号の位置は目安です。現場で確認してください', lx, M + 18, 6.3, GRAY);
+  return { rest, codes: restCodes };
+}
+
+/** 接続部の一覧の続き（右の欄に入りきらなかった分）と略号 */
+function spotListPage(pdf: PDFDocument, font: PDFFont, title: string, rest: Spot[], codes: string[], d: { name: string; date: Date }) {
+  const page = pdf.addPage(PAGE);
+  const c: Ctx = { page, font };
+  let y = PAGE[1] - M - 14;
+  txt(c, `接続部の一覧（続き）　${title}　${d.name}`, M, y, 12);
+  txt(c, dateJa(d.date), PAGE[0] - M - font.widthOfTextAtSize(dateJa(d.date), 8), y, 8, GRAY);
+  y -= 24;
+  const lineH = 11, cols = 3, colW = (PAGE[0] - M * 2) / cols, rows = Math.floor((y - M - 40) / lineH);
+  rest.slice(0, rows * cols).forEach((sp, i) => {
+    const x0 = M + Math.floor(i / rows) * colW, yy = y - (i % rows) * lineH;
+    drawTag(c, x0 + 5, yy + 2.6, sp.no, sp.confirm);
+    txt(c, fit(font, `${sp.label ? `${sp.label}　` : ''}${sp.codes}`, 7.5, colW - 18), x0 + 13, yy, 7.5, sp.confirm ? RED : INK);
+  });
+  if (rest.length > rows * cols) txt(c, `ほか ${rest.length - rows * cols} か所（図の番号の札で確かめてください）`, M, M + 26, 7.5, RED);
+  if (codes.length) txt(c, fit(font, `略号: ${codes.map((k) => `${k} ${CODE_NAME[k]}`).join('、')}`, 7, PAGE[0] - M * 2), M, M + 12, 7, GRAY);
 }
 
 const SYS_LABEL: Partial<Record<SystemType, string>> = {
@@ -442,7 +468,10 @@ export async function buildDrawingPdf(dr: Drawing, meta: { name: string; date: D
   pdf.setTitle(`${meta.name} 部材図`);
   pdf.setCreator('PipeCraft 3D');
   pdf.setCreationDate(meta.date);
-  for (const p of dr.pages) drawPage(pdf, font, p, meta, colors);
+  for (const p of dr.pages) {
+    const r = drawPage(pdf, font, p, meta, colors);
+    if (r.rest.length || r.codes.length) spotListPage(pdf, font, p.title, r.rest, r.codes, meta);
+  }
   partsPages(pdf, font, dr.parts, meta);
   const pages = pdf.getPages();
   pages.forEach((pg, i) => {
