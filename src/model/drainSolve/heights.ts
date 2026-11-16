@@ -162,7 +162,12 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
         }
         if (ok) deepest = deepest === null ? zz : Math.min(deepest, zz);
       }
-      if (deepest !== null) z.set(t.root, r1(deepest));
+      if (deepest !== null) {
+        // 土かぶりは守る（上流が浅くても、マスの所の地面から土かぶり＋外径より深く）
+        const rp = net0.nodes[t.root].pos, dia = Math.max(0, ...segmentsAt(net0, t.root).filter((g) => g.system === 'drain' || g.system === 'sewage').map((g) => g.diameter));
+        const coverZ = groundZAt(doc.building, doc.site, rp) - rules.cover - outerDiameter(dia || 100);
+        z.set(t.root, r1(Math.min(deepest, coverZ)));
+      }
     }
     // 2. 固定点の間に勾配を割り振る（間に立て管・床下があれば割り振らない）。公共ますから遠い固定点から（幹を先に決める）
     const distRoot = new Map<string, number>([[t.root, 0]]);

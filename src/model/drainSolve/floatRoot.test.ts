@@ -49,3 +49,12 @@ describe('公共ますが無いとき、配置図のマスの深さに KSA を�
     for (const f of Object.values(d.fixtures).filter((x) => x.type === 'manholeSewage')) expect(f.params?.invertZ).toBe(-1300);
   });
 });
+
+describe('公共ますが無いマスの深さの下限', () => {
+  test('上流がとても浅くても、マスの管底は土かぶり＋外径より深い', () => {
+    const d = solveDrain(houseWithSiteManholes(), STD).doc;
+    for (const f of Object.values(d.fixtures).filter((x) => x.type === 'manholeSewage')) {
+      expect(f.params?.invertZ ?? 0).toBeLessThanOrEqual(-611 - STD.cover - 60);
+    }
+  });
+});

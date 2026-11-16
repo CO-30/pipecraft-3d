@@ -11,7 +11,7 @@
 import type { Vec2 } from '../building';
 
 export type OSeg = { a: Vec2; b: Vec2 };
-export type CloseResult = { add: OSeg[]; demote: number[] };
+export type CloseResult = { add: OSeg[]; demote: number[]; /** 組み合わせが多すぎて途中で打ち切った（いちばん外側の輪でないかもしれない） */ truncated?: boolean };
 
 /** 1 本のつなぎの長さの上限(mm)。基礎が無いときは開口部の幅まで */
 const MAX_LEG = 3000, OPEN_MAX = 4200;
@@ -19,6 +19,8 @@ const MAX_LEG = 3000, OPEN_MAX = 4200;
 const FOOT_NEAR = 100, FOOT_COVER = 0.8;
 /** 調べる組み合わせの上限（スマホで固まらないように） */
 const MAX_EVAL = 20000;
+/** 1 つの点から調べるつなぎの数（短い順） */
+const MAX_LINKS = 4;
 
 const key = (p: Vec2) => `${Math.round(p.x)},${Math.round(p.y)}`;
 const norm = (p: Vec2, q: Vec2): OSeg => (p.x < q.x || (p.x === q.x && p.y <= q.y) ? { a: p, b: q } : { a: q, b: p });
@@ -122,6 +124,10 @@ export function closeOutline(ext: OSeg[], foot: OSeg[]): CloseResult | null {
     const cand = { add, demote: ext.map((_, i) => i).filter((i) => !alive.has(i)), area: Math.abs(area) / 2, added };
     if (!best || cand.area > best.area + 1 || (Math.abs(cand.area - best.area) <= 1 && cand.added < best.added)) best = cand;
   };
+  // 行き止まりの点ごとに「どれかとつなぐ」か「つながない」を選ぶ。点ごとの候補は短い順に MAX_LINKS まで
+  const byPoint = new Map<number, Link[]>();
+  for (const l of links) (byPoint.get(l.i) ?? byPoint.set(l.i, []).get(l.i)!).push(l);
+  for (const [k, ls] of byPoint) byPoint.set(k, ls.sort((p, q) => p.segs.reduce((a, g) => a + len(g), 0) - q.segs.reduce((a, g) => a + len(g), 0)).slice(0, MAX_LINKS));
   // 行き止まりの点ごとに「つながない」か「どれかとつなぐ」を選ぶ
   const used = new Set<number>();
   const chosen: Link[] = [];
@@ -129,15 +135,16 @@ export function closeOutline(ext: OSeg[], foot: OSeg[]): CloseResult | null {
     if (evals >= MAX_EVAL) return;
     while (i < odd.length && used.has(i)) i++;
     if (i >= odd.length) { evaluate(chosen); return; }
-    search(i + 1);
-    for (const l of links) {
-      if (l.i !== i || used.has(l.j)) continue;
+    // つなぐ方を先に（短いつなぎから）。つながない（行き止まりとして外す）のは最後
+    for (const l of byPoint.get(i) ?? []) {
+      if (used.has(l.j)) continue;
       used.add(i); used.add(l.j); chosen.push(l);
       search(i + 1);
       chosen.pop(); used.delete(i); used.delete(l.j);
     }
+    search(i + 1);
   };
   search(0);
   const b = best as { add: OSeg[]; demote: number[] } | null;
-  return b ? { add: b.add, demote: b.demote } : null;
+  return b ? { add: b.add, demote: b.demote, ...(evals >= MAX_EVAL ? { truncated: true } : {}) } : null;
 }

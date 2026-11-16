@@ -350,11 +350,12 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
         const A = c2.b.corners[c1.cornerId], B = c2.b.corners[c2.cornerId];
         const on = (p: Vec2) => { const L = Math.hypot(B.x - A.x, B.y - A.y), tt = ((p.x - A.x) * (B.x - A.x) + (p.y - A.y) * (B.y - A.y)) / (L * L); return tt > -1e-6 && tt < 1 + 1e-6 && Math.abs((p.x - A.x) * (B.y - A.y) - (p.y - A.y) * (B.x - A.x)) / L < 5; };
         const lying = wallsOnFloor(c2.b, floor1).filter((w) => on(c2.b.corners[w.a]) && on(c2.b.corners[w.b]));
-        if (lying.length) { b = c2.b; for (const w of lying) b = updateWall(b, w.id, { kind: 'exterior' }); }
+        if (lying.length) { b = c2.b; for (const w of lying) b = updateWall(b, w.id, { kind: 'exterior' }); b = setWallsLocked(b, lying.map((w) => w.id), true); }
         else b = addWall(b, floor1, g.a, g.b, { thickness: t, kind: 'exterior' }).b;
       }
       b = setWallsLocked(b, Object.keys(b.walls).filter((id) => !before.has(id)), true);
       if (cl.add.length) ask(`1 階の外壁が窓・出入口の所で切れていたので、${membersOf(b).some((m) => m.kind === 'footing') ? '基礎の立上りに沿って' : '同じ線上で'} ${cl.add.length} か所つないで外周を 1 周にしました（床下の排水・基礎の貫通を決めるため）。外周の形を確かめてください`);
+      if (cl.truncated) ask('外周のつなぎ方の組み合わせが多く、途中まで調べた形にしています。外周の形を確かめてください', 'low');
       if (cl.demote.length) ask(`外周から外れる短い外壁 ${cl.demote.length} 本（出窓の出っぱり・内側の壁など）は内壁にしました`, 'info');
     } else if (ext.length >= 3 && !cl) ask('1 階の外壁が 1 周つながっていません（窓・出入口の所で切れています）。外壁をつなぐと、床下の排水を本管にまとめて外へ出せます', 'low');
   }

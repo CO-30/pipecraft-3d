@@ -511,11 +511,12 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       const p = pt(t);
       cands.push({ sid: sg.id, p, d: dist2(p, from) });
     }
+    const ds = drainPipes();
     // 近い順にいくつか道を探し、いちばん短く行ける所で分ける（一番近い所へ道が無くても、ほかの所から分ける）
     let best: { sid: string; p: Vec3; d: number } | null = null, run: Vec3[] | null = null, runLen = Infinity;
     for (const cd of cands.sort((x, y) => x.d - y.d).slice(0, TEE_TRIES)) {
       // 立水栓・給湯器が家のすぐ横なら、同じ近さで分ける（家の角を回る遠回りで本管に重ねない）
-      const ds = drainPipes(), ws = waterAt(cd.p.z);
+      const ws = waterAt(cd.p.z);
       const r = cd.d < 1 ? [at(from, cd.p.z)] : yard(at(from, cd.p.z), cd.p, { near: true, avoid: (p, q) => onWater(ws, p, q) || (ds.length > 0 && hitsDrain(ds, p, q, dia)), axis: true });
       if (!r) continue;
       const len = r.reduce((sum, q, i) => (i ? sum + Math.hypot(q.x - r[i - 1].x, q.y - r[i - 1].y) : sum), 0);
