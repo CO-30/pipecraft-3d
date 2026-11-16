@@ -46,7 +46,9 @@ import { applySlope, defaultSlope, downstreamEnd, isDrain, isSlopePinned, planLe
 import { connectToCandidate, findConnectCandidate } from '../model/connect';
 import { portCandidates, routeToPort } from '../model/portRoute';
 import { canJoin, conflictAt, conflictBetween, conflictMessage, nodeAttrs, SYSTEM_NAME } from '../model/systems';
-import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, applyPaperScale, rescaleByTwoPoints, type Underlay } from '../model/underlay';
+import { MAX_UNDERLAY_SRC, MAX_UNDERLAYS_TOTAL, applyPaperScale, pxToWorld, rescaleByTwoPoints, type Underlay } from '../model/underlay';
+import type { PxWall } from '../model/planRead/raster';
+import { addOpenings as addSpecOpenings } from '../model/planRead/assemble';
 import { applyMount, elevationFromWall, elevToWorld, pipeDepth, worldToElev, type Elevation, type UV } from '../model/elevation';
 import { isWire } from '../model/fittings';
 import { elevationSchema } from '../model/schema';
@@ -308,6 +310,11 @@ type State = {
   /** 建物外形（外壁）と下敷きを1操作で取り込む。外壁が作れなかった辺の数を返す */
   /** underlays: 航空写真と地番図など複数の下敷きを 1 操作で（最後のものを選ぶ） */
   importSite(opts: { polygon?: Vec2[]; underlay?: Omit<Underlay, 'id'>; underlays?: Omit<Underlay, 'id'>[] }): { walls: number; failed: number } | null;
+  /**
+   * 下敷き（スキャン図面）から読んだ壁の候補を、その下敷きの階に入れる（履歴1件）。壁の端は下敷きの画素の座標。
+   * 階に壁があれば replace=true のときだけ消して入れる。縮尺が決まっていない・候補が 0 本・壁があって replace=false なら null
+   */
+  readUnderlayWalls(underlayId: string, walls: PxWall[], replace: boolean): { walls: number; exterior: number; openings: number } | null;
   /** 写真から作った開口部を1操作で追加。作れなかった数を返す */
   addOpeningsBatch(wallId: string, list: { type: OpeningType; offset: number; width: number; height: number; sill: number }[]): { added: number; failed: number; failedIdx: number[] };
 
@@ -1175,6 +1182,26 @@ export const useStore = create<State>((set, get) => {
       if (!walls && !list.length) return null;
       commit({ ...doc, building: b, underlays }, { activeUnderlayId, selection: null });
       return { walls, failed };
+    },
+    readUnderlayWalls: (underlayId, walls, replace) => {
+      const doc = get().doc;
+      const u = doc.underlays?.[underlayId];
+      if (!u || !u.scaled || !walls.length) return null;
+      let b = doc.building;
+      const existing = B.wallsOnFloor(b, u.floorId);
+      if (existing.length && !replace) return null;
+      const locked = existing.filter((w) => w.locked).length;
+      if (locked) { set({ notice: `この階にはロック中の壁が ${locked} 本あります（図面から読み取った壁）。置き換えるときは、壁を選んで「🔒 位置をロック」を外してください` }); return null; }
+      for (const w of existing) b = B.deleteWall(b, w.id);
+      const specs = walls.map((w) => ({ ...w, a: pxToWorld(u, w.a), b: pxToWorld(u, w.b) }));
+      let added = 0;
+      for (const w of specs) { const r = B.addWall(b, u.floorId, w.a, w.b, { thickness: w.thickness, kind: w.kind }); if (r.wallIds.length) { b = r.b; added++; } }
+      if (!added) return null;
+      const op = addSpecOpenings(b, u.floorId, specs);
+      commit(withBld(op.b), { selection: null });
+      // 本数は入れた後のこの階の壁（T でつながる所で分かれた後。画面の「この階の壁 N 本」と同じ数え方）
+      const now = B.wallsOnFloor(op.b, u.floorId);
+      return { walls: now.length, exterior: now.filter((w) => w.kind === 'exterior').length, openings: op.count };
     },
     addOpeningsBatch: (wallId, list) => {
       let b = get().doc.building, added = 0;

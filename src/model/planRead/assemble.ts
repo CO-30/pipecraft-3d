@@ -61,7 +61,7 @@ export const DEFAULT_GL_TO_FL = 600, DEFAULT_FOOTING_TOP = 400;
 /** 平面図の文字から配置図の物を拾う範囲（建物の周り）。公共ますは道路の近くにあるので広め。凡例は図面の端なので外れる */
 const SITE_LABEL_MARGIN = 12000;
 const OUTLINE_NOTE = '文字が線になっている PDF（CAD から印刷したときに文字が図形になったもの）で、図面の名前・縮尺・通り芯が読めません。「新しい工事」の「図面を取り込む」で下に敷き、縮尺を合わせてなぞってください。元の CAD で「文字を文字のまま」PDF にできれば自動で読めます';
-const SCAN_NOTE = '線や文字のデータが入っていません（スキャンした画像だけの PDF は自動で読めません）。「新しい工事」の「図面を取り込む」で下に敷いて、なぞって描いてください';
+const SCAN_NOTE = '線や文字のデータが入っていません（スキャンした画像だけの PDF は自動 3D では読めません）。「新しい工事」の「図面を取り込む」で下に敷き、「図面の縮尺」を選んで「🧱 壁を読み取る」を押すと、壁の候補を入れられます';
 /** 通り芯の外側で線を読む範囲(mm)。外にある表・詳細図を壁と取り違えない */
 const GRID_MARGIN = 2000;
 /** 線の入っていない PDF（スキャン）とみなす本数 */
@@ -136,7 +136,8 @@ const len = (w: { a: Vec2; b: Vec2 }) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y
 const mm = (v: number) => Math.round(v).toLocaleString('ja-JP');
 
 /** 壁を足したあとで、開口部を「その位置にある壁」へ付ける（T 字で壁が分かれているため） */
-function addOpenings(b: Building, floorId: string, specs: WallSpec[]): { b: Building; count: number } {
+/** 壁の候補の開口（外壁は窓・内壁はドア）を、その位置の壁に入れる */
+export function addOpenings(b: Building, floorId: string, specs: WallSpec[]): { b: Building; count: number } {
   let count = 0;
   const maxH = clearHeight(b, floorId);
   for (const spec of specs) {

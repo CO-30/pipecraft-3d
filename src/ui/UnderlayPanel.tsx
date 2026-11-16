@@ -181,10 +181,59 @@ export function UnderlayPanel() {
           ) : (
             <ScalePick />
           )}
+          {(active.kind === 'pdf' || active.kind === 'image') && <ScanWalls key={active.id} u={active} />}
           <div className="muted small">下敷きをドラッグして位置を合わせます。壁ツールに切り替えてなぞると壁を描けます。</div>
         </>
       )}
       {site && <SiteImportDialog onClose={() => setSite(false)} />}
+    </div>
+  );
+}
+
+/** スキャンした図面（画像だけの PDF・写真）から壁の候補を読み、この階に入れる */
+function ScanWalls({ u }: { u: Underlay }) {
+  const st = useStore.getState();
+  // 数だけを選ぶ（配列を選ぶと毎回新しい値になり、描き直しが止まらない）
+  const existing = useStore((s) => Object.values(s.doc.building.walls).filter((w) => w.floorId === u.floorId).length);
+  const locked = useStore((s) => Object.values(s.doc.building.walls).filter((w) => w.floorId === u.floorId && w.locked).length);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  // 結果はボタンのすぐ下に出す（スマホでパネルの上の方のお知らせは画面の外になる）
+  const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  const msgRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (msg) msgRef.current?.scrollIntoView?.({ block: 'nearest' }); }, [msg]);
+  if (!u.scaled) return <div className="muted small" data-testid="ul-walls-hint">🧱 縮尺を決めると、スキャンした図面から壁を読み取れます</div>;
+  const read = async (replace: boolean) => {
+    setConfirm(false);
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { readWallsFromUnderlay } = await import('../import/scanWalls');
+      const walls = await readWallsFromUnderlay(u);
+      if (!walls.length) { setMsg({ text: '壁を読み取れませんでした（線が薄い・写真が斜め・縮尺が合っていない など）。下敷きをなぞって描いてください', error: true }); return; }
+      const r = st.readUnderlayWalls(u.id, walls, replace);
+      if (!r) { setMsg({ text: useStore.getState().notice || '壁を入れられませんでした', error: true }); return; }
+      setMsg({ text: `下敷きから壁を ${r.walls} 本読み取りました（外壁 ${r.exterior}・開口 ${r.openings}）。下敷きと見比べて、足りない壁を描き足し、余分な壁を消してください（「元に戻す」で取り消せます）` });
+    } catch (e) {
+      setMsg({ text: `壁を読み取れませんでした: ${e instanceof Error ? e.message : String(e)}`, error: true });
+    } finally { setBusy(false); }
+  };
+  return (
+    <div data-testid="ul-walls">
+      <div className="row">
+        {!confirm ? (
+          <button data-testid="ul-read-walls" disabled={busy} title="スキャンした図面（画像だけの PDF）・写真の黒い線から、壁の候補を読み取ってこの階に入れます。赤や青の書き込みは読みません" onClick={() => (existing ? setConfirm(true) : void read(false))}>
+            {busy ? '読み取り中…' : '🧱 壁を読み取る'}
+          </button>
+        ) : (
+          <>
+            <span className="warn small">この階の壁 {existing} 本を消して、下敷きから読み直しますか？{locked ? `（うち 🔒 ${locked} 本はロック中のため、ロックを外すまで置き換えできません）` : ''}</span>
+            <button className="danger" data-testid="ul-walls-replace" onClick={() => void read(true)}>置き換える</button>
+            <button data-testid="ul-walls-cancel" onClick={() => setConfirm(false)}>やめる</button>
+          </>
+        )}
+      </div>
+      {msg && <div ref={msgRef} className={msg.error ? 'err small' : 'warn small'} role={msg.error ? 'alert' : undefined} data-testid="ul-walls-msg">{msg.text}</div>}
     </div>
   );
 }
