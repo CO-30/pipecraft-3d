@@ -8,13 +8,9 @@ import { useStore } from '../state/store';
 import { FIXTURE_CATALOG, isManhole, MANHOLE_TYPES } from '../model/fixtures';
 import { isDrain } from '../model/slope';
 import { isBuiltinProfile, resolveProfile, type MunicipalityProfile } from '../model/municipality';
-import { branchPoints, buildRouteProfiles, extractRoute, type ProfileModel } from '../model/profileDrawing';
-import { buildRiser, defaultRiserRoot, type RiserModel } from '../model/riser';
-import { renderProfileSheet } from '../export/profileSheet';
-import { renderRiserSheet } from '../export/riserSheet';
-import { buildIsometric } from '../model/isometric';
-import { renderIsoSheet } from '../export/isoSheet';
-import { sheetsToSvg, sheetToSvg, type Sheet } from '../export/sheet';
+import { branchPoints } from '../model/profileDrawing';
+import { defaultRiserRoot } from '../model/riser';
+import { sheetsToSvg } from '../export/sheet';
 import { useProfiles } from './useProfiles';
 import { outletCandidates } from '../model/outlets';
 import { ShinseiForms } from './ShinseiForms';
@@ -24,27 +20,18 @@ import { calcSupply } from '../model/hydraulics/calc';
 import { readSuiriSettings, writeSuiriSettings, type SuiriSettings } from '../model/hydraulics/settings';
 import { suggestDiameters } from '../model/hydraulics/suggest';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
-import { renderSuiriSheets } from '../export/suiriSheet';
 import { SuiriPanel } from './SuiriPanel';
 import { MAT_AXIS_LABEL, materialSummary, type MatAxis } from '../model/materialSummary';
-import { renderMaterialSheets } from '../export/materialSheet';
-import { sleeveSchedule } from '../model/sleeves';
-import { renderSleeveSheets } from '../export/sleeveSheet';
-import { renderManholeSheets } from '../export/manholeSheet';
-import { manholeTable } from '../model/manholeTable';
-import { findPipeClashes } from '../model/clash';
 import { AsBuiltPanel } from './AsBuiltPanel';
-import { applyMeasuredToProfile, approxSegments, asBuiltTitle, suspiciousMeasured, measuredLengthOf, readAsBuilt, unmeasuredSegments, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
-import { stampAsBuilt } from '../export/asBuiltStamp';
-import { dateJa } from '../export/report';
+import { readAsBuilt, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
 import { LocationPanel } from './LocationPanel';
+import { BUNDLE_KINDS, buildShinsei, nodeLabelOf, stampAsBuiltBuild, type Kind, type ShinseiBuild, type ShinseiCtx } from './shinseiBuild';
+import { ShinseiBundleDialog } from './ShinseiBundleDialog';
+export type { ShinseiBuild } from './shinseiBuild';
 import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } from '../model/locationMap';
 import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
 import type { LocationBuild } from '../import/locationMap';
 
-type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve' | 'material' | 'masu';
-const PROFILE_TITLE = '排水設備 縦断図';
-const RISER_TITLE = '給水装置 立面図';
 const ALL = '__all__';
 
 /** 立面図の起点の候補: メーター出口 → 止水栓 → 給水の端点 */
@@ -63,12 +50,7 @@ function rootCandidates(doc = useStore.getState().doc): { id: string; label: str
   return out.sort((a, b) => (a.id === def ? -1 : b.id === def ? 1 : a.rank - b.rank)).map(({ id, label }) => ({ id, label }));
 }
 
-const nodeLabel = (nodeId: string): string => {
-  const { doc } = useStore.getState();
-  const n = doc.network.nodes[nodeId];
-  const fx = n?.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
-  return fx ? FIXTURE_CATALOG[fx.type].label : `点 ${nodeId.slice(-4)}`;
-};
+const nodeLabel = (nodeId: string): string => nodeLabelOf(useStore.getState().doc, nodeId);
 
 /** 枝の先にある器具名（選択肢の表示用） */
 function branchDescription(doc: ReturnType<typeof useStore.getState>['doc'], from: string, next: string): string {
@@ -90,23 +72,6 @@ function branchDescription(doc: ReturnType<typeof useStore.getState>['doc'], fro
   return names.size ? [...names].join('・') + ' の側' : nodeLabel(next) + ' の側';
 }
 
-/** 区間の図面上の長さ（実測を無視した 3D の長さ） */
-const geometricLength = (doc: ReturnType<typeof useStore.getState>['doc']) => measuredLengthOf({ ...doc, network: { ...doc.network, segments: Object.fromEntries(Object.entries(doc.network.segments).map(([k, v]) => [k, { ...v, measuredLength: undefined }])) } });
-
-export type ShinseiBuild = { sheets: Sheet[]; svg: string; warnings: string[]; error: string | null; kind: Kind;
-  /** 竣工図: 図に出ている区間（実測長の一覧に出す）と図面の長さ */
-  asBuilt?: { segIds: string[]; unmeasured: number; modelLen: Record<string, number>; labels: Record<string, string>; /** この図には長さを書かない（立面図） */ noLengths?: boolean } };
-
-/** 竣工図の注意: 未入力・図面とかけ離れた実測（単位の入れ違いなど）・按分の概算 */
-function asBuiltNotes(doc: ReturnType<typeof useStore.getState>['doc'], segIds: string[], modelLen: Record<string, number>, labels: Record<string, string>, unmeasured: number): string[] {
-  const out: string[] = [];
-  if (unmeasured) out.push(`実測長が未入力の区間が ${unmeasured} あります（その区間は図面の長さで描いています）`);
-  for (const id of suspiciousMeasured(doc, segIds, modelLen)) out.push(`${labels[id] ?? '区間'}: 実測 ${Math.round(doc.network.segments[id].measuredLength! * 10) / 10}mm が図面 ${Math.round(modelLen[id])}mm と大きく違います（単位は mm）`);
-  const approx = approxSegments(doc, segIds);
-  if (approx.length) out.push(`区間を分けたときに長さの比で分けた概算の実測長が ${approx.length} 区間あります（測り直すと正確になります）`);
-  return out;
-}
-
 export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
@@ -119,6 +84,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const [choice, setChoice] = useState<Record<string, string>>({});
   const [zoom, setZoom] = useState(1);
   const [showProfiles, setShowProfiles] = useState(false);
+  /** 「まとめてPDF」の一覧を開いている */
+  const [bundleOpen, setBundleOpen] = useState(false);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   /** 図面の作成日（画面を開いたとき） */
@@ -126,10 +93,10 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { if (!profiles.loaded) void profiles.load(); }, [profiles]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showProfiles) { (document.activeElement as HTMLElement | null)?.blur?.(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showProfiles && !bundleOpen) { (document.activeElement as HTMLElement | null)?.blur?.(); onClose(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showProfiles]);
+  }, [onClose, showProfiles, bundleOpen]);
 
   const profileId = doc.site?.municipalityProfileId;
   const profile: MunicipalityProfile = resolveProfile(profileId, profiles.user);
@@ -171,7 +138,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const setMap = (patch: Partial<MapSettings>) => updateSite({ application: writeMapSettings(doc.site?.application, patch) });
   const siteAddress = doc.site?.application?.siteAddress || meta?.address || '';
   const [mitori, setMitori] = useState<{ key: string; build: LocationBuild | null; loading: boolean }>({ key: '', build: null, loading: false });
-  const mitoriKey = kind === 'mitori' ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
+  const mitoriKey = kind === 'mitori' || bundleOpen ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
   useEffect(() => {
     if (!mitoriKey) return;
     let live = true;
@@ -204,149 +171,18 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     updateSite({ application: writeAsBuilt(doc.site?.application, p) });
   };
 
-  const built0: ShinseiBuild = useMemo(() => {
-    if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
-    if (kind === 'material') {
-      // 材料集計表: 管・部品・器具・マスを分け方（屋内外／階／新設既設）の列で
-      const sum = materialSummary(doc, matAxis);
-      const sheets = renderMaterialSheets(sum, { siteName, date });
-      if (!sheets.length) return { sheets: [], svg: '', warnings: [], error: '材料（配管・器具）がありません。図面で配管や器具を置いてください', kind };
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: sum.warnings, error: null, kind };
-    }
-    if (kind === 'sleeve') {
-      // スリーブ表: 配管が構造（基礎・梁・壁・床）を通る所。干渉があれば知らせる（積算の要確認から場所へ移動できる）
-      const rows = sleeveSchedule(doc);
-      const clashes = findPipeClashes(doc).length;
-      const notes = clashes ? [`配管どうしの干渉が ${clashes} か所あります（積算の「要確認」から場所へ移動できます）`] : [];
-      if (!rows.length) return { sheets: [], svg: '', warnings: notes, error: 'スリーブ（配管が基礎・梁・壁・床を通る所）はありません', kind };
-      const { sheets, collisions } = renderSleeveSheets(doc, rows, { siteName, date });
-      if (collisions) notes.push('位置図の番号の札が重なっている所があります。表の No. で確かめてください');
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: notes, error: null, kind };
-    }
-    if (kind === 'mitori') {
-      if (mapSettings.lat === undefined) return { sheets: [], svg: '', warnings: [], error: '工事場所が決まっていません。住所を入れて「探す」を押してください（緯度,経度でも指定できます）', kind };
-      // 新しい地図ができるまでは前の見取図を出したまま「読み込んでいます」（出力は新しい地図ができてから）
-      const loading = mitori.loading || mitori.key !== mitoriKey;
-      const b = mitori.build;
-      if (!b) return { sheets: [], svg: '', warnings: [loading ? '地図を読み込んでいます…' : '見取図を作れませんでした'], error: null, kind };
-      const notes = b.mapOk ? b.notes : [...b.notes, '地図が無いため、枠だけの見取図です（手で書き込んで使えます）'];
-      return { sheets: loading ? [] : [b.sheet], svg: sheetToSvg(b.sheet), warnings: loading ? ['地図を読み込んでいます…'] : notes, error: null, kind };
-    }
-    if (kind === 'suiri') {
-      if (!suiri) return { sheets: [], svg: '', warnings: [], error: null, kind };
-      if ('error' in suiri) return { sheets: [], svg: '', warnings: [], error: suiri.error, kind };
-      const sheets = renderSuiriSheets(suiri, { siteName, date });
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: [...suiri.unverified.map((u) => `要確認: ${u}`), ...suiri.warnings], error: null, kind };
-    }
-    if (kind === 'masu') {
-      // ます表: 縦断図と同じモデルから（番号・高さの基準が縦断図と一致する。竣工図なら実測の延長・勾配）
-      if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
-      const r = extractRoute(doc.network, outletId, pick);
-      if ('error' in r) return { sheets: [], svg: '', warnings: [], error: r.error, kind };
-      const ab = asBuilt.on;
-      const models0 = buildRouteProfiles(doc, r, profile, PROFILE_TITLE, () => PROFILE_TITLE);
-      let unmeasured = 0;
-      const models = ab ? models0.map((m) => { const x = applyMeasuredToProfile(m, doc); unmeasured += x.unmeasured.length; return x.model; }) : models0;
-      const table = manholeTable(doc, models, r.omitted.map((o) => o.atNodeId));
-      if (!table.rows.length) return { sheets: [], svg: '', warnings: [], error: 'この下流端につながるマスがありません。器具の「マス（排水）」から置いて排水の管でつないでください', kind };
-      const pos = Object.fromEntries(table.rows.map((row) => [row.nodeId, doc.network.nodes[row.nodeId]?.pos]).filter(([, q]) => q)) as Record<string, { x: number; y: number }>;
-      const sheets = renderManholeSheets(doc, table, pos, { siteName, date, title: ab ? asBuiltTitle('ます表') : 'ます表', numbersOnProfile: profile.profileTable.manholeLabel === 'above' });
-      const warnings = [...models.flatMap((m) => m.warnings.map((w) => w.message))];
-      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-      if (table.outside) warnings.push(`この表に入っていないマスが ${table.outside} 個あります（別の系統など。下流端を選び直すと、その系統のます表になります）`);
-      for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）の先のマスは入っていません。別の下流端を選んで作ってください`);
-      if (ab && unmeasured) warnings.push(`実測長が未入力の区間 ${unmeasured} か所は、図面の長さで延長・勾配を出しています`);
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings: [...new Set(warnings)], error: null, kind, ...(ab ? { asBuilt: { segIds: [], unmeasured, modelLen: {}, labels: {}, noLengths: true } } : {}) };
-    }
-    if (kind === 'profile') {
-      if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
-      const r = extractRoute(doc.network, outletId, pick);
-      if ('error' in r) return { sheets: [], svg: '', warnings: [], error: r.error, kind };
-      // 分岐の枝は別図。本線の分岐点に「→別図 枝n」と記す
-      const notes: Record<string, string> = {};
-      r.branches.forEach((b, i) => { notes[b.atNodeId] = [notes[b.atNodeId], `→別図 枝${i + 1}`].filter(Boolean).join(' '); });
-      const ab = asBuilt.on;
-      const T = ab ? asBuiltTitle(PROFILE_TITLE) : PROFILE_TITLE;
-      // 枝は本線の基準（公共桝の管底）と桝番号の続きを使う（合流のマスは本線の名前のまま）
-      const models: ProfileModel[] = buildRouteProfiles(doc, r, profile, T, (i, at) => `${T}（枝${i + 1}: ${nodeLabel(at)} から）`, notes);
-      // 沖縄市の様式: 縦断図の上に排水のアイソメ図（立面図・展開図）
-      const iso = profile.profileTable.drainageIsometric ? buildIsometric(doc, 'drain', profile, ab ? { lengthOf: measuredLengthOf(doc) } : {}) : undefined;
-      // 竣工図: 延長を実測にする（図面の長さは一覧に出す）
-      const modelLen: Record<string, number> = {};
-      for (const m of models) for (const sg of m.segments) if (sg.distance >= 1) modelLen[sg.segId] = sg.distance;
-      const unmeasured = new Set<string>();
-      const drawn = ab ? models.map((m) => { const x = applyMeasuredToProfile(m, doc); x.unmeasured.forEach((u) => unmeasured.add(u)); return x.model; }) : models;
-      const sheets = drawn.map((m, i) => renderProfileSheet(m, { siteName, date }, i === 0 ? iso : undefined));
-      // 注意は描いたモデルから（竣工図では勾配の注意を実測で出し直している）
-      const warnings = drawn.flatMap((m) => m.warnings.map((w) => w.message));
-      if (iso && iso.lines.length === 0) warnings.push('排水の立面図（展開図）を描く配管がないため、縦断図だけを出しています');
-      for (const o of r.omitted) warnings.push(`枝の中の分岐（${nodeLabel(o.atNodeId)}）は図に含めていません。別の下流端を選んで別に作図してください`);
-      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-      if (ab) {
-        // 一覧の名前: 「枝1 区間2 NO.1→NO.2」（注意の「区間 n」と同じ番号）
-        const labels: Record<string, string> = {};
-        models.forEach((m, mi) => m.segments.forEach((sg, k) => {
-          if (sg.distance < 1) return;
-          const nm = (n: (typeof m.nodes)[number] | undefined) => n?.manhole?.name ?? '点';
-          labels[sg.segId] = `${mi > 0 ? `枝${mi} ` : ''}区間${k + 1} ${nm(m.nodes[k])}→${nm(m.nodes[k + 1])}`;
-        }));
-        // 縦断図に載る排水の展開図（沖縄市）の区間も一覧に入れる（長さを書くため）
-        if (iso) {
-          const geo = geometricLength(doc);
-          for (const l of iso.lines) if (!(l.segId in modelLen)) { modelLen[l.segId] = geo(l.segId); labels[l.segId] = '展開図'; }
-          unmeasuredSegments(doc, iso.lines.map((l) => l.segId)).forEach((u) => unmeasured.add(u));
-        }
-        const segIds = Object.keys(modelLen);
-        warnings.unshift(...asBuiltNotes(doc, segIds, modelLen, labels, unmeasured.size));
-        return { sheets, svg: '', warnings, error: null, kind, asBuilt: { segIds, unmeasured: unmeasured.size, modelLen, labels } };
-      }
-      return { sheets, svg: sheets.map(sheetToSvg).join(''), warnings, error: null, kind };
-    }
-    if (!rootId) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
-    if (profile.riser.lineStyle === 'isometric') {
-      // アイソメ図（3D を斜めから見た展開図）。沖縄市の様式
-      const iso = buildIsometric(doc, 'water', profile, asBuilt.on ? { lengthOf: measuredLengthOf(doc) } : {});
-      if (iso.lines.length === 0) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
-      const sheet = renderIsoSheet(iso, profile, { siteName, date, title: asBuilt.on ? asBuiltTitle('立面図（展開図）') : '立面図（展開図）' });
-      const warnings: string[] = [];
-      if (asBuilt.on) {
-        const ids = iso.lines.map((l) => l.segId);
-        const un = unmeasuredSegments(doc, ids);
-        if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-        const geo = geometricLength(doc);
-        const modelLen = Object.fromEntries(ids.map((id) => [id, geo(id)]));
-        const labels = Object.fromEntries(iso.lines.map((l, i) => [l.segId, `区間${i + 1} ${l.label.replace(/×[\d.]+$/, '')}`]));
-        warnings.push(...asBuiltNotes(doc, ids, modelLen, labels, un.length));
-        return { sheets: [sheet], svg: '', warnings, error: null, kind, asBuilt: { segIds: ids, unmeasured: un.length, modelLen, labels } };
-      }
-      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-      return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
-    }
-    const m: RiserModel = buildRiser(doc, rootId, profile, asBuilt.on ? asBuiltTitle(RISER_TITLE) : RISER_TITLE);
-    const sheet = renderRiserSheet(m, { siteName, date });
-    const warnings = [...m.warnings];
-    if (asBuilt.on) {
-      // 立面図は長さを書かない（表題と印だけ）。実測の一覧は出さない
-      if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-      return { sheets: [sheet], svg: '', warnings, error: null, kind, asBuilt: { segIds: [], unmeasured: 0, modelLen: {}, labels: {}, noLengths: true } };
-    }
-    if (profileMissing) warnings.unshift(`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`);
-    return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
-  }, [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis]);
+  const ctx: ShinseiCtx = useMemo(() => ({
+    doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, matAxis, asBuiltOn: asBuilt.on, suiri,
+    mapLat: mapSettings.lat, mitori: { build: mitori.build, loading: mitori.loading || mitori.key !== mitoriKey },
+  }), [doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis]);
+  const built0: ShinseiBuild = useMemo(() => buildShinsei(kind, ctx), [kind, ctx]);
+  /** 「まとめてPDF」用: どの図面もタブと同じ作図（水理計算はここで計算する） */
+  const buildFor = useMemo(() => (k: (typeof BUNDLE_KINDS)[number]) =>
+    stampAsBuiltBuild(buildShinsei(k, k === 'suiri' ? { ...ctx, suiri: suiri ?? calcSupply(doc, suiriRules, suiriSettings) } : ctx), asBuilt),
+  [ctx, suiri, doc, suiriRules, suiriSettings, asBuilt]);
 
   // 竣工図の印（縦断図・立面図だけ）。SVG はここで作り直す
-  const built: ShinseiBuild = useMemo(() => {
-    if (!built0.asBuilt || !asBuilt.on) return built0;
-    const dateText = asBuilt.date ? dateJa(new Date(`${asBuilt.date}T00:00:00`)) : '';
-    const warnings = [...built0.warnings];
-    const sheets = built0.sheets.map((sh) => {
-      const copy: Sheet = { ...sh, ops: [...sh.ops] };
-      if (stampAsBuilt(copy, dateText || '　　年　月　日').collided) warnings.push('竣工の印を置く空きが無く、文字に重なっています');
-      return copy;
-    });
-    if (!asBuilt.date) warnings.push('竣工日が未入力です（印の日付は空欄）');
-    return { ...built0, sheets, svg: sheets.map(sheetToSvg).join(''), warnings };
-  }, [built0, asBuilt.on, asBuilt.date]);
+  const built: ShinseiBuild = useMemo(() => stampAsBuiltBuild(built0, asBuilt), [built0, asBuilt]);
 
   const [info, setInfo] = useState('');
   const download = async (fmt: 'pdf' | 'svg' | 'dxf') => {
@@ -376,6 +212,23 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     } finally { setBusy(''); }
   };
 
+  const [bundleErr, setBundleErr] = useState('');
+  const downloadBundle = async (builds: ShinseiBuild[]) => {
+    setBusy('bundle'); setErr(''); setInfo(''); setBundleErr('');
+    try {
+      const [{ downloadBytes, safeName }, { dateStamp }, { sheetsToPdf }, font] = await Promise.all([
+        import('../export/download'), import('../export/report'), import('../export/sheet'),
+        fetch(`${import.meta.env.BASE_URL}fonts/NotoSansJP-JIS.ttf`).then((r) => { if (!r.ok) throw new Error('フォントを読み込めません'); return r.arrayBuffer(); }),
+      ]);
+      downloadBytes(await sheetsToPdf(builds.flatMap((b) => b.sheets), font), `${safeName(siteName)}_${asBuilt.on ? '竣工' : ''}申請図面一式_${dateStamp(new Date())}.pdf`, 'application/pdf');
+      setBundleOpen(false); setBundleErr('');
+      setInfo(`${builds.length} 種類の図面を 1 つの PDF にしました`);
+    } catch (e) {
+      // 一覧を開いたまま、その中に理由を出す（背面の画面に出しても見えない）
+      setBundleErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setBusy(''); }
+  };
+
   const gl = doc.site?.designGL;
   return (
     <div className="estimate shinsei" data-testid="shinsei-screen" role="dialog" aria-label="申請図面">
@@ -384,6 +237,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <strong>申請図面</strong>
         <span className="muted small">配管データから縦断図・立面図・水理計算書を自動で作ります</span>
         <span className="grow" />
+        <button data-testid="shinsei-bundle" disabled={!!busy} onClick={() => setBundleOpen(true)} title="作れる図面をまとめて 1 つの PDF に">📦 まとめてPDF</button>
         <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
  <button data-testid="shinsei-dxf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('dxf')} title="AutoCAD・Jw_cad で開ける DXF（R12）">DXF</button>
         <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('svg')}>SVG</button>
@@ -473,6 +327,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <div className="shinsei-pages" style={{ width: `${zoom * 100}%`, ...(kind === 'mitori' ? { maxWidth: 760 * zoom } : {}) }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
+      {bundleOpen && <ShinseiBundleDialog buildFor={buildFor} busy={busy === 'bundle'} asBuilt={asBuilt.on} error={bundleErr} onPdf={(b) => void downloadBundle(b)}
+        onShow={(k) => { setBundleOpen(false); setKind(k); }} onClose={() => { setBundleOpen(false); setBundleErr(''); }} />}
     </div>
   );
 }

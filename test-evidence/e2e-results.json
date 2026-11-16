@@ -4,12 +4,8 @@
       "/opt/node22/bin/node",
       "/home/claude/pipecraft-3d/node_modules/.bin/playwright",
       "test",
-      "e2e/planauto.spec.ts",
-      "e2e/autoconnect.spec.ts",
-      "e2e/masu.spec.ts",
       "e2e/shinsei.spec.ts",
-      "e2e/underfloor.spec.ts",
-      "e2e/material.spec.ts"
+      "e2e/roadpermit.spec.ts"
     ],
     "configFile": "/home/claude/pipecraft-3d/playwright.config.ts",
     "rootDir": "/home/claude/pipecraft-3d/e2e",
@@ -233,444 +229,20 @@
   },
   "suites": [
     {
-      "title": "autoconnect.spec.ts",
-      "file": "autoconnect.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [
-        {
-          "title": "1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 1 回で戻る",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 7259,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:30:37.988Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 5879,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:28.675Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 7179,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:27.410Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "1ebec89ca25a15ed94e0-2cfbaac0511ef9086187",
-          "file": "autoconnect.spec.ts",
-          "line": 16,
-          "column": 1
-        },
-        {
-          "title": "ヘッダーは使わず枝分かれでつなぐ。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る。質問カードに答えられる",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 6830,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:30:45.520Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2372,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:34.774Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2281,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:34.821Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "1ebec89ca25a15ed94e0-385f6bccb9e8ea23b943",
-          "file": "autoconnect.spec.ts",
-          "line": 42,
-          "column": 1
-        },
-        {
-          "title": "ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 3648,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:30:52.381Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2017,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:37.170Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1834,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:37.113Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "1ebec89ca25a15ed94e0-7661a8e1fc89cf405b17",
-          "file": "autoconnect.spec.ts",
-          "line": 67,
-          "column": 1
-        }
-      ]
-    },
-    {
-      "title": "masu.spec.ts",
-      "file": "masu.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [
-        {
-          "title": "ます表: 縦断図と同じ番号・高さ・次のますまでの延長 → PDF",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 4038,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:30:56.232Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1907,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:39.319Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1793,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:39.069Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "ae13ef5bb4373dc48271-5f21ae7076e9bc5d9576",
-          "file": "masu.spec.ts",
-          "line": 24,
-          "column": 1
-        }
-      ]
-    },
-    {
-      "title": "material.spec.ts",
-      "file": "material.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [
-        {
-          "title": "材料表: 屋内・床下・屋外・地中の列 → 階ごと → PDF・Excel",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 7225,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:31:00.290Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2053,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:41.241Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2318,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:40.887Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "fede5766f5093e60967e-d5f5920263daf00e4138",
-          "file": "material.spec.ts",
-          "line": 9,
-          "column": 1
-        }
-      ]
-    },
-    {
-      "title": "planauto.spec.ts",
-      "file": "planauto.spec.ts",
+      "title": "roadpermit.spec.ts",
+      "file": "roadpermit.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "図面から自動で3Dにする",
-          "file": "planauto.spec.ts",
-          "line": 89,
+          "title": "道路の手続き",
+          "file": "roadpermit.spec.ts",
+          "line": 8,
           "column": 6,
           "specs": [
             {
-              "title": "平面図・基礎伏図・立面図の PDF を選ぶと、壁・開口部・基礎の入った建物ができ、平面図が下に敷かれる",
+              "title": "チェックリスト → 入力 → 道路の申請書類一式 (PDF)",
               "ok": true,
               "tags": [],
               "tests": [
@@ -685,12 +257,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7304,
+                      "duration": 12081,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:31:07.814Z",
+                      "startTime": "2026-11-16T00:53:39.396Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -708,12 +280,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5150,
+                      "duration": 4842,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:32:43.572Z",
+                      "startTime": "2026-11-16T00:54:42.357Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -731,12 +303,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5687,
+                      "duration": 5029,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:33:43.428Z",
+                      "startTime": "2026-11-16T00:55:06.373Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -744,329 +316,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "05efdc734f30ff52f51d-5c00b5ceb1fda51b345a",
-              "file": "planauto.spec.ts",
-              "line": 94,
-              "column": 3
-            },
-            {
-              "title": "器具の候補を確認して置き、真下に配管を落とし、排水を外の桝までつなぐ。取り消しで戻せる",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 8850,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:31:15.151Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 5550,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:32:48.749Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 6913,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:33:49.149Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "05efdc734f30ff52f51d-dadbd5b8336a6acbfa8e",
-              "file": "planauto.spec.ts",
-              "line": 161,
-              "column": 3
-            },
-            {
-              "title": "配置図も選ぶと、家の外形で位置を合わせて ます・水道メーター・敷地の高さが入る",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3752,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:31:24.017Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2830,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:32:54.309Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2895,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:33:56.083Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "05efdc734f30ff52f51d-f2587fb91b9a2d8d8436",
-              "file": "planauto.spec.ts",
-              "line": 229,
-              "column": 3
-            },
-            {
-              "title": "平面図だけでも作れる。足りない図面は「確かめてほしいこと」に出る",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2302,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:31:27.812Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1871,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:32:57.155Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1884,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:33:58.998Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "05efdc734f30ff52f51d-a01160217fd75dbe3b79",
-              "file": "planauto.spec.ts",
-              "line": 251,
-              "column": 3
-            },
-            {
-              "title": "平面図が無いときは、工事を作らずに分かる文で知らせる。選んだ図面は残り、足して作り直せる",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2261,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:31:30.148Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2324,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:32:59.038Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2243,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-13T06:34:00.901Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "05efdc734f30ff52f51d-3f2bb04fc80698fa345b",
-              "file": "planauto.spec.ts",
-              "line": 259,
+              "id": "20792d902ebc3f1c8d3f-7eeb9eb88f757aff4af0",
+              "file": "roadpermit.spec.ts",
+              "line": 11,
               "column": 3
             }
           ]
@@ -1102,12 +354,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9025,
+                      "duration": 9173,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:31:32.465Z",
+                      "startTime": "2026-11-16T00:53:51.879Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1125,12 +377,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2234,
+                      "duration": 2557,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:33:01.406Z",
+                      "startTime": "2026-11-16T00:54:47.460Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1148,12 +400,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2080,
+                      "duration": 2230,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:34:03.174Z",
+                      "startTime": "2026-11-16T00:55:11.642Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1182,12 +434,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6351,
+                      "duration": 6791,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:31:41.527Z",
+                      "startTime": "2026-11-16T00:54:01.066Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1205,12 +457,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2295,
+                      "duration": 2186,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:33:03.658Z",
+                      "startTime": "2026-11-16T00:54:50.041Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1228,12 +480,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2233,
+                      "duration": 2529,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:34:05.262Z",
+                      "startTime": "2026-11-16T00:55:13.893Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1262,12 +514,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 22573,
+                      "duration": 25148,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:31:47.889Z",
+                      "startTime": "2026-11-16T00:54:07.876Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1285,12 +537,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7048,
+                      "duration": 7673,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:33:05.972Z",
+                      "startTime": "2026-11-16T00:54:52.254Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1308,12 +560,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7004,
+                      "duration": 7300,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:34:07.503Z",
+                      "startTime": "2026-11-16T00:55:16.460Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1342,12 +594,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1878,
+                      "duration": 2218,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:32:10.474Z",
+                      "startTime": "2026-11-16T00:54:33.033Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1365,12 +617,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1680,
+                      "duration": 1941,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:33:13.031Z",
+                      "startTime": "2026-11-16T00:54:59.958Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1388,12 +640,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1581,
+                      "duration": 1882,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:34:14.531Z",
+                      "startTime": "2026-11-16T00:55:23.779Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1422,12 +674,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1914,
+                      "duration": 2143,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:32:12.363Z",
+                      "startTime": "2026-11-16T00:54:35.260Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1445,12 +697,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1840,
+                      "duration": 1917,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:33:14.726Z",
+                      "startTime": "2026-11-16T00:55:01.914Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1468,12 +720,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1762,
+                      "duration": 1674,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-13T06:34:16.129Z",
+                      "startTime": "2026-11-16T00:55:25.673Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -1487,343 +739,103 @@
               "column": 3
             }
           ]
-        }
-      ]
-    },
-    {
-      "title": "underfloor.spec.ts",
-      "file": "underfloor.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [
-        {
-          "title": "床下: 接続口は給水=青・給湯=赤・排水=茶。床下を選んで洗面台の給水から描くと床下へ下ろして PB、外へ出ると HIVP に替わる",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2547,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:14.303Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2659,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:16.593Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2500,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:34:17.923Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "165c30225d6bd92657d8-fb83f547fba4ea959d0e",
-          "file": "underfloor.spec.ts",
-          "line": 7,
-          "column": 1
         },
         {
-          "title": "床下: 給水ヘッダーを床下に置ける（出口が床から −300）。パネルで床上に戻せる",
-          "ok": true,
-          "tags": [],
-          "tests": [
+          "title": "申請図面: まとめてPDF",
+          "file": "shinsei.spec.ts",
+          "line": 232,
+          "column": 6,
+          "specs": [
             {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
+              "title": "サンプル工事: 一覧で作れる図面が分かり、1 押しで「申請図面一式」の PDF",
+              "ok": true,
+              "tags": [],
+              "tests": [
                 {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1800,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:16.858Z",
+                  "timeout": 30000,
                   "annotations": [],
-                  "attachments": []
+                  "expectedStatus": "passed",
+                  "projectId": "pc-chrome",
+                  "projectName": "pc-chrome",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4426,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-16T00:54:37.448Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2009,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-16T00:55:03.843Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                },
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "mobile-android-emu",
+                  "projectName": "mobile-android-emu",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2042,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-16T00:55:27.359Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
                 }
               ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1972,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:19.270Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1856,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:34:20.452Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
+              "id": "329969f93be34a8ea9fa-b2c5edb149556a43e7cc",
+              "file": "shinsei.spec.ts",
+              "line": 235,
+              "column": 3
             }
-          ],
-          "id": "165c30225d6bd92657d8-de5cb2c5fadbdbcf760d",
-          "file": "underfloor.spec.ts",
-          "line": 59,
-          "column": 1
-        },
-        {
-          "title": "床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。きつい所だけエルボ",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 7111,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:18.682Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 3192,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:21.261Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2853,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:34:22.317Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "165c30225d6bd92657d8-ec1e477f0f9b605b9890",
-          "file": "underfloor.spec.ts",
-          "line": 81,
-          "column": 1
-        },
-        {
-          "title": "床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配が自動でつき、レベルバンドで支持する",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "pc-chrome",
-              "projectName": "pc-chrome",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2341,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:32:25.805Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-iphone-emu",
-              "projectName": "mobile-iphone-emu",
-              "results": [
-                {
-                  "workerIndex": 1,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2411,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:33:24.463Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            },
-            {
-              "timeout": 30000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "mobile-android-emu",
-              "projectName": "mobile-android-emu",
-              "results": [
-                {
-                  "workerIndex": 2,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2530,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-11-13T06:34:25.190Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "165c30225d6bd92657d8-42be9d69d387faa650b9",
-          "file": "underfloor.spec.ts",
-          "line": 112,
-          "column": 1
+          ]
         }
       ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-13T06:30:29.320Z",
-    "duration": 238505.32599999997,
-    "expected": 57,
+    "startTime": "2026-11-16T00:53:32.067Z",
+    "duration": 117468.989,
+    "expected": 21,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

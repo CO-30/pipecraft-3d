@@ -56,6 +56,14 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
     return out;
   }, [set]);
 
+  /** 提出書類のチェック（工事に保存。外したらキーごと消す） */
+  const checkKey = (label: string) => `checklist:${label}`;
+  const checked = (label: string) => doc.site?.application?.[checkKey(label)] === '1';
+  const setChecked = (label: string, on: boolean) => {
+    const app = { ...(doc.site?.application ?? {}) };
+    if (on) app[checkKey(label)] = '1'; else delete app[checkKey(label)];
+    updateSite({ application: app });
+  };
   const setValue = (id: string, value: string) => updateSite({ application: { ...(doc.site?.application ?? {}), [id]: value } });
   const saveContractor = async () => {
     setErr(''); setMsg('');
@@ -171,11 +179,11 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         </section>
       ))}
       <section className="shinsei-forms-group">
-        <h3>提出書類のチェックリスト（給水の申請チェックシートより）</h3>
+        <h3>提出書類のチェックリスト（給水の申請チェックシートより）<span className="small muted" data-testid="forms-checklist-count">　{set.checklist.filter((c) => checked(c.label)).length}/{set.checklist.length} 済み（工事に保存）</span></h3>
         <ul className="shinsei-checklist" data-testid="forms-checklist">
           {set.checklist.map((c, i) => (
             <li key={i}>
-              <label><input type="checkbox" /> {c.label}{c.app ? <span className="badge ok" title="このアプリで作れます">アプリ</span> : null}{c.note ? <span className="muted small">　{c.note}</span> : null}</label>
+              <label><input type="checkbox" checked={checked(c.label)} onChange={(e) => setChecked(c.label, e.target.checked)} /> {c.label}{c.app ? <span className="badge ok" title="このアプリで作れます">アプリ</span> : null}{c.note ? <span className="muted small">　{c.note}</span> : null}</label>
             </li>
           ))}
         </ul>
