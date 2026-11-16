@@ -3,6 +3,7 @@
  * 画面の入力欄はこの定義から自動で作る。値は全て文字列で `doc.site.application` に入れる（省略可）。
  */
 import type { Doc } from '../model/doc';
+import type { KakuninInfo } from './kakunin';
 
 export type FormFieldKind = 'text' | 'choice' | 'number' | 'date' | 'multiline';
 
@@ -32,6 +33,8 @@ export type Contractor = {
   tel: string;
   /** 給水装置工事主任技術者 */
   chiefEngineer: string;
+  /** 給水装置工事主任技術者の免状番号（南部水道企業団の様式第6号「主任技術者 第 n 号」） */
+  chiefEngineerNo?: string;
   chiefEngineerTel: string;
   /** 排水設備工事責任技術者と登録番号 */
   drainageEngineer: string;
@@ -50,6 +53,8 @@ export type FormSet = {
   defaults: (doc: Doc, meta: { name: string; address?: string }) => ApplicationValues;
   /** 提出書類のチェックリスト。app=true はこのアプリで作れるもの */
   checklist: { label: string; app?: boolean; note?: string }[];
+  /** 確認申請書・確認済証から読んだ値 → この様式の項目（src/forms/kakunin.ts） */
+  kakunin?: (k: KakuninInfo) => ApplicationValues;
 };
 
 /** 入力済みの値を優先して既定値と合わせる */

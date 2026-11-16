@@ -131,6 +131,12 @@ function municipal(over: Partial<Omit<MunicipalityProfile, 'paper' | 'profileTab
 const COMMON_UNVERIFIED = ['最小勾配（口径ごと）', '最小土被り', '勾配の書き方（1/100・‰・%）', 'ますの記号', '表題欄の項目'];
 const JGES_TEXT = '設計図は「排水設備工事責任技術者講習用テキスト」（日本下水道協会）に沿って作成する';
 const A3_FOLDED: Partial<MunicipalityProfile['paper']> = { size: 'A4', orientation: 'portrait' };
+/** 南部水道企業団（南風原町・八重瀬町の給水）で受理された申請図面の体裁（2026-11-16 入手の実例 1 件: 給水平面図・給水立面図） */
+const NANBU_WATER_SOURCE = '給水は南部水道企業団。受理された給水の申請図面（指定工事店作成、2026-11-16 入手）: A4 縦、右上に受付番号・水道番号・縮尺、右下に申請地・申請者・指定工事店、凡例（給水・給湯・町配水管）と「※単位はmm 管長はm」、立面図はアイソメ（管種口径×長さ）';
+const NANBU_WATER: { paper: Partial<MunicipalityProfile['paper']>; riser: MunicipalityProfile['riser'] } = {
+  paper: { ...A3_FOLDED, titleBlockFields: ['申請地', '申請者', '指定工事店'], headerFields: ['受付番号', '水道番号', '縮尺'] },
+  riser: { lineStyle: 'isometric', diameterLabelPos: 'above', showFloorLines: false, heightLabel: 'FL+' },
+};
 
 /**
  * 同梱の自治体プロファイル（2026-11-10 に各自治体の公開ページを確認）。
@@ -162,8 +168,9 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
   }),
   municipal({
     id: 'haebaru', name: '南風原町',
-    source: { title: '南風原町 排水設備計画確認申請書の注意書き（図面は平面図及び縦断面図・配管立図・見取図。新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。用紙サイズ・綴じ方の記載なし', url: 'https://www.town.haebaru.lg.jp/uploaded/attachment/9638.pdf', checkedAt: '2026-11-10' },
-    unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ（申請書に記載なし。沖縄市・糸満市は A3 二つ折り）', ...COMMON_UNVERIFIED],
+    source: { title: '南風原町 排水設備計画確認申請書の注意書き（図面は平面図及び縦断面図・配管立図・見取図。新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。用紙サイズ・綴じ方の記載なし。' + NANBU_WATER_SOURCE, url: 'https://www.town.haebaru.lg.jp/uploaded/attachment/9638.pdf', checkedAt: '2026-11-16' },
+    unverified: ['下水道（町）の図面の体裁（用紙・表題欄・右上の欄）は未確認。給水（南部水道企業団）の実例に合わせている', '表の行（項目・順番）', '縮尺', ...COMMON_UNVERIFIED.filter((u) => u !== '表題欄の項目')],
+    ...NANBU_WATER,
   }),
   municipal({
     id: 'naha', name: '那覇市',
@@ -189,6 +196,12 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
     id: 'yonabaru', name: '与那原町',
     source: { title: '与那原町 上下水道課「下水道排水設備指定工事店について」「申請書ダウンロード」。図面の様式は公開されていない', url: 'https://www.town.yonabaru.okinawa.jp/site/jyougesui/4265.html', checkedAt: '2026-11-10' },
     unverified: ['表の行（項目・順番）', '縮尺', '用紙サイズ', '色分け', ...COMMON_UNVERIFIED],
+  }),
+  municipal({
+    id: 'yaese', name: '八重瀬町',
+    source: { title: '八重瀬町。下水道の図面の様式は公開されていない。' + NANBU_WATER_SOURCE, url: 'https://www.town.yaese.lg.jp/', checkedAt: '2026-11-16' },
+    unverified: ['下水道（町）の図面の体裁（用紙・表題欄・右上の欄）は未確認。給水（南部水道企業団）の実例に合わせている', '表の行（項目・順番）', '縮尺', '色分け', ...COMMON_UNVERIFIED.filter((u) => u !== '表題欄の項目')],
+    ...NANBU_WATER,
   }),
 ];
 
@@ -239,7 +252,7 @@ export function minSlopeFor(profile: MunicipalityProfile, diameter: number): num
 }
 
 /** 住所の頭の 郵便番号・国名・都道府県・郡 を外す */
-function stripHead(text: string): string {
+export function stripHead(text: string): string {
   let s = text.normalize('NFKC').replace(/\s+/g, '').replace(/^日本[、,]?/, '').replace(/^〒?\d{3}-?\d{4}/, '');
   s = s.replace(/^(北海道|東京都|京都府|大阪府|[^都道府県市区町村]{2,3}県)/, '');
   // 郡: 後ろが「…町／…村」（間に 市 が無い。大和郡山市 の 郡 は外さない）か、郡と同じ名前の町（余市郡余市町）

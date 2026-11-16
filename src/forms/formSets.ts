@@ -10,10 +10,18 @@ import { buildRiser, defaultRiserRoot } from '../model/riser';
 import { renderRiserSheet } from '../export/riserSheet';
 import type { Sheet } from '../export/sheet';
 import { OKINAWA_FORMS } from './okinawaCity';
+import { NANBU_FORMS } from './nanbu';
 import type { FormSet } from './types';
 
 /** プロファイル ID → 様式 */
-export const FORM_SETS: Record<string, FormSet> = { [OKINAWA_FORMS.profileId]: OKINAWA_FORMS };
+export const FORM_SETS: Record<string, FormSet> = {
+  [OKINAWA_FORMS.profileId]: OKINAWA_FORMS,
+  // 南風原町・八重瀬町の給水は南部水道企業団の同じ様式
+  haebaru: NANBU_FORMS,
+  yaese: { ...NANBU_FORMS, profileId: 'yaese' },
+};
+/** 南部水道企業団の様式か（申請書タブの出力ボタンが変わる） */
+export const isNanbu = (set: FormSet | undefined) => set?.fields === NANBU_FORMS.fields;
 export const CONTRACTOR_KEY = 'contractor';
 
 /** 下水道申請書の 2・3 面に載せる図面（本線の縦断図＋排水の立面図）。無ければ undefined */

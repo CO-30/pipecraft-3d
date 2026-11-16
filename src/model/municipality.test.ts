@@ -7,7 +7,7 @@ describe('自治体プロファイル', () => {
     expect(STANDARD_PROFILE.id).toBe('standard');
     expect(isBuiltinProfile('standard')).toBe(true);
     expect(isBuiltinProfile('mp_x')).toBe(false);
-    expect(BUILTIN_PROFILES).toHaveLength(8);
+    expect(BUILTIN_PROFILES).toHaveLength(9);
     expect(BUILTIN_PROFILES[0]).toBe(STANDARD_PROFILE);
   });
   test('parseProfileJson は rows が空ならエラー、壊れた JSON もエラー', () => {
@@ -53,12 +53,12 @@ describe('自治体プロファイル', () => {
 describe('同梱の自治体プロファイル', () => {
   test('沖縄本島南部 6 自治体が入っていて、schema を通り、確認できていない項目は unverified に入っている', () => {
     const ids = BUILTIN_PROFILES.map((p) => p.id);
-    expect(ids).toEqual(['standard', 'okinawa-city', 'itoman', 'haebaru', 'naha', 'tomigusuku', 'ginowan', 'yonabaru']);
+    expect(ids).toEqual(['standard', 'okinawa-city', 'itoman', 'haebaru', 'naha', 'tomigusuku', 'ginowan', 'yonabaru', 'yaese']);
     for (const p of BUILTIN_PROFILES.slice(1)) {
       expect(municipalityProfileSchema.safeParse(p).success, p.id).toBe(true);
       expect(p.unverified.length, p.id).toBeGreaterThan(0);
       expect(p.source.url, p.id).toMatch(/^https?:\/\//);
-      expect(['2026-11-10', '2026-11-12'], p.id).toContain(p.source.checkedAt);
+      expect(['2026-11-10', '2026-11-12', '2026-11-16'], p.id).toContain(p.source.checkedAt);
       expect(isBuiltinProfile(p.id)).toBe(true);
     }
   });
@@ -95,10 +95,10 @@ describe('レビュー修正', () => {
     }
     expect(STANDARD_PROFILE.colors).not.toBe(DEFAULT_COLORS);
   });
-  test('南風原町は用紙が未確認なので standard と同じ A3 横のまま。糸満市も表の項目の順番は要確認', () => {
+  test('南風原町の用紙は受理された給水図面の実例（A4 縦）。糸満市は表の項目の順番は要確認', () => {
     const h = BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!;
-    expect(h.paper).toMatchObject({ size: 'A3', orientation: 'landscape' });
-    expect(h.unverified.join(' ')).toContain('用紙');
+    expect(h.paper).toMatchObject({ size: 'A4', orientation: 'portrait' });
+    expect(h.unverified.join(' ')).toContain('縮尺');
     expect(h.source.title).toContain('赤');
     const i = BUILTIN_PROFILES.find((x) => x.id === 'itoman')!;
     expect(i.unverified.join(' ')).toContain('順番');
@@ -170,4 +170,26 @@ describe('住所の市町村名の取り出し（cityOf）: 名前に 市・町�
     expect(profileForAddress('東京都東村山市本町', [higashi]).profile).toBeUndefined();
     expect(profileForAddress('沖縄県国頭郡東村平良', [higashi]).profile?.id).toBe('h');
   });
+});
+
+describe('南部水道企業団（南風原町・八重瀬町）の給水図面は受理された実例の体裁', () => {
+  test('八重瀬町の住所で八重瀬町のプロファイルが選ばれる', () => {
+    expect(profileForAddress('沖縄県島尻郡八重瀬町字東風平1', BUILTIN_PROFILES).profile?.id).toBe('yaese');
+    expect(profileForAddress('沖縄県島尻郡南風原町字テスト9', BUILTIN_PROFILES).profile?.id).toBe('haebaru');
+  });
+  test('A4 縦・受付欄・表題欄（申請地・申請者・指定工事店）・アイソメ', () => {
+    for (const id of ['haebaru', 'yaese']) {
+      const p = BUILTIN_PROFILES.find((x) => x.id === id)!;
+      expect(p.paper.size).toBe('A4');
+      expect(p.paper.orientation).toBe('portrait');
+      expect(p.paper.headerFields).toEqual(['受付番号', '水道番号', '縮尺']);
+      expect(p.paper.titleBlockFields).toEqual(['申請地', '申請者', '指定工事店']);
+      expect(p.riser.lineStyle).toBe('isometric');
+      expect(p.source.title).toContain('南部水道企業団');
+    }
+  });
+});
+
+test('南風原町の下水道の図面の体裁は未確認として残す（給水の実例に合わせているため）', () => {
+  expect(BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!.unverified.join(' ')).toContain('下水道');
 });

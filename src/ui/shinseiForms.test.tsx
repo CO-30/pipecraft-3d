@@ -102,3 +102,53 @@ describe('申請書タブ', () => {
     await screen.findByTestId('shinsei-forms-none');
   });
 });
+
+describe('申請書タブ（南風原町・八重瀬町 = 南部水道企業団）', () => {
+  beforeEach(() => {
+    sampleDoc();
+    s().updateSite({ municipalityProfileId: 'haebaru' });
+    useStore.setState({ meta: { ...s().meta!, address: '沖縄県島尻郡南風原町字テスト1-2' } });
+  });
+  afterEach(() => cleanup());
+
+  it('給水申請書一式・製品一覧表のボタン、確認申請書から入れるボタン、設置場所は県と郡を除く', async () => {
+    render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    fireEvent.click(screen.getByTestId('shinsei-kind-forms'));
+    await screen.findByTestId('shinsei-forms');
+    expect(screen.getByTestId('forms-nanbu')).toBeTruthy();
+    expect(screen.queryByTestId('forms-water')).toBeNull();
+    expect(screen.getByTestId('forms-kakunin')).toBeTruthy();
+    expect((screen.getByTestId('app-siteAddress') as HTMLInputElement).value).toBe('南風原町字テスト1-2');
+    expect(screen.getByTestId('forms-checklist').textContent).toContain('横断図・オフセット(表)、竣工検査(裏)');
+  });
+
+  it('穿孔時の確認を自動で判定して出す（HT・私道など）', async () => {
+    render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    fireEvent.click(screen.getByTestId('shinsei-kind-forms'));
+    const drill = await screen.findByTestId('forms-drill');
+    expect(drill.textContent).toContain('穿孔時の確認');
+    expect(drill.querySelectorAll('li')).toHaveLength(10);
+    expect(drill.textContent).toContain('HT はありません');
+    // 南部水道企業団の水理計算の水圧 0.2MPa（自治体の値）で判定
+    expect(drill.textContent).toContain('水理計算は 0.2MPa。');
+    // 臨時給水ありで使用者が施主と同じ → 気をつけること
+    expect(screen.getByTestId('forms-nanbu-warn').textContent).toContain('使用者');
+    fireEvent.change(screen.getByTestId('app-userSame'), { target: { value: '別' } });
+    expect(screen.queryByTestId('forms-nanbu-warn')).toBeNull();
+  });
+
+  it('製品一覧表の表: 器具の行が出て、メーカーを入れると工事とこの端末に覚える', async () => {
+    render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    fireEvent.click(screen.getByTestId('shinsei-kind-forms'));
+    const table = await screen.findByTestId('forms-products-table');
+    expect(table.textContent).toContain('水栓');
+    fireEvent.change(screen.getByTestId('product-maker-faucet'), { target: { value: '(株)テスト' } });
+    expect(s().doc.site?.application?.['product.faucet.maker']).toBe('(株)テスト');
+    fireEvent.change(screen.getByTestId('product-cert-faucet'), { target: { value: 'self' } });
+    expect(s().doc.site?.application?.['product.faucet.cert']).toBe('self');
+    await waitFor(async () => expect((await repo.getSetting<Record<string, { maker?: string; cert?: string }>>('productMakers'))?.faucet).toEqual({ maker: '(株)テスト', cert: 'self' }));
+  });
+});

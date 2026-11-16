@@ -63,3 +63,25 @@ describe('画像（image 命令）', () => {
     expect(xo?.keys().length).toBe(1);
   });
 });
+
+test('画像の切り抜き（clip）: SVG は clipPath、PDF も描ける', async () => {
+  const { sheetToSvg, sheetsToPdf } = await import('./sheet');
+  const { readFileSync } = await import('node:fs');
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const s = { width: 100, height: 100, ops: [{ t: 'image' as const, x: 0, y: 0, w: 100, h: 200, href: png, clip: { x: 10, y: 20, w: 50, h: 30 } }] };
+  const svg = sheetToSvg(s);
+  expect(svg).toContain('<clipPath');
+  expect(svg).toMatch(/clip-path="url\(#c\w+\)"/);
+  expect(svg).toContain('x="10" y="20" width="50" height="30"');
+  expect((await sheetsToPdf([s], readFileSync('public/fonts/NotoSansJP-JIS.ttf'))).length).toBeGreaterThan(100);
+  // PDF: 画像の前に切り抜きの矩形（re W n）を置き、後で元に戻す（q … Q）
+  const { PDFDocument } = await import('pdf-lib');
+  const { drawSheetOnPage, embedSheetImages } = await import('./sheet');
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([100, 100]);
+  const seen: string[] = [];
+  const push = page.pushOperators.bind(page);
+  page.pushOperators = (...ops) => { seen.push(...ops.map((o) => o.toString().trim().split(/\s+/).pop()!)); return push(...ops); };
+  drawSheetOnPage(page, {} as never, s, { x: 0, top: 0, w: 100, h: 100 }, { images: await embedSheetImages(pdf, [s]) });
+  expect(seen.join(' ')).toMatch(/q re W n .*Q/);
+});

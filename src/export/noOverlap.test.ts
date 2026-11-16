@@ -232,3 +232,24 @@ describe('道路の申請書類（占用・使用許可・平面図・横断図�
     for (const traffic of ['片側交互通行', '路肩規制', '通行止め']) for (const s of roadSheets({ ...v, 'road.traffic': traffic }, { ...meta, address: '与那原町' })) expect(findTextOverlaps(s)).toEqual([]);
   });
 });
+
+describe('南部水道企業団の申請書類（チェック表・申込書・誓約書・様式第6号・横断面図・竣工検査・製品一覧表）', () => {
+  test('入力なし・長い値・道路の横断図ありのどれでも、全シートで文字の重なり 0・はみ出し 0', async () => {
+    const { nanbuSheets } = await import('../forms/nanbuSheets');
+    const { renderNanbuProductSheets } = await import('../forms/fixtureProducts');
+    const { renderRoadSection } = await import('../road/drawSheets');
+    const { roadTakeoffs } = await import('../road/model');
+    const { EMPTY_CONTRACTOR } = await import('../forms/types');
+    const { findTextOutside } = await import('./labelLayout');
+    const rv = { 'road.water': 'する', 'road.sewer': 'する', 'road.waterMainAt': '1.2', 'road.sewerMainAt': '2.0', 'road.roadWidth': '5', 'road.waterPipe': 'HIVP', 'road.waterPipeDia': '20', 'road.waterDepth': '0.6', 'road.digWidth': '0.5' };
+    const road = renderRoadSection(rv, roadTakeoffs(rv), { ...meta, address: '南風原町' });
+    const long = 'とても長い値の例です。沖縄県島尻郡南風原町字テスト字テスト原五十番地の一，二，三 テストハイツ三〇一号室';
+    const v = { date: '2026-11-16', siteAddress: long, ownerAddress: long, ownerName: long, ownerKana: long, userSame: '別', userAddress: long, userName: long, userKana: long, userTel: '098-000-0000-0000', confirmNo: 'ABC-26-00000-1-ABCDEFG', offsets: `${long}\n${long}` };
+    const c = { ...EMPTY_CONTRACTOR, name: long, address: long, representative: long, chiefEngineer: long, chiefEngineerNo: '1234567890', licenseNo: '1234567890', tel: '098-000-0000' };
+    const products = renderNanbuProductSheets([{ key: 'a', name: long, qty: '10個', maker: long, cert: 'jis' }], { date: meta.date }, c);
+    for (const [vals, con, rs] of [[{}, EMPTY_CONTRACTOR, undefined], [v, c, road]] as const) for (const s of nanbuSheets(vals, con, { ...meta, products, roadSection: rs })) {
+      expect(findTextOverlaps(s)).toEqual([]);
+      expect(findTextOutside(s)).toEqual([]);
+    }
+  });
+});
