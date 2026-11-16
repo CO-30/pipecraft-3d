@@ -8,6 +8,8 @@ import { distToOutline, insideBuilding, underfloorLevels } from './underfloorSlo
 
 /** 屋外の管を外壁（芯）から離す距離 mm */
 const YARD_CLEAR_DEFAULT = 300;
+/** 端（立水栓・マス）が外壁のすぐそばにあるときは、端と同じ近さまで寄ってよい。ただしこれより近くは通らない（基礎） */
+const MIN_CLEAR = 150;
 /** 建物の周りを回る道: 外壁の外側この距離を通る mm */
 const AROUND = 700;
 /** 曲がりにマスを置けるよう、曲がりのある道では 1m より短い区間を避ける */
@@ -21,35 +23,48 @@ const pointSeg = (p: { x: number; y: number }, a: { x: number; y: number }, b: {
   return Math.hypot(a.x + dx * t - p.x, a.y + dy * t - p.y);
 };
 
+/** near: 立水栓などの分岐（a が外壁のすぐそばならその近さまで寄ってよい）。avoid: 通ってはいけない区間（先の管に重なるなど） */
+export type YardRouteOpts = { near?: boolean; avoid?: (p: Vec3, q: Vec3) => boolean; /** 縦横の道だけ（斜めの直線を使わない） */ axis?: boolean };
+
 /** 屋外の道を探す関数を作る（建物の形はここで 1 回だけ読む）。a → c の点の列（a・c を含む）。見つからなければ null */
-export function makeYardRouter(doc: Doc, opts: { clear?: number } = {}): (a: Vec3, c: Vec3) => Vec3[] | null {
+export function makeYardRouter(doc: Doc, opts: { clear?: number } = {}): (a: Vec3, c: Vec3, o?: YardRouteOpts) => Vec3[] | null {
   const YARD_CLEAR = opts.clear ?? YARD_CLEAR_DEFAULT;
   const lv = underfloorLevels(doc);
   const b = doc.building;
   const base = [...b.floors].sort((x, y) => Math.abs(x.elevation) - Math.abs(y.elevation))[0];
   const ext = Object.values(b.walls).filter((w) => w.kind === 'exterior' && w.floorId === base?.id && b.corners[w.a] && b.corners[w.b]).map((w) => [b.corners[w.a], b.corners[w.b]] as const);
   /** 建物の中・外壁の近くか（外壁が 1 周つながっていなければ、外壁の線からの距離だけで見る） */
-  const blocked = (x: { x: number; y: number }) => (lv && lv.outline.length
-    ? insideBuilding(lv, x) || distToOutline(lv, x) < YARD_CLEAR
-    : ext.some(([a, c]) => pointSeg(x, a, c) < YARD_CLEAR));
+  const blocked = (x: { x: number; y: number }, clear = YARD_CLEAR) => (lv && lv.outline.length
+    ? insideBuilding(lv, x) || distToOutline(lv, x) < clear
+    : ext.some(([a, c]) => pointSeg(x, a, c) < clear));
+  /** 外の点の、外壁からの近さ（建物の中なら無限大） */
+  const nearWall = (x: { x: number; y: number }) => (lv && lv.outline.length
+    ? (insideBuilding(lv, x) ? Infinity : distToOutline(lv, x))
+    : ext.length ? Math.min(...ext.map(([a, c]) => pointSeg(x, a, c))) : Infinity);
+  /** a → c の道で守る外壁からの距離: ふつうは YARD_CLEAR。near（立水栓などの分岐）で a が外壁のすぐそばなら、その近さまで（家の角を回り込む遠回りをしない） */
+  let clear = YARD_CLEAR;
+  let avoid: YardRouteOpts['avoid'] | null = null;
   const legOk = (p: Vec3, q: Vec3, ends: Vec3[]) => {
+    if (avoid?.(p, q)) return false;
     if (!ext.length && !(lv && lv.outline.length)) return true;
     const L = Math.hypot(q.x - p.x, q.y - p.y), n = Math.max(1, Math.ceil(L / 100));
     for (let i = 0; i <= n; i++) {
       const x = { x: p.x + ((q.x - p.x) * i) / n, y: p.y + ((q.y - p.y) * i) / n };
       // 端のマスのすぐそば（外壁から 300mm 未満に置いたマス）は除く。ただし建物の中は不可
       if (ends.some((e) => Math.hypot(e.x - x.x, e.y - x.y) < 400) && !(lv && lv.outline.length && insideBuilding(lv, x) && distToOutline(lv, x) > 1)) continue;
-      if (blocked(x)) return false;
+      if (blocked(x, clear)) return false;
     }
     return true;
   };
   const xs = ext.flatMap(([a, c]) => [a.x, c.x]), ys = ext.flatMap(([a, c]) => [a.y, c.y]);
   const box = xs.length ? { x0: Math.min(...xs) - AROUND, x1: Math.max(...xs) + AROUND, y0: Math.min(...ys) - AROUND, y1: Math.max(...ys) + AROUND } : null;
   /** a → b の道の候補（直線・L 字 2 通り・建物の周りを回る 4 通り）のうち、使える一番安いもの */
-  const route = (a: Vec3, c: Vec3): Vec3[] | null => {
+  const route = (a: Vec3, c: Vec3, o: YardRouteOpts = {}): Vec3[] | null => {
+    avoid = o.avoid ?? null;
+    clear = o.near ? Math.max(MIN_CLEAR, Math.min(YARD_CLEAR, nearWall(a) - 5)) : YARD_CLEAR;
     const z = (a.z + c.z) / 2;
     const P = (x: number, y: number) => ({ x, y, z });
-    const cands: Vec3[][] = [[a, c]];
+    const cands: Vec3[][] = o.axis && Math.abs(a.x - c.x) > 1 && Math.abs(a.y - c.y) > 1 ? [] : [[a, c]];
     if (Math.abs(a.x - c.x) > 1 && Math.abs(a.y - c.y) > 1) cands.push([a, P(c.x, a.y), c], [a, P(a.x, c.y), c]);
     if (box) cands.push([a, P(a.x, box.y1), P(c.x, box.y1), c], [a, P(a.x, box.y0), P(c.x, box.y0), c], [a, P(box.x0, a.y), P(box.x0, c.y), c], [a, P(box.x1, a.y), P(box.x1, c.y), c]);
     let best: { pts: Vec3[]; cost: number } | null = null;
@@ -78,7 +93,7 @@ export function makeYardRouter(doc: Doc, opts: { clear?: number } = {}): (a: Vec
     const okCell = new Int8Array(NI * NJ).fill(-1);
     const cellOk = (i: number, j: number) => {
       const k = j * NI + i;
-      if (okCell[k] < 0) { const q = pos(i, j); okCell[k] = Math.hypot(q.x - a.x, q.y - a.y) < 400 || !blocked(q) ? 1 : 0; }
+      if (okCell[k] < 0) { const q = pos(i, j); okCell[k] = Math.hypot(q.x - a.x, q.y - a.y) < 400 || !blocked(q, clear) ? 1 : 0; }
       return okCell[k] === 1;
     };
     const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];

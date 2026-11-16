@@ -10,6 +10,9 @@ import { defaultSlope as indoorMinSlope, isRiserLike, isSlopePinned, outerDiamet
 import { insideBuilding, isUnderfloorDrain, underfloorLevels } from '../underfloorSlope';
 import type { DrainTree } from './tree';
 
+/** 高さを保存するときの丸め（heights.ts の r1: 0.1mm）。両端の丸めで勾配がこの分だけ緩く見えることがある */
+const ROUND_MM = 0.1;
+
 export type DrainIssueKind = 'minSlope' | 'maxSlope' | 'cover' | 'depthMax' | 'depthMin' | 'diameterReverse' | 'underfloorTooHigh' | 'reverse' | 'noPublic' | 'loop' | 'unverifiedRule';
 export type DrainFix = { label: string; apply: (doc: Doc) => Doc };
 export type DrainIssue = {
@@ -103,7 +106,7 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
       ];
       if (slope < -1e-6) {
         issues.push({ kind: 'reverse', level: 'error', target: { kind: 'segment', id: sid }, message: `逆勾配（φ${s.diameter}）。下流より上流が低くなっています`, fixes: unpinFixes });
-      } else if (slope + 1e-6 < min) {
+      } else if (slope + 1e-6 + ROUND_MM / L < min) { // 高さは 0.1mm に丸めて保存するので、その分は緩いと言わない
         issues.push({ kind: 'minSlope', level: 'error', target: { kind: 'segment', id: sid }, message: `勾配 ${pct(slope)} は φ${s.diameter} の最小勾配 ${pct(min)} より緩い`, fixes: unpinFixes });
       } else if (slope >= max - 1e-9) {
         const fixes: DrainFix[] = [...unpinFixes];

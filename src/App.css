@@ -103,7 +103,7 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .est-open { font-weight: 600; }
 .est-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 6px 12px; border-top: 1px solid #e5e7eb; background: #f8fafc; font-size: 13px; }
 .est-bar button { margin-left: auto; min-height: 34px; }
-.estimate { position: fixed; inset: 0; z-index: 40; background: #fff; display: grid; grid-template-rows: auto auto 1fr; }
+.estimate { position: fixed; inset: 0; z-index: 40; background: #fff; display: grid; grid-template-rows: auto auto auto 1fr; /* 見出し・タブ・説明・中身（中身が短くても説明の欄を伸ばさない） */ }
 .estimate > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; padding-top: max(8px, env(safe-area-inset-top)); border-bottom: 1px solid #e5e7eb; }
 .estimate > header strong { font-size: 16px; }
 .est-total { margin-left: auto; font-size: 14px; }
@@ -485,3 +485,9 @@ header .lbl { margin-left: 2px; }
 .bundle-list li.ng { background: #f8fafc; color: #64748b; }
 /* 一覧が長くても「PDF にする」がいつも見える（スマホ） */
 .modal.bundle .modal-btns { position: sticky; bottom: -16px; margin: 0 -16px -16px; padding: 10px 16px 16px; background: #fff; border-top: 1px solid #e5e7eb; }
+
+/* 積算の要確認: 単価の未登録のまとめ（配管・部品の確かめる所と色を分ける） */
+.issues li.prices { border-color: #cbd5e1; background: #f8fafc; }
+.issues li.prices .tag { background: #64748b; }
+.issues li.prices .row { display: flex; gap: 8px; align-items: center; }
+[data-testid="issues-design-ok"] { color: #15803d; margin: 4px 0 8px; }

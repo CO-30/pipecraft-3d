@@ -4,8 +4,8 @@
       "/opt/node22/bin/node",
       "/home/claude/pipecraft-3d/node_modules/.bin/playwright",
       "test",
-      "e2e/shinsei.spec.ts",
-      "e2e/roadpermit.spec.ts"
+      "e2e/estimateIssues.spec.ts",
+      "e2e/phase4.spec.ts"
     ],
     "configFile": "/home/claude/pipecraft-3d/playwright.config.ts",
     "rootDir": "/home/claude/pipecraft-3d/e2e",
@@ -229,20 +229,20 @@
   },
   "suites": [
     {
-      "title": "roadpermit.spec.ts",
-      "file": "roadpermit.spec.ts",
+      "title": "estimateIssues.spec.ts",
+      "file": "estimateIssues.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "道路の手続き",
-          "file": "roadpermit.spec.ts",
-          "line": 8,
+          "title": "積算の要確認",
+          "file": "estimateIssues.spec.ts",
+          "line": 11,
           "column": 6,
           "specs": [
             {
-              "title": "チェックリスト → 入力 → 道路の申請書類一式 (PDF)",
+              "title": "単価の未登録はまとめて 1 枚。「単価へ」で単価タブ、「一覧」で 1 件ずつ",
               "ok": true,
               "tags": [],
               "tests": [
@@ -257,12 +257,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 12081,
+                      "duration": 3604,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:53:39.396Z",
+                      "startTime": "2026-11-16T03:13:20.078Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -280,12 +280,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4842,
+                      "duration": 2094,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:54:42.357Z",
+                      "startTime": "2026-11-16T03:13:34.066Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -303,12 +303,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 5029,
+                      "duration": 2130,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:55:06.373Z",
+                      "startTime": "2026-11-16T03:13:46.358Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -316,9 +316,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "20792d902ebc3f1c8d3f-7eeb9eb88f757aff4af0",
-              "file": "roadpermit.spec.ts",
-              "line": 11,
+              "id": "5cd4f6a46097721b1f24-b6c9dd85defd0798ab5a",
+              "file": "estimateIssues.spec.ts",
+              "line": 14,
               "column": 3
             }
           ]
@@ -326,20 +326,20 @@
       ]
     },
     {
-      "title": "shinsei.spec.ts",
-      "file": "shinsei.spec.ts",
+      "title": "phase4.spec.ts",
+      "file": "phase4.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "申請図面",
-          "file": "shinsei.spec.ts",
-          "line": 16,
+          "title": "Phase 4 自動積算",
+          "file": "phase4.spec.ts",
+          "line": 12,
           "column": 6,
           "specs": [
             {
-              "title": "サンプル工事 → 縦断図（公共マスが先頭・警告なし）→ PDF、立面図 → PDF、設計GL 未入力で「仮」",
+              "title": "実測長入力 → 単価登録 → 見積合計が手計算と一致 → PDF・Excel を保存",
               "ok": true,
               "tags": [],
               "tests": [
@@ -354,12 +354,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9173,
+                      "duration": 3339,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:53:51.879Z",
+                      "startTime": "2026-11-16T03:13:23.936Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -377,12 +377,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2557,
+                      "duration": 3544,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:54:47.460Z",
+                      "startTime": "2026-11-16T03:13:36.395Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -400,12 +400,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2230,
+                      "duration": 3355,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:55:11.642Z",
+                      "startTime": "2026-11-16T03:13:48.716Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -413,13 +413,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "329969f93be34a8ea9fa-70b8052e5670265e75b5",
-              "file": "shinsei.spec.ts",
-              "line": 19,
+              "id": "598377eb1f598f6a1945-468f34c1f960701b93fe",
+              "file": "phase4.spec.ts",
+              "line": 15,
               "column": 3
             },
             {
-              "title": "排水区間の設計勾配を 1/50 に → 表示が 1/50 で固定、マスのパネルに管底高・深さ",
+              "title": "要確認の点を図面で選び、部品を確定すると要確認が消える",
               "ok": true,
               "tags": [],
               "tests": [
@@ -434,12 +434,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6791,
+                      "duration": 2046,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:54:01.066Z",
+                      "startTime": "2026-11-16T03:13:27.295Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -457,12 +457,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2186,
+                      "duration": 2101,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:54:50.041Z",
+                      "startTime": "2026-11-16T03:13:39.967Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -480,12 +480,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2529,
+                      "duration": 2084,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:55:13.893Z",
+                      "startTime": "2026-11-16T03:13:52.085Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -493,13 +493,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "329969f93be34a8ea9fa-0fad722c40a329e7f224",
-              "file": "shinsei.spec.ts",
-              "line": 65,
+              "id": "598377eb1f598f6a1945-b30f3b001022ee7531cb",
+              "file": "phase4.spec.ts",
+              "line": 69,
               "column": 3
             },
             {
-              "title": "自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る",
+              "title": "積算設定は保存され、再読み込み後も合計が同じ",
               "ok": true,
               "tags": [],
               "tests": [
@@ -514,12 +514,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 25148,
+                      "duration": 4210,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:54:07.876Z",
+                      "startTime": "2026-11-16T03:13:29.370Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -537,12 +537,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7673,
+                      "duration": 3813,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:54:52.254Z",
+                      "startTime": "2026-11-16T03:13:42.079Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -560,12 +560,12 @@
                       "workerIndex": 2,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7300,
+                      "duration": 3678,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T00:55:16.460Z",
+                      "startTime": "2026-11-16T03:13:54.177Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -573,257 +573,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "329969f93be34a8ea9fa-6689075308046495fc06",
-              "file": "shinsei.spec.ts",
-              "line": 106,
-              "column": 3
-            },
-            {
-              "title": "新しい工事の住所の市町村から、申請書類と決まりの自治体を選ぶ。無ければ標準と知らせる",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2218,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:54:33.033Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1941,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:54:59.958Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1882,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:55:23.779Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "329969f93be34a8ea9fa-79654f7618ee70a35966",
-              "file": "shinsei.spec.ts",
-              "line": 188,
-              "column": 3
-            },
-            {
-              "title": "後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2143,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:54:35.260Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1917,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:55:01.914Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1674,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:55:25.673Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "329969f93be34a8ea9fa-5772054e872ef943d61e",
-              "file": "shinsei.spec.ts",
-              "line": 205,
-              "column": 3
-            }
-          ]
-        },
-        {
-          "title": "申請図面: まとめてPDF",
-          "file": "shinsei.spec.ts",
-          "line": 232,
-          "column": 6,
-          "specs": [
-            {
-              "title": "サンプル工事: 一覧で作れる図面が分かり、1 押しで「申請図面一式」の PDF",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4426,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:54:37.448Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2009,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:55:03.843Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2042,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T00:55:27.359Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "329969f93be34a8ea9fa-b2c5edb149556a43e7cc",
-              "file": "shinsei.spec.ts",
-              "line": 235,
+              "id": "598377eb1f598f6a1945-29da845e7d7d12cac6da",
+              "file": "phase4.spec.ts",
+              "line": 91,
               "column": 3
             }
           ]
@@ -833,9 +585,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-16T00:53:32.067Z",
-    "duration": 117468.989,
-    "expected": 21,
+    "startTime": "2026-11-16T03:13:13.742Z",
+    "duration": 44243.087,
+    "expected": 12,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

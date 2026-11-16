@@ -3,7 +3,7 @@
  * 線の曲がりだけで確定せず、判断できないものは needsConfirm にしてユーザーの確定を待つ。
  * ユーザーの確定はノードの fitting に保存し、接続数が変わったら無効にする。
  */
-import { FIXTURE_CATALOG, type Fixture } from './fixtures';
+import { FIXTURE_CATALOG, isManhole, type Fixture } from './fixtures';
 import { isPB, materialFamily } from './materials';
 import { adjacency, segmentLength, type Network, type PipeNode, type Segment, type SystemType, type Vec3 } from './network';
 
@@ -90,7 +90,8 @@ function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<str
   if (segs.length === 0) return null;
   const main0 = largest(segs);
   const base = { size: sizeOf(segs), main: main0 };
-  const systems = new Set(segs.map((s) => s.system));
+  // 排水（雑排水）と汚水は同じ排水の管（床下の本管への合流など）。部品の判定では同じ系統として扱う
+  const systems = new Set(segs.map((s) => (s.system === 'sewage' ? 'drain' : s.system)));
   const wires = segs.filter((s) => isWire(s.system)).length;
   if (wires > 0 && wires < segs.length) return { ...base, auto: 'other', needsConfirm: true, reason: '配管と配線が同じ点につながっています' };
   const wire = wires > 0;
@@ -104,6 +105,8 @@ function judge(net: Network, n: PipeNode, segs: Segment[], fixtures?: Record<str
     const f = fixtures?.[n.fixtureId];
     const thread = f ? FIXTURE_CATALOG[f.type]?.ports.find((p) => p.id === n.portId)?.thread : undefined;
     const auto: FittingChoice = wire ? 'none' : thread ?? 'adapter';
+    // マス（汚水ます・公共ます）は流入・流出の管が口に何本つながってもよい（マスでつなぐので確かめることはない）
+    if (f && isManhole(f.type)) return { ...base, auto, needsConfirm: false };
     return { ...base, auto, needsConfirm: segs.length > 1, reason: segs.length > 1 ? '器具の接続口に複数の配管がつながっています' : undefined };
   }
   if (segs.length === 1) return { ...base, auto: 'none', needsConfirm: false };

@@ -61,7 +61,7 @@ export function EstimateScreen({ onClose, initialTab = 'qty' }: { onClose: () =>
   const unit = usePrefs((s) => s.lengthUnit);
   const unsetWalls = useStore((s) => unconfirmedWallCount(s.doc.building));
   const setUnit = usePrefs((s) => s.setLengthUnit);
-  const tabs: [Tab, string][] = [['qty', '数量'], ['parts', '部品'], ['price', '単価'], ['quote', '見積'], ['issues', `要確認${est.issues.length ? `(${est.issues.length})` : ''}`]];
+  const tabs: [Tab, string][] = [['qty', '数量'], ['parts', '部品'], ['price', '単価'], ['quote', '見積'], ['issues', `要確認${realIssues(est.issues).length ? `(${realIssues(est.issues).length})` : ''}`]];
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -386,6 +386,7 @@ function ExtraRow({ id }: { id: string }) {
 
 function IssuesTab({ est, onClose, onPrice }: { est: Estimate; onClose: () => void; onPrice: () => void }) {
   const st = useStore.getState();
+  const [showPrices, setShowPrices] = useState(false);
   const go = (i: Issue) => {
     if (i.target.kind === 'price') { onPrice(); return; }
     const { doc } = useStore.getState();
@@ -398,16 +399,35 @@ function IssuesTab({ est, onClose, onPrice }: { est: Estimate; onClose: () => vo
     onClose();
   };
   if (!est.issues.length) return <p className="empty">要確認の項目はありません。</p>;
+  // 配管・部品の確かめる所を先に 1 件ずつ。単価の未登録はまとめて 1 枚（埋もれないように）。開けば今までどおり 1 件ずつ
+  const real = realIssues(est.issues) as Issue[];
+  const prices = est.issues.filter((i) => i.kind === 'noPrice');
+  const refOnly = prices.filter((i) => i.message.includes('参考単価')).length;
+  const row = (i: Issue, k: number) => (
+    <li key={k}>
+      <span className="tag">{ISSUE_LABEL[i.kind]}</span>
+      <span className="msg-s">{i.message}</span>
+      <button data-testid="issue-go" onClick={() => go(i)}>{i.target.kind === 'price' ? '単価へ' : '図面で選ぶ'}</button>
+    </li>
+  );
   return (
-    <ul className="issues" data-testid="issues">
-      {est.issues.map((i, k) => (
-        <li key={k}>
-          <span className="tag">{ISSUE_LABEL[i.kind]}</span>
-          <span className="msg-s">{i.message}</span>
-          <button data-testid="issue-go" onClick={() => go(i)}>{i.target.kind === 'price' ? '単価へ' : '図面で選ぶ'}</button>
-        </li>
-      ))}
-    </ul>
+    <>
+      {!real.length && <p className="ok small" data-testid="issues-design-ok">✓ 配管・部品で確かめる所はありません</p>}
+      <ul className="issues" data-testid="issues">
+        {real.map(row)}
+        {prices.length > 0 && (
+          <li key="prices" className="prices" data-testid="issue-prices">
+            <span className="tag">{ISSUE_LABEL.noPrice}</span>
+            <span className="msg-s">単価が入っていない品目が {prices.length} あります{refOnly ? `（うち ${refOnly} は材料に参考単価を使っていて、施工単価だけ未登録）` : ''}。見積に入れる金額は「単価」タブでまとめて入れられます</span>
+            <span className="row">
+              <button data-testid="issue-go" onClick={onPrice}>単価へ</button>
+              <button className="linkish small" aria-expanded={showPrices} onClick={() => setShowPrices(!showPrices)}>{showPrices ? '一覧を閉じる' : `一覧（${prices.length}）`}</button>
+            </span>
+          </li>
+        )}
+        {showPrices && prices.map((i, k) => row(i, real.length + 1 + k))}
+      </ul>
+    </>
   );
 }
 

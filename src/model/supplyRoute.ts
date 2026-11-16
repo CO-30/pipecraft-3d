@@ -16,6 +16,8 @@ import { assignAutoMaterials } from './materials';
 import { KSS_HEIGHTS } from './kisoSleeve';
 import { BENRIKAN } from './materials';
 import { makeYardRouter } from './yardRoute';
+import { closestPoints } from './clash';
+import { outerDiameter } from './slope';
 import { membersOf } from './members';
 import { addPolyline, addRiser, insertValve, segmentsAt, splitSegment, type PipeNode, type SegmentAttrs, type SystemType, type Vec3 } from './network';
 
@@ -25,6 +27,14 @@ export const UNDERFLOOR_Z = -300;
 const HEADER_MOUNT = -400;
 /** 立水栓などを外の給水管へ分けるとき、道を探す分け口の数・建物の中に入る管をずらす刻みと、建物から離す長さ(mm) */
 const TEE_TRIES = 6, TEE_STEP = 50, TEE_OUT = 300;
+/** 分け口（チーズ）を、外の給水管の曲がり・分岐の点からこれだけ離す(mm)。継手どうしを重ねない・斜めにつながない */
+const TEE_END = 150;
+/** 床下の給水・給湯で排水の管をよけるとき、口のすぐそば（RISER_FREE 以内）は除く */
+const RISER_FREE = 150;
+/** 給水・給湯と排水の管の外径どうしの離れ(mm) */
+const DRAIN_CLEAR = 30;
+/** 横の排水管と平行に走らない離れ（外径どうしの間 mm）と、それを調べる高さの幅（mm） */
+const PARALLEL_GAP = 70, PARALLEL_Z = 400;
 /** 給水・給湯口を床下へ下ろす器具（屋外の水栓・機器どうしをつなぐものは除く） */
 const SUPPLY_TYPES = new Set<FixtureType>(['toilet', 'washbasin', 'kitchen', 'bathtub', 'shower', 'washer', 'faucet', 'mixFaucet']);
 /** 基礎の内側の面から、スリーブ（KSS）から床下へ立ち上げる点までの離れ(mm) */
@@ -274,7 +284,11 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       for (let k = Math.floor((c - BUSY_GAP) / B); k <= Math.ceil((c + BUSY_GAP) / B); k++) for (const [a, d] of m.get(k) ?? []) if (overlapRun(p, q, a, d, BUSY_GAP) > 10) return true;
       return false;
     };
-    const edgeOk = (q: Vec2, r: Vec2) => !busyNear(q, r);
+    // 器具から床下へ下りてくる排水・通気の立て管や、床下の高さに近い排水の横の管はよける（ぶつけない）
+    // 床下の高さ（zU）の近くを通る管だけ（毎回すべてを調べない）
+    const drains = drainPipes().filter((d) => Math.max(d.a.z, d.b.z) + PARALLEL_Z >= zU && Math.min(d.a.z, d.b.z) - PARALLEL_Z <= zU);
+    const nearGoal = (q: Vec2) => goals.some((g) => dist2(q, g.a) < RISER_FREE || dist2(q, g.b) < RISER_FREE);
+    const edgeOk = (q: Vec2, r: Vec2) => !busyNear(q, r) && (!drains.length || !hitsDrain(drains, at(q), at(r), 20) || nearStart(q) || nearGoal(q) || nearGoal(r));
     const hs = headerRects();
     const nearStart = (q: Vec2) => dist2(q, from) < 2 * ROUTE_STEP;
     const r = findFloorRoute({ start: from, allowed: (q) => nearStart(q) || (roomy(q) && !inHeader(q, hs)), footing: footAt, edgeOk, goals, bounds });
@@ -424,7 +438,9 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       if (caulk) {
         // 地中を HI で入口の外まで → 外で床下の高さまで立ち上げ → 基礎を水平に抜けて（コーキング）、基礎の内側で PB に替える
         const a = at(meterOut.pos, burialZ), c = at(feedEntry.eOut, burialZ);
-        const run = yard(a, c) ?? [a, at(cornerOf(meterOut.pos, feedEntry), burialZ), c];
+        // 地中の汚水の管とは重ねない（よけられなければ今までの道）
+        const ds = drainPipes();
+        const run = yard(a, c, { avoid: (p, q) => hitsDrain(ds, p, q, 20) }) ?? yard(a, c) ?? [a, at(cornerOf(meterOut.pos, feedEntry), burialZ), c];
         const ids = path(dedupe([meterOut.pos, ...run, at(feedEntry.eOut), at(feedEntry.inner)]), HI(20), meterOut.id);
         feedNode = path([at(feedEntry.inner), at(feedEntry.eIn)], attrs('water', 20), ids.at(-1)).at(-1)!;
       } else {
@@ -441,6 +457,30 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
    * 地中の点 from から、一番近い外の地中の給水管へ分岐（チーズ）でつなぐ（建物を避けた道）。
    * fromId が無ければ from に新しい点を作る。分岐の始まりの点の id（つなげなければ null。何も作らない）
    */
+  /** 排水・汚水・通気の管（給水・給湯の道でよける） */
+  const drainPipes = () => Object.values(cur.network.segments).filter((s) => s.system === 'drain' || s.system === 'sewage' || s.system === 'vent')
+    .map((s) => ({ a: cur.network.nodes[s.a].pos, b: cur.network.nodes[s.b].pos, r: outerDiameter(s.diameter) / 2 }));
+  /** 給水の区間 p → q（口径 dia）が、排水の管に近すぎる（外径どうしの離れが DRAIN_CLEAR 未満） */
+  const hitsDrain = (ds: ReturnType<typeof drainPipes>, p: Vec3, q: Vec3, dia: number) => {
+    const rw = outerDiameter(dia) / 2 + DRAIN_CLEAR;
+    const lo = Math.min(p.z, q.z) - rw, hi = Math.max(p.z, q.z) + rw;
+    const x0 = Math.min(p.x, q.x) - rw - PARALLEL_GAP, x1 = Math.max(p.x, q.x) + rw + PARALLEL_GAP, y0 = Math.min(p.y, q.y) - rw - PARALLEL_GAP, y1 = Math.max(p.y, q.y) + rw + PARALLEL_GAP;
+    return ds.some((d) => {
+      if (Math.max(d.a.x, d.b.x) + d.r < x0 || Math.min(d.a.x, d.b.x) - d.r > x1 || Math.max(d.a.y, d.b.y) + d.r < y0 || Math.min(d.a.y, d.b.y) - d.r > y1) return false;
+      // 横の排水管と平面で平行に並んで走らない（排水の高さは勾配の計算であとから変わるので、高さが違っても近くに並べない）
+      const flat = Math.hypot(d.a.x - d.b.x, d.a.y - d.b.y) > Math.abs(d.a.z - d.b.z);
+      if (flat && Math.max(d.a.z, d.b.z) + PARALLEL_Z >= lo && Math.min(d.a.z, d.b.z) - PARALLEL_Z <= hi && overlapRun(p, q, d.a, d.b, d.r + rw + PARALLEL_GAP) > 10) return true;
+      return Math.max(d.a.z, d.b.z) + d.r >= lo && Math.min(d.a.z, d.b.z) - d.r <= hi && closestPoints(p, q, d.a, d.b).dist < d.r + rw;
+    });
+  };
+  /** 高さ z の横の給水管（地中で管を重ねないよう、道を探す前に 1 回だけ集める） */
+  const waterAt = (z: number): [Vec3, Vec3][] => Object.values(cur.network.segments).flatMap((sg) => {
+    if (sg.system !== 'water') return [];
+    const a = cur.network.nodes[sg.a].pos, c = cur.network.nodes[sg.b].pos;
+    return Math.abs(a.z - z) <= 1 && Math.abs(c.z - z) <= 1 ? [[a, c] as [Vec3, Vec3]] : [];
+  });
+  /** 区間 p → q が、先の給水管（ws）と同じ線上で重なる */
+  const onWater = (ws: [Vec3, Vec3][], p: Vec3, q: Vec3): boolean => Math.abs(q.z - p.z) <= 1 && ws.some(([a, c]) => overlapRun(p, q, a, c, 1) > 10);
   const teeToMain = (from: Vec3, dia: number, fromId?: string): string | null => {
     const cands: { sid: string; p: Vec3; d: number }[] = [];
     for (const sg of Object.values(cur.network.segments)) {
@@ -462,13 +502,22 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
         if (!ts.length) continue;
         t = ts.sort((x, y) => dist2(pt(x), from) - dist2(pt(y), from))[0];
       }
+      // 曲がり・分岐の点のすぐそば（TEE_END 未満）なら、まっすぐな所まで離す（その点へ斜めにつながない）
+      if (L >= 2 * TEE_END) {
+        const busyEnd = (id: string) => segmentsAt(cur.network, id).length >= 2;
+        if (t * L < TEE_END && busyEnd(sg.a)) t = TEE_END / L;
+        else if ((1 - t) * L < TEE_END && busyEnd(sg.b)) t = 1 - TEE_END / L;
+      }
       const p = pt(t);
       cands.push({ sid: sg.id, p, d: dist2(p, from) });
     }
+    const ds = drainPipes();
     // 近い順にいくつか道を探し、いちばん短く行ける所で分ける（一番近い所へ道が無くても、ほかの所から分ける）
     let best: { sid: string; p: Vec3; d: number } | null = null, run: Vec3[] | null = null, runLen = Infinity;
     for (const cd of cands.sort((x, y) => x.d - y.d).slice(0, TEE_TRIES)) {
-      const r = cd.d < 1 ? [at(from, cd.p.z)] : yard(at(from, cd.p.z), cd.p);
+      // 立水栓・給湯器が家のすぐ横なら、同じ近さで分ける（家の角を回る遠回りで本管に重ねない）
+      const ws = waterAt(cd.p.z);
+      const r = cd.d < 1 ? [at(from, cd.p.z)] : yard(at(from, cd.p.z), cd.p, { near: true, avoid: (p, q) => onWater(ws, p, q) || (ds.length > 0 && hitsDrain(ds, p, q, dia)), axis: true });
       if (!r) continue;
       const len = r.reduce((sum, q, i) => (i ? sum + Math.hypot(q.x - r[i - 1].x, q.y - r[i - 1].y) : sum), 0);
       if (len < runLen) { best = cd; run = r; runLen = len; }
