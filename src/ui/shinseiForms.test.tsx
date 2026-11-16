@@ -49,6 +49,30 @@ describe('申請書タブ', () => {
     expect((screen.getByTestId('shinsei-pdf') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('提出書類のチェックは工事に保存され、開き直しても付いている（チェック済みの数も出る）', async () => {
+    const r = render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    fireEvent.click(screen.getByTestId('shinsei-kind-forms'));
+    const boxes = () => [...screen.getByTestId('forms-checklist').querySelectorAll('input[type=checkbox]')] as HTMLInputElement[];
+    await screen.findByTestId('forms-checklist');
+    const label = boxes()[0].closest('label')!.textContent!;
+    fireEvent.click(boxes()[0]);
+    const keys = Object.keys(s().doc.site?.application ?? {}).filter((k) => k.startsWith('checklist:'));
+    expect(keys).toHaveLength(1);
+    expect(label).toContain(keys[0].slice('checklist:'.length));
+    expect(screen.getByTestId('forms-checklist-count').textContent).toContain(`1/${boxes().length}`);
+    r.unmount();
+    render(<ShinseiScreen onClose={() => {}} />);
+    await screen.findByTestId('shinsei-outlet');
+    fireEvent.click(screen.getByTestId('shinsei-kind-forms'));
+    await screen.findByTestId('forms-checklist');
+    expect(boxes()[0].checked).toBe(true);
+    expect(boxes()[1].checked).toBe(false);
+    // 外すと消える（保存データに残らない）
+    fireEvent.click(boxes()[0]);
+    expect(Object.keys(s().doc.site?.application ?? {}).some((k) => k.startsWith('checklist:'))).toBe(false);
+  });
+
   it('工事店の情報はこの端末に保存され、次に開いたときに入っている', async () => {
     render(<ShinseiScreen onClose={() => {}} />);
     await screen.findByTestId('shinsei-outlet');
