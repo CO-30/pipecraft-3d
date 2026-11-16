@@ -103,7 +103,7 @@ aside h3 { margin: 6px 0 0; font-size: 13px; color: #6b7280; }
 .est-open { font-weight: 600; }
 .est-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 6px 12px; border-top: 1px solid #e5e7eb; background: #f8fafc; font-size: 13px; }
 .est-bar button { margin-left: auto; min-height: 34px; }
-.estimate { position: fixed; inset: 0; z-index: 40; background: #fff; display: grid; grid-template-rows: auto auto 1fr; }
+.estimate { position: fixed; inset: 0; z-index: 40; background: #fff; display: grid; grid-template-rows: auto auto auto 1fr; /* 見出し・タブ・説明・中身（中身が短くても説明の欄を伸ばさない） */ }
 .estimate > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; padding-top: max(8px, env(safe-area-inset-top)); border-bottom: 1px solid #e5e7eb; }
 .estimate > header strong { font-size: 16px; }
 .est-total { margin-left: auto; font-size: 14px; }
