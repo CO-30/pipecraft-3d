@@ -72,11 +72,6 @@ function branchDescription(doc: ReturnType<typeof useStore.getState>['doc'], fro
   return names.size ? [...names].join('・') + ' の側' : nodeLabel(next) + ' の側';
 }
 
-/** 区間の図面上の長さ（実測を無視した 3D の長さ） */
-
-
-/** 竣工図の注意: 未入力・図面とかけ離れた実測（単位の入れ違いなど）・按分の概算 */
-
 export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
@@ -217,18 +212,20 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     } finally { setBusy(''); }
   };
 
+  const [bundleErr, setBundleErr] = useState('');
   const downloadBundle = async (builds: ShinseiBuild[]) => {
-    setBusy('bundle'); setErr(''); setInfo('');
+    setBusy('bundle'); setErr(''); setInfo(''); setBundleErr('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }, { sheetsToPdf }, font] = await Promise.all([
         import('../export/download'), import('../export/report'), import('../export/sheet'),
         fetch(`${import.meta.env.BASE_URL}fonts/NotoSansJP-JIS.ttf`).then((r) => { if (!r.ok) throw new Error('フォントを読み込めません'); return r.arrayBuffer(); }),
       ]);
       downloadBytes(await sheetsToPdf(builds.flatMap((b) => b.sheets), font), `${safeName(siteName)}_${asBuilt.on ? '竣工' : ''}申請図面一式_${dateStamp(new Date())}.pdf`, 'application/pdf');
-      setBundleOpen(false);
+      setBundleOpen(false); setBundleErr('');
       setInfo(`${builds.length} 種類の図面を 1 つの PDF にしました`);
     } catch (e) {
-      setErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`);
+      // 一覧を開いたまま、その中に理由を出す（背面の画面に出しても見えない）
+      setBundleErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setBusy(''); }
   };
 
@@ -330,8 +327,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <div className="shinsei-pages" style={{ width: `${zoom * 100}%`, ...(kind === 'mitori' ? { maxWidth: 760 * zoom } : {}) }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
-      {bundleOpen && <ShinseiBundleDialog buildFor={buildFor} busy={busy === 'bundle'} asBuilt={asBuilt.on} onPdf={(b) => void downloadBundle(b)}
-        onShow={(k) => { setBundleOpen(false); setKind(k); }} onClose={() => setBundleOpen(false)} />}
+      {bundleOpen && <ShinseiBundleDialog buildFor={buildFor} busy={busy === 'bundle'} asBuilt={asBuilt.on} error={bundleErr} onPdf={(b) => void downloadBundle(b)}
+        onShow={(k) => { setBundleOpen(false); setKind(k); }} onClose={() => { setBundleOpen(false); setBundleErr(''); }} />}
     </div>
   );
 }

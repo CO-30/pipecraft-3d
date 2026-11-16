@@ -9,21 +9,25 @@ import { BUNDLE_KINDS, KIND_LABEL, type Kind, type ShinseiBuild } from './shinse
 type BKind = (typeof BUNDLE_KINDS)[number];
 
 /** 一行の状態: 作れる・注意あり・読み込み中・作れない */
-function rowStatus(b: ShinseiBuild): { ready: boolean; loading: boolean; text: string } {
-  if (b.error) return { ready: false, loading: false, text: `作れません: ${b.error}` };
+export function rowStatus(b: ShinseiBuild): { ready: boolean; loading: boolean; text: string; /** 最初からチェックするか */ preChecked: boolean } {
+  if (b.error) return { ready: false, loading: false, preChecked: false, text: `作れません: ${b.error}` };
   if (!b.sheets.length) {
     const loading = b.warnings.some((w) => w.includes('読み込んでいます'));
-    return { ready: false, loading, text: loading ? '読み込み中…' : `作れません${b.warnings[0] ? `: ${b.warnings[0]}` : ''}` };
+    return { ready: false, loading, preChecked: false, text: loading ? '読み込み中…' : `作れません${b.warnings[0] ? `: ${b.warnings[0]}` : ''}` };
   }
+  // 地図が取れず枠だけの見取図: 作れるが、白い枠だけのページを黙って一式に入れない
+  if (b.mapMissing) return { ready: true, loading: false, preChecked: false, text: '地図なし（枠だけ）。手で書き込むなら入れてください' };
   const n = b.warnings.length;
-  return { ready: true, loading: false, text: n ? `⚠ 注意 ${n} 件（「見る」で確かめられます）` : '✓ 作れます' };
+  return { ready: true, loading: false, preChecked: true, text: n ? `⚠ 注意 ${n} 件（「見る」で確かめられます）` : '✓ 作れます' };
 }
 
-export function ShinseiBundleDialog({ buildFor, busy, asBuilt, onPdf, onShow, onClose }: {
+export function ShinseiBundleDialog({ buildFor, busy, asBuilt, error, onPdf, onShow, onClose }: {
   buildFor: (k: BKind) => ShinseiBuild;
   busy: boolean;
   /** 竣工図の設定がオン（題名に出す） */
   asBuilt: boolean;
+  /** 出力できなかった理由（一覧の中に出す） */
+  error?: string;
   onPdf: (builds: ShinseiBuild[]) => void;
   onShow: (k: Kind) => void;
   onClose: () => void;
@@ -31,7 +35,7 @@ export function ShinseiBundleDialog({ buildFor, busy, asBuilt, onPdf, onShow, on
   const rows = useMemo(() => BUNDLE_KINDS.map((k) => { const b = buildFor(k); return { k, b, st: rowStatus(b) }; }), [buildFor]);
   /** 使う人が変えたチェック（変えていない図面は「作れるならチェック」） */
   const [picked, setPicked] = useState<Partial<Record<BKind, boolean>>>({});
-  const on = (r: (typeof rows)[number]) => r.st.ready && (picked[r.k] ?? true);
+  const on = (r: (typeof rows)[number]) => r.st.ready && (picked[r.k] ?? r.st.preChecked);
   const chosen = rows.filter(on);
   const pages = chosen.reduce((n, r) => n + r.b.sheets.length, 0);
 
@@ -59,6 +63,8 @@ export function ShinseiBundleDialog({ buildFor, busy, asBuilt, onPdf, onShow, on
             </li>
           ))}
         </ul>
+        {asBuilt && <p className="small muted">竣工の表題と印が入るのは、排水縦断図・ます表・給水立面図です。</p>}
+        {error && <p className="est-provisional" role="alert">{error}</p>}
         <p className="small muted">申請書（Excel・様式の PDF）と道路の書類は「申請書」タブから出します。</p>
         <div className="modal-btns">
           <button type="button" className="big" onClick={onClose}>閉じる</button>

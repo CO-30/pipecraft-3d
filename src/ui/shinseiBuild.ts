@@ -48,6 +48,8 @@ const geometricLength = (doc: ReturnType<typeof useStore.getState>['doc']) => me
 
 export type ShinseiBuild = { sheets: Sheet[]; svg: string; warnings: string[]; error: string | null; kind: Kind;
   /** 竣工図: 図に出ている区間（実測長の一覧に出す）と図面の長さ */
+  /** 見取図: 地図が取れず枠だけ */
+  mapMissing?: boolean;
   asBuilt?: { segIds: string[]; unmeasured: number; modelLen: Record<string, number>; labels: Record<string, string>; /** この図には長さを書かない（立面図） */ noLengths?: boolean } };
 
 /** 竣工図の注意: 未入力・図面とかけ離れた実測（単位の入れ違いなど）・按分の概算 */
@@ -101,7 +103,7 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
     const b = c.mitori.build;
     if (!b) return { sheets: [], svg: '', warnings: [loading ? '地図を読み込んでいます…' : '見取図を作れませんでした'], error: null, kind };
     const notes = b.mapOk ? b.notes : [...b.notes, '地図が無いため、枠だけの見取図です（手で書き込んで使えます）'];
-    return { sheets: loading ? [] : [b.sheet], svg: sheetToSvg(b.sheet), warnings: loading ? ['地図を読み込んでいます…'] : notes, error: null, kind };
+    return { sheets: loading ? [] : [b.sheet], svg: sheetToSvg(b.sheet), warnings: loading ? ['地図を読み込んでいます…'] : notes, error: null, kind, ...(!loading && !b.mapOk ? { mapMissing: true } : {}) };
   }
   if (kind === 'suiri') {
     if (!suiri) return { sheets: [], svg: '', warnings: [], error: null, kind };

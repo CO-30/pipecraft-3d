@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyDoc, useStore } from '../state/store';
 import { ShinseiScreen } from './ShinseiScreen';
+import { rowStatus } from './ShinseiBundleDialog';
 import type { FixtureType } from '../model/fixtures';
 
 const s = () => useStore.getState();
@@ -75,5 +76,26 @@ describe('申請図面: まとめてPDF', () => {
     await screen.findByTestId('shinsei-bundle-dialog');
     for (const k of rowIds()) expect(check(k).checked).toBe(false);
     expect((screen.getByTestId('shinsei-bundle-pdf') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('地図が取れず枠だけの見取図は、最初はチェックしない（白い枠だけのページを黙って入れない）', () => {
+    const st = rowStatus({ sheets: [{} as never], svg: '', warnings: ['地図が無いため'], error: null, kind: 'mitori', mapMissing: true });
+    expect(st.ready).toBe(true);
+    expect(st.preChecked).toBe(false);
+    expect(st.text).toContain('地図なし');
+    expect(rowStatus({ sheets: [{} as never], svg: '', warnings: [], error: null, kind: 'profile' }).preChecked).toBe(true);
+  });
+
+  it('PDF を作れなかったときは、一覧の中にその理由が出る', async () => {
+    sampleDoc();
+    const orig = globalThis.fetch;
+    globalThis.fetch = (() => Promise.resolve(new Response('', { status: 404 }))) as typeof fetch;
+    try {
+      render(<ShinseiScreen onClose={() => {}} />);
+      fireEvent.click(await screen.findByTestId('shinsei-bundle'));
+      fireEvent.click(await screen.findByTestId('shinsei-bundle-pdf'));
+      const dlg = screen.getByTestId('shinsei-bundle-dialog');
+      await waitFor(() => expect(within(dlg).getByRole('alert').textContent).toContain('出力できませんでした'));
+    } finally { globalThis.fetch = orig; }
   });
 });
