@@ -25,7 +25,8 @@ import { MAT_AXIS_LABEL, materialSummary, type MatAxis } from '../model/material
 import { AsBuiltPanel } from './AsBuiltPanel';
 import { readAsBuilt, writeAsBuilt, type AsBuiltSettings } from '../model/asBuilt';
 import { LocationPanel } from './LocationPanel';
-import { buildShinsei, nodeLabelOf, stampAsBuiltBuild, type Kind, type ShinseiBuild } from './shinseiBuild';
+import { BUNDLE_KINDS, buildShinsei, nodeLabelOf, stampAsBuiltBuild, type Kind, type ShinseiBuild, type ShinseiCtx } from './shinseiBuild';
+import { ShinseiBundleDialog } from './ShinseiBundleDialog';
 export type { ShinseiBuild } from './shinseiBuild';
 import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } from '../model/locationMap';
 import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
@@ -88,6 +89,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const [choice, setChoice] = useState<Record<string, string>>({});
   const [zoom, setZoom] = useState(1);
   const [showProfiles, setShowProfiles] = useState(false);
+  /** 「まとめてPDF」の一覧を開いている */
+  const [bundleOpen, setBundleOpen] = useState(false);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   /** 図面の作成日（画面を開いたとき） */
@@ -95,10 +98,10 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { if (!profiles.loaded) void profiles.load(); }, [profiles]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showProfiles) { (document.activeElement as HTMLElement | null)?.blur?.(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showProfiles && !bundleOpen) { (document.activeElement as HTMLElement | null)?.blur?.(); onClose(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showProfiles]);
+  }, [onClose, showProfiles, bundleOpen]);
 
   const profileId = doc.site?.municipalityProfileId;
   const profile: MunicipalityProfile = resolveProfile(profileId, profiles.user);
@@ -140,7 +143,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const setMap = (patch: Partial<MapSettings>) => updateSite({ application: writeMapSettings(doc.site?.application, patch) });
   const siteAddress = doc.site?.application?.siteAddress || meta?.address || '';
   const [mitori, setMitori] = useState<{ key: string; build: LocationBuild | null; loading: boolean }>({ key: '', build: null, loading: false });
-  const mitoriKey = kind === 'mitori' ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
+  const mitoriKey = kind === 'mitori' || bundleOpen ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
   useEffect(() => {
     if (!mitoriKey) return;
     let live = true;
@@ -173,10 +176,15 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     updateSite({ application: writeAsBuilt(doc.site?.application, p) });
   };
 
-  const built0: ShinseiBuild = useMemo(() => buildShinsei(kind, {
+  const ctx: ShinseiCtx = useMemo(() => ({
     doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, matAxis, asBuiltOn: asBuilt.on, suiri,
     mapLat: mapSettings.lat, mitori: { build: mitori.build, loading: mitori.loading || mitori.key !== mitoriKey },
-  }), [doc, kind, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis]);
+  }), [doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis]);
+  const built0: ShinseiBuild = useMemo(() => buildShinsei(kind, ctx), [kind, ctx]);
+  /** 「まとめてPDF」用: どの図面もタブと同じ作図（水理計算はここで計算する） */
+  const buildFor = useMemo(() => (k: (typeof BUNDLE_KINDS)[number]) =>
+    stampAsBuiltBuild(buildShinsei(k, k === 'suiri' ? { ...ctx, suiri: suiri ?? calcSupply(doc, suiriRules, suiriSettings) } : ctx), asBuilt),
+  [ctx, suiri, doc, suiriRules, suiriSettings, asBuilt]);
 
   // 竣工図の印（縦断図・立面図だけ）。SVG はここで作り直す
   const built: ShinseiBuild = useMemo(() => stampAsBuiltBuild(built0, asBuilt), [built0, asBuilt]);
@@ -209,6 +217,21 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     } finally { setBusy(''); }
   };
 
+  const downloadBundle = async (builds: ShinseiBuild[]) => {
+    setBusy('bundle'); setErr(''); setInfo('');
+    try {
+      const [{ downloadBytes, safeName }, { dateStamp }, { sheetsToPdf }, font] = await Promise.all([
+        import('../export/download'), import('../export/report'), import('../export/sheet'),
+        fetch(`${import.meta.env.BASE_URL}fonts/NotoSansJP-JIS.ttf`).then((r) => { if (!r.ok) throw new Error('フォントを読み込めません'); return r.arrayBuffer(); }),
+      ]);
+      downloadBytes(await sheetsToPdf(builds.flatMap((b) => b.sheets), font), `${safeName(siteName)}_${asBuilt.on ? '竣工' : ''}申請図面一式_${dateStamp(new Date())}.pdf`, 'application/pdf');
+      setBundleOpen(false);
+      setInfo(`${builds.length} 種類の図面を 1 つの PDF にしました`);
+    } catch (e) {
+      setErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setBusy(''); }
+  };
+
   const gl = doc.site?.designGL;
   return (
     <div className="estimate shinsei" data-testid="shinsei-screen" role="dialog" aria-label="申請図面">
@@ -217,6 +240,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <strong>申請図面</strong>
         <span className="muted small">配管データから縦断図・立面図・水理計算書を自動で作ります</span>
         <span className="grow" />
+        <button data-testid="shinsei-bundle" disabled={!!busy} onClick={() => setBundleOpen(true)} title="作れる図面をまとめて 1 つの PDF に">📦 まとめてPDF</button>
         <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
  <button data-testid="shinsei-dxf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('dxf')} title="AutoCAD・Jw_cad で開ける DXF（R12）">DXF</button>
         <button data-testid="shinsei-svg" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('svg')}>SVG</button>
@@ -306,6 +330,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <div className="shinsei-pages" style={{ width: `${zoom * 100}%`, ...(kind === 'mitori' ? { maxWidth: 760 * zoom } : {}) }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
+      {bundleOpen && <ShinseiBundleDialog buildFor={buildFor} busy={busy === 'bundle'} asBuilt={asBuilt.on} onPdf={(b) => void downloadBundle(b)}
+        onShow={(k) => { setBundleOpen(false); setKind(k); }} onClose={() => setBundleOpen(false)} />}
     </div>
   );
 }

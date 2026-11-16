@@ -471,3 +471,15 @@ header .lbl { margin-left: 2px; }
 .import-report .ir-summary { background: #fef3c7; border-left: 4px solid #d97706; padding: 6px 10px; border-radius: 6px; font-weight: 600; color: #78350f; }
 .import-report .warn li.lv-low { color: #b91c1c; font-weight: 600; }
 .import-report .warn li.lv-info { color: #475569; }
+
+/* 申請図面: まとめてPDF */
+.modal.bundle { max-width: 560px; }
+.bundle-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.bundle-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.bundle-list li label { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.bundle-list li label input { width: 20px; height: 20px; }
+.bundle-list li .bundle-status { grid-column: 1; color: #475569; overflow-wrap: anywhere; }
+.bundle-list li button { grid-column: 2; grid-row: 1 / span 2; }
+.bundle-list li.ok { border-color: #bbf7d0; }
+.bundle-list li.warn { border-color: #fde68a; background: #fffbeb; }
+.bundle-list li.ng { background: #f8fafc; color: #64748b; }
