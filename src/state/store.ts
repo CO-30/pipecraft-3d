@@ -1190,6 +1190,8 @@ export const useStore = create<State>((set, get) => {
       let b = doc.building;
       const existing = B.wallsOnFloor(b, u.floorId);
       if (existing.length && !replace) return null;
+      const locked = existing.filter((w) => w.locked).length;
+      if (locked) { set({ notice: `この階にはロック中の壁が ${locked} 本あります（図面から読み取った壁）。置き換えるときは、壁を選んで「🔒 位置をロック」を外してください` }); return null; }
       for (const w of existing) b = B.deleteWall(b, w.id);
       const specs = walls.map((w) => ({ ...w, a: pxToWorld(u, w.a), b: pxToWorld(u, w.b) }));
       let added = 0;
@@ -1197,7 +1199,9 @@ export const useStore = create<State>((set, get) => {
       if (!added) return null;
       const op = addSpecOpenings(b, u.floorId, specs);
       commit(withBld(op.b), { selection: null });
-      return { walls: added, exterior: specs.filter((w) => w.kind === 'exterior').length, openings: op.count };
+      // 本数は入れた後のこの階の壁（T でつながる所で分かれた後。画面の「この階の壁 N 本」と同じ数え方）
+      const now = B.wallsOnFloor(op.b, u.floorId);
+      return { walls: now.length, exterior: now.filter((w) => w.kind === 'exterior').length, openings: op.count };
     },
     addOpeningsBatch: (wallId, list) => {
       let b = get().doc.building, added = 0;

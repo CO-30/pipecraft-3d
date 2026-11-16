@@ -26,7 +26,8 @@ describe('共通ストア: 下敷き（スキャン）から読んだ壁をこ�
     s().importSite({ underlay: scan() });
     const id = s().activeUnderlayId!;
     const r = s().readUnderlayWalls(id, WALLS, false);
-    expect(r).toEqual({ walls: 5, exterior: 4, openings: 1 });
+    // 本数は入れた後のこの階の壁（T でつながる所で分かれた後）。画面の確認の本数と同じ
+    expect(r).toEqual({ walls: 7, exterior: 6, openings: 1 });
     const b = s().doc.building;
     const ws = floorWalls();
     // 内壁が上下の外壁の途中に T でつながるので、外壁はそこで 2 本に分かれる（5 本 → 7 本）
@@ -46,10 +47,18 @@ describe('共通ストア: 下敷き（スキャン）から読んだ壁をこ�
     const id = s().activeUnderlayId!;
     expect(s().readUnderlayWalls(id, WALLS, false)).toBeNull();
     expect(floorWalls()).toHaveLength(3);
-    expect(s().readUnderlayWalls(id, WALLS, true)).toEqual({ walls: 5, exterior: 4, openings: 1 });
+    expect(s().readUnderlayWalls(id, WALLS, true)).toEqual({ walls: 7, exterior: 6, openings: 1 });
     expect(floorWalls()).toHaveLength(7);
     s().undo();
     expect(floorWalls()).toHaveLength(3);
+  });
+  it('ロック中の壁（自動 3D で読んだ壁など）がある階は置き換えない（お知らせ）', () => {
+    s().importSite({ polygon: [{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 3000 }] });
+    s().setWallsLocked(floorWalls().map((w) => w.id), true);
+    s().importSite({ underlay: scan() });
+    expect(s().readUnderlayWalls(s().activeUnderlayId!, WALLS, true)).toBeNull();
+    expect(floorWalls()).toHaveLength(3);
+    expect(s().notice).toContain('ロック');
   });
   it('縮尺が決まっていない下敷き・壁が 0 本のときは何もしない', () => {
     s().importSite({ underlay: scan({ scaled: false }) });

@@ -48,8 +48,9 @@ test.describe('スキャン図面から壁を読み取る', () => {
     await expect(page.getByTestId('ul-read-walls')).toHaveCount(0);
     await page.getByTestId('ul-paper-scale').selectOption('50');
     await page.getByTestId('ul-read-walls').click();
-    await expect(page.getByTestId('ul-note')).toContainText('壁を');
-    await expect(page.getByTestId('ul-note')).toContainText('外壁 4');
+    // 結果はボタンのすぐ下に出す（スマホで画面の外にならない）
+    await expect(page.getByTestId('ul-walls-msg')).toContainText('壁を');
+    await expect(page.getByTestId('ul-walls-msg')).toBeInViewport();
     const doc = await full(page);
     const walls = Object.values(doc.building.walls) as { kind: string; thickness: number }[];
     expect(walls.filter((w) => w.kind === 'exterior').length).toBeGreaterThanOrEqual(4);
@@ -65,7 +66,7 @@ test.describe('スキャン図面から壁を読み取る', () => {
     expect(Object.keys((await full(page)).building.walls)).toHaveLength(n);
     await page.getByTestId('ul-read-walls').click();
     await page.getByTestId('ul-walls-replace').click();
-    await expect(page.getByTestId('ul-note')).toContainText('外壁 4');
+    await expect(page.getByTestId('ul-walls-msg')).toContainText(`壁を ${n} 本`);
     expect(Object.keys((await full(page)).building.walls)).toHaveLength(n);
   });
 });

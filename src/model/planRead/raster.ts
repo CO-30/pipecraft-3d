@@ -5,7 +5,7 @@
  * 文字は読まない（縮尺は下敷きで決める）。斜めの壁は対象外。
  */
 import type { Vec2 } from '../building';
-import { detectStrips, heavyWidth, WALL_STRIP, type WSeg } from './strips';
+import { detectStrips, heavyWidth, WALL_STRIP, type Strip, type WSeg } from './strips';
 import { buildingStrips, wallsFromStrips, type WallOpening } from './walls';
 
 /** 色の濃さ（最大−最小）がこれより大きい画素は書き込み（赤ペン・青ペン）とみなしてインクにしない */
@@ -82,6 +82,32 @@ export function rasterLines(mask: Uint8Array, w: number, h: number, minRun: numb
   return out;
 }
 
+/**
+ * 表（申請書・チェックシートの罫線など）を除く: 平行な帯が線を共有して並ぶ（はしご）所は壁ではない。
+ * 本物の壁は 1 本の線を両側の壁で共有しない
+ */
+export function dropLadders(strips: Strip[]): Strip[] {
+  const shares = (p: Strip, q: Strip) => p !== q && p.dir === q.dir
+    && Math.abs(Math.abs(p.c - q.c) - (p.t + q.t) / 2) < Math.min(p.t, q.t) * 0.25
+    && Math.min(p.hi, q.hi) - Math.max(p.lo, q.lo) > Math.min(p.hi - p.lo, q.hi - q.lo) * 0.5;
+  return strips.filter((p) => !strips.some((q) => shares(p, q)));
+}
+
+const wallLen = (w: { a: Vec2; b: Vec2 }) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y);
+/** 点から線分までの距離 */
+const distTo = (p: Vec2, w: { a: Vec2; b: Vec2 }) => {
+  const L = wallLen(w), t = L ? Math.max(0, Math.min(1, ((p.x - w.a.x) * (w.b.x - w.a.x) + (p.y - w.a.y) * (w.b.y - w.a.y)) / (L * L))) : 0;
+  return Math.hypot(p.x - (w.a.x + (w.b.x - w.a.x) * t), p.y - (w.a.y + (w.b.y - w.a.y) * t));
+};
+/**
+ * スキャンの読み取りの誤り（文字枠・記号の枠・寸法の付近）を除く: 厚すぎて短い壁（厚さ 180mm 超・長さ 1m 未満）と、
+ * どの壁にも端が触れていない短い壁（600mm 未満）
+ */
+function pruneWalls<T extends { a: Vec2; b: Vec2; thickness: number }>(walls: T[]): T[] {
+  const keep = walls.filter((w) => !(w.thickness > 180 && wallLen(w) < 1000));
+  return keep.filter((w) => wallLen(w) >= 600 || keep.some((o) => o !== w && (distTo(w.a, o) < 150 || distTo(w.b, o) < 150)));
+}
+
 /** 壁の候補（端は画像の画素の座標、厚さと開口は mm） */
 export type PxWall = { a: Vec2; b: Vec2; thickness: number; kind: 'exterior' | 'interior'; openings: WallOpening[] };
 
@@ -96,7 +122,7 @@ export function rasterWalls(mask: Uint8Array, w: number, h: number, mmPerPx: num
     ? { x1: l.lo * mmPerPx, y1: -l.c * mmPerPx, x2: (l.hi + 1) * mmPerPx, y2: -l.c * mmPerPx, w: l.t * paperMmPerPx }
     : { x1: l.c * mmPerPx, y1: -l.lo * mmPerPx, x2: l.c * mmPerPx, y2: -(l.hi + 1) * mmPerPx, w: l.t * paperMmPerPx }));
   if (!heavyWidth(segs)) return [];
-  const walls = wallsFromStrips(buildingStrips(detectStrips(segs, WALL_STRIP)), segs);
+  const walls = pruneWalls(wallsFromStrips(buildingStrips(dropLadders(detectStrips(segs, WALL_STRIP))), segs));
   const px = (p: Vec2): Vec2 => ({ x: p.x / mmPerPx, y: -p.y / mmPerPx });
   return walls.map((v) => ({ a: px(v.a), b: px(v.b), thickness: v.thickness, kind: v.kind, openings: v.openings }));
 }

@@ -97,6 +97,33 @@ describe('スキャンから壁（rasterWalls）', () => {
     expect(ws.filter((w) => w.kind === 'exterior')).toHaveLength(4);
     expect(ws.some((w) => (w.a.y > 900 && w.b.y > 900) || (w.a.x > 1250 && w.b.x > 1250))).toBe(false);
   });
+  test('文字の枠（「CH=2300」のような小さな四角）・離れた短い線の組は壁にしない', () => {
+    const c = canvas(1400, 1000);
+    house(c);
+    // 部屋の中の文字枠: 幅 500mm・高さ 200mm の四角（上下の線が 200mm 離れて平行 → 帯に見える）
+    const bx = 300, by = 400, bw = Math.round(500 / MMPP), bh = Math.round(200 / MMPP);
+    c.line(bx, by, bx + bw, by, 2); c.line(bx, by + bh, bx + bw, by + bh, 2); c.line(bx, by, bx, by + bh, 2); c.line(bx + bw, by, bx + bw, by + bh, 2);
+    const ws = rasterWalls(inkMask(c.d, c.w, c.h), c.w, c.h, MMPP, PAPER);
+    expect(ws.some((w) => Math.min(w.a.x, w.b.x) >= bx - 5 && Math.max(w.a.x, w.b.x) <= bx + bw + 5 && Math.min(w.a.y, w.b.y) >= by - 5 && Math.max(w.a.y, w.b.y) <= by + bh + 5)).toBe(false);
+    expect(ws.filter((w) => w.kind === 'exterior')).toHaveLength(4);
+  });
+  test('表（申請書・チェックシートのページ）は壁にしない', () => {
+    const c = canvas(1400, 1000);
+    for (let r = 0; r <= 30; r++) c.line(100, 100 + r * 25, 1300, 100 + r * 25, 2);
+    for (const x of [100, 160, 600, 900, 1300]) c.line(x, 100, x, 850, 2);
+    expect(rasterWalls(inkMask(c.d, c.w, c.h), c.w, c.h, MMPP, PAPER).length).toBeLessThanOrEqual(2);
+  });
+  test('1/100（1px = 17.5mm、壁の線の間は約 7px）でも外壁 4 本', () => {
+    const M = 17.5, c = canvas(800, 600), o = Math.round(60 / M);
+    const wall = (x1: number, y1: number, x2: number, y2: number) => {
+      if (y1 === y2) { c.line(x1 - o, y1 - o, x2 + o, y1 - o, 1); c.line(x1 - o, y1 + o, x2 + o, y1 + o, 1); }
+      else { c.line(x1 - o, y1 - o, x1 - o, y2 + o, 1); c.line(x1 + o, y1 - o, x1 + o, y2 + o, 1); }
+    };
+    const X0 = 100, Y0 = 100, W = Math.round(9100 / M), H = Math.round(6370 / M);
+    wall(X0, Y0, X0 + W, Y0); wall(X0, Y0 + H, X0 + W, Y0 + H); wall(X0, Y0, X0, Y0 + H); wall(X0 + W, Y0, X0 + W, Y0 + H);
+    const ws = rasterWalls(inkMask(c.d, c.w, c.h), c.w, c.h, M, 0.175);
+    expect(ws.filter((w) => w.kind === 'exterior')).toHaveLength(4);
+  });
   test('白紙・真っ黒・文字のような点だけの画像は 0 本', () => {
     const blank = canvas(300, 200), black = canvas(300, 200, 0), dots = canvas(300, 200);
     for (let i = 0; i < 400; i++) dots.line((i * 37) % 290, (i * 53) % 190, ((i * 37) % 290) + 4, (i * 53) % 190, 1);
