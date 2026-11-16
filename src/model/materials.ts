@@ -1,9 +1,12 @@
 /**
- * 給水・給湯の管種（材質）。屋内・床下はブリヂストン「プッシュマスター」のポリブテン管（PB）、屋外は HIVP/HTVP。
+ * 給水・給湯の管種（材質）。屋内・床下はブリヂストン「プッシュマスター」のポリブテン管（PB）、屋外の給水は HIVP。
+ * 屋外の給湯も PB（ガス給湯器に HT（耐熱塩ビ）は水道局の審査で不可。南部水道企業団・沖縄市のチェック表。2026-11-16）。
  * 「自動」で描いた配管は、建物の外周の内か外かで管種を決め、外周をまたぐ配管は外壁の外で分けて
  * つなぎ目を「HIVP変換継手」にする。純粋関数。
  */
 import type { Building } from './building';
+import type { Doc } from './doc';
+import { effectiveMaterial } from './priceCatalog';
 import { wallsOnFloor } from './building';
 import { membersOf } from './members';
 import { pointInPolygon } from './roomOps';
@@ -26,7 +29,7 @@ export const BENRIKAN = 'ベンリカン';
 export const isBenrikan = (m?: string) => (m ?? '').trim() === BENRIKAN;
 /** 給水・給湯で選べる管種（先頭の '' は「自動」） */
 export const WATER_MATERIAL_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '自動（屋内PB・屋外HI）' },
+  { value: '', label: '自動（屋内PB・屋外の給水HI）' },
   ...PB_MATERIALS.map((m) => ({ value: m, label: PB_MATERIAL_LABEL[m] })),
   { value: 'HIVP', label: 'HIVP（耐衝撃塩ビ）' },
   { value: 'HTVP', label: 'HTVP（耐熱塩ビ）' },
@@ -42,8 +45,20 @@ export const materialFamily = (m?: string) => (isPB(m) ? 'PB' : (m ?? '').trim()
 /** 自動のときの管種 */
 export const AUTO_MATERIAL: Record<'indoor' | 'outdoor', Partial<Record<SystemType, string>>> = {
   indoor: { water: 'PB保温5mm', hotWater: 'PB保温10mm' },
-  outdoor: { water: 'HIVP', hotWater: 'HTVP' },
+  outdoor: { water: 'HIVP', hotWater: 'PB保温10mm' },
 };
+
+/** 耐熱塩ビ（HT・HTVP） */
+export const isHT = (m?: string) => /^HT(VP)?$/i.test((m ?? '').trim());
+
+/**
+ * ガス給湯器がある現場で、給湯の管が HT（耐熱塩ビ）の区間。材質が空欄の給湯は積算と同じく HTVP 扱い（effectiveMaterial）なので含める。
+ * 給湯器（どれもガスの口を持つ）が無ければ []。「瞬間湯沸かし器（ガス給湯器）を使用する場合は HT の使用は NG」（南部水道企業団 穿孔時書類確認・沖縄市 申請チェックシート）
+ */
+export function htWithGasHeater(doc: Doc): string[] {
+  if (!Object.values(doc.fixtures).some((f) => f.type === 'waterHeater')) return [];
+  return Object.values(doc.network.segments).filter((s) => s.system === 'hotWater' && isHT(effectiveMaterial(s))).map((s) => s.id);
+}
 /** 外周をまたぐ配管の、PB から HIVP へ替える位置（外壁の芯から外へ mm） */
 export const TRANSITION_OUT = 300;
 /** これより短い屋外部分は分けない（mm） */
@@ -83,7 +98,7 @@ export function buildingOutline(b: Building, floorId: string): Outline | null {
 
 /**
  * 「自動」の給水・給湯の配管（material 未設定）に管種を付ける。segIds だけが対象。
- * 外周をまたぐ配管は外壁の外 TRANSITION_OUT の所で分け、内を PB・外を HIVP/HTVP にする。
+ * 外周をまたぐ配管は外壁の外 TRANSITION_OUT の所で分け、内を PB・外を HIVP（給湯は PB）にする。
  */
 export function assignAutoMaterials(net: Network, b: Building, segIds: string[]): Network {
   if (!b.floors.length) return net;

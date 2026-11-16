@@ -6,6 +6,7 @@
  * - 給水装置申込及び工事申請チェックシート
  */
 import type { Doc } from '../model/doc';
+import { structureChoice, type KakuninInfo } from './kakunin';
 import { todayIso, type ApplicationValues, type FormField, type FormSet } from './types';
 
 export const USE_TYPES = ['一般家庭用（一般住宅）', '一般家庭用（アパート）', '官公署', '学校', '病院', '事務所', '営業用（ホテル・スーパー）', '工場', 'その他'];
@@ -106,10 +107,21 @@ function defaults(doc: Doc, meta: { name: string; address?: string }): Applicati
   };
 }
 
+/** 確認申請書・確認済証から（建築主＝申込者、構造は様式の選択肢に） */
+function kakunin(k: KakuninInfo): ApplicationValues {
+  const v: ApplicationValues = {};
+  const put = (id: string, s: string | undefined) => { if (s) v[id] = s; };
+  put('applicantName', k.ownerName); put('applicantKana', k.ownerKana); put('applicantAddress', k.ownerAddress); put('applicantTel', k.ownerTel);
+  put('siteAddress', k.siteAddress); put('structure', structureChoice(k.structure)); put('floors', k.floorsAbove);
+  put('workFrom', k.workStart); put('workTo', k.workEnd);
+  return v;
+}
+
 export const OKINAWA_FORMS: FormSet = {
   profileId: 'okinawa-city',
   fields: OKINAWA_FIELDS,
   defaults,
+  kakunin,
   checklist: [
     { label: '給水装置申込及び工事申請書（最新のもの）', app: true },
     { label: '口径計算書（直結）・共同住宅における口径計算書', note: '市のホームページの様式' },

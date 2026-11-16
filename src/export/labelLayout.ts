@@ -227,3 +227,10 @@ export function findTextOverlaps(sheet: Sheet, tol = 0.15): { a: string; b: stri
   }
   return out;
 }
+
+/** 用紙の端（margin mm 以内）にかかる・はみ出す文字（検査用） */
+export function findTextOutside(sheet: Sheet, margin = 5): string[] {
+  return sheet.ops.filter((o): o is TextOp => o.t === 'text' && o.s.trim() !== '')
+    .filter((t) => textRects(t).some((r) => r.x1 < margin || r.y1 < margin || r.x2 > sheet.width - margin || r.y2 > sheet.height - margin))
+    .map((t) => t.s);
+}

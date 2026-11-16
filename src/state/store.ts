@@ -508,7 +508,7 @@ export const useStore = create<State>((set, get) => {
     const r = addPolyline(doc.network, points, { ...attrs, ...extra } as SegmentAttrs, { startNodeId: opts?.startNodeId, endNodeId: end.endNodeId });
     const last = r.segmentIds.at(-1);
     if (!last) return;
-    // 「自動」の給水・給湯は、建物の内（床下を含む）を PB・外を HIVP/HTVP に（外周をまたぐ所で分ける）
+    // 「自動」の給水・給湯は、建物の内（床下を含む）を PB・外を HIVP（給湯は PB）に（外周をまたぐ所で分ける）
     // 立面（外壁の面）に描く配管は外周の線の上にあるため自動にしない（未設定 = HIVP/HTVP 扱い）
     const joined = connectEnd(r.net, r.nodeIds.at(-1), end.endSegId);
     const net = extra.face ? joined : autoMat(joined, doc0.network);

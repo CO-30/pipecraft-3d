@@ -20,11 +20,11 @@ describe('管種の自動（屋内 PB・屋外 HIVP/HTVP）', () => {
     expect(mats(assignAutoMaterials(h.net, b, h.segmentIds))).toEqual(['PB保温10mm']);
   });
 
-  it('建物の外は HIVP（給湯は HTVP）', () => {
+  it('建物の外は HIVP（給湯は HT を使わず PB 保温10mm。ガス給湯器に HT は水道局の審査で不可）', () => {
     const w = draw([[-2000, 1000, -300], [-1000, 1000, -300]], { system: 'water', diameter: 20 });
     expect(mats(assignAutoMaterials(w.net, b, w.segmentIds))).toEqual(['HIVP']);
     const h = draw([[-2000, 1000, -300], [-1000, 1000, -300]], { system: 'hotWater', diameter: 13 });
-    expect(mats(assignAutoMaterials(h.net, b, h.segmentIds))).toEqual(['HTVP']);
+    expect(mats(assignAutoMaterials(h.net, b, h.segmentIds))).toEqual(['PB保温10mm']);
   });
 
   it('外周をまたぐ配管は外壁の芯から外へ 300mm の所で分け、内を PB・外を HIVP にする（つなぎ目は HIVP変換継手）', () => {

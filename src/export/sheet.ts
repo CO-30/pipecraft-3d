@@ -3,7 +3,7 @@
  * プレビューは SVG に、出力は pdf-lib で PDF に変換する（同じ命令から作るので見た目が一致する）。
  * 座標: 原点は用紙の左上、x 右向き、y 下向き、単位 mm。
  */
-import { degrees, PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
+import { clip, degrees, endPath, PDFDocument, popGraphicsState, pushGraphicsState, rectangle, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import type { MunicipalityProfile } from '../model/municipality';
 import { textWidth } from './labelLayout';
@@ -15,7 +15,7 @@ export type Op =
   | { t: 'circle'; cx: number; cy: number; r: number; stroke?: string; fill?: string; lw?: number }
   | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; color?: string; /** 回転（度、時計回り。-90 は下から上へ読む縦書き） */ rotate?: number; bold?: boolean }
   /** 画像（地図など）。href は data:image/png または data:image/jpeg の base64 だけ */
-  | { t: 'image'; x: number; y: number; w: number; h: number; href: string };
+  | { t: 'image'; x: number; y: number; w: number; h: number; href: string; /** この矩形の内側だけを見せる（用紙 mm） */ clip?: { x: number; y: number; w: number; h: number } };
 export type Sheet = { width: number; height: number; ops: Op[] };
 
 export const PAPER_MM = { A3: [420, 297], A4: [297, 210] } as const;
@@ -55,7 +55,12 @@ export function sheetToSvg(sheet: Sheet): string {
         parts.push(`<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${n(o.r)}" fill="${o.fill ? col(o.fill) : 'none'}" stroke="${col(o.stroke)}" stroke-width="${n(o.lw ?? 0.25)}"/>`);
         break;
       case 'image':
-        if (IMAGE_HREF.test(o.href)) parts.push(`<image x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" href="${o.href}" preserveAspectRatio="none"/>`);
+        if (!IMAGE_HREF.test(o.href)) break;
+        if (o.clip) {
+          const id = `c${parts.length}`;
+          parts.push(`<clipPath id="${id}"><rect x="${n(o.clip.x)}" y="${n(o.clip.y)}" width="${n(o.clip.w)}" height="${n(o.clip.h)}"/></clipPath>`);
+          parts.push(`<image x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" href="${o.href}" preserveAspectRatio="none" clip-path="url(#${id})"/>`);
+        } else parts.push(`<image x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" href="${o.href}" preserveAspectRatio="none"/>`);
         break;
       case 'text': {
         const anchor = o.anchor ?? 'start';
@@ -164,7 +169,10 @@ export function drawSheetOnPage(page: PDFPage, font: PDFFont, sheet: Sheet, box:
           break;
         case 'image': {
           const img = opts.images?.get(o.href);
-          if (img) page.drawImage(img, { x: X(o.x), y: Y(o.y + o.h), width: W(o.w), height: W(o.h) });
+          if (!img) break;
+          if (o.clip) page.pushOperators(pushGraphicsState(), rectangle(X(o.clip.x), Y(o.clip.y + o.clip.h), W(o.clip.w), W(o.clip.h)), clip(), endPath());
+          page.drawImage(img, { x: X(o.x), y: Y(o.y + o.h), width: W(o.w), height: W(o.h) });
+          if (o.clip) page.pushOperators(popGraphicsState());
           break;
         }
         case 'circle':

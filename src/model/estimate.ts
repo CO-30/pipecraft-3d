@@ -11,7 +11,7 @@ import type { Doc } from './doc';
 import { segmentLength, type Network, type Segment, type SystemType } from './network';
 import { analyzeFittings, fittingName, isWire, type FittingType, type NodeFitting } from './fittings';
 import { catalogFittingPrice, catalogPipePrice, catalogSupportPrice, effectiveMaterial, pbRollLength } from './priceCatalog';
-import { isBenrikan, isPB } from './materials';
+import { htWithGasHeater, isBenrikan, isPB } from './materials';
 import { outdoorRiserItems } from './outdoorRiser';
 import { computeConsumables, defaultConsumableSettings, GLUE_LABEL, type ConsumableSettings, type GlueKind } from './consumables';
 import { computeSupports, defaultSupportSettings, SUBSTRATE_LABEL, SUPPORT_LABEL, type SupportMark, type SupportSettings } from './supports';
@@ -167,7 +167,7 @@ export type QuoteLine = {
 };
 
 export type Issue = {
-  kind: 'confirmFitting' | 'lengthDiff' | 'approx' | 'noPrice' | 'obstacle' | 'sleeve' | 'clash';
+  kind: 'confirmFitting' | 'lengthDiff' | 'approx' | 'noPrice' | 'obstacle' | 'sleeve' | 'clash' | 'material';
   target: { kind: 'node' | 'segment' | 'price'; id: string };
   message: string;
 };
@@ -258,6 +258,7 @@ export function computeEstimate(doc: Doc): Estimate {
     const A = net.segments[c.segA], B = net.segments[c.segB];
     issues.push({ kind: 'clash', target: { kind: 'segment', id: c.segA }, message: `${SYSTEM_LABEL[A.system]}φ${A.diameter} と ${SYSTEM_LABEL[B.system]}φ${B.diameter} がぶつかっています（重なり ${Math.round(c.overlap)}mm）。高さかルートを変えてください` });
   }
+  for (const id of htWithGasHeater(doc)) issues.push({ kind: 'material', target: { kind: 'segment', id }, message: 'ガス給湯器があるのに給湯管が HT（耐熱塩ビ）です。水道局の審査で不可（南部水道企業団・沖縄市のチェック表）。区間を選んで管種を PB にしてください（材質が空欄の屋外の給湯も HT 扱い）' });
   for (const p of penetrationsOf(doc)) issues.push({ kind: 'sleeve', target: { kind: 'segment', id: p.segId }, message: `${MEMBER_LABEL[p.kind]}を貫通（スリーブ）: 構造の確認が必要です。スリーブの部材・単価は「その他」に入れてください` });
 
   // --- 部品判定（ノードごと） ---

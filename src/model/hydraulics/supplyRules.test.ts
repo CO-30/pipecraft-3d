@@ -46,3 +46,7 @@ describe('自治体の値', () => {
     expect(r.designPressure.status).toBe('unknown');
   });
 });
+
+test('南部水道企業団（南風原町・八重瀬町）の設計水圧は 0.2MPa（穿孔時書類確認「水理計算は0.2Mpaで計算」）', () => {
+  for (const c of ['南風原町', '八重瀬町']) expect(resolveSupplyRules({ profileName: c }).designPressure).toMatchObject({ v: 0.2, status: 'ok' });
+});

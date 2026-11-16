@@ -7,24 +7,31 @@ import { useStore } from '../state/store';
 import { repo } from '../storage/instance';
 import type { MunicipalityProfile } from '../model/municipality';
 import { EMPTY_CONTRACTOR, todayIso, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
-import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS, waterSheetFor } from '../forms/formSets';
+import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS, isNanbu, waterSheetFor } from '../forms/formSets';
+import { drillChecks, nanbuWarnings } from '../forms/nanbu';
+import { roadValues } from '../road/fields';
+import { KakuninImport } from './KakuninImport';
+import { ProductMakers } from './ProductMakers';
 import type { Sheet } from '../export/sheet';
 import { RoadPermitPanel } from './RoadPermitPanel';
 
 const CONTRACTOR_FIELDS: { id: keyof Contractor; label: string; hint?: string }[] = [
   { id: 'name', label: '商号又は名称' },
-  { id: 'licenseNo', label: '交付番号（給水。沖水第 n 号の n）' },
+  { id: 'licenseNo', label: '交付番号（給水。沖水第 n 号の n／南部水道企業団は指定工事事業者証交付番号）' },
   { id: 'sewerLicenseNo', label: '指定店（登録）番号（下水道）' },
   { id: 'zip', label: '〒' },
   { id: 'address', label: '住所' },
   { id: 'representative', label: '代表者' },
   { id: 'tel', label: '電話番号' },
   { id: 'chiefEngineer', label: '給水装置工事主任技術者' },
+  { id: 'chiefEngineerNo', label: '主任技術者の免状番号' },
   { id: 'chiefEngineerTel', label: '主任技術者の携帯' },
   { id: 'drainageEngineer', label: '排水設備工事責任技術者' },
   { id: 'drainageEngineerNo', label: '責任技術者の登録番号' },
 ];
 
+/** YYYY-MM-DD をその日の 0 時（端末の時刻）に。読めなければ今日 */
+const localDate = (iso: string | undefined) => { const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(iso ?? ''); return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(); };
 const fontBytes = () => fetch(`${import.meta.env.BASE_URL}fonts/NotoSansJP-JIS.ttf`).then((r) => { if (!r.ok) throw new Error('フォントを読み込めません'); return r.arrayBuffer(); });
 const formBytes = (path: string) => fetch(`${import.meta.env.BASE_URL}forms/${path}`).then((r) => { if (!r.ok) throw new Error(`様式（${path}）を読み込めません`); return r.arrayBuffer(); });
 
@@ -71,7 +78,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
     catch (e) { setErr(`保存できませんでした: ${e instanceof Error ? e.message : String(e)}`); }
   };
 
-  const run = async (what: 'water' | 'sewer' | 'products') => {
+  const run = async (what: 'water' | 'sewer' | 'products' | 'nanbu' | 'nanbuProducts') => {
     setBusy(what); setErr(''); setMsg('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
@@ -108,6 +115,33 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         else notes.push(...loc.notes);
         if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}（出力後に手で直してください）`);
         setMsg(notes.join('。'));
+      } else if (what === 'nanbu' || what === 'nanbuProducts') {
+        const [{ nanbuSheets }, { fixtureProducts, renderNanbuProductSheets, PRODUCT_MEMORY_KEY }, { sheetsToPdf }, font] = await Promise.all([import('../forms/nanbuSheets'), import('../forms/fixtureProducts'), import('../export/sheet'), fontBytes()]);
+        const memory = (await repo.getSetting<import('../forms/fixtureProducts').ProductMemory>(PRODUCT_MEMORY_KEY).catch(() => undefined)) ?? {};
+        const products = renderNanbuProductSheets(fixtureProducts(doc, vals, memory), { date: localDate(vals.date) }, contractor);
+        const missing = new Set<string>();
+        if (what === 'nanbuProducts') {
+          downloadBytes(await sheetsToPdf(products, font, { missing }), `${base}_給水装置使用製品一覧表.pdf`, 'application/pdf');
+        } else {
+          const notes: string[] = [];
+          const { buildLocationSheet } = await import('../import/locationMap');
+          const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || meta?.address || '', date });
+          if (!loc) notes.push('見取図は空欄です（申請図面の「見取図」で工事場所を決めると入ります）');
+          else if (!loc.mapOk) notes.push(`見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
+          const rv = roadValues(doc, { name: siteName, address: meta?.address }, contractor, {});
+          let roadSection: Sheet | undefined;
+          if (rv['road.water'] === 'する') {
+            const [{ renderRoadSection }, { roadTakeoffs }] = await Promise.all([import('../road/drawSheets'), import('../road/model')]);
+            roadSection = renderRoadSection(rv, roadTakeoffs(rv), { siteName, address: meta?.address ?? '', date });
+          } else notes.push('横断面図は空欄です（道路の手続きで「水道の取出し」を「する」にすると入ります）');
+          const iso = waterSheetFor(doc, profile, siteName, date);
+          if (!iso) notes.push('給水の配管が無いため、立面図は入っていません');
+          const sheets = [...nanbuSheets(vals, contractor, { siteName, date, products: [], map: loc?.mapOk ? loc.sheet : undefined, roadSection }), ...(iso ? [iso] : []), ...products];
+          downloadBytes(await sheetsToPdf(sheets, font, { missing }), `${base}_給水申請書類一式.pdf`, 'application/pdf');
+          notes.push('平面図・水理計算書（所要水頭計算書）は申請図面の「まとめてPDF」から出せます');
+          setMsg(notes.join('。'));
+        }
+        if (missing.size) setMsg((m) => `${m ? `${m}。` : ''}フォントに無い文字を置き換えました: ${[...missing].join(' ')}`);
       } else {
         const [{ productRows, renderProductListSheets }, { sheetsToPdf }, font] = await Promise.all([import('../forms/productList'), import('../export/sheet'), fontBytes()]);
         const missing = new Set<string>();
@@ -119,6 +153,11 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
     } finally { setBusy(''); }
   };
 
+  const onKakunin = (m: string, error?: boolean) => { if (error) { setErr(m); setMsg(''); } else { setMsg(m); setErr(''); } };
+  const kakunin = <KakuninImport set={set} onMessage={onKakunin} />;
+  const nanbu = isNanbu(set);
+  const drill = useMemo(() => (nanbu ? drillChecks(doc, { ...roadValues(doc, { name: siteName, address: meta?.address }, contractor, {}), ...values }, profile.name) : []), [nanbu, doc, values, siteName, meta?.address, contractor, profile.name]);
+  const nanbuWarn = nanbu ? nanbuWarnings(values) : [];
   const contractorMissing = contractorLoaded && !contractor.name;
   const contractorToggle = <button data-testid="forms-contractor-toggle" onClick={() => setShowContractor((v) => !v)}>{showContractor ? '工事店の情報を閉じる' : `🏢 工事店の情報${contractorMissing ? '（未入力）' : ''}`}</button>;
   const contractorUi = showContractor ? (
@@ -127,7 +166,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
       <div className="shinsei-forms-grid">
         {CONTRACTOR_FIELDS.map((f) => (
           <label key={f.id} className="field">{f.label}
-            <input data-testid={`contractor-${f.id}`} value={contractor[f.id]} onChange={(e) => setContractor({ ...contractor, [f.id]: e.target.value })} />
+            <input data-testid={`contractor-${f.id}`} value={contractor[f.id] ?? ''} onChange={(e) => setContractor({ ...contractor, [f.id]: e.target.value })} />
           </label>
         ))}
       </div>
@@ -137,9 +176,9 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
   if (!set) {
     return (
       <div className="shinsei-forms" data-testid="shinsei-forms">
-        <p className="est-provisional" data-testid="shinsei-forms-none">「{profile.name}」の申請書の様式はまだ登録していません（今は沖縄市のみ）。申請担当者から様式（Excel / PDF）と記入例が届いたら追加できます。</p>
+        <p className="est-provisional" data-testid="shinsei-forms-none">「{profile.name}」の申請書の様式はまだ登録していません（今は沖縄市・南風原町・八重瀬町）。申請担当者から様式（Excel / PDF）と記入例が届いたら追加できます。</p>
         <p className="muted small">道路の手続き（道路占用・道路使用許可）は全国共通の様式で作れます。申請者（会社）の欄には工事店の情報が入ります</p>
-        <div className="shinsei-forms-actions">{contractorToggle}</div>
+        <div className="shinsei-forms-actions">{contractorToggle}{kakunin}</div>
         {err && <p className="est-provisional" role="alert">{err}</p>}
         {msg && <p className="small muted" data-testid="forms-msg">{msg}</p>}
         {contractorUi}
@@ -150,9 +189,15 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
   return (
     <div className="shinsei-forms" data-testid="shinsei-forms">
       <div className="shinsei-forms-actions">
-        <button className="primary" data-testid="forms-water" disabled={!!busy || !contractorLoaded} onClick={() => run('water')}>{busy === 'water' ? '作成中…' : '給水申請書 (Excel)'}</button>
-        <button className="primary" data-testid="forms-sewer" disabled={!!busy || !contractorLoaded} onClick={() => run('sewer')}>{busy === 'sewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>
-        <button data-testid="forms-products" disabled={!!busy || !contractorLoaded} onClick={() => run('products')}>{busy === 'products' ? '作成中…' : '製品一覧表 (PDF)'}</button>
+        {nanbu ? <>
+          <button className="primary" data-testid="forms-nanbu" disabled={!!busy || !contractorLoaded} title="チェック表・給水申込書・誓約書・様式第6号・横断面図・竣工検査項目・立面図・製品一覧表を 1 つの PDF に" onClick={() => run('nanbu')}>{busy === 'nanbu' ? '作成中…' : '給水申請書類一式 (PDF)'}</button>
+          <button data-testid="forms-products" disabled={!!busy || !contractorLoaded} onClick={() => run('nanbuProducts')}>{busy === 'nanbuProducts' ? '作成中…' : '製品一覧表 (PDF)'}</button>
+        </> : <>
+          <button className="primary" data-testid="forms-water" disabled={!!busy || !contractorLoaded} onClick={() => run('water')}>{busy === 'water' ? '作成中…' : '給水申請書 (Excel)'}</button>
+          <button className="primary" data-testid="forms-sewer" disabled={!!busy || !contractorLoaded} onClick={() => run('sewer')}>{busy === 'sewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>
+          <button data-testid="forms-products" disabled={!!busy || !contractorLoaded} onClick={() => run('products')}>{busy === 'products' ? '作成中…' : '製品一覧表 (PDF)'}</button>
+        </>}
+        {kakunin}
         {contractorToggle}
       </div>
       {err && <p className="est-provisional" role="alert">{err}</p>}
@@ -172,14 +217,30 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
                       <option value="">（未選択）</option>
                       {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
+                  : f.kind === 'multiline'
+                  ? <textarea data-testid={`app-${f.id}`} rows={2} value={values[f.id] ?? ''} placeholder={f.hint} onChange={(e) => setValue(f.id, e.target.value)} />
                   : <input data-testid={`app-${f.id}`} type={f.kind === 'date' ? 'date' : f.kind === 'number' ? 'number' : 'text'} inputMode={f.kind === 'number' ? 'numeric' : undefined} value={values[f.id] ?? ''} placeholder={f.hint} onChange={(e) => setValue(f.id, e.target.value)} />}
               </label>
             ))}
           </div>
         </section>
       ))}
+      {nanbuWarn.length > 0 && <div className="est-provisional" data-testid="forms-nanbu-warn">{nanbuWarn.map((w, i) => <p key={i}>⚠ {w}</p>)}</div>}
+      {nanbu && <ProductMakers values={values} setValue={setValue} />}
+      {nanbu && (
+        <section className="shinsei-forms-group" data-testid="forms-drill">
+          <h3>穿孔時の確認（チェック表の 2 枚目を図面と入力から自動で判定）<span className="small muted">　⚠ {drill.filter((d) => d.status === 'warn').length} 件</span></h3>
+          <ul className="shinsei-drill">
+            {drill.map((d, i) => (
+              <li key={i} className={d.status}>
+                <span className="drill-mark" aria-label={d.status === 'ok' ? '大丈夫' : d.status === 'warn' ? '要確認' : '目で確認'}>{d.status === 'ok' ? '✓' : d.status === 'warn' ? '⚠' : '□'}</span> {d.label}{d.note ? <span className="muted small">　{d.note}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="shinsei-forms-group">
-        <h3>提出書類のチェックリスト（給水の申請チェックシートより）<span className="small muted" data-testid="forms-checklist-count">　{set.checklist.filter((c) => checked(c.label)).length}/{set.checklist.length} 済み（工事に保存）</span></h3>
+        <h3>提出書類のチェックリスト（{nanbu ? '給水装置工事申請書類チェック表' : '給水の申請チェックシート'}より）<span className="small muted" data-testid="forms-checklist-count">　{set.checklist.filter((c) => checked(c.label)).length}/{set.checklist.length} 済み（工事に保存）</span></h3>
         <ul className="shinsei-checklist" data-testid="forms-checklist">
           {set.checklist.map((c, i) => (
             <li key={i}>

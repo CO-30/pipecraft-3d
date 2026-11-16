@@ -103,6 +103,9 @@ export function resolveSupplyRules(input: { profileName?: string; address?: stri
   r.city = city;
   const where = OKINAWA.includes(city) ? `${city}の水道局` : `${city}の水道事業者`;
   r.designPressure = { v: 0.15, status: 'unknown', source: `${city}: 設計水圧は未確認（${where}に確認）。一般値 0.15MPa で計算` };
+  if (city === '南風原町' || city === '八重瀬町') {
+    r.designPressure = { v: 0.2, status: 'ok', source: '南部水道企業団: 給水装置工事申請書類チェック表（穿孔時書類確認）「水理計算は0.2Mpaで計算」（2026-11-16 入手）' };
+  }
   if (city === '宜野湾市') {
     r.designPressure.source = '宜野湾市: 規程に設計水圧の数値なし（上下水道局に確認）。一般値 0.15MPa で計算';
     r.burial = { v: 600, status: 'ok', source: SOURCES.ginowan };

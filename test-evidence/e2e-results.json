@@ -4,8 +4,10 @@
       "/opt/node22/bin/node",
       "/home/claude/pipecraft-3d/node_modules/.bin/playwright",
       "test",
-      "e2e/estimateIssues.spec.ts",
-      "e2e/phase4.spec.ts"
+      "e2e/nanbu.spec.ts",
+      "e2e/shinsei.spec.ts:106",
+      "--project=mobile-iphone-emu",
+      "--repeat-each=2"
     ],
     "configFile": "/home/claude/pipecraft-3d/playwright.config.ts",
     "rootDir": "/home/claude/pipecraft-3d/e2e",
@@ -41,7 +43,7 @@
       },
       {
         "outputDir": "/home/claude/pipecraft-3d/test-results",
-        "repeatEach": 1,
+        "repeatEach": 2,
         "retries": 0,
         "metadata": {
           "actualWorkers": 1
@@ -77,42 +79,7 @@
         "grep": {},
         "grepInvert": null,
         "outputDir": "/home/claude/pipecraft-3d/test-results",
-        "repeatEach": 1,
-        "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
-        "name": "pc-chrome",
-        "testDir": "/home/claude/pipecraft-3d/e2e",
-        "snapshotDir": "/home/claude/pipecraft-3d/e2e",
-        "testIgnore": [],
-        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
-        "timeout": 30000,
-        "use": {
-          "baseURL": "http://localhost:4173",
-          "channel": "chrome",
-          "screenshot": "only-on-failure",
-          "launchOptions": {
-            "args": [
-              "--use-gl=angle",
-              "--use-angle=swiftshader",
-              "--enable-unsafe-swiftshader"
-            ]
-          },
-          "viewport": {
-            "width": 1400,
-            "height": 860
-          }
-        },
-        "dependencies": [],
-        "ignoreSnapshots": false,
-        "__projectId": "pc-chrome"
-      },
-      {
-        "grep": {},
-        "grepInvert": null,
-        "outputDir": "/home/claude/pipecraft-3d/test-results",
-        "repeatEach": 1,
+        "repeatEach": 2,
         "retries": 0,
         "metadata": {
           "actualWorkers": 1
@@ -151,50 +118,6 @@
         "dependencies": [],
         "ignoreSnapshots": false,
         "__projectId": "mobile-iphone-emu"
-      },
-      {
-        "grep": {},
-        "grepInvert": null,
-        "outputDir": "/home/claude/pipecraft-3d/test-results",
-        "repeatEach": 1,
-        "retries": 0,
-        "metadata": {
-          "actualWorkers": 1
-        },
-        "name": "mobile-android-emu",
-        "testDir": "/home/claude/pipecraft-3d/e2e",
-        "snapshotDir": "/home/claude/pipecraft-3d/e2e",
-        "testIgnore": [],
-        "testMatch": "**/*.@(spec|test).?(c|m)[jt]s?(x)",
-        "timeout": 30000,
-        "use": {
-          "baseURL": "http://localhost:4173",
-          "channel": "chrome",
-          "screenshot": "only-on-failure",
-          "launchOptions": {
-            "args": [
-              "--use-gl=angle",
-              "--use-angle=swiftshader",
-              "--enable-unsafe-swiftshader"
-            ]
-          },
-          "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.8127.18 Mobile Safari/537.36",
-          "viewport": {
-            "width": 412,
-            "height": 839
-          },
-          "screen": {
-            "width": 412,
-            "height": 915
-          },
-          "deviceScaleFactor": 2.625,
-          "isMobile": true,
-          "hasTouch": true,
-          "defaultBrowserType": "chromium"
-        },
-        "dependencies": [],
-        "ignoreSnapshots": false,
-        "__projectId": "mobile-android-emu"
       }
     ],
     "quiet": false,
@@ -229,20 +152,20 @@
   },
   "suites": [
     {
-      "title": "estimateIssues.spec.ts",
-      "file": "estimateIssues.spec.ts",
+      "title": "nanbu.spec.ts",
+      "file": "nanbu.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "積算の要確認",
-          "file": "estimateIssues.spec.ts",
-          "line": 11,
+          "title": "南部水道企業団の給水申請",
+          "file": "nanbu.spec.ts",
+          "line": 28,
           "column": 6,
           "specs": [
             {
-              "title": "単価の未登録はまとめて 1 枚。「単価へ」で単価タブ、「一覧」で 1 件ずつ",
+              "title": "確認申請書から入れる → 穿孔時の確認 → 給水申請書類一式 (PDF)",
               "ok": true,
               "tags": [],
               "tests": [
@@ -250,19 +173,19 @@
                   "timeout": 30000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
                   "results": [
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3604,
+                      "duration": 3871,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T03:13:20.078Z",
+                      "startTime": "2026-11-16T12:36:42.937Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -280,35 +203,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2094,
+                      "duration": 3688,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T03:13:34.066Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2130,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:46.358Z",
+                      "startTime": "2026-11-16T12:36:53.869Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -316,9 +216,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "5cd4f6a46097721b1f24-b6c9dd85defd0798ab5a",
-              "file": "estimateIssues.spec.ts",
-              "line": 14,
+              "id": "ecab49fcd9767b4414ac-0b2f4dde51fbdab65886",
+              "file": "nanbu.spec.ts",
+              "line": 31,
               "column": 3
             }
           ]
@@ -326,20 +226,20 @@
       ]
     },
     {
-      "title": "phase4.spec.ts",
-      "file": "phase4.spec.ts",
+      "title": "shinsei.spec.ts",
+      "file": "shinsei.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Phase 4 自動積算",
-          "file": "phase4.spec.ts",
-          "line": 12,
+          "title": "申請図面",
+          "file": "shinsei.spec.ts",
+          "line": 16,
           "column": 6,
           "specs": [
             {
-              "title": "実測長入力 → 単価登録 → 見積合計が手計算と一致 → PDF・Excel を保存",
+              "title": "自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る",
               "ok": true,
               "tags": [],
               "tests": [
@@ -347,19 +247,19 @@
                   "timeout": 30000,
                   "annotations": [],
                   "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
+                  "projectId": "mobile-iphone-emu",
+                  "projectName": "mobile-iphone-emu",
                   "results": [
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3339,
+                      "duration": 6512,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T03:13:23.936Z",
+                      "startTime": "2026-11-16T12:36:46.978Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -377,35 +277,12 @@
                       "workerIndex": 1,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3544,
+                      "duration": 5865,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-11-16T03:13:36.395Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3355,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:48.716Z",
+                      "startTime": "2026-11-16T12:36:57.782Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -413,169 +290,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "598377eb1f598f6a1945-468f34c1f960701b93fe",
-              "file": "phase4.spec.ts",
-              "line": 15,
-              "column": 3
-            },
-            {
-              "title": "要確認の点を図面で選び、部品を確定すると要確認が消える",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2046,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:27.295Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2101,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:39.967Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2084,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:52.085Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "598377eb1f598f6a1945-b30f3b001022ee7531cb",
-              "file": "phase4.spec.ts",
-              "line": 69,
-              "column": 3
-            },
-            {
-              "title": "積算設定は保存され、再読み込み後も合計が同じ",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "pc-chrome",
-                  "projectName": "pc-chrome",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4210,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:29.370Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-iphone-emu",
-                  "projectName": "mobile-iphone-emu",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3813,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:42.079Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                },
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "mobile-android-emu",
-                  "projectName": "mobile-android-emu",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3678,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-11-16T03:13:54.177Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "598377eb1f598f6a1945-29da845e7d7d12cac6da",
-              "file": "phase4.spec.ts",
-              "line": 91,
+              "id": "329969f93be34a8ea9fa-b81ce3b83886463df2c4",
+              "file": "shinsei.spec.ts",
+              "line": 106,
               "column": 3
             }
           ]
@@ -585,9 +302,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-11-16T03:13:13.742Z",
-    "duration": 44243.087,
-    "expected": 12,
+    "startTime": "2026-11-16T12:36:36.595Z",
+    "duration": 27144.613,
+    "expected": 4,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
