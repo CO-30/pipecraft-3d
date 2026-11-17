@@ -3,7 +3,7 @@
  * 入力欄に目印の文字を入れて操作してから送り、送信内容に目印が入らないことを確かめる。
  */
 import { test, expect, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { evidence, freshApp } from './helpers';
 
 const MARK = 'ZQX目印';
@@ -93,5 +93,48 @@ test.describe('要望欄', () => {
     await expect(page.getByTestId('feedback-offline')).toBeVisible();
     await page.getByTestId('open-sample').click();
     await expect(page.getByTestId('editor')).toBeVisible();
+  });
+  test('今の画面を添えて送れ、「AIに渡す」で指示書がコピー（スマホは共有）される', async ({ page }) => {
+    const posts = await intercept(page);
+    // コピーと共有を横取りして中身を確かめる（本物のクリップボード・共有シートは使わない）
+    await page.addInitScript(() => {
+      const w = window as any;
+      w.__copied = ''; w.__shared = null;
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t: string) => { w.__copied = t; return Promise.resolve(); } } });
+      (navigator as any).share = (d: any) => { w.__shared = { text: d.text, files: (d.files || []).map((f: File) => f.type + ':' + f.size) }; return Promise.resolve(); };
+      (navigator as any).canShare = () => true;
+    });
+    await freshApp(page);
+    await page.getByTestId('open-sample').click();
+    await expect(page.getByTestId('editor')).toBeVisible();
+    if (test.info().project.name === 'pc-chrome') await expect(page.locator('[data-testid="view3d"] canvas')).toBeVisible(); // 2D と 3D を並べて写す
+    await page.getByTestId('open-help-editor').click();
+    const box = page.getByTestId('feedback-box-help');
+    await box.getByRole('button', { name: '今の画面を添える' }).click();
+    await expect(box.locator('.th img')).toHaveCount(1);
+    await expect(box).toContainText('今の画面を添えました');
+    await box.locator('textarea').fill('E2E スクショの確認');
+    await box.getByRole('button', { name: /AIに渡す/ }).click();
+    const copied = await page.evaluate(() => (window as any).__copied as string);
+    expect(copied).toMatch(/^あなたは「給水」の開発担当です/);
+    expect(copied).toContain('内容：E2E スクショの確認');
+    expect(copied).toContain('スクショ：1枚');
+    expect(copied).toContain('画面: 使い方');
+    const touch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+    const shared = await page.evaluate(() => (window as any).__shared);
+    if (touch) { expect(shared.files).toHaveLength(1); expect(shared.files[0]).toMatch(/^image\/jpeg:\d+/); }
+    else expect(shared).toBeNull();
+    await box.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: evidence('feedback-02-shots') });
+
+    await box.getByRole('button', { name: '送信する' }).click();
+    await expect(box).toContainText('送信しました');
+    await expect(box.locator('.th img')).toHaveCount(0);
+    const p = posts[0];
+    expect(p.shots).toHaveLength(1);
+    expect(p.shots[0]).toMatch(/^\/9j\//);
+    expect(p.shots[0].length * 0.75).toBeLessThanOrEqual(400000);
+    expect(p.log.length).toBeGreaterThan(5);
+    writeFileSync(`test-evidence/${test.info().project.name}-feedback-03-captured.jpg`, Buffer.from(p.shots[0], 'base64')); // 送られた「今の画面」
   });
 });

@@ -1,23 +1,28 @@
 /**
  * 共通の要望欄（REDSEAL・左官見積などと同じ受付へ送る）。手順書: CO-30/invoice-maker の feedback/README.md
  * 部品は公開 URL から読み込む（読み込めなくてもアプリは動く）。ホーム画面の下と、使い方の画面の下に出す。
+ * 2026-11-17: スクショ 3 枚・「今の画面を添える」・「AIに渡す」・操作の記録 80 件（部品 v1.15.0 の宣言。区域マップの「こまったこと・提案」と同じ考え方）
  */
 import { useStore } from '../state/store';
+import { canCapture, captureScreen } from './capture';
 
 /** 部品（全アプリ共通。版を変えるときは ?v= も変える） */
-export const FEEDBACK_SCRIPT = 'https://co-30.github.io/invoice-maker/feedback/feedback-widget.js?v=1.14.0';
+export const FEEDBACK_SCRIPT = 'https://co-30.github.io/invoice-maker/feedback/feedback-widget.js?v=1.15.0';
 /** 受付（全アプリ共通。Code.gs のウェブアプリ） */
 export const FEEDBACK_URL = 'https://script.google.com/macros/s/AKfycbwRiAKzdRhW0SQFyNuoIlGmPQx9rGA199TT0weaKZ-v3-G4nmfdddiot9f45Rs9mSNCQQ/exec';
 /** 受付のまとめはこの名前ごとに分かれる */
 export const FEEDBACK_APP = '給水';
 
-type Payload = { app: string; version: string; kind: string; text: string; log: { t: string; a: string }[]; errors: { t: string; m: string }[]; context: unknown };
+type Payload = { app: string; version: string; kind: string; text: string; log: { t: string; a: string }[]; errors: { t: string; m: string }[]; context: unknown; shots?: string[] };
 export type FeedbackWidgetApi = {
   init(o: Record<string, unknown>): FeedbackWidgetApi;
   render(target: string | Element): void;
   log(a: string): void;
   logError(m: string): void;
   payload(text: string, kind?: string, reply?: string): Payload;
+  aiText?(text: string, kind?: string): string;
+  addShot?(src: string | Blob): Promise<boolean>;
+  clearShots?(): void;
   _labelOf(el: Element): string;
 };
 
@@ -40,6 +45,9 @@ export function feedbackContext(): Record<string, unknown> {
   };
 }
 
+/** 部品 v1.15.0 の新しい機能（古い部品なら無視される） */
+export const FEEDBACK_OPTIONS = { shots: 3, aiShare: true, maxLog: 80, capture: captureScreen, canCapture };
+
 let started = false;
 /** 部品が届く前の記録（起動直後の「画面: ホーム」など）。届いたら書き出す */
 const early: { kind: 'log' | 'error'; text: string }[] = [];
@@ -49,7 +57,7 @@ export function initFeedback(): FeedbackWidgetApi | null {
   if (!fw) return null;
   if (!started) {
     started = true;
-    fw.init({ app: FEEDBACK_APP, version: typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中', endpoint: FEEDBACK_URL, getContext: feedbackContext });
+    fw.init({ app: FEEDBACK_APP, version: typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '開発中', endpoint: FEEDBACK_URL, getContext: feedbackContext, ...FEEDBACK_OPTIONS });
     for (const e of early.splice(0)) { try { if (e.kind === 'log') fw.log(e.text); else fw.logError(e.text); } catch { /* 記録できなくても止めない */ } }
   }
   return fw;
