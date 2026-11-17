@@ -6,6 +6,7 @@
 import { FIXTURE_CATALOG, isManhole, type Fixture } from './fixtures';
 import { isPB, materialFamily } from './materials';
 import { adjacency, segmentLength, type Network, type PipeNode, type Segment, type SystemType, type Vec3 } from './network';
+import { endZ } from './slope';
 
 export type FittingType =
   | 'elbow90' | 'elbow45' | 'elbow' | 'socket' | 'reducer' | 'tee' | 'wye' | 'cross'
@@ -65,9 +66,18 @@ const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
 const deg = (c: number) => (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI;
 const near = (a: number, b: number) => Math.abs(a - b) <= ANGLE_TOL;
 
-/** ノードから各区間の向き（単位ベクトル） */
+/**
+ * ノードから各区間の向き（単位ベクトル）。排水の管の先がマスで、そこへ高く着く（落差桝・管ごとのドロップ）ときは、
+ * 着く高さ（endZ。マスの外で L で落とす前の管）へ向かう（2026-11-18: 落とす前の管を真っすぐマスの管底へ向けて見て、
+ * 床下から出る所に 77° などの曲がりが出ていた）
+ */
 function dirs(net: Network, n: PipeNode, segs: Segment[]): Vec3[] {
-  return segs.map((s) => unit(sub(net.nodes[s.a === n.id ? s.b : s.a].pos, n.pos)));
+  return segs.map((s) => {
+    const other = s.a === n.id ? 'b' : 'a';
+    const o = net.nodes[other === 'a' ? s.a : s.b].pos;
+    const to = s.system === 'drain' || s.system === 'sewage' ? { ...o, z: endZ(net, s, other) } : o;
+    return unit(sub(to, n.pos));
+  });
 }
 
 function sizeOf(main: Segment[], branch: Segment[] = []): string {

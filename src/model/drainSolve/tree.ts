@@ -1,6 +1,6 @@
 /**
  * 排水の系統の木。排水・汚水の区間（立て管を含む）のつながりごとに、いちばん下流（根）から上流へたどる。
- * 根: 公共ますの接続口 → 無ければ管底のいちばん低いマス → 無ければ外壁にいちばん近い端（いちばん低い点）
+ * 根: 公共ますの接続口 → 無ければ下流端の印のマス → 管底のいちばん低いマス → 無ければ外壁にいちばん近い端（いちばん低い点）
  */
 import type { Doc } from '../doc';
 import { isManhole } from '../fixtures';
@@ -57,7 +57,9 @@ export function buildDrainTrees(doc: Doc): DrainTree[] {
     };
     const ends = comp.filter((id) => !net.nodes[id].fixtureId && (byNode.get(id)?.length ?? 0) === 1)
       .sort((p, q) => (Math.abs(z(p) - z(q)) > 1 ? z(p) - z(q) : awayScore(p) - awayScore(q)));
-    const root = pub[0] ?? mh[0] ?? ends[0] ?? comp.sort((p, q) => z(p) - z(q))[0];
+    // 公共ますが無い系統: 下流端の印のマス（drainOutlet。自動でつなぐ・申請図面と同じマス）
+    const down = mh.find((id) => fx(id)?.params?.downstream);
+    const root = pub[0] ?? down ?? mh[0] ?? ends[0] ?? comp.sort((p, q) => z(p) - z(q))[0];
     const parent = new Map<string, string>();
     const order = [root];
     const visited = new Set([root]);

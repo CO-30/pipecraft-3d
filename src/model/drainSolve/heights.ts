@@ -145,6 +145,11 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       return !!f && isManhole(f.type) && (!!f.params?.invertPin || isPublicType(f.type));
     };
     const down = (id: string) => { const sid = t.parent.get(id)!; const s = net0.segments[sid]; return { s, p: s.a === id ? s.b : s.a }; };
+    /** マス（公共ます以外）へ入る管の管底の上限: 地面 − 土かぶり − 外径（地面が途中で下がる敷地で、管が地面から出ないように） */
+    const capIn = (id: string, d: number) => {
+      const f = fxOf(id);
+      return f && isManhole(f.type) && !isPublicType(f.type) ? groundZAt(doc.building, doc.site, net0.nodes[id].pos) - rules.cover - outerDiameter(d) : Infinity;
+    };
     const slopeOverride = new Map<string, number>();
     // 根が公共ますでなく、管底を手で入れていないマス（配置図から置いた・既定の GL−600 のまま）: 深さはまだ決まっていない。
     // 既定の深さに引っぱられて床下から外へ出る所（KSA）を深くしないよう、上流の固定点から標準の勾配で下った深さにする（2026-11-16）
@@ -157,7 +162,10 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
         while (cur !== t.root) {
           const { s, p } = down(cur);
           if (vertical(s) || ufSegs.has(s.id)) { ok = false; break; }
-          zz -= (isSlopePinned(s) && s.slope !== undefined ? s.slope : defaultFor(s)) * planLength(net0, s) + dropOf(p);
+          zz -= (isSlopePinned(s) && s.slope !== undefined ? s.slope : defaultFor(s)) * planLength(net0, s);
+          // 途中のマスの所で地面が下がっていれば、そこでも土かぶりを守る深さ（根をその分深く）
+          if (p !== t.root) zz = Math.min(zz, capIn(p, s.diameter));
+          zz -= dropOf(p);
           cur = p;
         }
         if (ok) deepest = deepest === null ? zz : Math.min(deepest, zz);
@@ -173,6 +181,8 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
     const distRoot = new Map<string, number>([[t.root, 0]]);
     for (const n of t.order) if (n !== t.root) { const { s, p } = down(n); distRoot.set(n, (distRoot.get(p) ?? 0) + planLength(net0, s)); }
     const tops = t.order.filter((a) => a !== t.root && anchor(a)).sort((x, y) => (distRoot.get(y) ?? 0) - (distRoot.get(x) ?? 0));
+    /** 根まで下りた経路を 1 本でも決めたか */
+    let reachedRoot = false;
     for (const a of tops) {
       const path: Segment[] = [];
       let cur = a, ok = true;
@@ -205,14 +215,37 @@ function solveCore(doc: Doc, rules: DrainRuleSet, floatExits: Set<string> | null
       // ドロップは 1 つのマスに 1 回だけ（先に決めた経路の高さを変えない）。差が無ければ割り振る
       const steep = extra > 0 && path.some((s) => isFree(s) && r > steepLimit(rules, s.diameter));
       const fc = fxOf(cur);
-      if (cur === t.root && steep && !autoDrop.has(at)) {
-        autoDrop.set(at, extra);
+      // 先に決めた経路が根へ着いていて根に落差が無いのに、この経路が根へ直に急に入る: 根に落差を足すと先の経路の高さが合わなくなるので、
+      // 標準の勾配で行き、マスの外で L で落とす（2026-11-18: 公共ますが無い系統で下流端のマスのすぐ横の KSA が 56° の曲がりになっていた）
+      const rootTaken = cur === t.root && at === t.root && reachedRoot && !autoDrop.has(at);
+      if (cur === t.root) reachedRoot = true;
+      if (cur === t.root && steep && !autoDrop.has(at) && !rootTaken) {
+        // 上から標準の勾配で下ろし、地面が下がって管が浅くなる（地面から出る）マスがあれば、その手前のマスで先に落とす。
+        // 残りは公共ますの手前のマス（2026-11-18 実物の図面: 全部を最後のマスで落とし、途中で管が地面から出ていた）
+        let left = extra, zz = z.get(a)!, q = a;
+        for (const s of path) {
+          const p = s.a === q ? s.b : s.a;
+          zz -= (isFree(s) ? defaultFor(s) : s.slope!) * planLength(net0, s);
+          const fq = fxOf(q);
+          const need = Math.round(zz - capIn(p, s.diameter));
+          if (p !== t.root && need > 0 && left > 0 && q !== a && fq && isManhole(fq.type) && !isPublicType(fq.type) && !autoDrop.has(q)) {
+            const d = Math.min(need, left);
+            autoDrop.set(q, d);
+            left -= d;
+            zz -= d;
+          }
+          zz -= dropOf(p);
+          q = p;
+        }
+        if (left > 0) autoDrop.set(at, (autoDrop.get(at) ?? 0) + left);
         for (const s of path) if (isFree(s)) slopeOverride.set(s.id, defaultFor(s));
-      } else if (cur !== t.root && steep && fc && isManhole(fc.type)) {
+      } else if ((cur !== t.root || rootTaken) && steep && fc && isManhole(fc.type)) {
         // 先に決めたマス（合流・手で管底を入れたマス）へ高く着く: 標準の勾配で行き、マスの外で L で落としてつなぐ
         segDrop.set(last.id, extra);
         for (const s of path) if (isFree(s)) slopeOverride.set(s.id, defaultFor(s));
       } else for (const s of path) if (isFree(s)) slopeOverride.set(s.id, r);
+      // 既知の限り: 急でない経路（一様な勾配 r を割り振る）では、途中で地面が下がっても土かぶりのための落差は入れない
+      // （根の深さだけは capIn で地面に合わせる）。足りなければ縦断図・排水の注意の「土被り」で知らせる
       // 経路の点の高さを下から決めて、後の経路の止まる所にする
       let lo = cur, zz = z.get(cur)!;
       for (let i = path.length - 1; i >= 0; i--) {

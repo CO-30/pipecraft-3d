@@ -15,6 +15,8 @@ export type SiteRead = {
   items: SiteItem[];
   levels: { p: Vec2; gl: number }[];
   bm?: number;
+  /** 「下水引込へ」などの文字の位置（公共ますの記号が無いとき、下水の引込側＝下流端のマスの手がかり） */
+  sewerOut?: Vec2;
 };
 
 const norm = (s: string) => s.normalize('NFKC').replace(/\s+/g, '');
@@ -152,6 +154,7 @@ export function readSite(page: VectorPage): SiteRead {
   }
   const levels: SiteRead['levels'] = [];
   let bm: number | undefined;
+  let sewerOut: Vec2 | undefined;
   for (const t of page.texts) {
     const s = norm(t.s);
     if (inLegend(t)) continue;
@@ -160,8 +163,9 @@ export function readSite(page: VectorPage): SiteRead {
     if (m) levels.push({ p: { x: t.x, y: t.y }, gl: m[1] === '±' ? 0 : (m[1] === '+' ? 1 : -1) * Number(m[2] || 0) });
     const b = /BM\+(\d+)=GL±0/.exec(s);
     if (b) bm = Number(b[1]);
+    if (!sewerOut && /下水.{0,3}引込/.test(s)) sewerOut = { x: t.x, y: t.y };
   }
-  return { legend: has ? legend : null, items, levels, ...(bm !== undefined ? { bm } : {}) };
+  return { legend: has ? legend : null, items, levels, ...(bm !== undefined ? { bm } : {}), ...(sewerOut ? { sewerOut } : {}) };
 }
 
 /** 平面図の外壁（芯 a→b、厚さ t、図面座標 mm） */

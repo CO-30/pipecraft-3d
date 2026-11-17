@@ -102,12 +102,43 @@ function upstreamTree(net: Network, outletId: string): { children: Map<string, s
   return { children, order };
 }
 
+/** 縦断図の点になるマス（マスの接続口の点）。extractRoute・branchPoints に渡すと、マスへ向かわない枝（宅内・床下の管）を本線・枝にしない */
+export function manholeNodes(doc: Doc): Set<string> {
+  return new Set(Object.values(doc.network.nodes).filter((n) => { const f = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined; return !!f && isManhole(f.type); }).map((n) => n.id));
+}
+
+/** node から上流（node を除く）にマスがあるか（memo つき） */
+function manholeReach(children: Map<string, string[]>, manholes: Set<string>): (node: string) => boolean {
+  const memo = new Map<string, boolean>();
+  const up = (node: string): boolean => {
+    const m = memo.get(node);
+    if (m !== undefined) return m;
+    memo.set(node, false);
+    const r = (children.get(node) ?? []).some((k) => manholes.has(k) || up(k));
+    memo.set(node, r);
+    return r;
+  };
+  return up;
+}
+
+/**
+ * 分岐点で上流へ進める先。manholes を渡すと、マスへ向かう枝だけ（マスへ向かう枝が無い所＝最上流のマスより先は全部。
+ * その先は trimToManholes で切るので枝にしない）
+ */
+function upstreamKids(children: Map<string, string[]>, node: string, manholes?: Set<string>, reach?: (n: string) => boolean): { kids: string[]; branching: boolean } {
+  const kids = children.get(node) ?? [];
+  if (!manholes || !reach) return { kids, branching: kids.length >= 2 };
+  const useful = kids.filter((k) => manholes.has(k) || reach(k));
+  return useful.length ? { kids: useful, branching: useful.length >= 2 } : { kids, branching: false };
+}
+
 /** 本線上で上流側へ 2 本以上に分かれる点とその隣ノード（枝の中の分岐は出さない。choice で本線が変わると分岐点も変わる） */
-export function branchPoints(net: Network, outletId: string, choice: Record<string, string> = {}): { nodeId: string; options: string[] }[] {
+export function branchPoints(net: Network, outletId: string, choice: Record<string, string> = {}, manholes?: Set<string>): { nodeId: string; options: string[] }[] {
   const t = upstreamTree(net, outletId);
-  const r = extractRoute(net, outletId, choice);
+  const r = extractRoute(net, outletId, choice, manholes);
   if (!t || 'error' in r) return [];
-  return r.route.filter((id) => (t.children.get(id)?.length ?? 0) >= 2).map((nodeId) => ({ nodeId, options: t.children.get(nodeId)! }));
+  const reach = manholes ? manholeReach(t.children, manholes) : undefined;
+  return r.route.map((id) => ({ id, u: upstreamKids(t.children, id, manholes, reach) })).filter((x) => x.u.branching).map((x) => ({ nodeId: x.id, options: x.u.kids }));
 }
 
 /** node から上流へのいちばん長い水平距離（枝の自動選択用） */
@@ -123,19 +154,22 @@ function longest(net: Network, children: Map<string, string[]>, node: string): n
 /**
  * 下流端 outletId から上流へ排水系の区間をたどって主経路を決める。
  * choice: 分岐点ごとに本線として進む隣ノード。未指定の分岐はいちばん長い枝を本線にし、他は branches（分岐点から始まる枝の経路）
+ * manholes（manholeNodes）: 渡すと、マスへ向かわない枝（宅内・床下の管）は本線にも枝にもしない（2026-11-18 実物の図面:
+ * 床下の長い管が本線・枝になり、地中の管として「土被り −659mm」などの注意が出ていた）
  */
-export function extractRoute(net: Network, outletId: string, choice: Record<string, string> = {}): RouteResult {
+export function extractRoute(net: Network, outletId: string, choice: Record<string, string> = {}, manholes?: Set<string>): RouteResult {
   if (!net.nodes[outletId] || drainSegmentsAt(net, outletId).length === 0) return { error: '排水の配管がつながっていません' };
   const t = upstreamTree(net, outletId);
   if (!t) return { error: '経路が輪になっています' };
   const { children } = t;
+  const reach = manholes ? manholeReach(children, manholes) : undefined;
   const branches: { atNodeId: string; nodeIds: string[] }[] = [];
   const omitted: { atNodeId: string }[] = [];
   const walk = (start: string, pickMain: boolean): string[] => {
     const path = [start];
     let cur = start;
     while (true) {
-      const kids = children.get(cur) ?? [];
+      const { kids, branching } = upstreamKids(children, cur, manholes, reach);
       if (kids.length === 0) break;
       let next: string;
       if (kids.length === 1) next = kids[0];
@@ -144,9 +178,9 @@ export function extractRoute(net: Network, outletId: string, choice: Record<stri
         const len = (k: string) => planLength(net, drainSegmentsAt(net, cur).find((x) => otherEnd(x, cur) === k)!) + longest(net, children, k);
         const chosen = pickMain && choice[cur] && kids.includes(choice[cur]) ? choice[cur] : kids.slice().sort((p, q) => len(q) - len(p))[0];
         next = chosen;
-        if (pickMain) {
+        if (branching && pickMain) {
           for (const k of kids) if (k !== chosen) branches.push({ atNodeId: cur, nodeIds: [cur, ...walk(k, false)] });
-        } else {
+        } else if (branching) {
           omitted.push({ atNodeId: cur });
         }
       }

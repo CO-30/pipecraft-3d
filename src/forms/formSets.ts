@@ -2,7 +2,7 @@
 import type { Doc } from '../model/doc';
 import { stripHead, type MunicipalityProfile } from '../model/municipality';
 import { buildIsometric, isoManholeLabels } from '../model/isometric';
-import { buildProfile, extractRoute, trimToManholes } from '../model/profileDrawing';
+import { buildProfile, extractRoute, manholeNodes, trimToManholes } from '../model/profileDrawing';
 import { outletCandidates } from '../model/outlets';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderIsoSheet } from '../export/isoSheet';
@@ -34,7 +34,7 @@ export const CONTRACTOR_KEY = 'contractor';
  */
 export function drainageSheetsFor(doc: Doc, profile: MunicipalityProfile, siteName: string, date: Date, titleValues?: Record<string, string>, opts: { extra?: boolean } = {}): { profile?: Sheet; iso?: Sheet; profileOnly?: Sheet; plan?: Sheet } {
   const outlet = outletCandidates(doc)[0]?.id;
-  const r = outlet ? extractRoute(doc.network, outlet) : undefined;
+  const r = outlet ? extractRoute(doc.network, outlet, {}, manholeNodes(doc)) : undefined;
   const model = r && !('error' in r) ? buildProfile(doc, trimToManholes(doc, r.route), profile, '排水設備 縦断図') : undefined;
   const plan = opts.extra ? renderDrainPlanSheet(doc, profile, { siteName, date, titleValues, ...(model ? { manholeLabels: isoManholeLabels([model]) } : {}) }) : undefined;
   if (!model) return plan ? { plan } : {};
