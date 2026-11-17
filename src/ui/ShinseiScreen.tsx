@@ -27,6 +27,8 @@ import { readAsBuilt, writeAsBuilt, type AsBuiltSettings } from '../model/asBuil
 import { LocationPanel } from './LocationPanel';
 import { BUNDLE_KINDS, buildShinsei, nodeLabelOf, stampAsBuiltBuild, type Kind, type ShinseiBuild, type ShinseiCtx } from './shinseiBuild';
 import { ShinseiBundleDialog } from './ShinseiBundleDialog';
+import { repo } from '../storage/instance';
+import { CONTRACTOR_KEY, drawingTitleValues } from '../forms/formSets';
 export type { ShinseiBuild } from './shinseiBuild';
 import { offsetLatLon, readMapSettings, writeMapSettings, type MapSettings } from '../model/locationMap';
 import { MAP_FRAME, MAP_PX } from '../export/locationSheet';
@@ -171,10 +173,18 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     updateSite({ application: writeAsBuilt(doc.site?.application, p) });
   };
 
+  // 表題欄（申請地・申請者・指定工事店）: 申請書の入力と、この端末に保存した工事店の名前から
+  const [contractorName, setContractorName] = useState('');
+  useEffect(() => {
+    let alive = true;
+    repo.getSetting<{ name?: string }>(CONTRACTOR_KEY).then((c) => { if (alive) setContractorName(c?.name ?? ''); }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [kind]);
+  const titleValues = useMemo(() => drawingTitleValues(doc.site?.application, contractorName, meta?.address), [doc.site?.application, contractorName, meta?.address]);
   const ctx: ShinseiCtx = useMemo(() => ({
     doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, matAxis, asBuiltOn: asBuilt.on, suiri,
-    mapLat: mapSettings.lat, mitori: { build: mitori.build, loading: mitori.loading || mitori.key !== mitoriKey },
-  }), [doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis]);
+    mapLat: mapSettings.lat, mitori: { build: mitori.build, loading: mitori.loading || mitori.key !== mitoriKey }, titleValues,
+  }), [doc, outletId, rootId, pick, profile, profileId, profileMissing, siteName, date, suiri, asBuilt.on, mapSettings.lat, mitori, mitoriKey, matAxis, titleValues]);
   const built0: ShinseiBuild = useMemo(() => buildShinsei(kind, ctx), [kind, ctx]);
   /** 「まとめてPDF」用: どの図面もタブと同じ作図（水理計算はここで計算する） */
   const buildFor = useMemo(() => (k: (typeof BUNDLE_KINDS)[number]) =>
@@ -189,7 +199,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     setBusy(fmt); setErr(''); setInfo('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'material' ? '材料集計表' : kind === 'sleeve' ? 'スリーブ表' : kind === 'masu' ? 'ます表' : '立面図'}_${dateStamp(new Date())}`;
+      const base = `${safeName(siteName)}_${built.asBuilt && asBuilt.on ? '竣工' : ''}${kind === 'profile' ? '縦断図' : kind === 'plan' ? '排水平面図' : kind === 'suiri' ? '水理計算書' : kind === 'mitori' ? '見取図' : kind === 'material' ? '材料集計表' : kind === 'sleeve' ? 'スリーブ表' : kind === 'masu' ? 'ます表' : '立面図'}_${dateStamp(new Date())}`;
       if (fmt === 'dxf') {
         // DXF（R12・Shift_JIS）: AutoCAD・Jw_cad で開ける。ページは横に並べる
         const { sheetsToDxf } = await import('../export/dxf');
@@ -256,6 +266,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
             : <button className="linkish small" data-testid="shinsei-gl-clear" onClick={() => updateSite({ designGL: undefined })}>未入力に戻す</button>}
         </span>
         <div className="seg-btns shinsei-kinds" role="group" aria-label="図の種類">
+          <button data-testid="shinsei-kind-plan" className={kind === 'plan' ? 'on' : ''} onClick={() => setKind('plan')}>排水平面図</button>
           <button data-testid="shinsei-kind-profile" className={kind === 'profile' ? 'on' : ''} onClick={() => setKind('profile')}>排水縦断図</button>
           <button data-testid="shinsei-kind-riser" className={kind === 'riser' ? 'on' : ''} onClick={() => setKind('riser')}>給水立面図</button>
           <button data-testid="shinsei-kind-suiri" className={kind === 'suiri' ? 'on' : ''} onClick={() => setKind('suiri')}>水理計算書</button>

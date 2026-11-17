@@ -58,7 +58,7 @@ describe('同梱の自治体プロファイル', () => {
       expect(municipalityProfileSchema.safeParse(p).success, p.id).toBe(true);
       expect(p.unverified.length, p.id).toBeGreaterThan(0);
       expect(p.source.url, p.id).toMatch(/^https?:\/\//);
-      expect(['2026-11-10', '2026-11-12', '2026-11-16'], p.id).toContain(p.source.checkedAt);
+      expect(['2026-11-10', '2026-11-12', '2026-11-16', '2026-11-18'], p.id).toContain(p.source.checkedAt);
       expect(isBuiltinProfile(p.id)).toBe(true);
     }
   });
@@ -98,7 +98,7 @@ describe('レビュー修正', () => {
   test('南風原町の用紙は受理された給水図面の実例（A4 縦）。糸満市は表の項目の順番は要確認', () => {
     const h = BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!;
     expect(h.paper).toMatchObject({ size: 'A4', orientation: 'portrait' });
-    expect(h.unverified.join(' ')).toContain('縮尺');
+    expect(h.unverified.join(' ')).toContain('最小土被り');
     expect(h.source.title).toContain('赤');
     const i = BUILTIN_PROFILES.find((x) => x.id === 'itoman')!;
     expect(i.unverified.join(' ')).toContain('順番');
@@ -190,6 +190,13 @@ describe('南部水道企業団（南風原町・八重瀬町）の給水図面�
   });
 });
 
-test('南風原町の下水道の図面の体裁は未確認として残す（給水の実例に合わせているため）', () => {
-  expect(BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!.unverified.join(' ')).toContain('下水道');
+test('南風原町の下水道の図面は受理された実物（2026-11-18）の書き方。八重瀬町は未確認のまま', () => {
+  const h = BUILTIN_PROFILES.find((x) => x.id === 'haebaru')!;
+  expect(h.profileTable).toMatchObject({ hScale: 300, vScale: 300, slopeFormat: 'per100', datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above', downstreamSide: 'left', drainageIsometric: true, manholeText: 'naikeiFuka', manholeLeader: 'slanted', glMarks: 'steps', title: '立面図・縦断面図（展開図）' });
+  expect(h.profileTable.rows.map((r) => r.label)).toEqual(['地盤高', '土かぶり', '管底高']);
+  expect(h.paper).toMatchObject({ legend: 'box', publicPipeLabel: '町下水道管', titleBlockFields: ['申請地', '申請者', '指定工事店'] });
+  expect(h.unverified.join(' ')).not.toContain('体裁');
+  expect(BUILTIN_PROFILES.find((x) => x.id === 'yaese')!.unverified.join(' ')).toContain('下水道');
+  // 沖縄市は今までどおり
+  expect(BUILTIN_PROFILES.find((x) => x.id === 'okinawa-city')!.profileTable).toMatchObject({ manholeText: 'phiH', manholeLeader: 'vertical', glMarks: 'perManhole' });
 });

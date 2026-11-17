@@ -15,6 +15,7 @@ import { renderManholeSheets } from './manholeSheet';
 import { buildRiser } from '../model/riser';
 import { renderIsoSheet } from './isoSheet';
 import { renderProfileSheet } from './profileSheet';
+import { renderDrainPlanSheet } from './drainPlanSheet';
 import { renderRiserSheet } from './riserSheet';
 import { findTextOverlaps } from './labelLayout';
 import { renderSuiriSheets } from './suiriSheet';
@@ -138,6 +139,13 @@ describe('全ての申請図面で文字が重ならない', () => {
       // 表の数値は切り詰めない
       expect(sheet.ops.filter((o) => o.t === 'text' && /^[\d./]+…$/.test(o.s))).toEqual([]);
       expect(findTextOverlaps(renderIsoSheet(iso, profile, { ...meta, title: '立面図（展開図）' }))).toEqual([]);
+    });
+    test(`排水平面図（${profile.name}）`, () => {
+      for (const { doc } of [crowdedDrain(), manyManholes()]) {
+        const sheet = renderDrainPlanSheet(doc, profile, meta)!;
+        expect(sheet).toBeDefined();
+        expect(findTextOverlaps(sheet)).toEqual([]);
+      }
     });
     test(`給水立面図（${profile.name}）`, () => {
       const { doc, out } = crowdedWater();

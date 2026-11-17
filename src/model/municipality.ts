@@ -52,6 +52,14 @@ export const municipalityProfileSchema = z.object({
     downstreamSide: z.enum(['left', 'right']).default('right'),
     /** 縦断図の上に排水のアイソメ図（立面図・展開図）を描く（沖縄市の様式） */
     drainageIsometric: z.boolean().default(false),
+    /** 桝の径・深さの書き方: φ150 H410（沖縄市）／ 内径150深410（南風原町。φ200 以下の汚水桝は「小口径桝」、公共は「既設公共桝」） */
+    manholeText: z.enum(['phiH', 'naikeiFuka']).default('phiH'),
+    /** 図の上の桝名: 縦書き（vertical）／ 斜め 30° の引出線の先に書く（slanted。南風原町） */
+    manholeLeader: z.enum(['vertical', 'slanted']).default('vertical'),
+    /** GL の差: 桝ごとに (−600)（perManhole）／ 左端の (±0) と段差のところだけ (+900)（steps。南風原町） */
+    glMarks: z.enum(['perManhole', 'steps']).default('perManhole'),
+    /** 縦断図の図名（省略時は「排水設備 縦断図」） */
+    title: z.string().optional(),
   }),
   riser: z.object({
     /** single＝平らな系統図、isometric＝アイソメ図（3D を斜めから見た展開図） */
@@ -66,6 +74,10 @@ export const municipalityProfileSchema = z.object({
     titleBlockFields: z.array(z.string()),
     /** 右上の受付欄（沖縄市: 受付番号・水道番号・縮尺）。空なら描かない。省略可 */
     headerFields: z.array(z.string()).default([]),
+    /** 凡例: 1 行の文（line）／ 線の見本の箱（box。南風原町: 既設管・新設管・町下水道管と「※単位はmm 管長はm」） */
+    legend: z.enum(['line', 'box']).optional(),
+    /** 箱の凡例の公共下水道の名前（南風原町は「町下水道管」） */
+    publicPipeLabel: z.string().optional(),
   }),
   /** 排水の決まり（勾配・土かぶり・ます）。値ごとに状態と出典。省略時は国の基準＋一般値（未確認） */
   drainage: drainageSchema.optional(),
@@ -114,6 +126,9 @@ export const STANDARD_PROFILE: MunicipalityProfile = {
     manholeLabel: 'table',
     downstreamSide: 'right',
     drainageIsometric: false,
+    manholeText: 'phiH',
+    manholeLeader: 'vertical',
+    glMarks: 'perManhole',
   },
   riser: { lineStyle: 'single', diameterLabelPos: 'above', showFloorLines: true, heightLabel: 'FL+' },
   paper: { size: 'A3', orientation: 'landscape', titleBlockFields: ['工事名', '申請者', '施工者', '図面名', '縮尺', '作成日'], headerFields: [] },
@@ -168,9 +183,22 @@ export const MUNICIPAL_PROFILES: MunicipalityProfile[] = [
   }),
   municipal({
     id: 'haebaru', name: '南風原町',
-    source: { title: '南風原町 排水設備計画確認申請書の注意書き（図面は平面図及び縦断面図・配管立図・見取図。新設・増設は赤、既設は青、公共下水道は黒）。' + JGES_TEXT + '。用紙サイズ・綴じ方の記載なし。' + NANBU_WATER_SOURCE, url: 'https://www.town.haebaru.lg.jp/uploaded/attachment/9638.pdf', checkedAt: '2026-11-16' },
-    unverified: ['下水道（町）の図面の体裁（用紙・表題欄・右上の欄）は未確認。給水（南部水道企業団）の実例に合わせている', '表の行（項目・順番）', '縮尺', ...COMMON_UNVERIFIED.filter((u) => u !== '表題欄の項目')],
+    source: {
+      title: '南風原町で受理された排水設備計画確認申請書（指定工事店作成、2026-11-18 入手）: A4 縦 4 面（申請書・平面図及び縦断面図・配管立図・見取図）。'
+        + '縦断面図: 公共汚水ますの管底を ±0、表は 地盤高・土かぶり・管底高（m 3 桁）、区間は 100VU／2.1/100／長さ(m 2 桁)、S=1/300、ますは斜めの引出線に「NO.1小口径桝 内径150深410」（落差は 深520-1035）、GL の段差に (+900)。'
+        + '配管立図: ますは「① H=410」、本管は VU100×1.6、枝は 長さ／口径 の 2 段。平面図: 各階の平面に排水（新設＝赤・既設＝青・町下水道管＝黒）、凡例の箱と「※単位はmm 管長はm」、表題欄は 申請地・申請者・指定工事店。'
+        + JGES_TEXT + '。' + NANBU_WATER_SOURCE,
+      url: 'https://www.town.haebaru.lg.jp/uploaded/attachment/9638.pdf', checkedAt: '2026-11-18',
+    },
+    unverified: ['最小勾配は日下協テキストの標準値（φ75 3/100・φ100 2/100・φ125 1.7/100・φ150 1.5/100。実例の 2.1〜2.3/100 と整合）。町の手引きでの確認は未', '最小土被り'],
     ...NANBU_WATER,
+    paper: { ...NANBU_WATER.paper, legend: 'box', publicPipeLabel: '町下水道管' },
+    profileTable: {
+      rows: [{ key: 'groundLevel', label: '地盤高' }, { key: 'cover', label: '土かぶり' }, { key: 'invertLevel', label: '管底高' }],
+      minSlopeByDiameter: { 75: 100 / 3, 100: 50, 125: 100 / 1.7, 150: 100 / 1.5 },
+      slopeFormat: 'per100', hScale: 300, vScale: 300, datum: 'publicInvert', pipeSpecFormat: 'diameterFirst', lengthDecimals: 2, manholeLabel: 'above', downstreamSide: 'left', drainageIsometric: true,
+      manholeText: 'naikeiFuka', manholeLeader: 'slanted', glMarks: 'steps', title: '立面図・縦断面図（展開図）',
+    },
   }),
   municipal({
     id: 'naha', name: '那覇市',

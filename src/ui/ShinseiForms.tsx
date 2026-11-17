@@ -7,7 +7,7 @@ import { useStore } from '../state/store';
 import { repo } from '../storage/instance';
 import type { MunicipalityProfile } from '../model/municipality';
 import { EMPTY_CONTRACTOR, todayIso, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
-import { CONTRACTOR_KEY, drainageSheetsFor, FORM_SETS, isNanbu, waterSheetFor } from '../forms/formSets';
+import { CONTRACTOR_KEY, drainageSheetsFor, drawingTitleValues, FORM_SETS, isNanbu, waterSheetFor } from '../forms/formSets';
 import { drillChecks, nanbuWarnings } from '../forms/nanbu';
 import { roadValues } from '../road/fields';
 import { KakuninImport } from './KakuninImport';
@@ -78,7 +78,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
     catch (e) { setErr(`保存できませんでした: ${e instanceof Error ? e.message : String(e)}`); }
   };
 
-  const run = async (what: 'water' | 'sewer' | 'products' | 'nanbu' | 'nanbuProducts') => {
+  const run = async (what: 'water' | 'sewer' | 'products' | 'nanbu' | 'nanbuProducts' | 'haebaruSewer') => {
     setBusy(what); setErr(''); setMsg('');
     try {
       const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
@@ -101,7 +101,8 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         if (notes.length) setMsg(notes.join('。'));
       } else if (what === 'sewer') {
         const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
-        const sheets: { profile?: Sheet; iso?: Sheet; location?: Sheet } = { ...drainageSheetsFor(doc, profile, siteName, date) };
+        const { profile: pf, iso: isoSheet } = drainageSheetsFor(doc, profile, siteName, date, drawingTitleValues(vals, contractor.name, meta?.address));
+        const sheets: { profile?: Sheet; iso?: Sheet; location?: Sheet } = { ...(pf ? { profile: pf } : {}), ...(isoSheet ? { iso: isoSheet } : {}) };
         const { buildLocationSheet } = await import('../import/locationMap');
         const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || useStore.getState().meta?.address || '', date });
         if (loc?.mapOk) sheets.location = loc.sheet;
@@ -114,6 +115,22 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         else if (!loc.mapOk) notes.push(`4 面の見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
         else notes.push(...loc.notes);
         if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}（出力後に手で直してください）`);
+        setMsg(notes.join('。'));
+      } else if (what === 'haebaruSewer') {
+        // 南風原町の排水設備計画確認申請書: 4 面（申請書・平面図及び縦断面図・配管立図・見取図）＋ 実寸の平面図（A3）と縦断面図（A4）
+        const [{ haebaruSewerSheets }, { sheetsToPdf }, font, { buildLocationSheet }] = await Promise.all([import('../forms/haebaruSewer'), import('../export/sheet'), fontBytes(), import('../import/locationMap')]);
+        const tv = drawingTitleValues(vals, contractor.name, meta?.address);
+        const ds = drainageSheetsFor(doc, profile, siteName, date, tv);
+        const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || meta?.address || '', date });
+        const notes: string[] = [];
+        if (!ds.profile) notes.push('排水の配管（公共マスまで）が無いため、2・3 面の図は空欄です');
+        if (!loc) notes.push('4 面の見取図は空欄です（申請図面の「見取図」で工事場所を決めると入ります）');
+        else if (!loc.mapOk) notes.push(`4 面の見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
+        const sheets = [...haebaruSewerSheets(vals, contractor, { plan: ds.plan, profile: ds.profileOnly ?? ds.profile, iso: ds.iso, map: loc?.mapOk ? loc.sheet : undefined }), ...(ds.plan ? [ds.plan] : []), ...(ds.profile ? [ds.profile] : [])];
+        const missing = new Set<string>();
+        downloadBytes(await sheetsToPdf(sheets, font, { missing }), `${base}_排水設備計画確認申請書.pdf`, 'application/pdf');
+        if (ds.plan) notes.push('5 枚目に平面図（A3）、6 枚目に立面図・縦断面図（A4）を付けています');
+        if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}`);
         setMsg(notes.join('。'));
       } else if (what === 'nanbu' || what === 'nanbuProducts') {
         const [{ nanbuSheets }, { fixtureProducts, renderNanbuProductSheets, PRODUCT_MEMORY_KEY }, { sheetsToPdf }, font] = await Promise.all([import('../forms/nanbuSheets'), import('../forms/fixtureProducts'), import('../export/sheet'), fontBytes()]);
@@ -192,6 +209,7 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         {nanbu ? <>
           <button className="primary" data-testid="forms-nanbu" disabled={!!busy || !contractorLoaded} title="チェック表・給水申込書・誓約書・様式第6号・横断面図・竣工検査項目・立面図・製品一覧表を 1 つの PDF に" onClick={() => run('nanbu')}>{busy === 'nanbu' ? '作成中…' : '給水申請書類一式 (PDF)'}</button>
           <button data-testid="forms-products" disabled={!!busy || !contractorLoaded} onClick={() => run('nanbuProducts')}>{busy === 'nanbuProducts' ? '作成中…' : '製品一覧表 (PDF)'}</button>
+          {set.sewer === 'haebaru' && <button className="primary" data-testid="forms-haebaru-sewer" disabled={!!busy || !contractorLoaded} title="排水設備計画確認申請書（申請書・平面図及び縦断面図・配管立図・見取図）と、実寸の平面図・縦断面図" onClick={() => run('haebaruSewer')}>{busy === 'haebaruSewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>}
         </> : <>
           <button className="primary" data-testid="forms-water" disabled={!!busy || !contractorLoaded} onClick={() => run('water')}>{busy === 'water' ? '作成中…' : '給水申請書 (Excel)'}</button>
           <button className="primary" data-testid="forms-sewer" disabled={!!busy || !contractorLoaded} onClick={() => run('sewer')}>{busy === 'sewer' ? '作成中…' : '下水道申請書 (PDF)'}</button>

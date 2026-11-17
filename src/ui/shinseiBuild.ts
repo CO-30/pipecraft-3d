@@ -8,8 +8,9 @@ import { buildRouteProfiles, extractRoute, type ProfileModel } from '../model/pr
 import { buildRiser, type RiserModel } from '../model/riser';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderRiserSheet } from '../export/riserSheet';
-import { buildIsometric } from '../model/isometric';
+import { buildIsometric, isoManholeLabels } from '../model/isometric';
 import { renderIsoSheet } from '../export/isoSheet';
+import { renderDrainPlanSheet } from '../export/drainPlanSheet';
 import { sheetToSvg, type Sheet } from '../export/sheet';
 import { renderSuiriSheets } from '../export/suiriSheet';
 import { materialSummary, type MatAxis } from '../model/materialSummary';
@@ -26,16 +27,16 @@ import type { calcSupply } from '../model/hydraulics/calc';
 import type { LocationBuild } from '../import/locationMap';
 
 type Doc = ReturnType<typeof useStore.getState>['doc'];
-export type Kind = 'profile' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve' | 'material' | 'masu';
+export type Kind = 'profile' | 'plan' | 'riser' | 'forms' | 'suiri' | 'mitori' | 'sleeve' | 'material' | 'masu';
 export const PROFILE_TITLE = '排水設備 縦断図';
 export const RISER_TITLE = '給水装置 立面図';
 
 /** 図面の名前（タブ・ファイル名・まとめ出力の一覧） */
 export const KIND_LABEL: Record<Exclude<Kind, 'forms'>, string> = {
-  profile: '排水縦断図', riser: '給水立面図', suiri: '水理計算書', sleeve: 'スリーブ表', masu: 'ます表', material: '材料表', mitori: '見取図',
+  profile: '排水縦断図', plan: '排水平面図', riser: '給水立面図', suiri: '水理計算書', sleeve: 'スリーブ表', masu: 'ます表', material: '材料表', mitori: '見取図',
 };
 /** 「まとめてPDF」の並び（提出の順: 案内図 → 排水 → 給水 → その他） */
-export const BUNDLE_KINDS: Exclude<Kind, 'forms'>[] = ['mitori', 'profile', 'masu', 'riser', 'suiri', 'sleeve', 'material'];
+export const BUNDLE_KINDS: Exclude<Kind, 'forms'>[] = ['mitori', 'plan', 'profile', 'masu', 'riser', 'suiri', 'sleeve', 'material'];
 
 export const nodeLabelOf = (doc: Doc, nodeId: string): string => {
   const n = doc.network.nodes[nodeId];
@@ -71,6 +72,8 @@ export type ShinseiCtx = {
   suiri: ReturnType<typeof calcSupply> | null;
   /** 見取図: 工事場所の緯度（未設定なら undefined）・作った地図・読み込み中か */
   mapLat?: number; mitori: { build: LocationBuild | null; loading: boolean };
+  /** 表題欄の値（申請地・申請者・指定工事店。drawingTitleValues） */
+  titleValues?: Record<string, string>;
 };
 
 /** 1 種類の図面を作る（竣工の印は stampAsBuiltBuild で押す） */
@@ -79,6 +82,20 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
   const asBuilt = { on: c.asBuiltOn };
   const mapSettings = { lat: c.mapLat };
   if (kind === 'forms') return { sheets: [], svg: '', warnings: [], error: null, kind };
+  const titleValues = c.titleValues;
+  if (kind === 'plan') {
+    // 排水平面図: 桝の番号は縦断図と同じ（下流端を選んでいればその経路の NO.n）
+    let labels: Record<string, string> | undefined;
+    if (outletId) {
+      const r = extractRoute(doc.network, outletId, pick);
+      if (!('error' in r)) labels = isoManholeLabels(buildRouteProfiles(doc, r, profile, PROFILE_TITLE, () => PROFILE_TITLE));
+    }
+    const sheet = renderDrainPlanSheet(doc, profile, { siteName, date, manholeLabels: labels, titleValues });
+    if (!sheet) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
+    const warnings = profileMissing ? [`現場の自治体プロファイル（${profileId}）がこの端末に見つからないため、標準で描いています`] : [];
+    if (!labels) warnings.push('下流端（公共マス）が決まっていないため、マスの番号は種類名で書いています');
+    return { sheets: [sheet], svg: sheetToSvg(sheet), warnings, error: null, kind };
+  }
   if (kind === 'material') {
     // 材料集計表: 管・部品・器具・マスを分け方（屋内外／階／新設既設）の列で
     const sum = materialSummary(doc, matAxis);
@@ -143,13 +160,13 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
     // 枝は本線の基準（公共桝の管底）と桝番号の続きを使う（合流のマスは本線の名前のまま）
     const models: ProfileModel[] = buildRouteProfiles(doc, r, profile, T, (i, at) => `${T}（枝${i + 1}: ${nodeLabelOf(doc, at)} から）`, notes);
     // 沖縄市の様式: 縦断図の上に排水のアイソメ図（立面図・展開図）
-    const iso = profile.profileTable.drainageIsometric ? buildIsometric(doc, 'drain', profile, ab ? { lengthOf: measuredLengthOf(doc) } : {}) : undefined;
+    const iso = profile.profileTable.drainageIsometric ? buildIsometric(doc, 'drain', profile, { ...(ab ? { lengthOf: measuredLengthOf(doc) } : {}), ...(profile.profileTable.manholeText === 'naikeiFuka' ? { manholeLabels: isoManholeLabels(models) } : {}) }) : undefined;
     // 竣工図: 延長を実測にする（図面の長さは一覧に出す）
     const modelLen: Record<string, number> = {};
     for (const m of models) for (const sg of m.segments) if (sg.distance >= 1) modelLen[sg.segId] = sg.distance;
     const unmeasured = new Set<string>();
     const drawn = ab ? models.map((m) => { const x = applyMeasuredToProfile(m, doc); x.unmeasured.forEach((u) => unmeasured.add(u)); return x.model; }) : models;
-    const sheets = drawn.map((m, i) => renderProfileSheet(m, { siteName, date }, i === 0 ? iso : undefined));
+    const sheets = drawn.map((m, i) => renderProfileSheet(m, { siteName, date, titleValues }, i === 0 ? iso : undefined));
     // 注意は描いたモデルから（竣工図では勾配の注意を実測で出し直している）
     const warnings = drawn.flatMap((m) => m.warnings.map((w) => w.message));
     if (iso && iso.lines.length === 0) warnings.push('排水の立面図（展開図）を描く配管がないため、縦断図だけを出しています');
@@ -180,7 +197,7 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
     // アイソメ図（3D を斜めから見た展開図）。沖縄市の様式
     const iso = buildIsometric(doc, 'water', profile, asBuilt.on ? { lengthOf: measuredLengthOf(doc) } : {});
     if (iso.lines.length === 0) return { sheets: [], svg: '', warnings: [], error: '給水の配管がありません。水道メーターを置き、給水の配管をつないでください', kind };
-    const sheet = renderIsoSheet(iso, profile, { siteName, date, title: asBuilt.on ? asBuiltTitle('立面図（展開図）') : '立面図（展開図）' });
+    const sheet = renderIsoSheet(iso, profile, { siteName, date, title: asBuilt.on ? asBuiltTitle('立面図（展開図）') : '立面図（展開図）', titleValues });
     const warnings: string[] = [];
     if (asBuilt.on) {
       const ids = iso.lines.map((l) => l.segId);

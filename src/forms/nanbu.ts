@@ -100,6 +100,7 @@ function kakunin(k: KakuninInfo): ApplicationValues {
 
 export const NANBU_FORMS: FormSet = {
   profileId: 'haebaru',
+  water: 'nanbu',
   fields: NANBU_FIELDS,
   defaults,
   kakunin,

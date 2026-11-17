@@ -28,7 +28,10 @@ const all = (ss: Sheet[]) => ss.flatMap(texts).join('\n');
 
 describe('南部水道企業団の様式セット（南風原町・八重瀬町）', () => {
   test('南風原町・八重瀬町のプロファイルで使う。チェック表は実物の 14 項目', () => {
-    expect(FORM_SETS.haebaru).toBe(NANBU_FORMS);
+    // 南風原町は給水（企業団）の項目に下水道（町）の項目を足した様式。八重瀬町は給水だけ
+    expect(FORM_SETS.haebaru.fields.slice(0, NANBU_FORMS.fields.length)).toEqual(NANBU_FORMS.fields);
+    expect(FORM_SETS.haebaru.sewer).toBe('haebaru');
+    expect(FORM_SETS.yaese.sewer).toBeUndefined();
     expect(FORM_SETS.yaese.fields).toBe(NANBU_FORMS.fields);
     expect(NANBU_FORMS.checklist).toHaveLength(14);
     expect(NANBU_FORMS.checklist[0].label).toBe('給水申請書(表)、臨時給水(裏)');

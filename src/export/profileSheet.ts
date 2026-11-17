@@ -4,13 +4,16 @@
  */
 import type { ProfileModel } from '../model/profileDrawing';
 import type { IsoModel } from '../model/isometric';
+import type { MunicipalityProfile } from '../model/municipality';
 import { drawIsometric } from './isoSheet';
 import { dateJa } from './report';
 import { SCALES } from './drawingPdf';
 import { around, at, later, LabelPlacer, spread1D, textWidth, type Cand, type LabelLine } from './labelLayout';
+import { wrap } from '../road/draw';
 import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, fitText, GRAY, INK, paperSize, sheetToSvg, titleWidth, WARN, type Sheet } from './sheet';
 
-export type SheetMeta = { siteName: string; date: Date };
+/** titleValues: 表題欄の値（申請地・申請者・指定工事店 など。項目名 → 値）。無い項目は空欄 */
+export type SheetMeta = { siteName: string; date: Date; titleValues?: Record<string, string> };
 
 const M = 15; // 枠内の余白
 const LABEL_W = 26; // 表の行ラベルの幅
@@ -37,6 +40,11 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   drawFrame(sheet);
   const unit = pt.unit ?? 'm';
   const above = pt.manholeLabel === 'above';
+  /** 南風原町の書き方: 斜めの引出線に「NO.1小口径桝 内径150深410」、GL は段差だけ (+900)、区間の文字は管の下 */
+  const slanted = above && pt.manholeLeader === 'slanted';
+  const steps = pt.glMarks === 'steps';
+  // 斜めの引出線の様式は、管の下に区間の文字（管種・勾配・長さ）を書く帯（BELOW mm）を空ける
+  const BELOW = 24;
   const left = 10 + M + LABEL_W, right = sheet.width - 10 - M;
   const rows = pt.rows;
   const tableH = ROW_H * rows.length;
@@ -53,15 +61,19 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
     const isoTop = headTop - 4;
     // 縦断図に要る高さ（縦の縮尺どおり）を残して、空きは全部アイソメ図に使う（大きく描けば文字が混まない）。最低でも従来の 45%
     const zs = model.nodes.flatMap((n) => [n.invertLevel, n.groundLevel]);
-    const needH = zs.length ? (Math.max(...zs, 0) - (Math.floor(Math.min(...zs, 0) / 1000) * 1000 - 200)) / pt.vScale + 16 : 30;
+    const needH = zs.length ? (Math.max(...zs, 0) - (Math.floor(Math.min(...zs, 0) / 1000) * 1000 - 200)) / pt.vScale + 16 + (slanted ? BELOW : 0) : 30;
     const isoH = Math.max(30, Math.round((graphBottom - isoTop - (above ? ABOVE_H : 0) - 30) * 0.45), Math.floor(graphBottom - isoTop - (above ? ABOVE_H : 0) - needH - 4));
-    sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: profile.paper.headerFields.length ? headerBottom + 4 : 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
+    if (!pt.title) sheet.ops.push({ t: 'text', x: sheet.width - 10 - M, y: profile.paper.headerFields.length ? headerBottom + 4 : 10 + M + 2, s: '立面図（展開図）NO SCALE', size: 3, anchor: 'end', color: GRAY });
     drawIsometric(sheet, iso!, profile, { x: 10 + M, y: isoTop, w: sheet.width - 20 - 2 * M, h: isoH });
     graphTop = isoTop + isoH + 4 + (above ? ABOVE_H : 0);
   }
 
   // 見出し
-  sheet.ops.push({ t: 'text', x: 10 + M, y: 10 + M + 2, s: model.title, size: 6, bold: true });
+  const title = pt.title ?? model.title;
+  // 右上の受付欄と重ならない大きさ（最小 4）
+  const titleRoom = (profile.paper.headerFields.length ? sheet.width - 10 - profile.paper.headerFields.length * 38 - 3 : sheet.width - 10 - M) - (10 + M);
+  const titleSize = Math.max(4, Math.min(6, titleRoom / Math.max(1, textWidth(title, 1))));
+  sheet.ops.push({ t: 'text', x: 10 + M, y: 10 + M + 2, s: fitText(title, titleSize, titleRoom), size: titleSize, bold: true });
   // 自治体名は見出しの下（右上の受付欄と重ねない）
   sheet.ops.push({ t: 'text', x: 10 + M, y: 10 + M + 6.5, s: `（${profile.name}）`, size: 3, color: GRAY });
 
@@ -78,10 +90,11 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   // 基準線 DL: 最小の管底高を 1m 単位で切り下げ
   const minZ = Math.min(...model.nodes.map((n) => Math.min(n.invertLevel, n.groundLevel)), 0);
   const maxZ = Math.max(...model.nodes.map((n) => Math.max(n.invertLevel, n.groundLevel)), 0);
-  const DL = Math.floor(minZ / 1000) * 1000 - 200;
+  const DL0 = Math.floor(minZ / 1000) * 1000 - 200;
   const availH = graphBottom - graphTop - 10;
   // 縦の縮尺はプロファイルの値。収まらなければ上げる
-  const vS = (maxZ - DL) / vScale > availH ? pickHScale(maxZ - DL, availH, vScale) : vScale;
+  const vS = (maxZ - DL0) / vScale > availH - (slanted ? BELOW : 0) ? pickHScale(maxZ - DL0, availH - (slanted ? BELOW : 0), vScale) : vScale;
+  const DL = slanted ? minZ - BELOW * vS : DL0;
   const Y = (z: number) => graphBottom - (z - DL) / vS;
 
   // 表の列の位置: 点が近すぎて数字が重なるときは、列だけを最小限ずらして引出線でつなぐ（図の位置は実寸のまま）
@@ -106,9 +119,11 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   /** 空いている場所を探して置く文字（区間の管種・勾配、桝名、注記）。線と記号を描き終えてから置く */
   const floats: Cand[][] = [];
 
-  // DL 線とラベル
-  sheet.ops.push({ t: 'line', x1: left, y1: graphBottom, x2: right, y2: graphBottom, color: GRAY });
-  sheet.ops.push({ t: 'text', x: left - 1, y: graphBottom + 1, s: `DL ${fmtLen(DL, unit)}`, size: 2.6, anchor: 'end', color: GRAY });
+  // DL 線とラベル（南風原町の実例には無い）
+  if (!slanted) {
+    sheet.ops.push({ t: 'line', x1: left, y1: graphBottom, x2: right, y2: graphBottom, color: GRAY });
+    sheet.ops.push({ t: 'text', x: left - 1, y: graphBottom + 1, s: `DL ${fmtLen(DL, unit)}`, size: 2.6, anchor: 'end', color: GRAY });
+  }
   const warnSeg = new Set(model.warnings.filter((w) => w.segId).map((w) => w.segId));
   const warnNode = new Set(model.warnings.filter((w) => w.nodeId).map((w) => w.nodeId));
   // 色分け（申請書の指示）: 新設・増設＝赤、既設＝青、公共＝黒。警告は橙
@@ -130,7 +145,24 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   if (model.nodes.length) {
     sheet.ops.push({ t: 'poly', pts: model.nodes.map((n) => [X(n.cumDistance), Y(n.groundLevel)]), w: 0.3, color: INK });
     const leftmost = mirror ? model.nodes[model.nodes.length - 1] : model.nodes[0];
-    sheet.ops.push({ t: 'text', x: X(leftmost.cumDistance) - 4, y: Y(leftmost.groundLevel) - 1, s: `GL${model.tentativeGL ? '（仮）' : ''}`, size: 2.6, anchor: 'end' });
+    // 南風原町: 左端の GL は (±0)（下流端の地盤を基準にした差）。GL の線は左へ少しのばす
+    if (steps && leftmost.glDiff !== undefined) {
+      const lx = X(leftmost.cumDistance), ly = Y(leftmost.groundLevel);
+      sheet.ops.push({ t: 'line', x1: lx - 14, y1: ly, x2: lx, y2: ly, w: 0.3, color: INK });
+      sheet.ops.push({ t: 'text', x: lx - 8, y: ly - 3, s: `(${fmtDiff(leftmost.glDiff)})${model.tentativeGL ? '（仮）' : ''}`, size: 2.6, anchor: 'middle' });
+    } else sheet.ops.push({ t: 'text', x: X(leftmost.cumDistance) - 4, y: Y(leftmost.groundLevel) - 1, s: `GL${model.tentativeGL ? '（仮）' : ''}`, size: 2.6, anchor: 'end' });
+    // GL の段差（隣の点と 50mm 以上違う）: 高い側の点の上に (+900)。区間の文字の後に置く（floats の先頭は区間の順）
+    const stepFloats: Cand[][] = [];
+    if (steps) {
+      for (let i = 0; i + 1 < model.nodes.length; i++) {
+        const a = model.nodes[i], b = model.nodes[i + 1];
+        if (a.glDiff === undefined || b.glDiff === undefined || Math.abs(a.glDiff - b.glDiff) < 50) continue;
+        const hi = a.groundLevel > b.groundLevel ? a : b, lo = hi === a ? b : a;
+        const hx = X(hi.cumDistance), dir = X(lo.cumDistance) > hx ? -1 : 1;
+        const l: LabelLine = { s: `(${fmtDiff(hi.glDiff!)})`, size: 2.6 };
+        stepFloats.push([at(hx + dir * 9, Y(hi.groundLevel) - 1.6, l, 'middle'), at(hx + dir * 16, Y(hi.groundLevel) - 1.6, l, 'middle', 1), ...around(hx, Y(hi.groundLevel) - 2, [l], { gap: 2, prefer: [-90, -60, -120], leaderAlways: true, leaderColor: GRAY }).map(later(10))]);
+      }
+    }
     // 管底線（区間ごと。警告は赤）
     for (let i = 0; i < model.segments.length; i++) {
       const a = model.nodes[i], b = model.nodes[i + 1], s = model.segments[i];
@@ -140,7 +172,15 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
       sheet.ops.push({ t: 'line', x1: X(a.cumDistance), y1: Y(a.invertLevel), x2: X(b.cumDistance), y2: Y(zb), w: 0.6, color: c });
       // 区間の上に 管種口径・勾配（沖縄市の様式では 管種口径／勾配／長さ を 3 行で下に）
       const mx = (X(a.cumDistance) + X(b.cumDistance)) / 2, my = (Y(a.invertLevel) + Y(zb)) / 2;
-      if (above) {
+      if (slanted) {
+        // 南風原町: 管種口径／勾配／長さ を 3 行で管の下に。区間が短ければ横へ出して斜めの引出線
+        const bot = Math.max(Y(a.invertLevel), Y(zb)) + 3;
+        const block: LabelLine[] = [s.pipeSpec, s.slopeText, fmtLen(s.distance, unit, pt.lengthDecimals)].map((t) => ({ s: t, size: 2.6, color: c }));
+        floats.push([
+          { texts: block.map((l, k) => ({ t: 'text' as const, x: mx, y: bot + 6 + 3.5 * k, s: l.s, size: 2.6, anchor: 'middle' as const, color: c })), penalty: 0 },
+          ...around(mx, my, block, { gap: 6, prefer: [90, 60, 120, 30, 150], leaderAlways: true, leaderColor: GRAY }).map(later(10)),
+        ]);
+      } else if (above) {
         // 管種口径／勾配／長さ を 3 行（表に重ならないよう線の上）。桝名とぶつかるときは管の下へ出して引出線
         const top = Math.min(Y(a.groundLevel), Y(b.groundLevel)) - 1.5;
         const block: LabelLine[] = [s.pipeSpec, s.slopeText, fmtLen(s.distance, unit, pt.lengthDecimals)].map((t) => ({ s: t, size: 2.6, color: c }));
@@ -153,9 +193,12 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         floats.push([at(mx, my - 2, l, 'middle'), at(mx, my + 3.8, l, 'middle', 1), ...around(mx, my, [l], { gap: 2, prefer: [-90, 90, -60, -120], leaderAlways: true }).map(later(10))]);
       }
     }
+    floats.push(...stepFloats);
     // 図の上の桝名（縦書き）: 桝が近いときは名前だけ横へずらす
     const mhIdx = model.nodes.map((n, i) => (n.manhole ? i : -1)).filter((i) => i >= 0);
-    const nameXs = spread1D(mhIdx.map((i) => X(model.nodes[i].cumDistance)), 6.6, left - 2, right - 2);
+    const nameXs = spread1D(mhIdx.map((i) => X(model.nodes[i].cumDistance)), slanted ? 9.4 : 6.6, left - 2, right - 2);
+    /** 斜めの引出線の折れる高さ（いちばん高い GL の上） */
+    const slantY = Math.min(...model.nodes.map((n) => Y(n.groundLevel))) - 9;
     const nameX = new Map(mhIdx.map((i, k) => [i, nameXs[k]]));
     // 各点: 縦の引出線、マスの記号
     model.nodes.forEach((n, i) => {
@@ -174,12 +217,27 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         sheet.ops.push({ t: 'rect', x: x - hw, y: Y(n.groundLevel), w: hw * 2, h: Math.max(0.5, Y(n.invertLevel) - Y(n.groundLevel)), stroke: c, fill: '#ffffff', lw: 0.3 });
         // 落差桝: 流入側の管底から流出側の管底へ落ちる線
         if (n.invertIn !== undefined) sheet.ops.push({ t: 'line', x1: x + upSide * hw, y1: Y(n.invertIn), x2: x + upSide * hw, y2: Y(n.invertLevel), w: 0.6, color: c });
-        drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, c);
+        if (!slanted) drawSymbol(sheet, n.manhole.symbol, x, Y(n.groundLevel) - 4, 2.2, c);
         // 深さ: 落差桝は H530-830（流入側-流出側）
         const depthText = n.manhole.depthIn !== undefined ? `H${Math.round(n.manhole.depthIn)}-${Math.round(n.manhole.depth)}` : `H${Math.round(n.manhole.depth)}`;
-        if (above) {
+        if (slanted) {
+          // 「NO.1小口径桝 内径150深410」を 30° の引出線の上に（南風原町）。引出線は GL から上へ、桝が近いときは横へずらしてから斜めに
+          const nx = nameX.get(i) ?? x;
+          const depth = n.manhole.depthIn !== undefined ? `${Math.round(n.manhole.depthIn)}-${Math.round(n.manhole.depth)}` : `${Math.round(n.manhole.depth)}`;
+          const label = pt.manholeText === 'naikeiFuka' ? `${n.manhole.name} 内径${n.manhole.diameter}深${depth}` : `${n.manhole.name} φ${n.manhole.diameter} ${depthText}`;
+          const lead = { color: GRAY, w: 0.15 };
+          if (Math.abs(nx - x) > 0.05) sheet.ops.push({ t: 'line', x1: x, y1: Y(n.groundLevel), x2: x, y2: slantY + 3, ...lead }, { t: 'line', x1: x, y1: slantY + 3, x2: nx, y2: slantY, ...lead });
+          else sheet.ops.push({ t: 'line', x1: x, y1: Y(n.groundLevel), x2: x, y2: slantY, ...lead });
+          const ca = Math.cos(Math.PI / 6), sa = Math.sin(Math.PI / 6);
+          // 長さ: 右の余白と上の余白（ABOVE_H）に入るだけ
+          const room = Math.max(10, Math.min((sheet.width - 11 - nx) / ca, (slantY - (graphTop - ABOVE_H) - 1) / sa) - 1.5);
+          const s1 = fitText(label, 2.4, room);
+          const len = textWidth(s1, 2.4) + 1.5;
+          sheet.ops.push({ t: 'line', x1: nx, y1: slantY, x2: nx + len * ca, y2: slantY - len * sa, ...lead });
+          sheet.ops.push({ t: 'text', x: nx + 0.8 * ca - 0.7 * sa, y: slantY - 0.8 * sa - 0.7 * ca, s: s1, size: 2.4, anchor: 'start', rotate: -30, color: c });
+        } else if (above) {
           // 「NO.1小口径桝 φ150 H410」を縦書きで図の上に、GL の差を (−600) のように
-          const diff = n.glDiff !== undefined ? ` (${fmtDiff(n.glDiff)})` : '';
+          const diff = n.glDiff !== undefined && !steps ? ` (${fmtDiff(n.glDiff)})` : '';
           // 2 列に分けて縦書き（名前 / 径・深さ・GL差）。各列は ABOVE_H−8 に収める
           const nx = nameX.get(i) ?? x, moved = Math.abs(nx - x) > 0.05;
           const by = Y(n.groundLevel) - (moved ? 9.5 : 7);
@@ -240,12 +298,19 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
         placer.block({ x1: x - 2.4, y1: Y(n.groundLevel) - 6.4, x2: x + 2.4, y2: Y(n.groundLevel) - 1.6 });
       }
     });
-    // 図の上に桝名を書く様式では、GL から下（管・桝の帯）には文字を置かない
+    // 図の上に桝名を書く様式では、GL から下（管・桝の帯）には文字を置かない（斜めの引出線の様式は管の下の帯に区間の文字を書く）
     if (above && model.nodes.length) {
       const xs = model.nodes.map((n) => X(n.cumDistance));
-      placer.block({ x1: Math.min(...xs) - 1, y1: Math.min(...model.nodes.map((n) => Y(n.groundLevel))) - 0.2, x2: Math.max(...xs) + 1, y2: graphBottom });
+      const bandBottom = slanted ? Math.max(...model.nodes.map((n) => Y(n.invertLevel))) + 1.5 : graphBottom;
+      placer.block({ x1: Math.min(...xs) - 1, y1: Math.min(...model.nodes.map((n) => Y(n.groundLevel))) - 0.2, x2: Math.max(...xs) + 1, y2: bandBottom });
     }
-    floats.forEach((c, i) => placer.place(c, { ignoreSeg: i < model.segments.length ? `s${i}` : undefined }));
+    // 斜めの引出線（桝名）にかからないように
+    if (slanted) for (const o of sheet.ops) if (o.t === 'line' && o.color === GRAY && o.w === 0.15) placer.blockSeg(o.x1, o.y1, o.x2, o.y2);
+    // 区間の文字は、点の間の広い区間から置く（狭い区間の文字が広い区間の場所を取らないように）
+    const nSeg = model.segments.length;
+    const segW = (i: number) => Math.abs(X(model.nodes[i + 1].cumDistance) - X(model.nodes[i].cumDistance));
+    const order = floats.map((_, i) => i).sort((a, b) => (a < nSeg && b < nSeg ? segW(b) - segW(a) : a - b));
+    for (const i of order) placer.place(floats[i], { ignoreSeg: i < nSeg ? `s${i}` : undefined });
     crowded = placer.collisions > 0;
   }
 
@@ -316,23 +381,54 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
   for (const w of model.warnings) notes.push({ s: `※ ${w.message}`, color: w.kind === 'tentativeGL' ? GRAY : WARN });
   if (profile.unverified.length) notes.push({ s: `要確認: ${profile.unverified.join('、')}（自治体の手引きで確認してください）`, color: GRAY });
   if (crowded) notes.unshift({ s: '※ 点が近く文字が混み合っています。経路を分けるか、用紙・縮尺の設定を見直してください', color: WARN });
-  if (model.datumLabel) notes.unshift({ s: `※ ${model.datumLabel}。単位は ${pt.unit}、管長は m`, color: GRAY });
-  const noteX = 10 + M, noteW = sheet.width - 10 - titleWidth(sheet.width) - 10 - noteX - 5;
+  if (model.datumLabel) notes.unshift({ s: profile.paper.legend === 'box' ? `※ ${model.datumLabel}` : `※ ${model.datumLabel}。単位は ${pt.unit}、管長は m`, color: GRAY });
+  const noteX = 10 + M;
+  const legendX = sheet.width - 10 - titleWidth(sheet.width) - 50;
+  const noteW = profile.paper.legend === 'box' ? legendX - 3 - noteX : sheet.width - 10 - titleWidth(sheet.width) - 10 - noteX - 5;
   const noteY0 = sheet.height - 10 - titleH;
   // 凡例は警告の上に 1 行（件数の上限に数えない）
-  sheet.ops.push({ t: 'text', x: noteX, y: noteY0, s: fitText('凡例: 赤＝新設・増設　青＝既設　黒＝公共下水道　橙＝警告', 2.4, noteW), size: 2.4, color: GRAY });
+  if (profile.paper.legend === 'box') drawLegendBox(sheet, profile, legendX, sheet.height - 10 - 26);
+  else sheet.ops.push({ t: 'text', x: noteX, y: noteY0, s: fitText('凡例: 赤＝新設・増設　青＝既設　黒＝公共下水道　橙＝警告', 2.4, noteW), size: 2.4, color: GRAY });
   const MAX_NOTES = 8;
   const shown = notes.length > MAX_NOTES ? notes.slice(0, MAX_NOTES - 1) : notes;
-  shown.forEach((n, i) => sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * (i + 1), s: fitText(n.s, 2.6, noteW), size: 2.6, color: n.color }));
-  if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * MAX_NOTES, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: WARN });
+  // 箱の凡例の様式は欄が狭いので、注記を折り返す（下の枠まで）
+  let line = 1;
+  for (const n of shown) {
+    const parts = profile.paper.legend === 'box' ? wrap(n.s, 2.4, noteW, 3) : [fitText(n.s, 2.6, noteW)];
+    for (const t of parts) {
+      if (noteY0 + 3.5 * line > sheet.height - 11) break;
+      sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * line++, s: t, size: profile.paper.legend === 'box' ? 2.4 : 2.6, color: n.color });
+    }
+  }
+  if (notes.length > MAX_NOTES) sheet.ops.push({ t: 'text', x: noteX, y: noteY0 + 3.5 * line, s: `他 ${notes.length - shown.length} 件（画面の警告一覧を確認してください）`, size: 2.6, color: WARN });
 
   // アイソメ図の凡例は欄外の「凡例:」の行で足りる（箱の凡例は表や表題欄と重なるので描かない）
   // 表題欄
   const values: Record<string, string> = {
-    '工事名': meta.siteName, '図面名': model.title, '縮尺': `H 1/${hScale} V 1/${vS}`, '作成日': dateJa(meta.date),
+    '工事名': meta.siteName, '図面名': title, '縮尺': `H 1/${hScale} V 1/${vS}`, '作成日': dateJa(meta.date), ...(meta.titleValues ?? {}),
   };
   drawTitleBlock(sheet, profile.paper.titleBlockFields.map((f) => ({ label: f, value: values[f] ?? '' })));
+  // 図の部分（アイソメ図があればその上端から、表の下端まで）
+  const glTop = model.nodes.length ? Math.min(...model.nodes.map((n) => Y(n.groundLevel))) : graphTop;
+  const top = withIso ? headTop - 6 : Math.max(headTop - 6, glTop - (above ? ABOVE_H : 14) - 2);
+  sheet.content = { x: 10, y: top, w: sheet.width - 20, h: tableTop + tableH + 2 - top };
   return sheet;
+}
+
+/**
+ * 箱の凡例（南風原町の実例）: 既設管（青）・新設管（赤）・町下水道管（黒）の線の見本と「※単位はmm 管長はm」。
+ * (x, y) は箱の左上。幅 46mm・高さ 18mm（注記を含む）
+ */
+export function drawLegendBox(sheet: Sheet, profile: MunicipalityProfile, x: number, y: number): void {
+  const items: [string, string][] = [['既設管', profile.colors.existing], ['新設管', profile.colors.newWork], [profile.paper.publicPipeLabel ?? '公共下水道', profile.colors.public]];
+  sheet.ops.push({ t: 'text', x, y: y - 1, s: '凡例', size: 2.4 });
+  sheet.ops.push({ t: 'rect', x, y, w: 40, h: 4 * items.length + 2, lw: 0.3 });
+  items.forEach(([label, color], i) => {
+    const yy = y + 3 + 4 * i;
+    sheet.ops.push({ t: 'line', x1: x + 2, y1: yy, x2: x + 18, y2: yy, color, w: 0.5 });
+    sheet.ops.push({ t: 'text', x: x + 20, y: yy + 0.9, s: label, size: 2.4 });
+  });
+  sheet.ops.push({ t: 'text', x, y: y + 4 * items.length + 5.5, s: '※単位はmm　管長はm', size: 2.4 });
 }
 
 export const renderProfileSvg = (model: ProfileModel, meta: SheetMeta, iso?: IsoModel): string => sheetToSvg(renderProfileSheet(model, meta, iso));
