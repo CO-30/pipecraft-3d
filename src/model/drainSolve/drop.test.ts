@@ -6,11 +6,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Doc } from '../doc';
-import { placeFixture, portNodes } from '../fixtures';
+import { groundZAt, placeFixture, portNodes } from '../fixtures';
 import { addPolyline, type SegmentAttrs } from '../network';
 import { BUILTIN_PROFILES } from '../municipality';
 import { resolveDrainRules } from '../drainRules';
 import { solveHeights } from './heights';
+import { outerDiameter } from '../slope';
 import { testSite } from './testSite';
 
 const NAHA = resolveDrainRules(BUILTIN_PROFILES.find((p) => p.id === 'naha')!);
@@ -86,6 +87,25 @@ describe('上流から決める・公共ますの手前でドロップ', () => {
     expect(solveHeights(out.doc, NAHA).doc).toBe(out.doc);
   });
 
+  it('先に決めた経路が公共ますへ急でなく着いた後に、別の経路が急に直接入る: 公共ますの落差を足さず、その管だけマスの外で L で落とす（先の経路の高さは変えない）', () => {
+    const { doc, pub } = testSite(-900);
+    const P0 = doc.network.nodes[pub].pos;
+    // 遠い方（10m・−600 → 公共 −900: 3/100 で急ではない）、近い方（2m・−300 → 急）
+    const r1 = addPolyline(doc.network, [P0, v(-700, 3000, -600)], S, { startNodeId: pub });
+    const r2 = addPolyline(r1.net, [P0, v(-10700, 5000, -300)], S, { startNodeId: pub });
+    const pinB = (n: typeof r2.net, id: string) => ({ ...n, nodes: { ...n.nodes, [id]: { ...n.nodes[id], zPin: true } } });
+    const net = pinB(pinB(r2.net, r1.nodeIds[1]), r2.nodeIds[1]);
+    const out = solveHeights({ ...doc, network: net }, NAHA);
+    // 公共ますに落差は付けない。遠い方は公共ますへそのまま割り振った勾配
+    expect(out.doc.network.nodes[pub].dropIn ?? 0).toBe(0);
+    expect(-900 + out.segSlopes[r1.segmentIds[0]] * 10000).toBeCloseTo(-600, 0);
+    // 近い方は標準の勾配で行き、マスの外で落とす（管ごとのドロップ）
+    expect(out.segSlopes[r2.segmentIds[0]]).toBeCloseTo(DEF, 6);
+    const drop = out.doc.network.segments[r2.segmentIds[0]].dropEnd!;
+    expect(-900 + drop + DEF * 2000).toBeCloseTo(-300, 0);
+    expect(solveHeights(out.doc, NAHA).doc).toBe(out.doc);
+  });
+
   it('公共ますが浅くて下りにならないときは、出口を固定せず下流から決める（上り勾配にしない）', () => {
     const h = house(-800);
     const out = solveHeights(h.doc, NAHA);
@@ -101,5 +121,55 @@ describe('上流から決める・公共ますの手前でドロップ', () => {
     const out = solveHeights({ ...doc, network: net }, NAHA);
     expect(out.segSlopes[r.segmentIds[0]]).toBeCloseTo(DEF, 6);
     expect(out.doc.network.nodes[pub].dropIn).toBeCloseTo(-600 - 10000 * DEF + 2500, 0);
+  });
+});
+
+describe('地面が途中で下がる敷地: 管が地面から出ないよう、下がる所の手前のマスで落とす（2026-11-18 実物の図面 土被り −341mm）', () => {
+  /** M1（x=−700）は GL±0、M2（x=−5700）・公共ます は GL−900（CB の段差で下がる） */
+  const ground = [{ x: 0, y: 3000, gl: 0 }, { x: -700, y: 3000, gl: 0 }, { x: -5700, y: 3000, gl: -900 }, { x: -10700, y: 3000, gl: -900 }];
+  const coverOk = (d: Doc, id: string, fid: string) => {
+    const n = d.network.nodes[id];
+    const g = groundZAt(d.building, d.site, n.pos);
+    // マスへ入る管（落差があれば流入側）の上に土かぶり
+    expect(d.fixtures[fid]).toBeTruthy();
+    return g - (n.pos.z + (n.dropIn ?? 0) + outerDiameter(100)) - NAHA.cover >= -0.5;
+  };
+  it('公共ますが深い（急すぎる）とき: 標準の勾配のまま、地面が下がる手前のマス（M1）でも落として、M2 へ入る管にも土かぶり', () => {
+    const h = house(-2800);
+    const doc = { ...h.doc, site: { ...h.doc.site, groundPoints: ground } };
+    const out = solveHeights(doc, NAHA);
+    expect(coverOk(out.doc, h.M2, h.m2)).toBe(true);
+    expect(coverOk(out.doc, h.M1, h.m1)).toBe(true);
+    expect(out.doc.network.nodes[h.M1].dropIn ?? 0).toBeGreaterThan(NAHA.drop);
+    // 床下から出る所は KSA の高さのまま・公共ますの管底も変えない
+    expect(z(out.doc, h.X)).toBe(KSA_Z);
+    expect(z(out.doc, h.pub)).toBe(-2800);
+  });
+  it('公共ますが無い系統（根は下流端のマス）: 根を地面に合わせて深くし、途中のマスへ入る管にも土かぶり', () => {
+    const h = house(-2800);
+    // 公共ますを外し、M2 の先（x=−6200、GL−900）に下流端のマスを置く
+    const pubFx = h.doc.network.nodes[h.pub].fixtureId!;
+    const fixtures = { ...h.doc.fixtures };
+    delete fixtures[pubFx];
+    const nodes = { ...h.doc.network.nodes, [h.pub]: { ...h.doc.network.nodes[h.pub], fixtureId: undefined, portId: undefined } };
+    let doc: Doc = { ...h.doc, fixtures, network: { ...h.doc.network, nodes }, site: { ...h.doc.site, groundPoints: ground } };
+    // 置いたときの管底は M2 と同じ（手で入れた値ではない。invertPin なし）
+    const down = placeFixture(doc, doc.building.floors[0].id, 'manholeSewage', { x: -6200, y: 3000 }, 0, { invertZ: doc.network.nodes[h.M2].pos.z });
+    doc = down.doc;
+    const D = portNodes(doc.network, down.fixtureId!)[0].id;
+    doc = { ...doc, fixtures: { ...doc.fixtures, [down.fixtureId!]: { ...doc.fixtures[down.fixtureId!], params: { ...doc.fixtures[down.fixtureId!].params, downstream: true } } } };
+    // 公共ますだった点の代わりに、M2 → 下流端 の管（公共ますへの管は消す）
+    const seg = Object.values(doc.network.segments).find((s) => s.a === h.pub || s.b === h.pub)!;
+    const segments = { ...doc.network.segments };
+    delete segments[seg.id];
+    const nodes2 = { ...doc.network.nodes };
+    delete nodes2[h.pub];
+    doc = { ...doc, network: addPolyline({ nodes: nodes2, segments }, [doc.network.nodes[h.M2].pos, doc.network.nodes[D].pos], S, { startNodeId: h.M2, endNodeId: D }).net };
+    const out = solveHeights(doc, NAHA);
+    expect(out.trees[0].root).toBe(D);
+    for (const [id, fid] of [[h.M1, h.m1], [h.M2, h.m2], [D, down.fixtureId!]] as const) {
+      expect(coverOk(out.doc, id, fid)).toBe(true);
+    }
+    expect(z(out.doc, h.X)).toBe(KSA_Z);
   });
 });

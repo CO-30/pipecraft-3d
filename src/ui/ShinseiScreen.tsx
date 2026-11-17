@@ -8,7 +8,7 @@ import { useStore } from '../state/store';
 import { FIXTURE_CATALOG, isManhole, MANHOLE_TYPES } from '../model/fixtures';
 import { isDrain } from '../model/slope';
 import { isBuiltinProfile, resolveProfile, type MunicipalityProfile } from '../model/municipality';
-import { branchPoints } from '../model/profileDrawing';
+import { branchPoints, manholeNodes } from '../model/profileDrawing';
 import { defaultRiserRoot } from '../model/riser';
 import { sheetsToSvg } from '../export/sheet';
 import { useProfiles } from './useProfiles';
@@ -113,7 +113,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
     for (const [k, v] of Object.entries(choice)) if (v && v !== ALL) out[k] = v;
     return out;
   }, [choice]);
-  const branches = useMemo(() => (outletId ? branchPoints(doc.network, outletId, pick) : []), [doc, outletId, pick]);
+  const branches = useMemo(() => (outletId ? branchPoints(doc.network, outletId, pick, manholeNodes(doc)) : []), [doc, outletId, pick]);
   const siteName = meta?.name ?? '現場';
 
   // 水理計算（給水の口径決定）。設定は site.application の suiri.*

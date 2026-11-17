@@ -26,6 +26,16 @@ describe('配置図（siteRead）', () => {
     expect(r.levels.map((l) => l.gl).sort((a, b) => a - b)).toEqual([-950, -500, 0, 300]);
     expect(r.bm).toBe(550);
   });
+  it('「下水引込へ」の文字の位置を読む（公共ますの記号が無いときの下流端の手がかり）。無ければ持たない', () => {
+    expect(readSite(siteSheet()).sewerOut).toBeUndefined();
+    const page = siteSheet();
+    page.texts.push({ x: 12, y: 34, h: 2, s: '下水引込へ' });
+    expect(readSite(page).sewerOut).toEqual({ x: 12, y: 34 });
+    // 「下水道」「雨水引込」などは手がかりにしない
+    const other = siteSheet();
+    other.texts.push({ x: 1, y: 2, h: 2, s: '下水道' }, { x: 3, y: 4, h: 2, s: '雨水引込' });
+    expect(readSite(other).sewerOut).toBeUndefined();
+  });
   it('通り芯が無くても、外壁と線の重なりで平面図の位置に合わせる', () => {
     const page = siteSheet();
     const t = alignSite(page, k, ref)!;

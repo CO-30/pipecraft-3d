@@ -1,0 +1,66 @@
+# E2E（fix/auto-connect-shinsei-errors、2026-11-18）
+npx playwright test e2e/autoconnect e2e/shinsei e2e/masu e2e/planauto e2e/estimateIssues e2e/underfloor e2e/nanbu（PC / iPhone / Android エミュレーション）
+- [1/63] [pc-chrome] › e2e/autoconnect.spec.ts:16:1 › 1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 1 回で戻る
+- [2/63] [pc-chrome] › e2e/autoconnect.spec.ts:42:1 › 給水・給湯はヘッダー工法で、排水は VU（2026-11-14 の初期設定）。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る
+- [3/63] [pc-chrome] › e2e/autoconnect.spec.ts:69:1 › ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ
+- [4/63] [pc-chrome] › e2e/estimateIssues.spec.ts:14:3 › 積算の要確認 › 単価の未登録はまとめて 1 枚。「単価へ」で単価タブ、「一覧」で 1 件ずつ
+- [5/63] [pc-chrome] › e2e/masu.spec.ts:24:1 › ます表: 縦断図と同じ番号・高さ・次のますまでの延長 → PDF
+- [6/63] [pc-chrome] › e2e/nanbu.spec.ts:31:3 › 南部水道企業団の給水申請 › 確認申請書から入れる → 穿孔時の確認 → 給水申請書類一式 (PDF)
+- [7/63] [pc-chrome] › e2e/planauto.spec.ts:94:3 › 図面から自動で3Dにする › 平面図・基礎伏図・立面図の PDF を選ぶと、壁・開口部・基礎の入った建物ができ、平面図が下に敷かれる
+- [8/63] [pc-chrome] › e2e/planauto.spec.ts:161:3 › 図面から自動で3Dにする › 器具の候補を確認して置き、真下に配管を落とし、排水を外の桝までつなぐ。取り消しで戻せる
+- [9/63] [pc-chrome] › e2e/planauto.spec.ts:229:3 › 図面から自動で3Dにする › 配置図も選ぶと、家の外形で位置を合わせて ます・水道メーター・敷地の高さが入る
+- [10/63] [pc-chrome] › e2e/planauto.spec.ts:251:3 › 図面から自動で3Dにする › 平面図だけでも作れる。足りない図面は「確かめてほしいこと」に出る
+- [11/63] [pc-chrome] › e2e/planauto.spec.ts:263:3 › 図面から自動で3Dにする › 平面図が無いときは、工事を作らずに分かる文で知らせる。選んだ図面は残り、足して作り直せる
+- [12/63] [pc-chrome] › e2e/shinsei.spec.ts:19:3 › 申請図面 › サンプル工事 → 縦断図（公共マスが先頭・警告なし）→ PDF、立面図 → PDF、設計GL 未入力で「仮」
+- [13/63] [pc-chrome] › e2e/shinsei.spec.ts:65:3 › 申請図面 › 排水区間の設計勾配を 1/50 に → 表示が 1/50 で固定、マスのパネルに管底高・深さ
+- [14/63] [pc-chrome] › e2e/shinsei.spec.ts:106:3 › 申請図面 › 自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る
+- [15/63] [pc-chrome] › e2e/shinsei.spec.ts:188:3 › 申請図面 › 新しい工事の住所の市町村から、申請書類と決まりの自治体を選ぶ。無ければ標準と知らせる
+- [16/63] [pc-chrome] › e2e/shinsei.spec.ts:205:3 › 申請図面 › 後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける
+- [17/63] [pc-chrome] › e2e/shinsei.spec.ts:235:3 › 申請図面: まとめてPDF › サンプル工事: 一覧で作れる図面が分かり、1 押しで「申請図面一式」の PDF
+- [18/63] [pc-chrome] › e2e/underfloor.spec.ts:7:1 › 床下: 接続口は給水=青・給湯=赤・排水=茶。床下を選んで洗面台の給水から描くと床下へ下ろして PB、外へ出ると HIVP に替わる
+- [19/63] [pc-chrome] › e2e/underfloor.spec.ts:59:1 › 床下: 給水ヘッダーを床下に置ける（出口が床から −300）。パネルで床上に戻せる
+- [20/63] [pc-chrome] › e2e/underfloor.spec.ts:81:1 › 床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。きつい所だけエルボ
+- [21/63] [pc-chrome] › e2e/underfloor.spec.ts:112:1 › 床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配が自動でつき、レベルバンドで支持する
+- [22/63] [mobile-iphone-emu] › e2e/autoconnect.spec.ts:16:1 › 1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 1 回で戻る
+- [23/63] [mobile-iphone-emu] › e2e/autoconnect.spec.ts:42:1 › 給水・給湯はヘッダー工法で、排水は VU（2026-11-14 の初期設定）。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る
+- [24/63] [mobile-iphone-emu] › e2e/autoconnect.spec.ts:69:1 › ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ
+- [25/63] [mobile-iphone-emu] › e2e/estimateIssues.spec.ts:14:3 › 積算の要確認 › 単価の未登録はまとめて 1 枚。「単価へ」で単価タブ、「一覧」で 1 件ずつ
+- [26/63] [mobile-iphone-emu] › e2e/masu.spec.ts:24:1 › ます表: 縦断図と同じ番号・高さ・次のますまでの延長 → PDF
+- [27/63] [mobile-iphone-emu] › e2e/nanbu.spec.ts:31:3 › 南部水道企業団の給水申請 › 確認申請書から入れる → 穿孔時の確認 → 給水申請書類一式 (PDF)
+- [28/63] [mobile-iphone-emu] › e2e/planauto.spec.ts:94:3 › 図面から自動で3Dにする › 平面図・基礎伏図・立面図の PDF を選ぶと、壁・開口部・基礎の入った建物ができ、平面図が下に敷かれる
+- [29/63] [mobile-iphone-emu] › e2e/planauto.spec.ts:161:3 › 図面から自動で3Dにする › 器具の候補を確認して置き、真下に配管を落とし、排水を外の桝までつなぐ。取り消しで戻せる
+- [30/63] [mobile-iphone-emu] › e2e/planauto.spec.ts:229:3 › 図面から自動で3Dにする › 配置図も選ぶと、家の外形で位置を合わせて ます・水道メーター・敷地の高さが入る
+- [31/63] [mobile-iphone-emu] › e2e/planauto.spec.ts:251:3 › 図面から自動で3Dにする › 平面図だけでも作れる。足りない図面は「確かめてほしいこと」に出る
+- [32/63] [mobile-iphone-emu] › e2e/planauto.spec.ts:263:3 › 図面から自動で3Dにする › 平面図が無いときは、工事を作らずに分かる文で知らせる。選んだ図面は残り、足して作り直せる
+- [33/63] [mobile-iphone-emu] › e2e/shinsei.spec.ts:19:3 › 申請図面 › サンプル工事 → 縦断図（公共マスが先頭・警告なし）→ PDF、立面図 → PDF、設計GL 未入力で「仮」
+- [34/63] [mobile-iphone-emu] › e2e/shinsei.spec.ts:65:3 › 申請図面 › 排水区間の設計勾配を 1/50 に → 表示が 1/50 で固定、マスのパネルに管底高・深さ
+- [35/63] [mobile-iphone-emu] › e2e/shinsei.spec.ts:106:3 › 申請図面 › 自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る
+- [36/63] [mobile-iphone-emu] › e2e/shinsei.spec.ts:188:3 › 申請図面 › 新しい工事の住所の市町村から、申請書類と決まりの自治体を選ぶ。無ければ標準と知らせる
+- [37/63] [mobile-iphone-emu] › e2e/shinsei.spec.ts:205:3 › 申請図面 › 後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける
+- [38/63] [mobile-iphone-emu] › e2e/shinsei.spec.ts:235:3 › 申請図面: まとめてPDF › サンプル工事: 一覧で作れる図面が分かり、1 押しで「申請図面一式」の PDF
+- [39/63] [mobile-iphone-emu] › e2e/underfloor.spec.ts:7:1 › 床下: 接続口は給水=青・給湯=赤・排水=茶。床下を選んで洗面台の給水から描くと床下へ下ろして PB、外へ出ると HIVP に替わる
+- [40/63] [mobile-iphone-emu] › e2e/underfloor.spec.ts:59:1 › 床下: 給水ヘッダーを床下に置ける（出口が床から −300）。パネルで床上に戻せる
+- [41/63] [mobile-iphone-emu] › e2e/underfloor.spec.ts:81:1 › 床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。きつい所だけエルボ
+- [42/63] [mobile-iphone-emu] › e2e/underfloor.spec.ts:112:1 › 床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配が自動でつき、レベルバンドで支持する
+- [43/63] [mobile-android-emu] › e2e/autoconnect.spec.ts:16:1 › 1 回で汚水・給水・給湯・止水栓・通気弁 → 元に戻す 1 回で戻る
+- [44/63] [mobile-android-emu] › e2e/autoconnect.spec.ts:42:1 › 給水・給湯はヘッダー工法で、排水は VU（2026-11-14 の初期設定）。基礎貫通スリーブ・コーキング・ベンリカンが積算に入る
+- [45/63] [mobile-android-emu] › e2e/autoconnect.spec.ts:69:1 › ヘッダーの質問カード: やさしい言葉で理由と選択肢 →「置く」でヘッダーを置いてつなぐ
+- [46/63] [mobile-android-emu] › e2e/estimateIssues.spec.ts:14:3 › 積算の要確認 › 単価の未登録はまとめて 1 枚。「単価へ」で単価タブ、「一覧」で 1 件ずつ
+- [47/63] [mobile-android-emu] › e2e/masu.spec.ts:24:1 › ます表: 縦断図と同じ番号・高さ・次のますまでの延長 → PDF
+- [48/63] [mobile-android-emu] › e2e/nanbu.spec.ts:31:3 › 南部水道企業団の給水申請 › 確認申請書から入れる → 穿孔時の確認 → 給水申請書類一式 (PDF)
+- [49/63] [mobile-android-emu] › e2e/planauto.spec.ts:94:3 › 図面から自動で3Dにする › 平面図・基礎伏図・立面図の PDF を選ぶと、壁・開口部・基礎の入った建物ができ、平面図が下に敷かれる
+- [50/63] [mobile-android-emu] › e2e/planauto.spec.ts:161:3 › 図面から自動で3Dにする › 器具の候補を確認して置き、真下に配管を落とし、排水を外の桝までつなぐ。取り消しで戻せる
+- [51/63] [mobile-android-emu] › e2e/planauto.spec.ts:229:3 › 図面から自動で3Dにする › 配置図も選ぶと、家の外形で位置を合わせて ます・水道メーター・敷地の高さが入る
+- [52/63] [mobile-android-emu] › e2e/planauto.spec.ts:251:3 › 図面から自動で3Dにする › 平面図だけでも作れる。足りない図面は「確かめてほしいこと」に出る
+- [53/63] [mobile-android-emu] › e2e/planauto.spec.ts:263:3 › 図面から自動で3Dにする › 平面図が無いときは、工事を作らずに分かる文で知らせる。選んだ図面は残り、足して作り直せる
+- [54/63] [mobile-android-emu] › e2e/shinsei.spec.ts:19:3 › 申請図面 › サンプル工事 → 縦断図（公共マスが先頭・警告なし）→ PDF、立面図 → PDF、設計GL 未入力で「仮」
+- [55/63] [mobile-android-emu] › e2e/shinsei.spec.ts:65:3 › 申請図面 › 排水区間の設計勾配を 1/50 に → 表示が 1/50 で固定、マスのパネルに管底高・深さ
+- [56/63] [mobile-android-emu] › e2e/shinsei.spec.ts:106:3 › 申請図面 › 自治体プロファイルを複製 → 一覧 2 件 → 現場の選択肢に出る
+- [57/63] [mobile-android-emu] › e2e/shinsei.spec.ts:188:3 › 申請図面 › 新しい工事の住所の市町村から、申請書類と決まりの自治体を選ぶ。無ければ標準と知らせる
+- [58/63] [mobile-android-emu] › e2e/shinsei.spec.ts:205:3 › 申請図面 › 後方互換: site・マスの無い旧データを読み込んでも申請図面が開ける
+- [59/63] [mobile-android-emu] › e2e/shinsei.spec.ts:235:3 › 申請図面: まとめてPDF › サンプル工事: 一覧で作れる図面が分かり、1 押しで「申請図面一式」の PDF
+- [60/63] [mobile-android-emu] › e2e/underfloor.spec.ts:7:1 › 床下: 接続口は給水=青・給湯=赤・排水=茶。床下を選んで洗面台の給水から描くと床下へ下ろして PB、外へ出ると HIVP に替わる
+- [61/63] [mobile-android-emu] › e2e/underfloor.spec.ts:59:1 › 床下: 給水ヘッダーを床下に置ける（出口が床から −300）。パネルで床上に戻せる
+- [62/63] [mobile-android-emu] › e2e/underfloor.spec.ts:81:1 › 床下: PB の曲がりは継手なしの曲線で描く（2D・3D）。きつい所だけエルボ
+- [63/63] [mobile-android-emu] › e2e/underfloor.spec.ts:112:1 › 床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配が自動でつき、レベルバンドで支持する
+  63 passed (4.6m)

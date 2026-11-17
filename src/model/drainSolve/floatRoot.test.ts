@@ -15,6 +15,7 @@ import { BUILTIN_PROFILES } from '../municipality';
 import { kisoSleeveItems } from '../kisoSleeve';
 import { computeEstimate } from '../estimate';
 import type { Doc } from '../doc';
+import { actualSlope } from '../slope';
 
 const STD = resolveDrainRules(BUILTIN_PROFILES.find((p) => p.id === 'standard')!);
 
@@ -37,16 +38,37 @@ describe('公共ますが無いとき、配置図のマスの深さに KSA を�
     expect(computeEstimate(d).issues.filter((i) => i.kind === 'sleeve' || i.kind === 'confirmFitting').map((i) => i.message)).toEqual([]);
   });
 
-  test('マスの管底は上流から標準の勾配で決まる（既定の GL−600 より浅くなる）', () => {
+  test('マスの管底は上流から標準の勾配で決まる（既定の GL−600 に引っぱられない）', () => {
+    // 公共ますが無くても外のマスは下流端のマスへつなぐ（2026-11-18）。上流のマスは既定の GL−600 より浅く、
+    // 下流端のマスは上流から標準の勾配で下った深さ（既定の値そのものではない）
     const d = solveDrain(houseWithSiteManholes(), STD).doc;
-    const holes = Object.values(d.fixtures).filter((f) => f.type === 'manholeSewage');
-    expect(holes.length).toBeGreaterThan(0);
-    for (const f of holes) expect(f.params?.invertZ ?? -9999).toBeGreaterThan(-611 - 600);
+    const holes = Object.values(d.fixtures).filter((f) => f.type === 'manholeSewage' && !f.params?.auto);
+    expect(holes.length).toBe(3);
+    const down = holes.filter((f) => f.params?.downstream);
+    expect(down).toHaveLength(1);
+    for (const f of holes.filter((x) => !x.params?.downstream)) expect(f.params?.invertZ ?? -9999).toBeGreaterThan(-611 - 600);
+    expect(down[0].params?.invertZ).not.toBe(-611 - 600);
+    for (const f of holes) expect(f.params?.invertZ ?? 0).toBeGreaterThanOrEqual(down[0].params!.invertZ!);
+    // 下流端が深くなりすぎない: マスどうしの管は標準の勾配から急すぎない勾配（下流端を必要以上に深くしていない）
+    const isMh = (id: string) => { const f = d.network.nodes[id].fixtureId; return !!f && d.fixtures[f].type === 'manholeSewage'; };
+    const yard = Object.values(d.network.segments).filter((sg) => isMh(sg.a) && isMh(sg.b));
+    expect(yard.length).toBeGreaterThan(0);
+    for (const sg of yard) {
+      const sl = actualSlope(d.network, sg)!;
+      expect(sl).toBeGreaterThanOrEqual(STD.defaultSlope(sg.diameter) - 1e-3);
+      expect(sl).toBeLessThanOrEqual(Math.max(2 * STD.defaultSlope(sg.diameter), 0.02) + 1e-3);
+    }
   });
 
   test('手で管底を入れたマス（ピン）は今までどおりその深さ', () => {
     const d = solveDrain(houseWithSiteManholes(-1300), STD).doc;
-    for (const f of Object.values(d.fixtures).filter((x) => x.type === 'manholeSewage')) expect(f.params?.invertZ).toBe(-1300);
+    // 自動で置いた曲がりのマス（auto）は手で入れていないので除く
+    for (const f of Object.values(d.fixtures).filter((x) => x.type === 'manholeSewage' && !x.params?.auto)) expect(f.params?.invertZ).toBe(-1300);
+    // 曲がりのマス（自動）は手で入れたことにしない。深さはつながるマスと同じくらい
+    for (const f of Object.values(d.fixtures).filter((x) => x.params?.auto)) {
+      expect(f.params?.invertPin).toBeFalsy();
+      expect(Math.abs((f.params?.invertZ ?? 0) - -1300)).toBeLessThan(100);
+    }
   });
 });
 

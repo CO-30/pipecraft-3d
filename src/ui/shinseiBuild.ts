@@ -4,7 +4,7 @@
 import { useStore } from '../state/store';
 import { FIXTURE_CATALOG } from '../model/fixtures';
 import type { MunicipalityProfile } from '../model/municipality';
-import { buildRouteProfiles, extractRoute, type ProfileModel } from '../model/profileDrawing';
+import { buildRouteProfiles, extractRoute, manholeNodes, type ProfileModel } from '../model/profileDrawing';
 import { buildRiser, type RiserModel } from '../model/riser';
 import { renderProfileSheet } from '../export/profileSheet';
 import { renderRiserSheet } from '../export/riserSheet';
@@ -87,7 +87,7 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
     // 排水平面図: 桝の番号は縦断図と同じ（下流端を選んでいればその経路の NO.n）
     let labels: Record<string, string> | undefined;
     if (outletId) {
-      const r = extractRoute(doc.network, outletId, pick);
+      const r = extractRoute(doc.network, outletId, pick, manholeNodes(doc));
       if (!('error' in r)) labels = isoManholeLabels(buildRouteProfiles(doc, r, profile, PROFILE_TITLE, () => PROFILE_TITLE));
     }
     const sheet = renderDrainPlanSheet(doc, profile, { siteName, date, manholeLabels: labels, titleValues });
@@ -131,7 +131,7 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
   if (kind === 'masu') {
     // ます表: 縦断図と同じモデルから（番号・高さの基準が縦断図と一致する。竣工図なら実測の延長・勾配）
     if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
-    const r = extractRoute(doc.network, outletId, pick);
+    const r = extractRoute(doc.network, outletId, pick, manholeNodes(doc));
     if ('error' in r) return { sheets: [], svg: '', warnings: [], error: r.error, kind };
     const ab = asBuilt.on;
     const models0 = buildRouteProfiles(doc, r, profile, PROFILE_TITLE, () => PROFILE_TITLE);
@@ -150,7 +150,7 @@ export function buildShinsei(kind: Kind, c: ShinseiCtx): ShinseiBuild {
   }
   if (kind === 'profile') {
     if (!outletId) return { sheets: [], svg: '', warnings: [], error: '排水の配管がありません。図面でマスを置き、排水の配管をつないでください', kind };
-    const r = extractRoute(doc.network, outletId, pick);
+    const r = extractRoute(doc.network, outletId, pick, manholeNodes(doc));
     if ('error' in r) return { sheets: [], svg: '', warnings: [], error: r.error, kind };
     // 分岐の枝は別図。本線の分岐点に「→別図 枝n」と記す
     const notes: Record<string, string> = {};

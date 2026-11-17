@@ -13,6 +13,7 @@ import { closestPoints } from './clash';
 import { routeSupplies, type HeaderMode } from './supplyRoute';
 import { headerQuestion, type Question } from './question';
 import { makeYardRouter } from './yardRoute';
+import { markDownstream, pickOutletManhole } from './drainOutlet';
 
 /** 汚水の系統のマス（雨水は別の系統なのでつながない） */
 const SEWAGE_MANHOLES = new Set<FixtureType>(['manholeSewage', 'manholeInvert', 'manholeTrap']);
@@ -42,18 +43,31 @@ function drainComponents(net: Network): Map<string, number> {
 }
 
 
-export type YardResult = { doc: Doc; connected: number; pipes: number; notes: string[] };
+/** to: つないだ先（公共ます・公共ますが無いので決めた下流端のマス） */
+export type YardResult = { doc: Doc; connected: number; pipes: number; notes: string[]; to?: 'public' | 'downstream' };
 
 /**
  * 屋外: 公共汚水マスにつながっていない汚水マス（のまとまり）を、つながっている所の一番近いものへ、
  * 直線・L 字・建物の周りを回る道（縦横）で建物の外を通してつなぐ。何度呼んでも増えない。
+ * 公共汚水マスが無ければ、下流端のマス（下水の引込側。drainOutlet）を決めて印を付け、そこへつなぐ（2026-11-18 実物の図面）。
+ * 下流端の印のあるまとまりは、その下流端のマスから公共ますへつなぐ（途中のマスからつながない。下流端は「下水引込へ」の側なので、
+ * 途中のマスから公共ますへつなぐと、つないだマスより下流の管が逆向きに流れる形になる）
  */
-export function connectYard(doc: Doc): YardResult {
-  const pubs = Object.values(doc.fixtures).filter((f) => f.type === 'publicSewage');
-  const holes = Object.values(doc.fixtures).filter((f) => SEWAGE_MANHOLES.has(f.type));
+export function connectYard(doc0: Doc): YardResult {
+  let doc = doc0;
+  let pubs = Object.values(doc.fixtures).filter((f) => f.type === 'publicSewage');
+  let holes = Object.values(doc.fixtures).filter((f) => SEWAGE_MANHOLES.has(f.type));
   if (!holes.length) return { doc, connected: 0, pipes: 0, notes: [] };
-  if (!pubs.length) return { doc, connected: 0, pipes: 0, notes: ['公共汚水マスが無いので、外のマスどうしはつないでいません（器具の「マス（排水）」から公共汚水マスを置いてください）'] };
   const notes: string[] = [];
+  const to = pubs.length ? 'public' as const : 'downstream' as const;
+  if (!pubs.length) {
+    // マスが 1 つだけならつなぐ物が無い（印も付けない）。公共ますを置くことだけ知らせる
+    if (holes.length < 2) return { doc, connected: 0, pipes: 0, notes: ['公共汚水マスが無いので、外のマスは公共ますへつないでいません（器具の「マス（排水）」から公共汚水マスを置いてください）'], to };
+    const out = pickOutletManhole(doc, holes)!;
+    doc = markDownstream(doc, out.id);
+    pubs = [doc.fixtures[out.id]];
+    holes = holes.filter((f) => f.id !== out.id);
+  }
   const route = makeYardRouter(doc);
   let net = doc.network;
   const portOf = (fid: string) => portNodes(net, fid)[0];
@@ -69,7 +83,10 @@ export function connectYard(doc: Doc): YardResult {
     const loose = ports.filter((p) => !pubComps.has(comp.get(p.id)!) && !rainComps.has(comp.get(p.id)!));
     if (!loose.length) break;
     let best: { from: string; to: string; pts: Vec3[]; len: number } | null = null;
-    for (const u of loose) for (const c of linked) {
+    // 下流端の印のあるまとまりは、下流端のマスからだけ出す
+    const downComp = new Map(holes.filter((f) => f.params?.downstream).map((f) => portOf(f.id)).filter(Boolean).map((p) => [comp.get(p.id)!, p.id] as const));
+    const from = loose.filter((p) => !downComp.has(comp.get(p.id)!) || downComp.get(comp.get(p.id)!) === p.id);
+    for (const u of from) for (const c of linked) {
       if (bad.has(`${u.id}|${c.id}`)) continue;
       if (Math.hypot(u.pos.x - c.pos.x, u.pos.y - c.pos.y) < 1) { bad.add(`${u.id}|${c.id}`); continue; }
       const pts = route(u.pos, c.pos);
@@ -77,7 +94,7 @@ export function connectYard(doc: Doc): YardResult {
       const len = pts.reduce((a, p, i) => (i ? a + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
       if (!best || len < best.len - 1) best = { from: u.id, to: c.id, pts, len };
     }
-    if (!best) { notes.push(`外の汚水マス ${loose.length} 個は、建物を避けて公共マスへつなぐ道が見つかりませんでした（配管の道具でつないでください）`); break; }
+    if (!best) { notes.push(`外の汚水マス ${loose.length} 個は、建物を避けて${to === 'downstream' ? '下流端のマス' : '公共マス'}へつなぐ道が見つかりませんでした（配管の道具でつないでください）`); break; }
     const before = comp.get(best.from)!;
     const r = addPolyline(net, best.pts, YARD_PIPE, { startNodeId: best.from, endNodeId: best.to });
     if (!r.segmentIds.length) { bad.add(`${best.from}|${best.to}`); continue; }
@@ -85,7 +102,9 @@ export function connectYard(doc: Doc): YardResult {
     pipes += r.segmentIds.length;
     connected += ports.filter((p) => comp.get(p.id) === before).length;
   }
-  return { doc: net === doc.network ? doc : { ...doc, network: net }, connected, pipes, notes };
+  // つないだときだけ知らせる（押し直してつなぐ物が無ければ言わない）
+  if (to === 'downstream' && connected) notes.unshift('公共汚水マスが無いので、下水の引込側の汚水マス（配置図の「下水引込へ」の近く・地面の低い方）を下流端にして、外のマスをそこまでつなぎました。公共汚水マスの位置が分かったら「器具」から置き、もう一度「まとめてつなぐ」を押すと下流端から公共ますへつなぎます');
+  return { doc: net === doc.network ? doc : { ...doc, network: net }, connected, pipes, notes, to };
 }
 
 /** 通気弁を付ける器具（キャビネットの中に付けられるもの） */
@@ -176,7 +195,7 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
   if ((d2.main === 'new' || d2.main === 'joined') && d2.notes.length) summary.push(`${d2.notes.join('。')}${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`);
   else if (d2.pipes) summary.push(`排水 ${d2.pipes} 本を床下から外の汚水マスへ出しました${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`, ...d2.notes);
   if (d2.skipped) summary.push(`排水 ${d2.skipped} 本は外へ出す出口を決められませんでした`);
-  if (d3.connected) summary.push(`外の汚水マス ${d3.connected} 個を公共汚水マスまでつなぎました（勾配・曲がりのマスは自動）`);
+  if (d3.connected) summary.push(`外の汚水マス ${d3.connected} 個を${d3.to === 'downstream' ? '下流端のマス' : '公共汚水マス'}までつなぎました（勾配・曲がりのマスは自動）`);
   summary.push(...d3.notes);
   if (s.error) summary.push(`給水・給湯: ${s.error}`);
   else if (s.pipes || s.headers) {

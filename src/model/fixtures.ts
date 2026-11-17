@@ -19,6 +19,7 @@ export type FixtureType =
 export type Rotation = 0 | 90 | 180 | 270;
 /** マスの個別設定。diameter: 口径(mm、既定 300)、shape: 丸/角、invertZ: 管底高(mm、絶対。既定 GL−600) */
 export type FixtureParams = { diameter?: number; shape?: 'round' | 'square'; invertZ?: number; /** 既設（申請図面では青） */ existing?: boolean; /** 落差桝: 流入側の管底が流出側（invertZ）より高い分(mm) */ drop?: number; /** 管底を手で固定（自動計算で変えない） */ invertPin?: boolean; /** 自動で置いたマス */ auto?: boolean;
+  /** 下流端（公共ますが無い汚水の系統で、下水の引込側のマス。配置図の「下水引込へ」・自動でつなぐときに決める） */ downstream?: boolean;
   /** 設置面の床からの高さ(mm、負は床下)。ヘッダーなどを床下に置くとき。未設定はカタログの高さ */ mountZ?: number };
 export type Fixture = { id: string; floorId: string; type: FixtureType; x: number; y: number; rotation: Rotation; params?: FixtureParams };
 

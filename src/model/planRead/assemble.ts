@@ -33,7 +33,7 @@ export type CheckLevel = 'low' | 'mid' | 'info';
 /** 下敷きにする平面図: sheets の番号と、紙の座標 → 図面座標の変換 */
 export type PlanPlacement = { index: number; floorId: string; toWorld: ToWorld; scale: number; /** 配置図（下に薄く敷く） */ site?: boolean };
 /** 配置図から読んだもの（図面座標 mm）。levels: 敷地の高さ（設計 GL からの mm）、bm: BM から GL±0 までの高さ(mm) */
-export type SiteResult = { items: { type: SiteItem['type']; x: number; y: number }[]; levels: { x: number; y: number; gl: number }[]; bm?: number };
+export type SiteResult = { items: { type: SiteItem['type']; x: number; y: number }[]; levels: { x: number; y: number; gl: number }[]; bm?: number; /** 「下水引込へ」の文字の位置（公共ますの記号が無いときの下流端の手がかり） */ sewerOut?: { x: number; y: number } };
 /** 器具の候補（どの階か付き）。使う人が確認してから置く */
 export type PlacedCandidate = FixtureCandidate & { floorId: string };
 export type PlanSetResult = { building: Building; designGL?: number; plans: PlanPlacement[]; fixtures: PlacedCandidate[]; report: ImportReport; site?: SiteResult };
@@ -374,7 +374,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     const floorGL = gl ?? DEFAULT_GL_TO_FL;
     const levels = sr.levels.filter((l) => l.gl < floorGL).map((l) => ({ ...at(l.p), gl: l.gl }));
     const dropped = [...new Set(sr.levels.filter((l) => l.gl >= floorGL).map((l) => l.gl))];
-    site = { items: sr.items.map((i) => ({ type: i.type, ...at(i.p) })), levels, ...(sr.bm !== undefined ? { bm: sr.bm } : {}) };
+    site = { items: sr.items.map((i) => ({ type: i.type, ...at(i.p) })), levels, ...(sr.bm !== undefined ? { bm: sr.bm } : {}), ...(sr.sewerOut ? { sewerOut: at(sr.sewerOut) } : {}) };
     placements.push({ index: r.index, floorId: floor1, toWorld: t, scale, site: true });
     const n = (type: SiteItem['type']) => site!.items.filter((x) => x.type === type).length;
     const parts = ([['publicSewage', '汚水公共ます'], ['manholeSewage', '汚水ます'], ['manholeRain', '雨水ます'], ['outdoorFaucet', '立水栓'], ['waterMeter', '水道メーター']] as const).filter(([k]) => n(k)).map(([k, l]) => `${l} ${n(k)}`);
@@ -384,7 +384,7 @@ export function buildFromSheets(inputs: SheetInput[]): PlanSetResult {
     found.push(`配置図: ${parts.join('・') || 'ますの記号なし'}${levels.length ? `、敷地の高さ ${levels.length} か所（${sgl(Math.min(...gls))}〜${sgl(Math.max(...gls))}）` : ''}（家の外形で位置を合わせました）`);
     if (sr.bm !== undefined) found.push(`配置図: BM は GL−${mm(sr.bm)}（「BM+${sr.bm}=GL±0」）`);
     if (!sr.legend) ask('配置図に凡例（汚水桝・雨水桝の記号）が見つからなかったので、ますは読んでいません', 'low');
-    if (!n('publicSewage')) ask(`配置図に汚水公共ますの記号はありませんでした${r.page.texts.some((x) => /下水引込/.test(x.s)) ? '（「下水引込へ」の向きにあるはずです）' : ''}。公共ますは「器具」から置いてください`, 'low');
+    if (!n('publicSewage')) ask(`配置図に汚水公共ますの記号はありませんでした${sr.sewerOut ? '（「下水引込へ」の向きにあるはずです。その近くの汚水ますを下流端にしてつなぎます）' : ''}。公共ますは「器具」から置いてください`, 'low');
     if (dropped.length) ask(`配置図の ${dropped.sort((p, q) => p - q).map(sgl).join('・')} は 1 階の床より高いので、隣地・擁壁の高さとみて敷地の高さに使っていません`);
   }
   // 配置図が無いとき: 1 階の平面図（申請図など）に書かれた「量水器」「公共桝」「NO.1小口径桝」の文字の位置に置く（建物の周り SITE_LABEL_MARGIN まで）
