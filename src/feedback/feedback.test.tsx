@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDoc, useStore } from '../state/store';
 import { HelpDialog } from '../ui/HelpDialog';
 import './feedback-widget.fixture.js'; // 本番は公開 URL から読む部品の写し
-import { FEEDBACK_URL, fbError, feedbackContext, feedbackWidget, initFeedback } from './feedback';
+import { FEEDBACK_OPTIONS, FEEDBACK_SCRIPT, FEEDBACK_URL, fbError, feedbackContext, feedbackWidget, initFeedback } from './feedback';
+import { canCapture, captureScreen } from './capture';
+import { startTrail } from './trail';
 
 const s = () => useStore.getState();
 beforeEach(() => { initFeedback(); s().newDoc(emptyDoc(), { id: 'p', name: '山田様邸新築工事', address: '宜野湾市大山1-2-3', createdAt: 1 }); });
@@ -77,5 +79,61 @@ describe('要望欄', () => {
     const errs = feedbackWidget()!.payload('x').errors.map((e) => e.m);
     expect(errs.slice(-2)).toEqual(['表示: PDF を開けませんでした', '表示: 工事を開けませんでした']);
     expect(JSON.stringify(errs)).not.toContain('山田');
+  });
+});
+
+describe('スクショ・AIに渡す・操作の記録（部品 v1.15.0）', () => {
+  it('部品 v1.15.0 を読み、スクショ 3 枚・AIに渡す・記録 80 件・今の画面を宣言する', () => {
+    expect(FEEDBACK_SCRIPT).toMatch(/\?v=1\.15\.0$/);
+    expect(FEEDBACK_OPTIONS).toMatchObject({ shots: 3, aiShare: true, maxLog: 80 });
+    expect(typeof FEEDBACK_OPTIONS.capture).toBe('function');
+    for (let i = 0; i < 100; i++) feedbackWidget()!.log('押した: ' + i);
+    const p = feedbackWidget()!.payload('x');
+    expect(p.log.length).toBe(80);
+    expect(p.shots).toEqual([]);
+  });
+
+  it('使い方の画面の要望欄に「スクショ・写真を選ぶ」と「AIに渡す」が出る。写す図面が無い所では「今の画面を添える」は出さない', async () => {
+    render(<HelpDialog onClose={() => {}} />);
+    expect(await screen.findByRole('button', { name: /スクショ・写真を選ぶ（3枚まで）/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /AIに渡す/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '今の画面を添える' })).toBeNull();
+    expect(canCapture()).toBe(false);
+    expect(await captureScreen()).toBeNull();
+  });
+
+  it('AIに渡す文は開発担当への指示書になり、工事名・住所は入らない', () => {
+    const t = feedbackWidget()!.aiText!('配管が消える', '不具合');
+    expect(t).toMatch(/^あなたは「給水」の開発担当です/);
+    expect(t).toContain('内容：配管が消える');
+    expect(t).not.toContain('山田');
+    expect(t).not.toContain('宜野湾市大山');
+  });
+
+  it('道具・床下の切り替えと、器具の数の増減を記録する（名前は残さない）', async () => {
+    vi.useFakeTimers();
+    const stop = startTrail();
+    try {
+      s().setTool('fixture');
+      s().setUnderFloor(true);
+      s().setFixtureType('toilet');
+      s().placeFixtureAt({ x: 1000, y: 1000 });
+      vi.advanceTimersByTime(900);
+      const log = feedbackWidget()!.payload('x').log.map((x) => x.a);
+      expect(log).toContain('道具: 器具');
+      expect(log).toContain('床下: ON');
+      expect(log.some((a) => /^変化: .*器具\+1/.test(a))).toBe(true);
+      expect(JSON.stringify(log)).not.toContain('山田');
+    } finally { stop(); vi.useRealTimers(); }
+  });
+
+  it('工事を開くと、名前でなく数だけを記録する', () => {
+    const stop = startTrail();
+    try {
+      s().newDoc(emptyDoc(), { id: 'q', name: '佐藤様邸', address: '那覇市1-1', createdAt: 2 });
+      const log = feedbackWidget()!.payload('x').log.map((x) => x.a);
+      expect(log.some((a) => /^工事を開いた（配管0 器具0/.test(a))).toBe(true);
+      expect(JSON.stringify(log)).not.toContain('佐藤');
+    } finally { stop(); }
   });
 });
