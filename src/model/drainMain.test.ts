@@ -49,8 +49,9 @@ describe('床下の排水を φ100 の本管にまとめる', () => {
     expect(r.summary.join()).toMatch(/本管/);
   });
 
-  test('本管は φ100 で西の外壁に直角。位置は器具の中央（材料が少ない）: 南北の位置はトイレの排水口の所', () => {
-    const ty = net.nodes[port(h.ids.toilet, 'sewage')].pos.y;
+  test('本管は φ100 で西の外壁に直角（南北の位置は 1 つ）。離れて並ぶ器具は枝管でまとめる（2026-11-17 から）', () => {
+    const ty = Object.values(net.segments).filter((s) => isDrain(s) && s.diameter === MAIN_DIAMETER && !isRiserLike(net, s) && net.nodes[s.a].pos.x > 0 && net.nodes[s.b].pos.x > 0)
+      .map((s) => net.nodes[s.a].pos.y)[0];
     const mains = Object.values(net.segments).filter((s) => isDrain(s) && s.diameter === MAIN_DIAMETER && !isRiserLike(net, s)
       && Math.min(net.nodes[s.a].pos.z, net.nodes[s.b].pos.z) > -560 && net.nodes[s.a].pos.x > 0 && net.nodes[s.b].pos.x > 0);
     expect(mains.length).toBeGreaterThan(0);
@@ -175,3 +176,66 @@ describe('あとから足した器具', () => {
   });
 });
 
+
+type Put = [Parameters<typeof placeFixture>[2], number, number];
+function subCase(row: Put[], base: Put[]) {
+  const h = supplyHouse();
+  let d: Doc = { ...h.doc, fixtures: Object.fromEntries(Object.entries(h.doc.fixtures).filter(([id]) => ![h.ids.toilet, h.ids.washbasin, h.ids.kitchen].includes(id))),
+    network: { ...h.doc.network, nodes: Object.fromEntries(Object.entries(h.doc.network.nodes).filter(([, n]) => ![h.ids.toilet, h.ids.washbasin, h.ids.kitchen].includes(n.fixtureId ?? ''))) } };
+  d = placeFixture(d, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1500 }).doc;
+  const put = (t: Parameters<typeof placeFixture>[2], x: number, y: number) => { const r = placeFixture(d, h.floorId, t, { x, y }); d = r.doc; return r.fixtureId!; };
+  for (const [t, x, y] of base) put(t, x, y);
+  const ids = row.map(([t, x, y]) => put(t, x, y));
+  const r = routeDrainMain(dropFixturePipes(d).doc);
+  const net = r.doc.network;
+  const portOf = (fid: string) => portNodes(net, fid).find((n) => n.portId === 'drain' || n.portId === 'sewage')!.id;
+  /** 器具の排水口から外のマスへ向かう道（通る区間） */
+  const pathOut = (from: string) => {
+    const mh = new Set(Object.values(r.doc.fixtures).filter((f) => f.type === 'manholeSewage').flatMap((f) => portNodes(net, f.id).map((n) => n.id)));
+    const prev = new Map<string, string>(), seen = new Set([from]), q = [from];
+    let hit: string | undefined;
+    while (q.length && !hit) { const id = q.shift()!; for (const s of segmentsAt(net, id)) { if (!isDrain(s)) continue; const o = s.a === id ? s.b : s.a; if (seen.has(o)) continue; seen.add(o); prev.set(o, s.id); q.push(o); if (mh.has(o)) { hit = o; break; } } }
+    const segs: string[] = [];
+    for (let id = hit!; id !== from;) { const s = net.segments[prev.get(id)!]; segs.push(s.id); id = s.a === id ? s.b : s.a; }
+    return segs;
+  };
+  return { r, net, ids, portOf, pathOut };
+}
+
+const subTests = (title: string, row: Put[], base: Put[], system: 'drain' | 'sewage', dirOk: (dx: number, dy: number) => boolean) => describe(title, () => {
+  const { r, net, ids: [wb, ws, wb2], portOf, pathOut } = subCase(row, base);
+
+  test('並んだ 3 つは同じ φ75 の枝管を通って本管へ入る', () => {
+    expect(r.main).toBe('new');
+    expect(validateNetwork(net)).toEqual([]);
+    const sub = (fid: string) => new Set(pathOut(portOf(fid)).filter((id) => net.segments[id].diameter === 75 && !isRiserLike(net, net.segments[id])));
+    const a = sub(wb), b = sub(ws), c = sub(wb2);
+    expect(a.size).toBeGreaterThan(0);
+    // 本管の一番近くの枝管の区間は 3 つとも同じ
+    const shared = [...a].filter((id) => b.has(id) && c.has(id));
+    expect(shared.length).toBeGreaterThan(0);
+    // 枝管の向き
+    for (const id of new Set([...a, ...b, ...c])) {
+      const s = net.segments[id];
+      expect(dirOk(Math.abs(net.nodes[s.a].pos.x - net.nodes[s.b].pos.x), Math.abs(net.nodes[s.a].pos.y - net.nodes[s.b].pos.y))).toBe(true);
+    }
+    expect(r.notes.join()).toMatch(/枝管/);
+  });
+
+  test('並んだ 3 つから本管へ横から入る管は枝管の 1 本だけ', () => {
+    const mains = Object.values(net.segments).filter((s) => isDrain(s) && s.diameter === MAIN_DIAMETER && !isRiserLike(net, s) && net.nodes[s.a].pos.x > 0 && net.nodes[s.b].pos.x > 0);
+    const mainNodes = new Set(mains.flatMap((s) => [s.a, s.b]));
+    const into = [...mainNodes].flatMap((id) => segmentsAt(net, id).filter((s) => isDrain(s) && s.diameter !== MAIN_DIAMETER && !isRiserLike(net, s)));
+    // 並んだ 3 つは枝管 1 本だけ（ほかの器具は本管の上か、本管のすぐそばから短い枝）
+    expect(into.filter((s) => s.system === system)).toHaveLength(1);
+    noCrossing(net);
+  });
+});
+
+// 公共マスは西。本管は西の外壁に直角（東西）。トイレ・キッチンは本管の上
+subTests('本管から離れて横に並ぶ器具（本管に直角な列）は φ75 の枝管 1 本にまとめてから本管へ（2026-11-17 ユーザー: ごちゃごちゃしない・レベルバンドが減る）',
+  [['washbasin', 2000, 3300], ['washer', 2300, 5000], ['washbasin', 2600, 4200]], [['toilet', 2000, 1200], ['kitchen', 3400, 1200]], 'drain', (dx) => dx < 1);
+// 実物の図面（浴室・洗面台・洗濯機が本管に平行に並ぶ）と同じ形: 器具ごとに本管まで 3 本平行に引かず、枝管を列に沿って通して 1 回曲げて本管へ
+// 本管は北の列（洗面台・洗濯機・洗面台）の上。南の列（トイレ・洗濯機・キッチン）は本管に平行
+subTests('本管に平行に並ぶ器具も φ75 の枝管 1 本にまとめ、列の端で 1 回曲げて本管へ',
+  [['toilet', 2000, 1200], ['washer', 5000, 1300], ['kitchen', 6500, 1200]], [['washbasin', 1500, 5000], ['washer', 3000, 4700], ['washbasin', 4600, 5100]], 'sewage', (dx, dy) => dx < 1 || dy < 1);
