@@ -119,6 +119,7 @@ function kakunin(k: KakuninInfo): ApplicationValues {
 
 export const OKINAWA_FORMS: FormSet = {
   profileId: 'okinawa-city',
+  sewer: 'okinawa',
   fields: OKINAWA_FIELDS,
   defaults,
   kakunin,

@@ -9,6 +9,7 @@ import { dateJa } from './report';
 import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
 import type { SheetMeta } from './profileSheet';
 import { alongLine, around, LabelPlacer, type LabelLine } from './labelLayout';
+import { groupRuns } from '../model/drainRuns';
 
 export type IsoMeta = SheetMeta & { title: string };
 export type Box = { x: number; y: number; w: number; h: number };
@@ -47,7 +48,32 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
     placer.place(around(x, y, label, { gap: 2, prefer: p.isManhole ? [45, 0, -45] : [0, -45, 45], leaderColor: GRAY }));
   }
   // 管種口径×長さ: 長い線から順に、線に沿って書く。文字より短い線は横に出して引出線
+  // 南風原町の書き方: 桝どうしの本管は「VU100×1.6」、器具からの枝は 長さ／口径 の 2 段（線の横）
+  const stacked = iso.kind === 'drain' && profile.profileTable.manholeText === 'naikeiFuka';
+  // 枝は、器具・桝の無い曲がり（2 本だけがつながる点）で続く同じ口径の管を 1 本として、長さの合計を 1 か所に書く
+  const runLen = new Map<string, number>(), skip = new Set<string>();
+  if (stacked) {
+    const branch = lines.filter((q) => !q.l.main && q.l.spec && q.l.a && q.l.b);
+    const degree = new Map<string, number>();
+    for (const q of iso.lines) for (const n of [q.a, q.b]) if (n) degree.set(n, (degree.get(n) ?? 0) + 1);
+    const runs = groupRuns(branch.map((q) => ({ id: q.l.segId, a: q.l.a!, b: q.l.b!, key: q.l.spec!, lengthMm: q.l.lenMm ?? 0 })), degree, new Set(iso.points.map((p) => p.nodeId)));
+    const bySeg = new Map(lines.map((q) => [q.l.segId, q]));
+    for (const r of runs) {
+      // 長さの合計は、いちばん長く描かれる線の横に 1 回だけ
+      const rep = r.ids.map((id) => bySeg.get(id)!).reduce((m, q) => (Math.hypot(q.x2 - q.x1, q.y2 - q.y1) > Math.hypot(m.x2 - m.x1, m.y2 - m.y1) ? q : m));
+      runLen.set(rep.l.segId, r.lengthMm);
+      for (const id of r.ids) if (id !== rep.l.segId) skip.add(id);
+    }
+  }
   for (const q of [...lines].sort((a, b) => Math.hypot(b.x2 - b.x1, b.y2 - b.y1) - Math.hypot(a.x2 - a.x1, a.y2 - a.y1))) {
+    if (skip.has(q.l.segId)) continue;
+    if (stacked && !q.l.main && q.l.spec && q.l.len) {
+      const len = runLen.has(q.l.segId) ? (runLen.get(q.l.segId)! / 1000).toFixed(1) : q.l.len;
+      const two: LabelLine[] = [{ s: len, size: 2.2, color: INK }, { s: q.l.spec, size: 2.2, color: INK }];
+      const mx = (q.x1 + q.x2) / 2, my = (q.y1 + q.y2) / 2;
+      placer.place(around(mx, my, two, { gap: 1.5, prefer: [-90, 90, -45, 45, 0, 180] }).concat(around(mx, my, two, { gap: 4, prefer: [-90, 90, -45, 45], leaderAlways: true, leaderColor: GRAY }).map((c) => ({ ...c, penalty: c.penalty + 100 }))), { ignoreSeg: q.l.segId });
+      continue;
+    }
     const label: LabelLine = { s: q.l.label, size: 2.2, color: q.c };
     const mx = (q.x1 + q.x2) / 2, my = (q.y1 + q.y2) / 2;
     placer.place([
@@ -84,9 +110,11 @@ export function renderIsoSheet(iso: IsoModel, profile: MunicipalityProfile, meta
   if (!profile.paper.headerFields.length) sheet.ops.push({ t: 'text', x: sheet.width - 25, y: 27, s: 'NO SCALE', size: 3, anchor: 'end', color: GRAY });
   const titleH = 7 * profile.paper.titleBlockFields.length + 6;
   const top = Math.max(32, headerBottom + 4);
-  drawIsometric(sheet, iso, profile, { x: 25, y: top, w: sheet.width - 50, h: sheet.height - top - titleH - 30 });
+  const box = { x: 25, y: top, w: sheet.width - 50, h: sheet.height - top - titleH - 30 };
+  drawIsometric(sheet, iso, profile, box);
+  sheet.content = box;
   legend(sheet, iso, profile, sheet.width - 10 - titleWidth(sheet.width) - 45, sheet.height - 10 - titleH - 20);
-  const values: Record<string, string> = { '工事名': meta.siteName, '申請地': meta.siteName, '図面名': meta.title, '縮尺': 'NO SCALE', '作成日': dateJa(meta.date) };
+  const values: Record<string, string> = { '工事名': meta.siteName, '申請地': meta.siteName, '図面名': meta.title, '縮尺': 'NO SCALE', '作成日': dateJa(meta.date), ...(meta.titleValues ?? {}) };
   drawTitleBlock(sheet, profile.paper.titleBlockFields.map((f) => ({ label: f, value: values[f] ?? '' })));
   return sheet;
 }

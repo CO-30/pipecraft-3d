@@ -55,6 +55,10 @@ export type FormSet = {
   checklist: { label: string; app?: boolean; note?: string }[];
   /** 確認申請書・確認済証から読んだ値 → この様式の項目（src/forms/kakunin.ts） */
   kakunin?: (k: KakuninInfo) => ApplicationValues;
+  /** 給水の様式: 南部水道企業団（南風原町・八重瀬町） */
+  water?: 'nanbu';
+  /** 下水道の申請書: 沖縄市（様式 PDF に重ねる）／ 南風原町（描き起こし） */
+  sewer?: 'okinawa' | 'haebaru';
 };
 
 /** 入力済みの値を優先して既定値と合わせる */

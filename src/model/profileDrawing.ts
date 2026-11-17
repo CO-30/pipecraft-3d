@@ -230,7 +230,10 @@ export function buildProfile(doc: Doc, route: string[], profile: MunicipalityPro
     for (const n of nodes) {
       if (!n.manhole) continue;
       const fixed = opts.fixedNames?.get(n.nodeId);
-      n.manhole.name = fixed ?? (n.manhole.isPublic ? `${n.existing ? '既存' : '新設'}${n.manhole.label}` : `NO.${++no}${n.manhole.label}`);
+      // 南風原町の書き方（内径・深）: φ200 以下の汚水桝は「小口径桝」、公共は「既設公共桝」
+      const naikei = profile.profileTable.manholeText === 'naikeiFuka';
+      const label = naikei && !n.manhole.isPublic && n.manhole.type === 'manholeSewage' && n.manhole.diameter <= 200 ? '小口径桝' : n.manhole.label;
+      n.manhole.name = fixed ?? (n.manhole.isPublic ? (naikei ? `${n.existing ? '既設' : '新設'}公共桝` : `${n.existing ? '既存' : '新設'}${n.manhole.label}`) : `NO.${++no}${label}`);
     }
   }
   const manholeCount = no - (opts.manholeNoStart ?? 0);

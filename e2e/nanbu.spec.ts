@@ -69,5 +69,15 @@ test.describe('南部水道企業団の給水申請', () => {
     // チェック表 2・申込書・誓約書・様式第6号・横断面図・竣工検査・立面図・製品一覧表
     expect(d.getPageCount()).toBeGreaterThanOrEqual(8);
     await expect(page.getByTestId('forms-msg')).toContainText('まとめてPDF');
+
+    // 南風原町の下水道: 排水設備計画確認申請書（4 面）＋実寸の平面図・縦断面図
+    const [sewer] = await Promise.all([page.waitForEvent('download'), page.getByTestId('forms-haebaru-sewer').click()]);
+    expect(sewer.suggestedFilename()).toContain('排水設備計画確認申請書.pdf');
+    const sd = await PDFDocument.load(await readFile((await sewer.path())!));
+    expect(sd.getPageCount()).toBeGreaterThanOrEqual(4);
+    // 申請図面の「排水平面図」タブ
+    await page.getByTestId('shinsei-kind-plan').click();
+    await expect(page.getByTestId('shinsei-preview').locator('svg').first()).toBeVisible();
+    await page.screenshot({ path: evidence('haebaru-sewer-01-plan') });
   });
 });

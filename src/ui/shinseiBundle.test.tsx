@@ -43,7 +43,8 @@ describe('申請図面: まとめてPDF', () => {
     await screen.findByTestId('shinsei-outlet');
     fireEvent.click(screen.getByTestId('shinsei-bundle'));
     await screen.findByTestId('shinsei-bundle-dialog');
-    expect(rowIds()).toEqual(['mitori', 'profile', 'masu', 'riser', 'suiri', 'sleeve', 'material']);
+    expect(rowIds()).toEqual(['mitori', 'plan', 'profile', 'masu', 'riser', 'suiri', 'sleeve', 'material']);
+    expect(check('plan').checked).toBe(true);
     expect(check('profile').checked).toBe(true);
     expect(check('riser').checked).toBe(true);
     expect(check('material').checked).toBe(true);

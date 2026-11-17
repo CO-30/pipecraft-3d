@@ -7,12 +7,14 @@ import type { Doc } from './doc';
 import { floorById } from './building';
 import { FIXTURE_CATALOG, isHeader, isManhole, type FixtureType } from './fixtures';
 import type { MunicipalityProfile } from './municipality';
+import type { ProfileModel } from './profileDrawing';
 import type { SystemType, Vec3 } from './network';
 import { isDrain } from './slope';
 import { drawingMaterial } from './materials';
 
 export type IsoKind = 'water' | 'drain';
-export type IsoLine = { segId: string; x1: number; y1: number; x2: number; y2: number; label: string; system: SystemType; existing?: boolean };
+/** spec: 管種口径（VU50）、len: 長さ（m 1 桁）。main: 両端が桝（桝どうしの本管） */
+export type IsoLine = { segId: string; x1: number; y1: number; x2: number; y2: number; label: string; system: SystemType; existing?: boolean; spec?: string; len?: string; main?: boolean; /** 両端の点の ID と長さ(mm)（同じ管の続きをまとめて書くため） */ a?: string; b?: string; lenMm?: number };
 export type IsoPoint = { nodeId: string; x: number; y: number; label: string; /** 器具の種類（記号の選択用） */ type?: FixtureType; height?: string; isPublic?: boolean; isManhole?: boolean; existing?: boolean };
 export type IsoModel = { kind: IsoKind; lines: IsoLine[]; points: IsoPoint[]; bounds: { minX: number; minY: number; maxX: number; maxY: number } };
 
@@ -26,7 +28,26 @@ export function isoProject(p: Vec3): { x: number; y: number } {
 const inKind = (kind: IsoKind, s: SystemType) => (kind === 'water' ? s === 'water' || s === 'hotWater' : isDrain(s));
 
 /** lengthOf: 区間の長さ（mm）。竣工図では実測長を渡す。既定は配管の 3D の長さ */
-export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityProfile, opts: { lengthOf?: (segId: string) => number } = {}): IsoModel {
+/** 丸数字（①〜⑳） */
+const circledNo = (n: number) => (n >= 1 && n <= 20 ? String.fromCharCode(0x2460 + n - 1) : `(${n})`);
+
+/**
+ * 南風原町の配管立図の桝の書き方: 「① H=410」（縦断図の NO.n と同じ番号）、落差は「H=600-1280」、公共は「既設公共汚水桝 H=1100」。
+ * 縦断図のモデル（本線・枝）から 点の ID → 文字 を作る
+ */
+export function isoManholeLabels(models: ProfileModel[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of models) for (const n of m.nodes) {
+    if (!n.manhole || out[n.nodeId]) continue;
+    const h = n.manhole.depthIn !== undefined ? `${Math.round(n.manhole.depthIn)}-${Math.round(n.manhole.depth)}` : `${Math.round(n.manhole.depth)}`;
+    const no = /^NO\.(\d+)/.exec(n.manhole.name ?? '');
+    out[n.nodeId] = n.manhole.isPublic ? `${n.existing ? '既設' : '新設'}${n.manhole.label.replace('マス', '桝')} H=${h}` : no ? `${circledNo(Number(no[1]))} H=${h}` : `${n.manhole.label} H=${h}`;
+  }
+  return out;
+}
+
+/** manholeLabels: 桝の点の ID → 図に書く文字（isoManholeLabels）。無ければ桝の種類名 */
+export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityProfile, opts: { lengthOf?: (segId: string) => number; manholeLabels?: Record<string, string> } = {}): IsoModel {
   const net = doc.network;
   void profile; // 今は体裁に依存しない（将来 記号などに使う）
   const lines: IsoLine[] = [];
@@ -37,7 +58,9 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     if (!a || !b) continue;
     const pa = isoProject(a.pos), pb = isoProject(b.pos);
     const len = opts.lengthOf ? opts.lengthOf(s.id) : Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y, b.pos.z - a.pos.z);
-    lines.push({ segId: s.id, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, label: `${drawingMaterial(s.material) || (isDrain(s.system) ? 'VU' : 'HI')}${s.diameter}×${(len / 1000).toFixed(1)}`, system: s.system, ...(s.existing ? { existing: true } : {}) });
+    const spec = `${drawingMaterial(s.material) || (isDrain(s.system) ? 'VU' : 'HI')}${s.diameter}`, lenText = (len / 1000).toFixed(1);
+    const isMh = (nid: string) => { const f = net.nodes[nid]?.fixtureId ? doc.fixtures[net.nodes[nid].fixtureId!] : undefined; return !!f && isManhole(f.type); };
+    lines.push({ segId: s.id, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, label: `${spec}×${lenText}`, spec, len: lenText, a: s.a, b: s.b, lenMm: len, ...(isMh(s.a) && isMh(s.b) ? { main: true } : {}), system: s.system, ...(s.existing ? { existing: true } : {}) });
     used.add(s.a); used.add(s.b);
   }
   const points: IsoPoint[] = [];
@@ -64,7 +87,7 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     // ヘッダーは配管をつないだ出口の数を付ける（給水ヘッダー6P）
     const label = isHeader(fx.type)
       ? `${FIXTURE_CATALOG[fx.type].label}${Object.values(doc.network.nodes).filter((m) => m.fixtureId === fx.id && m.portId?.startsWith('out') && Object.values(doc.network.segments).some((s) => s.a === m.id || s.b === m.id)).length}P`
-      : FIXTURE_CATALOG[fx.type].label;
+      : (mh && opts.manholeLabels?.[id]) || FIXTURE_CATALOG[fx.type].label;
     points.push({
       nodeId: id, x: p.x, y: p.y, label, type: fx.type,
       ...(mh ? { isManhole: true, isPublic: fx.type.startsWith('public') } : { height: ((n.pos.z - (fl?.elevation ?? 0)) / 1000).toFixed(1) }),

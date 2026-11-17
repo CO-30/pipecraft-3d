@@ -16,7 +16,8 @@ export type Op =
   | { t: 'text'; x: number; y: number; s: string; size: number; anchor?: 'start' | 'middle' | 'end'; color?: string; /** 回転（度、時計回り。-90 は下から上へ読む縦書き） */ rotate?: number; bold?: boolean }
   /** 画像（地図など）。href は data:image/png または data:image/jpeg の base64 だけ */
   | { t: 'image'; x: number; y: number; w: number; h: number; href: string; /** この矩形の内側だけを見せる（用紙 mm） */ clip?: { x: number; y: number; w: number; h: number } };
-export type Sheet = { width: number; height: number; ops: Op[] };
+/** content: 図の部分の範囲（用紙 mm。表題欄・枠を除く）。申請書の欄に図だけを縮めて貼るときに使う */
+export type Sheet = { width: number; height: number; ops: Op[]; content?: { x: number; y: number; w: number; h: number } };
 
 export const PAPER_MM = { A3: [420, 297], A4: [297, 210] } as const;
 export const INK = '#1f2328';
