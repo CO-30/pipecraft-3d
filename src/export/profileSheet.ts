@@ -417,7 +417,7 @@ export function renderProfileSheet(model: ProfileModel, meta: SheetMeta, iso?: I
 
 /**
  * 箱の凡例（南風原町の実例）: 既設管（青）・新設管（赤）・町下水道管（黒）の線の見本と「※単位はmm 管長はm」。
- * (x, y) は箱の左上。幅 46mm・高さ 18mm（注記を含む）
+ * (x, y) は箱の左上。箱は幅 40mm・高さ 14mm、その下に注記
  */
 export function drawLegendBox(sheet: Sheet, profile: MunicipalityProfile, x: number, y: number): void {
   const items: [string, string][] = [['既設管', profile.colors.existing], ['新設管', profile.colors.newWork], [profile.paper.publicPipeLabel ?? '公共下水道', profile.colors.public]];

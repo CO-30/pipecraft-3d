@@ -62,6 +62,7 @@ export function renderDrainPlanSheet(doc: Doc, profile: MunicipalityProfile, met
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
     plans.push({ f, box: { minX: Math.min(...xs) - 1200, minY: Math.min(...ys) - 1200, maxX: Math.max(...xs) + 1200, maxY: Math.max(...ys) + 1200 }, segs: fs });
   }
+  if (!plans.length) return undefined;
   // 上の階を左に（実物の並び）
   plans.reverse();
   const titleH = 7 * profile.paper.titleBlockFields.length + 6;
@@ -117,11 +118,9 @@ export function renderDrainPlanSheet(doc: Doc, profile: MunicipalityProfile, met
       for (const g of doc.site?.groundPoints ?? []) {
         const l: LabelLine = { s: fmtGL(g.gl), size: 2.4 };
         later.push(() => {
-          const cands = around(X(g.x), Y(g.y), [l], { gap: 0.6, maxDist: 15 });
-          placer.place(cands);
-          // 置いた文字を □ で囲む（最後に置いた文字）
-          const t = [...sheet.ops].reverse().find((o) => o.t === 'text' && o.s === l.s);
-          if (t && t.t === 'text') {
+          // 置いた文字を □ で囲む
+          const t = placer.place(around(X(g.x), Y(g.y), [l], { gap: 0.6, maxDist: 15 }))?.texts[0];
+          if (t) {
             const tw = textWidth(t.s, t.size), x0 = t.anchor === 'middle' ? t.x - tw / 2 : t.anchor === 'end' ? t.x - tw : t.x;
             sheet.ops.push({ t: 'rect', x: x0 - 0.8, y: t.y - t.size * 0.95, w: tw + 1.6, h: t.size * 1.3, lw: 0.2 });
           }

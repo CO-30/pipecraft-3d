@@ -107,7 +107,7 @@ export function renderHaebaruSewerPage1(v: ApplicationValues, c: Contractor): Sh
   if (f) { put(73.4, 161.3, String(f.year), 3.4, 10, 'end'); put(84.6, 161.3, String(f.month), 3.4, 8, 'end'); put(95.6, 161.3, String(f.day), 3.4, 8, 'end'); }
   if (t) { put(129.0, 161.3, String(t.year), 3.4, 10, 'end'); put(140.1, 161.3, String(t.month), 3.4, 8, 'end'); put(151.2, 161.3, String(t.day), 3.4, 8, 'end'); }
   if (f && t) {
-    const days = Math.round((Date.UTC(t.year, t.month - 1, t.day) - Date.UTC(f.year, f.month - 1, f.day)) / 86400000) + 1;
+    const days = Math.round((Date.UTC(t.year + 2018, t.month - 1, t.day) - Date.UTC(f.year + 2018, f.month - 1, f.day)) / 86400000) + 1;
     if (days > 0) put(164.4, 161.3, String(days), 3.4, 10, 'end');
   }
   // 9 指定工事店・10 責任技術者

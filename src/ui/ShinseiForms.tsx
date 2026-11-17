@@ -120,10 +120,11 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
         // 南風原町の排水設備計画確認申請書: 4 面（申請書・平面図及び縦断面図・配管立図・見取図）＋ 実寸の平面図（A3）と縦断面図（A4）
         const [{ haebaruSewerSheets }, { sheetsToPdf }, font, { buildLocationSheet }] = await Promise.all([import('../forms/haebaruSewer'), import('../export/sheet'), fontBytes(), import('../import/locationMap')]);
         const tv = drawingTitleValues(vals, contractor.name, meta?.address);
-        const ds = drainageSheetsFor(doc, profile, siteName, date, tv);
+        const ds = drainageSheetsFor(doc, profile, siteName, date, tv, { extra: true });
         const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || meta?.address || '', date });
         const notes: string[] = [];
-        if (!ds.profile) notes.push('排水の配管（公共マスまで）が無いため、2・3 面の図は空欄です');
+        if (!ds.plan) notes.push('排水の配管が無いため、2・3 面の図は空欄です');
+        else if (!ds.profile) notes.push('公共マスまでつながっていないため、縦断面図と配管立図は空欄です（平面図だけ入れています）');
         if (!loc) notes.push('4 面の見取図は空欄です（申請図面の「見取図」で工事場所を決めると入ります）');
         else if (!loc.mapOk) notes.push(`4 面の見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
         const sheets = [...haebaruSewerSheets(vals, contractor, { plan: ds.plan, profile: ds.profileOnly ?? ds.profile, iso: ds.iso, map: loc?.mapOk ? loc.sheet : undefined }), ...(ds.plan ? [ds.plan] : []), ...(ds.profile ? [ds.profile] : [])];
