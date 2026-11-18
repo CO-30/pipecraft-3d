@@ -254,3 +254,37 @@ test.describe('申請図面: まとめてPDF', () => {
     await expect(page.getByTestId('shinsei-pdf')).toBeVisible();
   });
 });
+
+test.describe('申請図面: 提出書類一式', () => {
+  test.beforeEach(async ({ page }) => freshApp(page));
+
+  test('南風原町のサンプル工事: 状態つきの一覧から、まとめて ZIP で保存できる', async ({ page }) => {
+    await openSample(page);
+    await page.evaluate(() => (window as any).__pc.getState().updateSite({ municipalityProfileId: 'haebaru' }));
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-docs').click();
+    const dlg = page.getByTestId('doc-center');
+    await expect(dlg).toBeVisible();
+    for (const id of ['nanbu', 'nanbuProducts', 'haebaruSewer', 'road', 'drawings']) await expect(page.getByTestId(`doc-row-${id}`)).toBeVisible();
+    await expect(page.getByTestId('doc-row-nanbu')).toContainText('確認が必要');
+    await expect(page.getByTestId('doc-row-drawings')).toContainText('見取図');
+    const zip = page.getByTestId('doc-zip');
+    await expect(zip).toBeEnabled();
+    await zip.scrollIntoViewIfNeeded();
+    await expect(zip).toBeInViewport();
+    await page.screenshot({ path: evidence('doc-center-01-list') });
+    if (!isMobile()) {
+      const [dl] = await Promise.all([page.waitForEvent('download'), zip.click()]);
+      expect(dl.suggestedFilename()).toMatch(/提出書類一式_\d{8}\.zip$/);
+      const JSZip = (await import('jszip')).default;
+      const z = await JSZip.loadAsync(await (await import('node:fs/promises')).readFile(await dl.path()));
+      const names = Object.keys(z.files);
+      expect(names).toHaveLength(5);
+      for (const part of ['給水申請書類一式', '給水装置使用製品一覧表', '排水設備計画確認申請書', '道路の申請書類', '申請図面一式']) expect(names.some((n) => n.includes(part)), part).toBe(true);
+      for (const n of names) expect(new TextDecoder().decode((await z.file(n)!.async('uint8array')).slice(0, 5)), n).toBe('%PDF-');
+      await expect(page.getByTestId('doc-notes')).toContainText('5 種類の書類を 1 つの ZIP');
+      await expect(page.getByTestId('doc-done-nanbu')).toBeVisible();
+      await page.screenshot({ path: evidence('doc-center-02-done') });
+    }
+  });
+});
