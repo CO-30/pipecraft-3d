@@ -28,6 +28,8 @@ export type DocCenterInput = {
   roadWarnings: string[];
   /** 製品一覧表に載る行の数 */
   productCount: number;
+  /** まだ答えていない確認の質問の数 */
+  openQuestions?: number;
   /** 様式ごとの注意（南部水道企業団の nanbuWarnings など） */
   formWarnings: string[];
   drawings: DrawingState[];
@@ -42,7 +44,8 @@ const REQUIRED: { ids: string[]; label: string }[] = [
 
 function commonReasons(i: DocCenterInput): string[] {
   const out: string[] = [];
-  if (!i.contractor.name.trim()) out.push('工事店の情報が未入力です（申請書の「工事店の情報」で入れると、全部の書類に入ります）');
+  if (i.openQuestions) out.push(`確認の質問が ${i.openQuestions} 件 残っています（この一覧のいちばん上で答えられます）`);
+  if (!i.contractor.name.trim()) out.push(NO_CONTRACTOR);
   const has = new Set((i.set?.fields ?? []).map((f) => f.id));
   for (const r of REQUIRED) {
     const ids = r.ids.filter((id) => has.has(id));
@@ -53,6 +56,7 @@ function commonReasons(i: DocCenterInput): string[] {
   return out;
 }
 
+const NO_CONTRACTOR = '工事店の情報が未入力です（申請書の「工事店の情報」で入れると、全部の書類に入ります）';
 const NO_SUPPLY = '給水の配管が無いため、図の欄は空欄になります';
 const NO_DRAIN = '排水の配管が無いため、図の欄は空欄になります';
 const NO_PRODUCTS = '載せる製品がありません（給水の配管・器具を置くと入ります）';
@@ -62,7 +66,7 @@ export function docRows(i: DocCenterInput): DocRow[] {
   const rows: DocRow[] = [];
   const common = commonReasons(i);
   const set = i.set;
-  const products = [...(i.contractor.name.trim() ? [] : [common[0]]), ...(i.productCount > 0 ? [] : [NO_PRODUCTS])];
+  const products = [...(i.contractor.name.trim() ? [] : [NO_CONTRACTOR]), ...(i.productCount > 0 ? [] : [NO_PRODUCTS])];
   if (!set) {
     rows.push({ id: 'unregistered', label: '給水・下水道の申請書', format: 'PDF', status: 'blocked', reasons: [`「${i.profileName}」の申請書の様式はまだ登録していません。窓口の様式を使ってください（図面と道路の書類は作れます）`] });
   } else if (set.water === 'nanbu') {
@@ -77,7 +81,7 @@ export function docRows(i: DocCenterInput): DocRow[] {
   if (i.roadCount > 0) {
     const reasons = [
       ...(i.roadConfirmed ? [] : ['本管からの取出し（道路を掘る工事）をするかどうかが、まだ選ばれていません。「道路の手続き」で確かめてください']),
-      ...(i.contractor.name.trim() ? [] : [common[0]]),
+      ...(i.contractor.name.trim() ? [] : [NO_CONTRACTOR]),
       ...i.roadWarnings,
     ];
     rows.push({ id: 'road', label: '道路の申請書類一式', format: 'PDF', status: reasons.length ? 'check' : 'ready', reasons, fixAt: 'road' });

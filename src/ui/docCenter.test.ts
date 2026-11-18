@@ -85,4 +85,11 @@ describe('提出書類の一覧（書類センター）', () => {
     expect(checkSummary(rows.filter((r) => r.status !== 'blocked'))).toMatch(/確認が必要な書類が \d+ 種類/);
     expect(checkSummary(docRows(base({ drawings: [] })).filter((r) => r.status === 'ready'))).toBe('');
   });
+
+  it('確認の質問が残っていれば申請書は「確認が必要」。製品一覧表・道路の理由は別（工事店が先頭に来ない）', () => {
+    const rows = docRows(base({ openQuestions: 2, contractor: EMPTY_CONTRACTOR, roadCount: 1, roadConfirmed: true }));
+    expect(row(rows, 'nanbu').reasons[0]).toContain('確認の質問が 2 件');
+    expect(row(rows, 'nanbuProducts').reasons).toEqual([expect.stringContaining('工事店の情報')]);
+    expect(row(rows, 'road').reasons).toEqual([expect.stringContaining('工事店の情報')]);
+  });
 });

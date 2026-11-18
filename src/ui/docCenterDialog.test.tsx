@@ -51,4 +51,37 @@ describe('提出書類一式（書類センター）', () => {
     expect(screen.getByTestId('doc-row-road').textContent).toContain('まだ選ばれていません');
     expect(screen.getByTestId('doc-row-unregistered').textContent).toContain('まだ登録していません');
   });
+
+  it('確認の質問: おすすめが選ばれていて、1 押しで決まる。答えは工事に保存され、申請書の理由から消える。後から変えられる', async () => {
+    await repo.setSetting(CONTRACTOR_KEY, { ...EMPTY_CONTRACTOR, name: 'テスト設備' });
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト工事', createdAt: 1 });
+    s().updateSite({ municipalityProfileId: 'okinawa-city' });
+    await open();
+    // おすすめがある質問は 1 行（答えが見える）。「変える」で選択肢が開く
+    expect((await screen.findByTestId('doc-q-value-supplyType')).textContent).toBe('直結');
+    fireEvent.click(within(screen.getByTestId('doc-q-supplyType')).getByRole('button', { name: /変える/ }));
+    expect((within(screen.getByTestId('doc-q-supplyType')).getByRole('radio', { name: /直結 *おすすめ/ }) as HTMLInputElement).checked).toBe(true);
+    // 道路を掘るかどうかはおすすめ無し: 選ぶまで決まらない（勝手に「する」にしない）
+    expect(screen.getByTestId('doc-q-undecided').textContent).toContain('2 件');
+    fireEvent.click(screen.getByTestId('doc-q-save'));
+    expect('road.water' in s().doc.site!.application!).toBe(false);
+    expect(screen.getByTestId('doc-questions').textContent).toContain('はじめに 2 件');
+    await waitFor(() => expect(screen.getByTestId('doc-row-water').textContent).toContain('確認の質問が'));
+    fireEvent.click(within(screen.getByTestId('doc-q-road.water')).getByRole('radio', { name: /しない/ }));
+    fireEvent.click(within(screen.getByTestId('doc-q-road.sewer')).getByRole('radio', { name: /しない/ }));
+    fireEvent.click(screen.getByTestId('doc-q-save'));
+    const app = s().doc.site!.application!;
+    expect(app.supplyType).toBe('直結');
+    expect(app['road.water']).toBe('しない');
+    expect(app.sewerConnection).toBe('ます設置（新規）');
+    await screen.findByTestId('doc-q-done');
+    expect(screen.queryByTestId('doc-questions')).toBeNull();
+    expect(screen.getByTestId('doc-row-water').textContent).not.toContain('確認の質問が');
+    // 取出しを「しない」にしたので道路の書類は一覧から外れる（下水も公共ますが無ければ「しない」が初期値ではないので確かめる）
+    fireEvent.click(screen.getByTestId('doc-q-edit'));
+    fireEvent.click(within(screen.getByTestId('doc-q-supplyType')).getByRole('button', { name: /変える/ }));
+    fireEvent.click(within(screen.getByTestId('doc-q-supplyType')).getByRole('radio', { name: /受水槽/ }));
+    fireEvent.click(screen.getByTestId('doc-q-save'));
+    expect(s().doc.site!.application!.supplyType).toBe('受水槽');
+  });
 });

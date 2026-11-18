@@ -268,6 +268,17 @@ test.describe('申請図面: 提出書類一式', () => {
     for (const id of ['nanbu', 'nanbuProducts', 'haebaruSewer', 'road', 'drawings']) await expect(page.getByTestId(`doc-row-${id}`)).toBeVisible();
     await expect(page.getByTestId('doc-row-nanbu')).toContainText('確認が必要');
     await expect(page.getByTestId('doc-row-drawings')).toContainText('見取図');
+    // 確認の質問: おすすめが選ばれていて、1 押しで決まる
+    await expect(page.getByTestId('doc-questions')).toBeVisible();
+    await expect(page.getByTestId('doc-q-value-workKind')).toHaveText('新設');
+    await page.screenshot({ path: evidence('doc-center-00-questions') });
+    // 道路を掘るかどうかは選んでもらう（おすすめ無し）
+    await page.getByTestId('doc-q-road.water').getByRole('radio', { name: /^する/ }).check();
+    await page.getByTestId('doc-q-road.sewer').getByRole('radio', { name: /^しない/ }).check();
+    await page.getByTestId('doc-q-save').click();
+    await expect(page.getByTestId('doc-q-done')).toBeVisible();
+    await expect(page.getByTestId('doc-row-nanbu')).not.toContainText('確認の質問が');
+    expect(await page.evaluate(() => (window as any).__pc.getState().doc.site.application['road.water'])).toBe('する');
     const zip = page.getByTestId('doc-zip');
     await expect(zip).toBeEnabled();
     await zip.scrollIntoViewIfNeeded();
