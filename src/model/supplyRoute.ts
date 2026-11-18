@@ -113,6 +113,19 @@ export const BENRIKAN_LEN = 300;
 const VALVE_ABOVE_GL = 200;
 /** 床下の高さが GL よりこれだけ上なら、地上で基礎を水平に抜けて床下へ入れる（コーキング）。でなければ地中の基礎貫通スリーブ */
 const CAULK_ABOVE_GL = 50;
+/** 線分 a-b が平面で箱 [x0,x1]×[y0,y1] に触れるか（Liang–Barsky） */
+function segHitsBox(a: Vec2, b: Vec2, x0: number, x1: number, y0: number, y1: number): boolean {
+  let t0 = 0, t1 = 1;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  for (const [p, q] of [[-dx, a.x - x0], [dx, x1 - a.x], [-dy, a.y - y0], [dy, y1 - a.y]] as const) {
+    if (Math.abs(p) < 1e-9) { if (q < 0) return false; continue; }
+    const r = q / p;
+    if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+    else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  return t0 <= t1;
+}
+
 /** 給水の床下への入口を、給湯器の入口から横へずらす長さ(mm)（給湯器の立上りと重ねない） */
 const FEED_BESIDE_HEATER = 300;
 
@@ -315,6 +328,13 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
   const placeHeader = (type: 'waterHeader' | 'hotWaterHeader', near: Vec2, inwards: Vec2[]): string | null => {
     const hw = FIXTURE_CATALOG[type].size.w / 2;
     const rs = headerRects();
+    // 先に引いた給水・給湯の床下の管（ヘッダーの高さの近く）。その上にヘッダーを置かない
+    // （2026-11-18 実物: 給水ヘッダーへ入る給水の管の上に給湯ヘッダーを置き、給湯ヘッダーの入口へ入れなかった）
+    const laid = Object.values(cur.network.segments).filter((sg) => sg.system === 'water' || sg.system === 'hotWater')
+      .map((sg) => [cur.network.nodes[sg.a].pos, cur.network.nodes[sg.b].pos] as const)
+      .filter(([a, b]) => Math.min(a.z, b.z) <= zU + 100 && Math.max(a.z, b.z) >= base.elevation + HEADER_MOUNT - 100); // HEADER_MOUNT は床からの高さ
+    /** 箱 [x0,x1]×[y0,y1] を平面で横切る管があるか */
+    const pipeIn = (x0: number, x1: number, y0: number, y1: number) => laid.some(([a, b]) => segHitsBox(a, b, x0, x1, y0, y1));
     for (const inward of inwards) for (let step = 0; step < 8; step++) for (const sx of [0, 1, -1, 2, -2]) {
       const d = HEADER_IN + step * 300;
       // 回さずに置くので、長さの方向は x。並べるときは HEADER_ROW_GAP 空ける（入口へまっすぐ入れるように）
@@ -323,6 +343,8 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       // 入口の前（長さの方向に 2 目）も空いていること
       pts.push({ x: p.x - hw - 2 * ROUTE_STEP, y: p.y });
       if (!pts.every((q) => roomy(q) && !footAt(q) && !inHeader(q, rs))) continue;
+      // ヘッダーとその周り・入口の前を、先の管が通っていないこと
+      if (pipeIn(p.x - hw - 2 * ROUTE_STEP, p.x + hw + HEADER_CLEAR_LONG, p.y - HEADER_CLEAR_WIDE, p.y + HEADER_CLEAR_WIDE)) continue;
       const r = placeFixture(cur, base.id, type, p, 0, { mountZ: HEADER_MOUNT });
       if (!r.fixtureId) continue;
       cur = r.doc;

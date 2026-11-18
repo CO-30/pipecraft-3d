@@ -1,0 +1,2 @@
+# E2E（fix/hot-header-inlet、2026-11-18）
+  87 passed (5.7m)
