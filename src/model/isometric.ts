@@ -15,8 +15,8 @@ import { drawingMaterial } from './materials';
 export type IsoKind = 'water' | 'drain';
 /** spec: 管種口径（VU50）、len: 長さ（m 1 桁）。main: 両端が桝（桝どうしの本管） */
 export type IsoLine = { segId: string; x1: number; y1: number; x2: number; y2: number; label: string; system: SystemType; existing?: boolean; spec?: string; len?: string; main?: boolean; /** 両端の点の ID と長さ(mm)（同じ管の続きをまとめて書くため） */ a?: string; b?: string; lenMm?: number };
-export type IsoPoint = { nodeId: string; x: number; y: number; label: string; /** 器具の種類（記号の選択用） */ type?: FixtureType; height?: string; isPublic?: boolean; isManhole?: boolean; existing?: boolean };
-export type IsoModel = { kind: IsoKind; lines: IsoLine[]; points: IsoPoint[]; bounds: { minX: number; minY: number; maxX: number; maxY: number } };
+export type IsoPoint = { nodeId: string; x: number; y: number; label: string; /** 器具の種類（記号の選択用） */ type?: FixtureType; height?: string; isPublic?: boolean; isManhole?: boolean; existing?: boolean; /** 配管の途中のバルブ（止水栓）。給水の図では文字を書かず、記号と凡例で示す */ valve?: boolean };
+export type IsoModel = { kind: IsoKind; lines: IsoLine[]; points: IsoPoint[]; /** 器具の接続口・バルブの点の ID（代表の点だけの points と違い全部。管をまとめるときにここで切る） */ fixed?: string[]; bounds: { minX: number; minY: number; maxX: number; maxY: number } };
 
 const COS30 = Math.cos(Math.PI / 6), SIN30 = 0.5;
 
@@ -76,7 +76,7 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
     const n = net.nodes[id];
     const fx = n.fixtureId ? doc.fixtures[n.fixtureId] : undefined;
     if (!fx) {
-      if (n.kind === 'valve') { const p = isoProject(n.pos); points.push({ nodeId: id, x: p.x, y: p.y, label: 'バルブ' }); }
+      if (n.kind === 'valve') { const p = isoProject(n.pos); points.push({ nodeId: id, x: p.x, y: p.y, label: 'バルブ', valve: true }); }
       continue;
     }
     if (doneFixture.has(fx.id)) continue;
@@ -97,5 +97,6 @@ export function buildIsometric(doc: Doc, kind: IsoKind, profile: MunicipalityPro
   const xs = [...lines.flatMap((l) => [l.x1, l.x2]), ...points.map((p) => p.x)];
   const ys = [...lines.flatMap((l) => [l.y1, l.y2]), ...points.map((p) => p.y)];
   const bounds = xs.length ? { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) } : { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-  return { kind, lines, points, bounds };
+  const fixed = [...used].filter((id) => !!net.nodes[id].fixtureId || net.nodes[id].kind === 'valve');
+  return { kind, lines, points, fixed, bounds };
 }
