@@ -37,8 +37,9 @@ describe('アイソメ図の描画', () => {
   test('給水のアイソメ図: 管種口径×長さ、器具名、高さ、凡例、NO SCALE', () => {
     const iso = buildIsometric(waterDoc(), 'water', STANDARD_PROFILE);
     const svg = renderIsoSvg(iso, STANDARD_PROFILE, { ...meta, title: '立面図（展開図）' });
-    expect(svg).toContain('HI20×3.9'); // メーターの出口（x=100）から 4000 まで
-    expect(svg).toContain('HI20×2.0');
+    // 曲がりで続く同じ管は 1 本として長さの合計を書く（3.9 + 2.0 + 立ち上がり 0.9。2026-11-18 見やすさの改善）
+    expect(svg).toContain('HI20×6.8');
+    expect(svg).not.toContain('HI20×3.9');
     expect(svg).toContain('水道メーター');
     expect(svg).toContain('水栓（壁付）');
     expect(svg).toContain('NO SCALE');

@@ -14,6 +14,7 @@ import { groupRuns } from '../model/drainRuns';
 export type IsoMeta = SheetMeta & { title: string };
 export type Box = { x: number; y: number; w: number; h: number };
 const HOT = '#1d4ed8';
+const HEADER_HALF = 1.2 * 2.5 + 0.3; // ヘッダー記号（drawSymbol('header')、r=1.2 → 横幅 r×5）の半分＋余白(mm)
 
 /** 枠 box に収まるように縮めて描く。戻り値は使った縮尺（mm/mm） */
 export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: MunicipalityProfile, box: Box): number {
@@ -26,7 +27,9 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
   const colors = profile.colors;
   const lineColor = (l: IsoModel['lines'][number]) => (l.existing ? colors.existing : iso.kind === 'water' && l.system === 'hotWater' ? HOT : colors.newWork);
   // 文字は「線・記号を全部描いてから」空いている場所に置く（重なり回避。labelLayout.ts）
-  const placer = new LabelPlacer(sheet, { x1: box.x, y1: box.y, x2: box.x + box.w, y2: box.y + box.h });
+  // 給水の図は文字が多いので、引出線が配管・ほかの引出線をまたがない置き方を優先する
+  const water = iso.kind === 'water';
+  const placer = new LabelPlacer(sheet, { x1: box.x, y1: box.y, x2: box.x + box.w, y2: box.y + box.h }, water ? { leaderCross: 45 } : {});
   const lines = iso.lines.map((l) => ({ l, x1: X(l.x1), y1: Y(l.y1), x2: X(l.x2), y2: Y(l.y2), c: lineColor(l) }));
   for (const q of lines) {
     sheet.ops.push({ t: 'line', x1: q.x1, y1: q.y1, x2: q.x2, y2: q.y2, w: 0.5, color: q.c });
@@ -40,10 +43,13 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
       const sym = p.type === 'waterHeader' || p.type === 'hotWaterHeader' ? 'header' : (p.type && profile.symbols[p.type]) || 'triangle';
       drawSymbol(sheet, sym, x, y, 1.2, c);
     }
-    placer.block({ x1: x - 1.7, y1: y - 1.7, x2: x + 1.7, y2: y + 1.7 });
+    // ヘッダーの記号は横に長い（太い横棒）ので、その幅ぶん文字を避ける
+    const hw = !p.isManhole && (p.type === 'waterHeader' || p.type === 'hotWaterHeader') ? HEADER_HALF : 1.7;
+    placer.block({ x1: x - hw, y1: y - 1.7, x2: x + hw, y2: y + 1.7 });
   }
   // 器具・マスの名前（高さは名前の下の行）。記号のすぐ横が空いていなければ離して引出線
   for (const { p, x, y, c } of points) {
+    if (water && p.valve) continue; // バルブは記号と凡例で示す（1 個ごとに文字を書かない）
     const label: LabelLine[] = p.isManhole ? [{ s: p.label, size: 2.2, color: c }] : [{ s: p.label, size: 2.2, color: INK }, ...(p.height !== undefined ? [{ s: p.height, size: 2, color: GRAY }] : [])];
     placer.place(around(x, y, label, { gap: 2, prefer: p.isManhole ? [45, 0, -45] : [0, -45, 45], leaderColor: GRAY }));
   }
@@ -51,12 +57,13 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
   // 南風原町の書き方: 桝どうしの本管は「VU100×1.6」、器具からの枝は 長さ／口径 の 2 段（線の横）
   const stacked = iso.kind === 'drain' && profile.profileTable.manholeText === 'naikeiFuka';
   // 枝は、器具・桝の無い曲がり（2 本だけがつながる点）で続く同じ口径の管を 1 本として、長さの合計を 1 か所に書く
+  // 給水は全部の管を同じようにまとめる（分岐・器具・バルブ・口径や管種が変わる所で切る）
   const runLen = new Map<string, number>(), skip = new Set<string>();
-  if (stacked) {
-    const branch = lines.filter((q) => !q.l.main && q.l.spec && q.l.a && q.l.b);
+  if (stacked || water) {
+    const branch = lines.filter((q) => (water || !q.l.main) && q.l.spec && q.l.a && q.l.b);
     const degree = new Map<string, number>();
     for (const q of iso.lines) for (const n of [q.a, q.b]) if (n) degree.set(n, (degree.get(n) ?? 0) + 1);
-    const runs = groupRuns(branch.map((q) => ({ id: q.l.segId, a: q.l.a!, b: q.l.b!, key: q.l.spec!, lengthMm: q.l.lenMm ?? 0 })), degree, new Set(iso.points.map((p) => p.nodeId)));
+    const runs = groupRuns(branch.map((q) => ({ id: q.l.segId, a: q.l.a!, b: q.l.b!, key: water ? `${q.l.spec}|${q.l.system}|${q.l.existing ? 1 : 0}` : q.l.spec!, lengthMm: q.l.lenMm ?? 0 })), degree, new Set([...iso.points.map((p) => p.nodeId), ...(water ? iso.fixed ?? [] : [])]));
     const bySeg = new Map(lines.map((q) => [q.l.segId, q]));
     for (const r of runs) {
       // 長さの合計は、いちばん長く描かれる線の横に 1 回だけ
@@ -74,7 +81,10 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
       placer.place(around(mx, my, two, { gap: 1.5, prefer: [-90, 90, -45, 45, 0, 180] }).concat(around(mx, my, two, { gap: 4, prefer: [-90, 90, -45, 45], leaderAlways: true, leaderColor: GRAY }).map((c) => ({ ...c, penalty: c.penalty + 100 }))), { ignoreSeg: q.l.segId });
       continue;
     }
-    const label: LabelLine = { s: q.l.label, size: 2.2, color: q.c };
+    // まとめた管は長さの合計を書く。0.05m に満たない（「×0.0」になる）管には書かない
+    const sum = water && q.l.spec ? runLen.get(q.l.segId) : undefined;
+    if (sum !== undefined && sum < 50) continue;
+    const label: LabelLine = { s: sum !== undefined ? `${q.l.spec}×${(sum / 1000).toFixed(1)}` : q.l.label, size: 2.2, color: q.c };
     const mx = (q.x1 + q.x2) / 2, my = (q.y1 + q.y2) / 2;
     placer.place([
       ...alongLine(q.x1, q.y1, q.x2, q.y2, label),
@@ -91,14 +101,22 @@ function legend(sheet: Sheet, iso: IsoModel, profile: MunicipalityProfile, x: nu
   const items: [string, string][] = iso.kind === 'water'
     ? [['給水', profile.colors.newWork] as [string, string], ...(hasHot ? [['給湯', HOT] as [string, string]] : []), ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : [])]
     : [['新設', profile.colors.newWork], ...(hasExisting ? [['既設', profile.colors.existing] as [string, string]] : [])];
-  sheet.ops.push({ t: 'rect', x, y, w: 40, h: 4 * items.length + 5, lw: 0.3 });
+  // 給水の図はバルブを記号だけで描くので、凡例で説明する
+  const valve = iso.kind === 'water' ? iso.points.find((p) => p.valve) : undefined;
+  const rows = items.length + (valve ? 1 : 0);
+  sheet.ops.push({ t: 'rect', x, y, w: 40, h: 4 * rows + 5, lw: 0.3 });
   sheet.ops.push({ t: 'text', x: x + 1, y: y + 3, s: '凡例', size: 2.2, color: GRAY });
   items.forEach(([label, color], i) => {
     const yy = y + 6 + 4 * i;
     sheet.ops.push({ t: 'line', x1: x + 2, y1: yy, x2: x + 12, y2: yy, color, w: 0.5 });
     sheet.ops.push({ t: 'text', x: x + 14, y: yy + 0.9, s: label, size: 2.2 });
   });
-  sheet.ops.push({ t: 'text', x, y: y + 4 * items.length + 8.5, s: '※単位はmm 管長はm', size: 2, color: GRAY });
+  if (valve) {
+    const yy = y + 6 + 4 * items.length;
+    drawSymbol(sheet, 'triangle', x + 7, yy, 1.2, valve.existing ? profile.colors.existing : profile.colors.newWork);
+    sheet.ops.push({ t: 'text', x: x + 14, y: yy + 0.9, s: 'バルブ（止水栓）', size: 2.2 });
+  }
+  sheet.ops.push({ t: 'text', x, y: y + 4 * rows + 8.5, s: '※単位はmm 管長はm', size: 2, color: GRAY });
 }
 
 /** 1 枚もの（給水の立面図（展開図）など） */

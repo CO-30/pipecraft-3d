@@ -59,6 +59,16 @@ export function segHitsRect(s: { x1: number; y1: number; x2: number; y2: number 
   return clip(-dx, s.x1 - r.x1) && clip(dx, r.x2 - s.x1) && clip(-dy, s.y1 - r.y1) && clip(dy, r.y2 - s.y1) && t0 < t1;
 }
 
+/** 2 本の線分が途中で交わるか（端どうしが触れるだけ・平行は交わらない扱い） */
+export function segsCross(a: { x1: number; y1: number; x2: number; y2: number }, b: { x1: number; y1: number; x2: number; y2: number }): boolean {
+  const d = (a.x2 - a.x1) * (b.y2 - b.y1) - (a.y2 - a.y1) * (b.x2 - b.x1);
+  if (Math.abs(d) < 1e-9) return false;
+  const t = ((b.x1 - a.x1) * (b.y2 - b.y1) - (b.y1 - a.y1) * (b.x2 - b.x1)) / d;
+  const u = ((b.x1 - a.x1) * (a.y2 - a.y1) - (b.y1 - a.y1) * (a.x2 - a.x1)) / d;
+  const e = 0.02;
+  return t > e && t < 1 - e && u > e && u < 1 - e;
+}
+
 /** 置き場所の候補。texts をまとめて 1 つの札として置く。penalty が小さいほど優先 */
 export type Cand = { texts: TextOp[]; leader?: Seg & { color?: string }; penalty: number };
 
@@ -68,8 +78,10 @@ export class LabelPlacer {
   private sheet: Sheet;
   private bounds: Rect;
   /** すでに描いてある文字は動かせない障害物として登録する */
-  constructor(sheet: Sheet, bounds: Rect) {
-    this.sheet = sheet; this.bounds = bounds;
+  private leaderCross: number;
+  /** leaderCross: 引出線が配管・ほかの引出線を 1 本またぐごとの減点（既定 0 = 気にしない） */
+  constructor(sheet: Sheet, bounds: Rect, opts: { leaderCross?: number } = {}) {
+    this.sheet = sheet; this.bounds = bounds; this.leaderCross = opts.leaderCross ?? 0;
     for (const o of sheet.ops) if (o.t === 'text') this.blockText(o);
   }
   block(r: Rect): void { this.hard.push(r); }
@@ -92,6 +104,8 @@ export class LabelPlacer {
     }
     if (c.leader) {
       for (const h of this.hard) if (segHitsRect(c.leader, h)) cost += 400;
+      // 引出線は、自分の線以外の配管・ほかの引出線をなるべくまたがない
+      if (this.leaderCross) for (const s of this.segs) if ((s.id === undefined || s.id !== ignoreSeg) && segsCross(c.leader, s)) cost += this.leaderCross;
     }
     return cost;
   }
