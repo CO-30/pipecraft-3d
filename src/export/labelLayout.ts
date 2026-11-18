@@ -79,9 +79,14 @@ export class LabelPlacer {
   private bounds: Rect;
   /** すでに描いてある文字は動かせない障害物として登録する */
   private leaderCross: number;
+  private textOnSeg: number;
+  private softCap: number;
+  private hardCost: number;
   /** leaderCross: 引出線が配管・ほかの引出線を 1 本またぐごとの減点（既定 0 = 気にしない） */
-  constructor(sheet: Sheet, bounds: Rect, opts: { leaderCross?: number } = {}) {
-    this.sheet = sheet; this.bounds = bounds; this.leaderCross = opts.leaderCross ?? 0;
+  /** textOnSeg: 文字が配管などの線に 1 本かかるごとの減点（既定 60） */
+  /** softCap: 線にかかる・またぐ減点の合計の上限（既定 なし）。文字どうしの重なり（1000〜）より軽く保ち、混んだ図でも重なりを選ばせない */
+  constructor(sheet: Sheet, bounds: Rect, opts: { leaderCross?: number; textOnSeg?: number; softCap?: number; /** 文字・記号に重なる減点（既定 1000）。大きくすると、引出線が文字をまたぐ減点（400×本数）を何本重ねても重なりより軽い */ hardCost?: number } = {}) {
+    this.sheet = sheet; this.bounds = bounds; this.leaderCross = opts.leaderCross ?? 0; this.textOnSeg = opts.textOnSeg ?? 60; this.softCap = opts.softCap ?? Infinity; this.hardCost = opts.hardCost ?? 1000;
     for (const o of sheet.ops) if (o.t === 'text') this.blockText(o);
   }
   block(r: Rect): void { this.hard.push(r); }
@@ -93,34 +98,39 @@ export class LabelPlacer {
   collisions = 0;
 
   private cost(c: Cand, ignoreSeg: string | undefined, limit: number): number {
-    let cost = c.penalty;
+    let cost = c.penalty, soft = 0;
     const b = this.bounds;
+    const addSoft = (n: number) => { const m = Math.min(n, this.softCap - soft); soft += m; cost += m; };
     for (const t of c.texts) for (const r of textRects(t, 0.25)) {
-      if (r.x1 < b.x1 || r.y1 < b.y1 || r.x2 > b.x2 || r.y2 > b.y2) cost += 5000;
-      for (const h of this.hard) if (hit(r, h)) cost += 1000 + area(r, h) * 10;
+      if (r.x1 < b.x1 || r.y1 < b.y1 || r.x2 > b.x2 || r.y2 > b.y2) cost += 5 * this.hardCost;
+      for (const h of this.hard) if (hit(r, h)) cost += this.hardCost + area(r, h) * 10;
       if (cost >= limit) return cost; // これより良い候補がすでにある
       // 自分の線は、線に沿って書く札（引出線なし）のときだけ無視する
-      for (const s of this.segs) if ((s.id === undefined || s.id !== ignoreSeg || c.leader) && segHitsRect(s, r)) cost += 60;
+      for (const s of this.segs) if ((s.id === undefined || s.id !== ignoreSeg || c.leader) && segHitsRect(s, r)) addSoft(this.textOnSeg);
     }
     if (c.leader) {
       for (const h of this.hard) if (segHitsRect(c.leader, h)) cost += 400;
       // 引出線は、自分の線以外の配管・ほかの引出線をなるべくまたがない
-      if (this.leaderCross) for (const s of this.segs) if ((s.id === undefined || s.id !== ignoreSeg) && segsCross(c.leader, s)) cost += this.leaderCross;
+      if (this.leaderCross) for (const s of this.segs) if ((s.id === undefined || s.id !== ignoreSeg) && segsCross(c.leader, s)) addSoft(this.leaderCross);
     }
     return cost;
   }
 
   /** 候補から選んで描く。全部ぶつかるときは、いちばんましな場所に置く（collisions に数える） */
-  place(cands: Cand[], opts: { ignoreSeg?: string } = {}): Cand | undefined {
+  place(cands: Cand[], opts: { ignoreSeg?: string; /** どの候補も文字・記号にぶつかるときだけ試す追加の候補（anywhere など） */ fallback?: () => Cand[] } = {}): Cand | undefined {
     let best: Cand | undefined, bestCost = Infinity;
-    // 優先度の順に試し、残りの候補がこれ以上良くならなくなったら打ち切る
-    for (const c of [...cands].sort((p, q) => p.penalty - q.penalty)) {
-      if (c.penalty >= bestCost) break;
-      const k = this.cost(c, opts.ignoreSeg, bestCost);
-      if (k < bestCost) { best = c; bestCost = k; }
-    }
+    const scan = (list: Cand[]) => {
+      // 優先度の順に試し、残りの候補がこれ以上良くならなくなったら打ち切る
+      for (const c of [...list].sort((p, q) => p.penalty - q.penalty)) {
+        if (c.penalty >= bestCost) break;
+        const k = this.cost(c, opts.ignoreSeg, bestCost);
+        if (k < bestCost) { best = c; bestCost = k; }
+      }
+    };
+    scan(cands);
+    if (bestCost >= this.hardCost && opts.fallback) scan(opts.fallback());
     if (!best) return undefined;
-    if (bestCost >= 1000) this.collisions++;
+    if (bestCost >= this.hardCost) this.collisions++;
     if (best.leader) {
       this.sheet.ops.push({ t: 'line', x1: best.leader.x1, y1: best.leader.y1, x2: best.leader.x2, y2: best.leader.y2, w: 0.12, color: best.leader.color });
       this.segs.push(best.leader);
@@ -158,6 +168,21 @@ export function around(ax: number, ay: number, lines: LabelLine[], opts: { gap?:
       out.push({ texts, penalty: di * 20 + i, ...(withLeader ? { leader: { x1: ax, y1: ay, x2: px, y2: py, color: opts.leaderColor ?? lines[0].color } } : {}) });
     });
   });
+  return out;
+}
+
+/**
+ * 枠 box の中を格子で総当たりする候補（最後の手段）。点 (ax, ay) から引出線を引く。近い場所ほど優先。
+ * penalty は 1000 未満に収める（文字どうしの重なりより必ず軽い）
+ */
+export function anywhere(ax: number, ay: number, l: LabelLine, box: Rect, leaderColor?: string): Cand[] {
+  const w = textWidth(l.s, l.size), stepX = Math.max(4, w / 2), stepY = l.size * 1.4;
+  const far = Math.hypot(box.x2 - box.x1, box.y2 - box.y1) || 1;
+  const out: Cand[] = [];
+  for (let y = box.y1 + l.size; y <= box.y2 - 0.5; y += stepY) for (let x = box.x1 + 0.5; x + w <= box.x2 - 0.5; x += stepX) {
+    const px = Math.min(Math.max(ax, x), x + w), py = Math.min(Math.max(ay, y - l.size * ASCENT), y + l.size * DESCENT);
+    out.push({ texts: [{ t: 'text', x, y, s: l.s, size: l.size, color: l.color }], leader: { x1: ax, y1: ay, x2: px, y2: py, color: leaderColor ?? l.color }, penalty: 300 + (Math.hypot(px - ax, py - ay) / far) * 200 });
+  }
   return out;
 }
 
