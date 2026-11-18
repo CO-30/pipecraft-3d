@@ -5,9 +5,10 @@
  */
 import type { Doc } from './doc';
 import { dropFixturePipes } from './dropPipes';
-import type { DrainRules } from './drainRoute';
 import { routeDrainMain } from './drainMain';
-import { localToPlan, portNodes, type FixtureType } from './fixtures';
+import { FIXTURE_CATALOG, localToPlan, portNodes, type Fixture, type FixtureType } from './fixtures';
+import { MANHOLE_OFFSET, openDrainEnds, routeDrainsOut, type DrainRules } from './drainRoute';
+import { buildDrainTrees } from './drainSolve/tree';
 import { addPolyline, segmentsAt, splitSegment, type Network, type Vec3 } from './network';
 import { closestPoints } from './clash';
 import { routeSupplies, type HeaderMode } from './supplyRoute';
@@ -107,6 +108,68 @@ export function connectYard(doc0: Doc): YardResult {
   return { doc: net === doc.network ? doc : { ...doc, network: net }, connected, pipes, notes, to };
 }
 
+/** 図面のますへ直接つなぐ器具の、ますからの距離の上限(mm)（すぐ外のますだけ。遠くから引かない） */
+export const DIRECT_REACH = 2500;
+
+/**
+ * 外の汚水マスの木で、何も流れ込まない上流の端になっている図面のます（自動で置いたマス・公共ます・下流端は除く）
+ */
+function emptyDrawnManholes(doc: Doc): Fixture[] {
+  const out: Fixture[] = [];
+  for (const t of buildDrainTrees(doc)) {
+    const kids = new Map<string, number>();
+    for (const [n, sid] of t.parent) { const s = doc.network.segments[sid]; const p = s.a === n ? s.b : s.a; kids.set(p, (kids.get(p) ?? 0) + 1); }
+    for (const n of t.order) {
+      if (n === t.root || kids.get(n)) continue;
+      const fid = doc.network.nodes[n]?.fixtureId, f = fid ? doc.fixtures[fid] : undefined;
+      if (f && SEWAGE_MANHOLES.has(f.type) && !f.params?.auto) out.push(f);
+    }
+  }
+  return out;
+}
+
+/**
+ * 図面のますに合わせる（2026-11-18 ユーザー指定）: 床下の本管でまとめると、配置図に描かれた汚水ますのうち上流の端のますに
+ * 何も流れ込まなくなる（例: トイレのすぐ外のます）。そのますには、すぐ内側（DIRECT_REACH 以内）のいちばん近い器具を
+ * 基礎を抜いて直接つなぐ（ほかの器具は今までどおり本管へ）。空になるかは、今までどおりつないだ形を試して確かめる。
+ * ここでは組み合わせ（器具の端 → ます）を決めるだけ。本管を通した後で routeDrainsOut(hole) でつなぐ
+ * （先につなぐと、その管を前の本管とみなしてほかの器具を枝でつないでしまう）
+ */
+export function planDirectToDrawn(doc: Doc, rules: DrainRules = {}): { endId: string; holeId: string }[] {
+  const ends = openDrainEnds(doc);
+  if (ends.length < 2) return [];
+  const empty = emptyDrawnManholes(connectYard(routeDrainMain(doc, rules).doc).doc);
+  const out: { endId: string; holeId: string }[] = [];
+  const used = new Set<string>();
+  for (const h of empty) {
+    // 本管へ残る器具が無くならないよう、少なくとも 1 つは本管に残す
+    if (ends.length - used.size < 2) break;
+    const near = ends.filter((e) => !used.has(e.node.id)).map((e) => ({ e, d: Math.hypot(e.node.pos.x - h.x, e.node.pos.y - h.y) }))
+      .filter((c) => c.d <= DIRECT_REACH).sort((a, b) => a.d - b.d)[0];
+    if (!near) continue;
+    used.add(near.e.node.id);
+    out.push({ endId: near.e.node.id, holeId: h.id });
+  }
+  return out;
+}
+
+/** 決めた組み合わせで、器具の端を図面のますへ直接つなぐ。つなげなかった端は残す（あとで本管へ） */
+function connectDirect(doc: Doc, plan: { endId: string; holeId: string }[], rules: DrainRules): { doc: Doc; pairs: { fixtureId: string; manholeId: string }[]; sleeves: number } {
+  let cur = doc, sleeves = 0;
+  const pairs: { fixtureId: string; manholeId: string }[] = [];
+  for (const p of plan) {
+    const e = openDrainEnds(cur).find((x) => x.node.id === p.endId);
+    if (!e) continue;
+    const r = routeDrainsOut(cur, MANHOLE_OFFSET, rules, { ends: [e], hole: p.holeId });
+    if (!r.pipes) continue;
+    const top = cur.network.nodes[e.seg.a === e.node.id ? e.seg.b : e.seg.a];
+    cur = r.doc;
+    sleeves += r.sleeves;
+    if (top.fixtureId) pairs.push({ fixtureId: top.fixtureId, manholeId: p.holeId });
+  }
+  return { doc: cur, pairs, sleeves };
+}
+
 /** 通気弁を付ける器具（キャビネットの中に付けられるもの） */
 const VENT_FIXTURES = new Set<FixtureType>(['kitchen', 'washbasin']);
 /** トラップから 300mm 以内（メーカーの施工説明）: 排水口から下へ 150mm にチーズ、横へ出して上へ 300mm で通気弁 */
@@ -172,6 +235,8 @@ export function addVentValves(doc: Doc): { doc: Doc; valves: number; notes: stri
 export type AutoConnectResult = {
   doc: Doc;
   dropped: number; drains: number; newManholes: number; yard: number; supplies: number; headers: number; valves: number; vents: number;
+  /** 図面のますへ直接つないだ器具 */
+  direct: { fixtureId: string; manholeId: string }[];
   /** 画面に出す知らせ（順に） */
   summary: string[];
   /** 使う人に聞くこと（ヘッダーを置くか など）。無ければ空 */
@@ -179,14 +244,21 @@ export type AutoConnectResult = {
 };
 
 /** まとめてつなぐ（1〜5）。何度呼んでも増えない */
-export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number; headers?: HeaderMode } = {}): AutoConnectResult {
+export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: number; dropDepth?: number; headers?: HeaderMode; /** false: 図面のますへ直接つながない（比べる用） */ directToDrawn?: boolean } = {}): AutoConnectResult {
   // headers: 'avoid' を渡すと従来の形（ヘッダーを足さず分岐でつなぎ、通せない所があるときだけ聞く）
   // 給水・給湯は初期設定でヘッダー工法（2026-11-14 ユーザー指定: 実際の工事に多い、器具ごとに PB を引く形）
   const headers = opts.headers ?? 'use';
   const summary: string[] = [];
   const d1 = dropFixturePipes(doc, opts.dropDepth);
-  // 床下は φ100 の本管にまとめ、公共マスに近い側から 1 か所で外へ（外のマスはその出口から）
-  const d2 = routeDrainMain(d1.doc, opts.drainRules ?? {});
+  const rules = opts.drainRules ?? {};
+  // 図面のますのうち本管でまとめると空になる上流の端のますへ、すぐ内側の器具を直接（組み合わせを先に決める）
+  const plan = opts.directToDrawn === false ? [] : planDirectToDrawn(d1.doc, rules);
+  // 床下は φ100 の本管にまとめ、公共マスに近い側から 1 か所で外へ（外のマスはその出口から）。直接つなぐ器具は入れない
+  const main = routeDrainMain(d1.doc, rules, { skip: new Set(plan.map((p) => p.endId)) });
+  const dm = connectDirect(main.doc, plan, rules);
+  // 直接つなげなかった器具は、通した本管へ枝で
+  const rest = dm.pairs.length < plan.length ? routeDrainMain(dm.doc, rules) : null;
+  const d2: typeof main = rest ? { ...main, doc: rest.doc, pipes: main.pipes + rest.pipes, skipped: main.skipped + rest.skipped, sleeves: main.sleeves + rest.sleeves + dm.sleeves } : { ...main, doc: dm.doc, sleeves: main.sleeves + dm.sleeves };
   const d3 = connectYard(d2.doc);
   const s = routeSupplies(d3.doc, { headers, ...(opts.burial !== undefined ? { burial: opts.burial } : {}) });
   const d4 = s.error ? d3.doc : s.doc;
@@ -194,6 +266,7 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
   if (d1.pipes) summary.push(`器具の真下に配管を ${d1.pipes} 本落としました`);
   if ((d2.main === 'new' || d2.main === 'joined') && d2.notes.length) summary.push(`${d2.notes.join('。')}${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`);
   else if (d2.pipes) summary.push(`排水 ${d2.pipes} 本を床下から外の汚水マスへ出しました${d2.manholes ? `（マスを新しく ${d2.manholes} 個）` : ''}${d2.sleeves ? `・基礎の貫通 ${d2.sleeves} か所` : ''}`, ...d2.notes);
+  if (dm.pairs.length) summary.push(`図面のますに合わせて、${dm.pairs.map((p) => FIXTURE_CATALOG[d1.doc.fixtures[p.fixtureId].type].label).join('・')}の排水は床下の本管に入れず、すぐ外の汚水マスへ基礎を抜いて直接つなぎました（本管にまとめると、そのますに何も流れ込まなくなるため）`);
   if (d2.skipped) summary.push(`排水 ${d2.skipped} 本は外へ出す出口を決められませんでした`);
   if (d3.connected) summary.push(`外の汚水マス ${d3.connected} 個を${d3.to === 'downstream' ? '下流端のマス' : '公共汚水マス'}までつなぎました（勾配・曲がりのマスは自動）`);
   summary.push(...d3.notes);
@@ -207,7 +280,7 @@ export function autoConnect(doc: Doc, opts: { drainRules?: DrainRules; burial?: 
   summary.push(...v.notes);
   return {
     doc: v.doc,
-    dropped: d1.pipes, drains: d2.pipes, newManholes: d2.manholes, yard: d3.connected,
+    dropped: d1.pipes, drains: d2.pipes + dm.pairs.length, newManholes: d2.manholes, yard: d3.connected, direct: dm.pairs,
     supplies: s.error ? 0 : s.pipes, headers: s.error ? 0 : s.headers, valves: s.error ? 0 : s.valves, vents: v.valves,
     summary,
     questions: [s.needHeader ? headerQuestion(s.needHeader) : null].filter((q): q is Question => !!q),

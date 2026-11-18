@@ -92,7 +92,8 @@ export function checkDrain(doc: Doc, rules: DrainRuleSet, trees: DrainTree[], op
       const L = planLength(net, s);
       if (L < 1 || isRiserLike(net, s)) continue;
       const pf = fxOf(p);
-      const downZ = net.nodes[p].pos.z + (pf && isManhole(pf.type) ? net.nodes[p].dropIn ?? 0 : 0);
+      // 下流がマスなら、マスへ着く高さ（落差桝の dropIn と、この管だけマスの外で L で落とす dropEnd。endZ・3D と同じ）
+      const downZ = net.nodes[p].pos.z + (pf && isManhole(pf.type) ? (net.nodes[p].dropIn ?? 0) + (s.dropEnd ?? 0) : 0);
       const slope = (net.nodes[n].pos.z - downZ) / L;
       const a = net.nodes[s.a].pos, b = net.nodes[s.b].pos;
       const uf = !!lv && isUnderfloorDrain(net, s, lv);
