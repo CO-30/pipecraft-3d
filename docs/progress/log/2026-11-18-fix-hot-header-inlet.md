@@ -9,12 +9,15 @@
 - ヘッダーを置く所は、壁・基礎・ほかのヘッダーとの空きは見ていたが、先に引いた給水・給湯の管は見ていなかった
 
 ## 直したこと
-- `supplyRoute.ts` `placeHeader`: ヘッダーとその周り・入口の前の箱を、先に引いた給水・給湯の床下の管（ヘッダーの高さの近く）が横切る所には置かない（`segHitsBox`）
+- `supplyRoute.ts` `placeHeader`: ヘッダーとその周り・入口の前の箱を、先に引いた給水・給湯の床下の管（ヘッダーの高さの近く。高さは 1 階の床からの高さで比べる）が横切る所には置かない（`segHitsBox`）
 
 ## 結果（実物・画面と同じ流れ、手元のみ）
 - 給湯ヘッダーは（3037, 7998）に置かれ、入口へつながる。給水・給湯ヘッダーの入口のすぐ先に止水栓（ユーザーの施工どおり）
 - 公共ますなし・あり とも: 「つなげませんでした」「見つかりませんでした」の知らせ 0、お湯 3 本・給水 8 本、干渉 0、積算の要確認 0、申請画面の注意 5 件（前と同じ本当の確認事項）
 
 ## テスト
-- 新規 `headerPlace.test.ts` 2（今までの置き場所の確認・その列を給水の管が通っていれば避けて置き入口へつなぐ）。直す前の supplyRoute.ts では 2 つ目が落ちることを確かめた
-- vitest 1,446 合格、tsc、E2E（autoconnect・supplyroute・shinsei・estimateIssues・underfloor・beginner・fixtureshapes・mitori・phase5、PC／iPhone／Android）48 合格
+- 新規 `headerPlace.test.ts` 4（今までの置き場所の確認・その列を給水の管が通っていれば避けて置き入口へつなぐ・1 階の床の高さが 0 でない家・どこにも置けなければ置かずに知らせる）。直す前の supplyRoute.ts では 2 つ目が、高さの比べ方を直す前は 3 つ目が落ちることを確かめた
+- vitest 1,447 合格、tsc、oxlint、E2E（autoconnect・supplyroute・shinsei・estimateIssues・underfloor・beginner・fixtureshapes・mitori・phase5、PC／iPhone／Android）87 合格
+
+## 独立監査（別モデルの reviewer）
+- Ready to merge: Yes（Critical・Important なし）。Minor: 高さの比べ方が床からの高さと絶対の高さを混ぜていた（1 階の床が 0 でない家で効かない）→ 直してテスト。どこにも置けない場合のテスト → 追加。入口の前の確かめ方が少し厳しい・箱の幅は今までの置き場所の確かめ方と同じ → そのまま

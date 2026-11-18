@@ -332,7 +332,7 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
     // （2026-11-18 実物: 給水ヘッダーへ入る給水の管の上に給湯ヘッダーを置き、給湯ヘッダーの入口へ入れなかった）
     const laid = Object.values(cur.network.segments).filter((sg) => sg.system === 'water' || sg.system === 'hotWater')
       .map((sg) => [cur.network.nodes[sg.a].pos, cur.network.nodes[sg.b].pos] as const)
-      .filter(([a, b]) => Math.min(a.z, b.z) <= zU + 100 && Math.max(a.z, b.z) >= HEADER_MOUNT - 100);
+      .filter(([a, b]) => Math.min(a.z, b.z) <= zU + 100 && Math.max(a.z, b.z) >= base.elevation + HEADER_MOUNT - 100); // HEADER_MOUNT は床からの高さ
     /** 箱 [x0,x1]×[y0,y1] を平面で横切る管があるか */
     const pipeIn = (x0: number, x1: number, y0: number, y1: number) => laid.some(([a, b]) => segHitsBox(a, b, x0, x1, y0, y1));
     for (const inward of inwards) for (let step = 0; step < 8; step++) for (const sx of [0, 1, -1, 2, -2]) {
