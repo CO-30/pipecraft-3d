@@ -30,6 +30,19 @@ const fixFirst = (doc: Doc, kind: string) => {
   return issue.fixes[0].apply(r.doc);
 };
 
+describe('マスの外で L で落とす管（dropEnd）の勾配は、マスへ着く高さで検査する（2026-11-18 実物: 22.3/100 と出ていた）', () => {
+  it('急な短い管が、先に決めたマスへ標準の勾配で着いて外で落とす → 最大勾配の注意を出さない', () => {
+    const { doc, pub } = testSite(-900);
+    const P0 = doc.network.nodes[pub].pos;
+    const r1 = addPolyline(doc.network, [P0, v(-700, 3000, -600)], S, { startNodeId: pub });
+    const r2 = addPolyline(r1.net, [P0, v(-10700, 5000, -300)], S, { startNodeId: pub });
+    const pinB = (n: typeof r2.net, id: string) => ({ ...n, nodes: { ...n.nodes, [id]: { ...n.nodes[id], zPin: true } } });
+    const out = run({ ...doc, network: pinB(pinB(r2.net, r1.nodeIds[1]), r2.nodeIds[1]) });
+    expect(out.doc.network.segments[r2.segmentIds[0]].dropEnd).toBeGreaterThan(0);
+    expect(out.issues.filter((i) => i.kind === 'maxSlope' || i.kind === 'minSlope' || i.kind === 'reverse')).toEqual([]);
+  });
+});
+
 describe('排水の検査（checkDrain）', () => {
   it('問題が無ければ検査は空（那覇市は 要確認 だけ）', () => {
     const { doc, pub } = testSite();

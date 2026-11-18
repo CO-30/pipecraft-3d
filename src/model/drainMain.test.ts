@@ -239,3 +239,17 @@ subTests('本管から離れて横に並ぶ器具（本管に直角な列）は 
 // 本管は北の列（洗面台・洗濯機・洗面台）の上。南の列（トイレ・洗濯機・キッチン）は本管に平行
 subTests('本管に平行に並ぶ器具も φ75 の枝管 1 本にまとめ、列の端で 1 回曲げて本管へ',
   [['toilet', 2000, 1200], ['washer', 5000, 1300], ['kitchen', 6500, 1200]], [['washbasin', 1500, 5000], ['washer', 3000, 4700], ['washbasin', 4600, 5100]], 'sewage', (dx, dy) => dx < 1 || dy < 1);
+
+describe('本管の出口の壁を順に試す（2026-11-18）', () => {
+  test('いちばん近い外壁の外が塞がっていて外へ出せなければ、器具ごとに出さず次の外壁から本管を出す', async () => {
+    const { withMember } = await import('./members');
+    const h = supplyHouse();
+    // 西の外壁の外（x=−700、マスを置く所）に、壁と平行な擁壁の立上り（マスを置けない）
+    const b = withMember(h.doc.building, { kind: 'footing', floorId: h.floorId, a: { x: -700, y: -2000 }, b: { x: -700, y: 8000 }, width: 150, z0: -1500, z1: 500 }).b;
+    let doc: Doc = { ...h.doc, building: b };
+    doc = placeFixture(doc, h.floorId, 'publicSewage', { x: -2000, y: 3000 }, 0, { invertZ: -2000 }).doc;
+    const r = routeDrainMain(dropFixturePipes(doc).doc);
+    expect(r.main).toBe('new');
+    expect(r.notes.join()).toContain('西の外壁からは外へ出せなかったので、');
+  });
+});

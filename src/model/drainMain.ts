@@ -389,14 +389,15 @@ function sewageDownstream(net: Doc['network'], from: string, doc: Doc): Doc['net
  * 床下の排水を本管にまとめて外へ出す。本管にできないとき（外周が閉じていない・置ける所が無い）は、
  * これまでどおり器具ごとに一番近い外壁から出す（routeDrainsOut）
  */
-export function routeDrainMain(doc: Doc, rules: DrainRules = {}): DrainMainResult {
+/** opts.skip: 本管に入れない器具の端（落とした立て管の下の点。図面のますへ直接つなぐ器具） */
+export function routeDrainMain(doc: Doc, rules: DrainRules = {}, opts: { skip?: Set<string> } = {}): DrainMainResult {
   const none: DrainMainResult = { doc, pipes: 0, manholes: 0, sleeves: 0, skipped: 0, main: 'none', notes: [] };
-  const ends = openDrainEnds(doc);
+  const ends = openDrainEnds(doc).filter((e) => !opts.skip?.has(e.node.id));
   const base = doc.building.floors[0];
   if (!ends.length || !base) return none;
   const lv = underfloorLevels(doc);
   const fallback = (why: string): DrainMainResult => {
-    const r = routeDrainsOut(doc, MANHOLE_OFFSET, rules);
+    const r = routeDrainsOut(doc, MANHOLE_OFFSET, rules, { ends });
     return { ...r, main: 'fallback', notes: r.pipes ? [`床下の本管にまとめられなかったので（${why}）、器具ごとに近い外壁から出しました`] : [] };
   };
   if (!lv?.outline.length) return fallback('外周の壁が 1 周つながっていない');
@@ -435,74 +436,87 @@ export function routeDrainMain(doc: Doc, rules: DrainRules = {}): DrainMainResul
   const feet: [Vec2, Vec2][] = membersOf(b).filter((m) => m.kind === 'footing' && m.floorId === base.id)
     .map((m) => [m.a, m.b] as [Vec2, Vec2]).filter(([a, c]) => distToOutline(lv, { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 }) > 300);
   const target = exitTarget(doc);
-  let chosen: Layout | null = null;
+  // 本管を通す外壁の候補（順に試す。通した本管の出口から外へ出せなければ次の壁: 2026-11-18 器具を 1 つ減らすと出口が出せない所に来ていた）
+  const layouts: Layout[] = [];
   if (target) {
     // 出口を向ける所に向いた外壁（外向きがその所の方を向く）を、近い順に
     const facing = walls.map((w) => ({ w, d: pointSeg(target.p, w.a, w.b), f: (target.p.x - (w.a.x + w.b.x) / 2) * w.out.x + (target.p.y - (w.a.y + w.b.y) / 2) * w.out.y }))
       .sort((p, q) => Number(q.f > 0) - Number(p.f > 0) || p.d - q.d);
-    for (const { w } of facing) { chosen = layoutFor(w, ends, lv, feet); if (chosen) break; }
+    for (const { w } of facing) { const l = layoutFor(w, ends, lv, feet); if (l) layouts.push(l); }
   } else {
-    for (const w of walls) { const l = layoutFor(w, ends, lv, feet); if (l && (!chosen || l.cost < chosen.cost)) chosen = l; }
+    for (const w of walls) { const l = layoutFor(w, ends, lv, feet); if (l) layouts.push(l); }
+    layouts.sort((p, q) => p.cost - q.cost);
   }
-  if (!chosen) return fallback('本管を通せる所が見つからない');
+  if (!layouts.length) return fallback('本管を通せる所が見つからない');
+  let why = '';
+  for (const chosen of layouts) {
+    const r = buildMain(chosen, chosen === layouts[0] ? '' : sideOf(layouts[0].wall.out));
+    if (typeof r !== 'string') return r;
+    why ||= r;
+  }
+  return fallback(why);
 
-  // 本管（下流の端 → 合流点 → 一番奥）と枝を引く
-  const hasToilet = ends.some((e) => e.seg.system === 'sewage');
-  const z0 = Math.max(...ends.map((e) => e.node.pos.z));
-  const mainAttrs: SegmentAttrs = { system: hasToilet ? 'sewage' : 'drain', diameter: MAIN_DIAMETER };
-  let net = doc.network;
-  const at = (p: Vec2): Vec3 => ({ x: p.x, y: p.y, z: z0 });
-  const ids: string[] = [];
-  let prev: string | undefined, endSeg: string | undefined;
-  const chainPts: { p: Vec3; id?: string }[] = [{ p: at(chosen.end) }, ...chosen.joins.map((j) => ({ p: j.end ? j.end.node.pos : at(j.at), id: j.end?.node.id }))];
-  for (let i = 1; i < chainPts.length; i++) {
-    const r = addPolyline(net, [chainPts[i - 1].p, chainPts[i].p], mainAttrs, { ...(prev ? { startNodeId: prev } : {}), ...(chainPts[i].id ? { endNodeId: chainPts[i].id } : {}) });
-    if (!r.segmentIds.length) return fallback('本管を引けなかった');
-    net = r.net;
-    if (i === 1) { ids.push(r.nodeIds[0]); endSeg = r.segmentIds[0]; }
-    prev = r.nodeIds[r.nodeIds.length - 1];
-    ids.push(prev);
-  }
-  // ids[0] = 下流の端、ids[k+1] = k 番目の合流点
-  for (const br of chosen.branches) {
-    const e = br.e;
-    const attrs: SegmentAttrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
-    const r = addPolyline(net, [e.node.pos, ...br.pts.map(at)], attrs, { startNodeId: e.node.id, endNodeId: ids[br.join + 1] });
-    if (!r.segmentIds.length) return fallback('枝を引けなかった');
-    net = r.net;
-  }
-  // 枝管（本管の合流点から先の端へ）と、枝管へ合流する器具の管
-  for (const sb of chosen.subs) {
-    const attrs: SegmentAttrs = { system: sb.system, diameter: sb.diameter };
-    let p = ids[sb.join + 1];
-    const on: string[] = [];
-    for (const q of sb.pts) {
-      const r = addPolyline(net, [net.nodes[p].pos, q.end ? q.end.node.pos : at(q.at)], attrs, { startNodeId: p, ...(q.end ? { endNodeId: q.end.node.id } : {}) });
-      if (!r.segmentIds.length) return fallback('枝管を引けなかった');
+  /** 本管を通して外へ出す。できなければ理由 */
+  /** firstFailed: 先に試して外へ出せなかった外壁（知らせに書く） */
+  function buildMain(chosen: Layout, firstFailed: string): DrainMainResult | string {
+    // 本管（下流の端 → 合流点 → 一番奥）と枝を引く
+    const hasToilet = ends.some((e) => e.seg.system === 'sewage');
+    const z0 = Math.max(...ends.map((e) => e.node.pos.z));
+    const mainAttrs: SegmentAttrs = { system: hasToilet ? 'sewage' : 'drain', diameter: MAIN_DIAMETER };
+    let net = doc.network;
+    const at = (p: Vec2): Vec3 => ({ x: p.x, y: p.y, z: z0 });
+    const ids: string[] = [];
+    let prev: string | undefined, endSeg: string | undefined;
+    const chainPts: { p: Vec3; id?: string }[] = [{ p: at(chosen.end) }, ...chosen.joins.map((j) => ({ p: j.end ? j.end.node.pos : at(j.at), id: j.end?.node.id }))];
+    for (let i = 1; i < chainPts.length; i++) {
+      const r = addPolyline(net, [chainPts[i - 1].p, chainPts[i].p], mainAttrs, { ...(prev ? { startNodeId: prev } : {}), ...(chainPts[i].id ? { endNodeId: chainPts[i].id } : {}) });
+      if (!r.segmentIds.length) return '本管を引けなかった';
       net = r.net;
-      p = r.nodeIds[r.nodeIds.length - 1];
-      on.push(p);
+      if (i === 1) { ids.push(r.nodeIds[0]); endSeg = r.segmentIds[0]; }
+      prev = r.nodeIds[r.nodeIds.length - 1];
+      ids.push(prev);
     }
-    for (const st of sb.stubs) {
-      const e = st.e;
-      const a2: SegmentAttrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
-      const r = addPolyline(net, [e.node.pos, net.nodes[on[st.k]].pos], a2, { startNodeId: e.node.id, endNodeId: on[st.k] });
-      if (!r.segmentIds.length) return fallback('枝を引けなかった');
+    // ids[0] = 下流の端、ids[k+1] = k 番目の合流点
+    for (const br of chosen.branches) {
+      const e = br.e;
+      const attrs: SegmentAttrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
+      const r = addPolyline(net, [e.node.pos, ...br.pts.map(at)], attrs, { startNodeId: e.node.id, endNodeId: ids[br.join + 1] });
+      if (!r.segmentIds.length) return '枝を引けなかった';
       net = r.net;
     }
+    // 枝管（本管の合流点から先の端へ）と、枝管へ合流する器具の管
+    for (const sb of chosen.subs) {
+      const attrs: SegmentAttrs = { system: sb.system, diameter: sb.diameter };
+      let p = ids[sb.join + 1];
+      const on: string[] = [];
+      for (const q of sb.pts) {
+        const r = addPolyline(net, [net.nodes[p].pos, q.end ? q.end.node.pos : at(q.at)], attrs, { startNodeId: p, ...(q.end ? { endNodeId: q.end.node.id } : {}) });
+        if (!r.segmentIds.length) return '枝管を引けなかった';
+        net = r.net;
+        p = r.nodeIds[r.nodeIds.length - 1];
+        on.push(p);
+      }
+      for (const st of sb.stubs) {
+        const e = st.e;
+        const a2: SegmentAttrs = { system: e.seg.system, diameter: e.seg.diameter, ...(e.seg.material ? { material: e.seg.material } : {}) };
+        const r = addPolyline(net, [e.node.pos, net.nodes[on[st.k]].pos], a2, { startNodeId: e.node.id, endNodeId: on[st.k] });
+        if (!r.segmentIds.length) return '枝を引けなかった';
+        net = r.net;
+      }
+    }
+    const built: Doc = { ...doc, network: net };
+    // 本管の下流の端から、前澤 KSA で外へ出して外の汚水マスへ（マスはこの 1 か所）
+    const endNode = net.nodes[ids[0]], seg = net.segments[endSeg!];
+    const r = routeDrainsOut(built, MANHOLE_OFFSET, rules, { ends: [{ node: endNode, seg }], wall: { a: chosen.wall.a, b: chosen.wall.b } });
+    if (!r.pipes) return '本管の出口から外へ出せなかった';
+    const n = ends.length;
+    // 本管・枝が横切る内部の立上り（125 の貫通パイプ）
+    const legs = legsOf(chosen);
+    const inner = legs.reduce((acc, [p, q]) => acc + feet.filter(([a, c]) => segCross(p, q, a, c)).length, 0);
+    return {
+      ...r, pipes: n, main: 'new', sleeves: r.sleeves + inner,
+      notes: [`床下に φ${MAIN_DIAMETER} の本管を通し、器具 ${n} 個の排水をつなぎました。${firstFailed ? `${firstFailed}の外壁からは外へ出せなかったので、` : target ? target.why : '一番短く出せる'}${sideOf(chosen.wall.out)}の外壁から外の汚水マスへ出しています`,
+        ...chosen.subs.map((sb) => `並んでいる器具 ${sb.pts.length} 個は、φ${sb.diameter} の枝管 1 本にまとめてから本管へつなぎました（管が平行に何本も並ばず、レベルバンドも減ります）`)],
+    };
   }
-  const built: Doc = { ...doc, network: net };
-  // 本管の下流の端から、前澤 KSA で外へ出して外の汚水マスへ（マスはこの 1 か所）
-  const endNode = net.nodes[ids[0]], seg = net.segments[endSeg!];
-  const r = routeDrainsOut(built, MANHOLE_OFFSET, rules, { ends: [{ node: endNode, seg }], wall: { a: chosen.wall.a, b: chosen.wall.b } });
-  if (!r.pipes) return fallback('本管の出口から外へ出せなかった');
-  const n = ends.length;
-  // 本管・枝が横切る内部の立上り（125 の貫通パイプ）
-  const legs = legsOf(chosen);
-  const inner = legs.reduce((acc, [p, q]) => acc + feet.filter(([a, c]) => segCross(p, q, a, c)).length, 0);
-  return {
-    ...r, pipes: n, main: 'new', sleeves: r.sleeves + inner,
-    notes: [`床下に φ${MAIN_DIAMETER} の本管を通し、器具 ${n} 個の排水をつなぎました。${target ? target.why : '一番短く出せる'}${sideOf(chosen.wall.out)}の外壁から外の汚水マスへ出しています`,
-      ...chosen.subs.map((sb) => `並んでいる器具 ${sb.pts.length} 個は、φ${sb.diameter} の枝管 1 本にまとめてから本管へつなぎました（管が平行に何本も並ばず、レベルバンドも減ります）`)],
-  };
 }

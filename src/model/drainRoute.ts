@@ -116,7 +116,7 @@ export function openDrainEnds(doc: Doc): { node: PipeNode; seg: Segment }[] {
 /**
  * opts.ends: つなぐ端（無ければ器具から落とした立て管の下の端すべて）。opts.wall: この外壁からだけ出す（床下の本管の出口）
  */
-export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRules = {}, opts: { ends?: { node: PipeNode; seg: Segment }[]; wall?: { a: Vec2; b: Vec2 } } = {}): DrainRouteResult {
+export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRules = {}, opts: { ends?: { node: PipeNode; seg: Segment }[]; wall?: { a: Vec2; b: Vec2 }; /** このマスへだけつなぐ（新しいマスは置かない。図面のますに合わせる） */ hole?: string } = {}): DrainRouteResult {
   const none: DrainRouteResult = { doc, pipes: 0, manholes: 0, sleeves: 0, skipped: 0 };
   const base = doc.building.floors[0];
   const ends = opts.ends ?? openDrainEnds(doc);
@@ -256,9 +256,9 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const touched: string[] = [];
   let buriedCount = 0;
   const holes: Hole[] = Object.values(doc.fixtures)
-    .filter((f) => isManhole(f.type) && f.type !== 'manholeRain' && f.type !== 'publicRain').map((f) => ({ id: f.id, x: f.x, y: f.y }));
+    .filter((f) => isManhole(f.type) && f.type !== 'manholeRain' && f.type !== 'publicRain' && (!opts.hole || f.id === opts.hole)).map((f) => ({ id: f.id, x: f.x, y: f.y }));
   /** 置いてある汚水マス（使う人が置いたもの。前にこのボタンで置いたマスも、もう決まったマスとして同じに扱う） */
-  const placedHoles: Hole[] = Object.values(doc.fixtures).filter((f) => PLACED_TYPES.has(f.type)).map((f) => ({ id: f.id, x: f.x, y: f.y }));
+  const placedHoles: Hole[] = Object.values(doc.fixtures).filter((f) => PLACED_TYPES.has(f.type) && (!opts.hole || f.id === opts.hole)).map((f) => ({ id: f.id, x: f.x, y: f.y }));
   /** この出口で使えるマス: 出口の壁の外側にあり、出口から MERGE_MM 以内で、その位置に置けることを確かめたもの。近い順 */
   const holeFor = (e: Exit): Hole | undefined => holes
     .map((h) => ({ h, out: (h.x - e.foot.x) * e.n.x + (h.y - e.foot.y) * e.n.y, d: Math.hypot(h.x - e.m.x, h.y - e.m.y) }))
@@ -290,7 +290,7 @@ export function routeDrainsOut(doc: Doc, offset = MANHOLE_OFFSET, rules: DrainRu
   const planFor = (p: Vec3, net: Doc['network'], d0: number): Plan | null => {
     const goals: RouteGoal[] = [], info: GoalInfo[] = [];
     const add = (g: Omit<RouteGoal, 'tag'>, gi: GoalInfo) => { goals.push({ ...g, tag: info.length }); info.push(gi); };
-    for (const exit of [...holeExits(p), ...exitsFor(p).slice(0, MAX_EXITS)]) {
+    for (const exit of [...holeExits(p), ...(opts.hole ? [] : exitsFor(p).slice(0, MAX_EXITS))]) {
       const hole = exit.hole ?? holeFor(exit);
       const hp = hole ? { x: hole.x, y: hole.y } : { x: Math.round(exit.m.x), y: Math.round(exit.m.y) };
       const u = { x: -exit.n.y, y: exit.n.x };

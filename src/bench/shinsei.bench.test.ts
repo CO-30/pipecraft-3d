@@ -1,7 +1,7 @@
 /**
  * 実物の図面で「新しい工事 → 器具の候補を置く → 汚水・水・湯をまとめてつなぐ → 申請図面」を画面と同じ流れで再現し、
  * 申請画面の注意（⚠）・エラー・干渉・排水の注意を数える（手元だけ。図面は個人情報を含むのでリポジトリに入れない）。
- *   BENCH_DIR=<フォルダ> npx vitest run src/bench/shinsei.bench.test.ts
+ *   BENCH_DIR=<フォルダ> npx vitest run src/bench/shinsei.bench.test.ts（WHERE=1 で注意の管の位置、SVG_OUT=<フォルダ> で縦断図・平面図・ます表の SVG も出す）
  * フォルダの中は 1 件 = 1 フォルダ（PDF 一式。address.txt があれば現場の住所。public.json {x,y,invertZ?} があれば、つなぐ前にそこへ公共汚水ますを置く）。結果は <フォルダ>/shinsei.md と画面に出す。
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -49,7 +49,11 @@ export function shinseiReport(): { lines: string[]; total: number } {
   }
   const clashes = findPipeClashes(doc);
   for (const c of clashes) lines.push(`- [干渉] ${JSON.stringify(c).slice(0, 240)}`);
-  for (const i of st.drainIssues) lines.push(`- [排水の注意] ${i.message}`);
+  for (const i of st.drainIssues) {
+    const s = i.target.kind === 'segment' ? doc.network.segments[i.target.id] : undefined;
+    const at = s && process.env.WHERE ? ` @${JSON.stringify([doc.network.nodes[s.a].pos, doc.network.nodes[s.b].pos].map((p) => [Math.round(p.x), Math.round(p.y), Math.round(p.z)]))}` : '';
+    lines.push(`- [排水の注意] ${i.message}${at}`);
+  }
   // 積算の要確認（単価の未登録は単価タブで入れるものなので数だけ）
   const est = computeEstimate(doc).issues;
   for (const i of est.filter((x) => x.kind !== 'noPrice')) lines.push(`- [積算の要確認] ${i.message}`);
