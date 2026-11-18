@@ -501,6 +501,19 @@ header .lbl { margin-left: 2px; }
 .doc-center .bundle-list .doc-reasons li { display: list-item; padding: 0; border: 0; border-radius: 0; background: none; }
 .doc-center .doc-row-btns { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 4px; justify-items: end; }
 .doc-center .doc-row-btns button { grid-column: auto; grid-row: auto; min-height: 36px; }
+.doc-questions { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
+.doc-questions h3 { margin: 0; font-size: 15px; }
+.doc-questions p { margin: 0; }
+.doc-q { border: 0; border-top: 1px solid #dbeafe; margin: 0; padding: 8px 0 0; min-width: 0; }
+.doc-q legend { font-weight: 700; padding: 0; float: left; width: 100%; margin-bottom: 2px; }
+.doc-q > p { clear: both; }
+.doc-q.folded { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; min-height: 40px; }
+.doc-q-opts { display: grid; gap: 6px; margin-top: 6px; }
+.doc-q-opts label { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; min-height: 44px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer; }
+.doc-q-opts label.on { border-color: #2563eb; box-shadow: inset 0 0 0 1px #2563eb; }
+.doc-q-opts input { width: 20px; height: 20px; margin-top: 1px; flex: none; }
+.doc-q-opts .badge { margin-left: 6px; }
+.doc-q-hint { display: block; }
 .modal.bundle .modal-btns { position: sticky; bottom: -16px; margin: 0 -16px -16px; padding: 10px 16px 16px; background: #fff; border-top: 1px solid #e5e7eb; }
 
 /* 積算の要確認: 単価の未登録のまとめ（配管・部品の確かめる所と色を分ける） */

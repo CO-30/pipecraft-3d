@@ -18,6 +18,7 @@ import type { FormWhat, Produced } from '../forms/produce';
 import type { ProductMemory } from '../forms/fixtureProducts';
 import { BUNDLE_KINDS, KIND_LABEL, type ShinseiBuild } from './shinseiBuild';
 import { rowStatus } from './ShinseiBundleDialog';
+import { answersOf, confirmQuestions } from '../model/confirmQuestions';
 import { checkSummary, docRows, statusText, type DocId, type DocRow } from './docCenter';
 
 type BKind = (typeof BUNDLE_KINDS)[number];
@@ -36,6 +37,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
 }) {
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
+  const updateSite = useStore((s) => s.updateSite);
   const set = FORM_SETS[profile.id];
   const [contractor, setContractor] = useState<Contractor | null>(null);
   const [offices, setOffices] = useState<RoadOffices>({});
@@ -62,16 +64,32 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
   const address = meta?.address;
   const values = useMemo(() => (set ? withDefaults(set, doc, { name: siteName, address }) : (doc.site?.application ?? {})), [set, doc, siteName, address]);
   const road = useMemo(() => roadValues(doc, { name: siteName, address }, contractor ?? EMPTY_CONTRACTOR, offices), [doc, siteName, address, contractor, offices]);
+  const questions = useMemo(() => confirmQuestions(set, doc.site?.application, values, road), [set, doc.site?.application, values, road]);
+  const unanswered = questions.filter((q) => !q.answered);
+  /** 質問で選んだ答え（まだ保存していない） */
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  /** 答えた質問を変えるために開いている */
+  const [editQ, setEditQ] = useState(false);
+  /** 選択肢を開いている質問 */
+  const [openQ, setOpenQ] = useState<Record<string, boolean>>({});
+  const shown = editQ ? questions : unanswered;
+  const pickedOf = (q: (typeof questions)[number]) => answers[q.id] ?? (q.answered ? q.current : q.recommended);
+  const undecided = shown.filter((q) => !pickedOf(q)).length;
+  const saveAnswers = () => {
+    const a = answersOf(shown, answers);
+    if (Object.keys(a).length) updateSite({ application: { ...(useStore.getState().doc.site?.application ?? {}), ...a } });
+    setAnswers({}); setEditQ(false); setOpenQ({});
+  };
   const drawings = useMemo(() => BUNDLE_KINDS.map((k) => { const b = buildFor(k); const st = rowStatus(b); return { b, state: { label: KIND_LABEL[k], ready: st.ready, picked: st.preChecked, warnings: b.warnings.length, text: st.text } }; }), [buildFor]);
   const rows = useMemo(() => {
     const segs = Object.values(doc.network.segments);
     return docRows({
       set, profileName: profile.name, values, contractor: contractor ?? EMPTY_CONTRACTOR,
       hasSupply: segs.some((s) => SUPPLY.has(s.system)), hasDrain: segs.some((s) => DRAIN.has(s.system)),
-      roadCount: roadTakeoffs(road).length, roadWarnings: [...(road['road.roadAdmin'] || road['road.roadKind'] === '私道' ? [] : ['道路管理者（占用の提出先）が未入力です']), ...(road['road.police'] ? [] : ['警察署（道路使用の提出先）が未入力です']), ...roadWarnings(road)],
+      openQuestions: unanswered.length, roadCount: roadTakeoffs(road).length, roadWarnings: [...(road['road.roadAdmin'] || road['road.roadKind'] === '私道' ? [] : ['道路管理者（占用の提出先）が未入力です']), ...(road['road.police'] ? [] : ['警察署（道路使用の提出先）が未入力です']), ...roadWarnings(road)],
       productCount: isNanbu(set) ? fixtureProducts(doc, values, {}).length : productRows(doc).length, roadConfirmed: ['road.water', 'road.sewer'].some((k) => k in (doc.site?.application ?? {})), formWarnings: isNanbu(set) ? nanbuWarnings(values) : [], drawings: drawings.map((d) => d.state),
     });
-  }, [doc, set, profile.name, values, contractor, road, drawings]);
+  }, [doc, set, profile.name, values, contractor, road, drawings, unanswered.length]);
 
   const loading = drawings.some((d) => rowStatus(d.b).loading);
   const on = (r: DocRow) => r.status !== 'blocked' && (picked[r.id] ?? true);
@@ -123,6 +141,42 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
       <div className="modal bundle doc-center">
         <h2>提出書類一式{asBuilt ? '（竣工図）' : ''}</h2>
         <p className="small muted">「{profile.name}」でこの工事に出す書類です。入力は 1 回だけで、全部の書類に入ります。</p>
+        {shown.length > 0 ? (
+          <section className="doc-questions" data-testid="doc-questions" aria-label="確認の質問">
+            <h3>{editQ ? '答えを変える' : `はじめに ${unanswered.length} 件だけ確かめてください`}</h3>
+            <p className="small muted">図面からは決められないことです。おすすめがあるものは選んであります。合っていれば、そのままボタンを押してください。</p>
+            {shown.map((q) => {
+              const v = pickedOf(q);
+              // おすすめがある質問は 1 行にたたむ（合っていれば読むだけ）。「変える」で選択肢を開く
+              // （選んでもらう質問は、選んだ後も開いたまま。押したとたんに形が変わらないように）
+              if (v && (q.answered ? q.current : q.recommended) && !openQ[q.id]) return (
+                <div key={q.id} className="doc-q folded" data-testid={`doc-q-${q.id}`}>
+                  <span>{q.title}</span>
+                  <b data-testid={`doc-q-value-${q.id}`}>{v}</b>
+                  <button type="button" className="linkish small" aria-label={`${q.title} の答えを変える`} onClick={() => setOpenQ({ ...openQ, [q.id]: true })}>変える</button>
+                </div>
+              );
+              return (
+                <fieldset key={q.id} className="doc-q" data-testid={`doc-q-${q.id}`}>
+                  <legend>{q.title}</legend>
+                  <p className="small muted">{q.why}</p>
+                  <div className="doc-q-opts">
+                    {q.options.map((o) => (
+                      <label key={o.value} className={v === o.value ? 'on' : ''}>
+                        <input type="radio" name={`q-${q.id}`} checked={v === o.value} onChange={() => setAnswers({ ...answers, [q.id]: o.value })} />
+                        <span><b>{o.label}</b>{!q.answered && q.recommended === o.value ? <span className="badge ok">おすすめ</span> : null}{o.hint ? <span className="small muted doc-q-hint">{o.hint}</span> : null}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              );
+            })}
+            {undecided > 0 && <p className="small warn" data-testid="doc-q-undecided">まだ選んでいない質問が {undecided} 件あります（選ばなかった質問は、決めずに残します）</p>}
+            <button type="button" className="primary big" data-testid="doc-q-save" onClick={saveAnswers}>✓ この内容で決める</button>
+          </section>
+        ) : questions.length > 0 ? (
+          <p className="small" role="status" data-testid="doc-q-done">✓ 確認の質問は {questions.length} 件とも答え済みです <button type="button" className="linkish small" data-testid="doc-q-edit" onClick={() => setEditQ(true)}>答えを変える ›</button></p>
+        ) : null}
         <ul className="bundle-list">
           {rows.map((r) => (
             <li key={r.id} data-testid={`doc-row-${r.id}`} className={r.status === 'ready' ? 'ok' : r.status === 'check' ? 'warn' : 'ng'}>
