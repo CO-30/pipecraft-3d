@@ -3,7 +3,7 @@
  * 何も流れ込まなくなる（例: トイレのすぐ外のます）。そのますには、すぐ内側の器具（トイレなど）を基礎を抜いて直接つなぐ。
  */
 import { describe, expect, test } from 'vitest';
-import { autoConnect } from './autoConnect';
+import { autoConnect, pairDrawnManholes } from './autoConnect';
 import type { Doc } from './doc';
 import { isManhole, placeFixture, portNodes } from './fixtures';
 import { segmentsAt, type Network } from './network';
@@ -77,5 +77,26 @@ describe('図面のますに合わせる: 本管で空になる上流の端の�
     const r = autoConnect(doc);
     expect(r.direct).toEqual([]);
     expect([...firstManholes(r.doc, h.ids.washbasin!)]).toEqual([B]);
+  });
+});
+
+describe('ます × 器具の組の決め方（pairDrawnManholes）', () => {
+  const end = (id: string, x: number, y: number, system = 'drain') => ({ node: { id, pos: { x, y } }, seg: { system } });
+  test('2 つのますが同じ器具を取り合う → 近い方のますへ。もう一方のますは近くに残りの器具が無ければ空のまま', () => {
+    const holes = [{ id: 'far', x: 0, y: 2000 }, { id: 'near', x: 0, y: 900 }];
+    expect(pairDrawnManholes(holes, [end('wb', 0, 0), end('k', 9000, 9000)])).toEqual([{ endId: 'wb', holeId: 'near' }]);
+  });
+  test('先のますが後のますのすぐ内側の器具を取らない（組を近い順に）', () => {
+    // ます P: b まで 1200・a まで 1400、ます Q: b まで 400。ますの順に取ると P が b を取り、Q が空のままになる
+    const holes = [{ id: 'P', x: 0, y: 0 }, { id: 'Q', x: 1600, y: 0 }];
+    const r = pairDrawnManholes(holes, [end('a', -1400, 0), end('b', 1200, 0), end('k', 9000, 9000)]);
+    expect(r).toContainEqual({ endId: 'b', holeId: 'Q' });
+    expect(r).toContainEqual({ endId: 'a', holeId: 'P' });
+  });
+  test('ほぼ同じ近さならトイレ（汚水）を先に。遠い器具は引かない。本管に 1 つは残す', () => {
+    const holes = [{ id: 'H', x: 0, y: 0 }];
+    expect(pairDrawnManholes(holes, [end('kitchen', 1000, 0), end('toilet', 0, 1050, 'sewage'), end('wb', 5000, 0)])).toEqual([{ endId: 'toilet', holeId: 'H' }]);
+    expect(pairDrawnManholes(holes, [end('wb', 3000, 0), end('k', 9000, 0)])).toEqual([]);
+    expect(pairDrawnManholes(holes, [end('only', 100, 0)])).toEqual([]);
   });
 });

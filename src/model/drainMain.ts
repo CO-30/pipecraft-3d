@@ -450,14 +450,15 @@ export function routeDrainMain(doc: Doc, rules: DrainRules = {}, opts: { skip?: 
   if (!layouts.length) return fallback('本管を通せる所が見つからない');
   let why = '';
   for (const chosen of layouts) {
-    const r = buildMain(chosen);
+    const r = buildMain(chosen, chosen === layouts[0] ? '' : sideOf(layouts[0].wall.out));
     if (typeof r !== 'string') return r;
     why ||= r;
   }
   return fallback(why);
 
   /** 本管を通して外へ出す。できなければ理由 */
-  function buildMain(chosen: Layout): DrainMainResult | string {
+  /** firstFailed: 先に試して外へ出せなかった外壁（知らせに書く） */
+  function buildMain(chosen: Layout, firstFailed: string): DrainMainResult | string {
     // 本管（下流の端 → 合流点 → 一番奥）と枝を引く
     const hasToilet = ends.some((e) => e.seg.system === 'sewage');
     const z0 = Math.max(...ends.map((e) => e.node.pos.z));
@@ -514,7 +515,7 @@ export function routeDrainMain(doc: Doc, rules: DrainRules = {}, opts: { skip?: 
     const inner = legs.reduce((acc, [p, q]) => acc + feet.filter(([a, c]) => segCross(p, q, a, c)).length, 0);
     return {
       ...r, pipes: n, main: 'new', sleeves: r.sleeves + inner,
-      notes: [`床下に φ${MAIN_DIAMETER} の本管を通し、器具 ${n} 個の排水をつなぎました。${target ? target.why : '一番短く出せる'}${sideOf(chosen.wall.out)}の外壁から外の汚水マスへ出しています`,
+      notes: [`床下に φ${MAIN_DIAMETER} の本管を通し、器具 ${n} 個の排水をつなぎました。${firstFailed ? `${firstFailed}の外壁からは外へ出せなかったので、` : target ? target.why : '一番短く出せる'}${sideOf(chosen.wall.out)}の外壁から外の汚水マスへ出しています`,
         ...chosen.subs.map((sb) => `並んでいる器具 ${sb.pts.length} 個は、φ${sb.diameter} の枝管 1 本にまとめてから本管へつなぎました（管が平行に何本も並ばず、レベルバンドも減ります）`)],
     };
   }

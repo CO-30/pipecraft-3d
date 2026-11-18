@@ -250,6 +250,6 @@ describe('本管の出口の壁を順に試す（2026-11-18）', () => {
     doc = placeFixture(doc, h.floorId, 'publicSewage', { x: -2000, y: 3000 }, 0, { invertZ: -2000 }).doc;
     const r = routeDrainMain(dropFixturePipes(doc).doc);
     expect(r.main).toBe('new');
-    expect(r.notes.join()).not.toContain('西の外壁');
+    expect(r.notes.join()).toContain('西の外壁からは外へ出せなかったので、');
   });
 });

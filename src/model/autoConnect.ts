@@ -139,16 +139,28 @@ export function planDirectToDrawn(doc: Doc, rules: DrainRules = {}): { endId: st
   const ends = openDrainEnds(doc);
   if (ends.length < 2) return [];
   const empty = emptyDrawnManholes(connectYard(routeDrainMain(doc, rules).doc).doc);
+  return pairDrawnManholes(empty, ends);
+}
+
+/** 器具の端（落とした立て管の下）とその系統（トイレは sewage） */
+type DrainEnd = { node: { id: string; pos: { x: number; y: number } }; seg: { system: string } };
+/**
+ * 空になる図面のます × 器具の端 の組を決める（純関数）。DIRECT_REACH 以内の組を近い順に、ますも器具も 1 回ずつ
+ * （ますごとに順に取ると、先のますが後のますのすぐ内側の器具を取ってしまう）。ほぼ同じ近さ（100mm 以内）なら汚水（トイレ）を先に。
+ * 本管へ残る器具が無くならないよう、少なくとも 1 つは残す
+ */
+export function pairDrawnManholes(holes: { id: string; x: number; y: number }[], ends: DrainEnd[]): { endId: string; holeId: string }[] {
+  const TIE_MM = 100;
+  const cands = holes.flatMap((h) => ends.map((e) => ({ h, e, d: Math.hypot(e.node.pos.x - h.x, e.node.pos.y - h.y) }))).filter((c) => c.d <= DIRECT_REACH)
+    .sort((a, b) => (Math.abs(a.d - b.d) > TIE_MM ? a.d - b.d : Number(b.e.seg.system === 'sewage') - Number(a.e.seg.system === 'sewage') || a.d - b.d));
   const out: { endId: string; holeId: string }[] = [];
-  const used = new Set<string>();
-  for (const h of empty) {
-    // 本管へ残る器具が無くならないよう、少なくとも 1 つは本管に残す
-    if (ends.length - used.size < 2) break;
-    const near = ends.filter((e) => !used.has(e.node.id)).map((e) => ({ e, d: Math.hypot(e.node.pos.x - h.x, e.node.pos.y - h.y) }))
-      .filter((c) => c.d <= DIRECT_REACH).sort((a, b) => a.d - b.d)[0];
-    if (!near) continue;
-    used.add(near.e.node.id);
-    out.push({ endId: near.e.node.id, holeId: h.id });
+  const usedEnd = new Set<string>(), usedHole = new Set<string>();
+  for (const c of cands) {
+    if (ends.length - usedEnd.size < 2) break;
+    if (usedEnd.has(c.e.node.id) || usedHole.has(c.h.id)) continue;
+    usedEnd.add(c.e.node.id);
+    usedHole.add(c.h.id);
+    out.push({ endId: c.e.node.id, holeId: c.h.id });
   }
   return out;
 }

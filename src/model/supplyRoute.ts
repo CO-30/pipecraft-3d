@@ -99,23 +99,6 @@ function overlapRun(p: Vec2, q: Vec2, a: Vec2, b: Vec2, gap: number): number {
   const [p0, p1, a0, a1] = ax === 'h' ? [p.x, q.x, a.x, b.x] : [p.y, q.y, a.y, b.y];
   return Math.max(0, Math.min(Math.max(p0, p1), Math.max(a0, a1)) - Math.max(Math.min(p0, p1), Math.min(a0, a1)));
 }
-/**
- * 同じ向きで gap 未満の離れを走る 2 本がぶつかるか: 長さ方向に 10mm を超えて重なる、または端どうしが gap 未満まで近づく
- * （同じ線の上で端と端が突き当たる形。2026-11-18 実物: 給水の端と給湯の端が 10mm 重なって並び、干渉の要確認になっていた）。
- * 端を共有する（同じ点でつながる）ものは除く
- */
-export function parallelConflict(p: Vec2, q: Vec2, a: Vec2, b: Vec2, gap: number): boolean {
-  if (overlapRun(p, q, a, b, gap) > 10) return true;
-  const ax = axisOf(p, q);
-  if (!ax || ax !== axisOf(a, b)) return false;
-  const off = ax === 'h' ? Math.abs((p.y + q.y) / 2 - (a.y + b.y) / 2) : Math.abs((p.x + q.x) / 2 - (a.x + b.x) / 2);
-  if (off >= gap) return false;
-  if ([p, q].some((e) => [a, b].some((f) => dist2(e, f) < 1))) return false;
-  const [p0, p1, a0, a1] = ax === 'h' ? [p.x, q.x, a.x, b.x] : [p.y, q.y, a.y, b.y];
-  // 長さ方向の離れ（負は重なり）
-  const sep = Math.max(Math.min(p0, p1), Math.min(a0, a1)) - Math.min(Math.max(p0, p1), Math.max(a0, a1));
-  return sep < gap;
-}
 const DIR: Record<0 | 1 | 2 | 3, Vec2> = { 0: { x: 1, y: 0 }, 1: { x: 0, y: 1 }, 2: { x: -1, y: 0 }, 3: { x: 0, y: -1 } };
 const dirOf = (v: Vec2): 0 | 1 | 2 | 3 => (Math.abs(v.x) >= Math.abs(v.y) ? (v.x >= 0 ? 0 : 2) : v.y >= 0 ? 1 : 3);
 
@@ -298,7 +281,7 @@ export function routeSupplies(doc: Doc, opts: { burial?: number; headers?: Heade
       const ax = axisOf(p, q);
       if (!ax) return false;
       const m = ax === 'h' ? hb : vb, c = ax === 'h' ? (p.y + q.y) / 2 : (p.x + q.x) / 2;
-      for (let k = Math.floor((c - BUSY_GAP) / B); k <= Math.ceil((c + BUSY_GAP) / B); k++) for (const [a, d] of m.get(k) ?? []) if (parallelConflict(p, q, a, d, BUSY_GAP)) return true;
+      for (let k = Math.floor((c - BUSY_GAP) / B); k <= Math.ceil((c + BUSY_GAP) / B); k++) for (const [a, d] of m.get(k) ?? []) if (overlapRun(p, q, a, d, BUSY_GAP) > 10) return true;
       return false;
     };
     // 器具から床下へ下りてくる排水・通気の立て管や、床下の高さに近い排水の横の管はよける（ぶつけない）
