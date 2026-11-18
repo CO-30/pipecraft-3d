@@ -27,6 +27,7 @@ import { readAsBuilt, writeAsBuilt, type AsBuiltSettings } from '../model/asBuil
 import { LocationPanel } from './LocationPanel';
 import { BUNDLE_KINDS, buildShinsei, nodeLabelOf, stampAsBuiltBuild, type Kind, type ShinseiBuild, type ShinseiCtx } from './shinseiBuild';
 import { ShinseiBundleDialog } from './ShinseiBundleDialog';
+import { DocCenterDialog } from './DocCenterDialog';
 import { repo } from '../storage/instance';
 import { CONTRACTOR_KEY, drawingTitleValues } from '../forms/formSets';
 export type { ShinseiBuild } from './shinseiBuild';
@@ -88,6 +89,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const [showProfiles, setShowProfiles] = useState(false);
   /** 「まとめてPDF」の一覧を開いている */
   const [bundleOpen, setBundleOpen] = useState(false);
+  /** 「提出書類一式」の一覧を開いている */
+  const [docsOpen, setDocsOpen] = useState(false);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   /** 図面の作成日（画面を開いたとき） */
@@ -95,10 +98,10 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { if (!profiles.loaded) void profiles.load(); }, [profiles]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showProfiles && !bundleOpen) { (document.activeElement as HTMLElement | null)?.blur?.(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showProfiles && !bundleOpen && !docsOpen) { (document.activeElement as HTMLElement | null)?.blur?.(); onClose(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showProfiles, bundleOpen]);
+  }, [onClose, showProfiles, bundleOpen, docsOpen]);
 
   const profileId = doc.site?.municipalityProfileId;
   const profile: MunicipalityProfile = resolveProfile(profileId, profiles.user);
@@ -140,7 +143,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   const setMap = (patch: Partial<MapSettings>) => updateSite({ application: writeMapSettings(doc.site?.application, patch) });
   const siteAddress = doc.site?.application?.siteAddress || meta?.address || '';
   const [mitori, setMitori] = useState<{ key: string; build: LocationBuild | null; loading: boolean }>({ key: '', build: null, loading: false });
-  const mitoriKey = kind === 'mitori' || bundleOpen ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
+  const mitoriKey = kind === 'mitori' || bundleOpen || docsOpen ? JSON.stringify([mapSettings.lat, mapSettings.lon, mapSettings.zoom, siteName, siteAddress]) : '';
   useEffect(() => {
     if (!mitoriKey) return;
     let live = true;
@@ -247,6 +250,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <strong>申請図面</strong>
         <span className="muted small">配管データから縦断図・立面図・水理計算書を自動で作ります</span>
         <span className="grow" />
+        <button data-testid="shinsei-docs" disabled={!!busy} onClick={() => setDocsOpen(true)} title="申請書・道路の書類・申請図面を、状態を見ながらまとめて保存">📂 提出書類一式</button>
         <button data-testid="shinsei-bundle" disabled={!!busy} onClick={() => setBundleOpen(true)} title="作れる図面をまとめて 1 つの PDF に">📦 まとめてPDF</button>
         <button className="primary" data-testid="shinsei-pdf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('pdf')}>{busy === 'pdf' ? '作成中…' : '🖨 PDF'}</button>
  <button data-testid="shinsei-dxf" disabled={!!busy || !!built.error || kind === 'forms' || built.sheets.length === 0} onClick={() => download('dxf')} title="AutoCAD・Jw_cad で開ける DXF（R12）">DXF</button>
@@ -338,6 +342,8 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
         <div className="shinsei-pages" style={{ width: `${zoom * 100}%`, ...(kind === 'mitori' ? { maxWidth: 760 * zoom } : {}) }} dangerouslySetInnerHTML={{ __html: built.error ? '' : built.svg }} />
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
+      {docsOpen && <DocCenterDialog profile={profile} siteName={siteName} date={date} buildFor={buildFor} asBuilt={asBuilt.on}
+        onFix={(at) => { setDocsOpen(false); if (at === 'drawings') setBundleOpen(true); else setKind('forms'); }} onClose={() => setDocsOpen(false)} />}
       {bundleOpen && <ShinseiBundleDialog buildFor={buildFor} busy={busy === 'bundle'} asBuilt={asBuilt.on} error={bundleErr} onPdf={(b) => void downloadBundle(b)}
         onShow={(k) => { setBundleOpen(false); setKind(k); }} onClose={() => { setBundleOpen(false); setBundleErr(''); }} />}
     </div>

@@ -6,13 +6,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import { repo } from '../storage/instance';
 import type { MunicipalityProfile } from '../model/municipality';
-import { EMPTY_CONTRACTOR, todayIso, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
-import { CONTRACTOR_KEY, drainageSheetsFor, drawingTitleValues, FORM_SETS, isNanbu, waterSheetFor } from '../forms/formSets';
+import { EMPTY_CONTRACTOR, withDefaults, type ApplicationValues, type Contractor, type FormField } from '../forms/types';
+import { CONTRACTOR_KEY, FORM_SETS, isNanbu } from '../forms/formSets';
+import type { FormWhat } from '../forms/produce';
+import type { ProductMemory } from '../forms/fixtureProducts';
 import { drillChecks, nanbuWarnings } from '../forms/nanbu';
 import { roadValues } from '../road/fields';
 import { KakuninImport } from './KakuninImport';
 import { ProductMakers } from './ProductMakers';
-import type { Sheet } from '../export/sheet';
 import { RoadPermitPanel } from './RoadPermitPanel';
 
 const CONTRACTOR_FIELDS: { id: keyof Contractor; label: string; hint?: string }[] = [
@@ -30,8 +31,6 @@ const CONTRACTOR_FIELDS: { id: keyof Contractor; label: string; hint?: string }[
   { id: 'drainageEngineerNo', label: '責任技術者の登録番号' },
 ];
 
-/** YYYY-MM-DD をその日の 0 時（端末の時刻）に。読めなければ今日 */
-const localDate = (iso: string | undefined) => { const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(iso ?? ''); return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(); };
 const fontBytes = () => fetch(`${import.meta.env.BASE_URL}fonts/NotoSansJP-JIS.ttf`).then((r) => { if (!r.ok) throw new Error('フォントを読み込めません'); return r.arrayBuffer(); });
 const formBytes = (path: string) => fetch(`${import.meta.env.BASE_URL}forms/${path}`).then((r) => { if (!r.ok) throw new Error(`様式（${path}）を読み込めません`); return r.arrayBuffer(); });
 
@@ -78,94 +77,17 @@ export function ShinseiForms({ profile, siteName, date }: { profile: Municipalit
     catch (e) { setErr(`保存できませんでした: ${e instanceof Error ? e.message : String(e)}`); }
   };
 
-  const run = async (what: 'water' | 'sewer' | 'products' | 'nanbu' | 'nanbuProducts' | 'haebaruSewer') => {
+  const run = async (what: FormWhat) => {
     setBusy(what); setErr(''); setMsg('');
     try {
-      const [{ downloadBytes, safeName }, { dateStamp }] = await Promise.all([import('../export/download'), import('../export/report')]);
-      const base = `${safeName(siteName)}_${dateStamp(new Date())}`;
-      const vals = { ...values, date: values.date || todayIso() };
-      if (what === 'water') {
-        const [{ buildWaterApplication }, { svgStringToPng, planPng }, { sheetToSvg }, tpl] = await Promise.all([import('../forms/waterExcel'), import('../export/images'), import('../export/sheet'), formBytes('okinawa-city/water-application.xlsx')]);
-        // 図の欄: 建物側面図 ← 給水の立面図、裏の平面図 ← 画面の 2D 平面図（表示中なら）、裏のアイソメ ← 給水の立面図
-        const images: { sideView?: Uint8Array; plan?: Uint8Array; iso?: Uint8Array } = {};
-        const notes: string[] = [];
-        try {
-          const ws = waterSheetFor(doc, profile, siteName, date);
-          if (ws) { const png = await svgStringToPng(sheetToSvg(ws), 1400); images.sideView = png; images.iso = png; }
-          else notes.push('給水の配管が無いため、建物側面図の欄は空欄です');
-          const planEl = document.querySelector<SVGSVGElement>('[data-testid="plan"]');
-          if (planEl) images.plan = await planPng(planEl, 2);
-          else notes.push('裏面の平面図は空欄です（2D 平面図を表示した状態で出すと貼られます）');
-        } catch (e) { console.error('図の画像', e); notes.push('図の画像を作れなかったため、図の欄は空欄です'); }
-        downloadBytes(await buildWaterApplication(tpl, vals, contractor, images), `${base}_給水装置申込及び工事申請書.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        if (notes.length) setMsg(notes.join('。'));
-      } else if (what === 'sewer') {
-        const [{ buildSewerApplication }, tpl, font] = await Promise.all([import('../forms/sewerPdf'), formBytes('okinawa-city/sewer-application.pdf'), fontBytes()]);
-        const { profile: pf, iso: isoSheet } = drainageSheetsFor(doc, profile, siteName, date, drawingTitleValues(vals, contractor.name, meta?.address));
-        const sheets: { profile?: Sheet; iso?: Sheet; location?: Sheet } = { ...(pf ? { profile: pf } : {}), ...(isoSheet ? { iso: isoSheet } : {}) };
-        const { buildLocationSheet } = await import('../import/locationMap');
-        const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || useStore.getState().meta?.address || '', date });
-        if (loc?.mapOk) sheets.location = loc.sheet;
-        const missing = new Set<string>();
-        downloadBytes(await buildSewerApplication(tpl, font, vals, contractor, sheets, { missing }), `${base}_下水道排水設備計画確認申請書.pdf`, 'application/pdf');
-        const notes: string[] = [];
-        if (!sheets.profile) notes.push('排水の配管が無いため、2・3 面の図面は空欄です');
-        else if (profile.paper.orientation === 'landscape') notes.push('プロファイルの用紙が横のため、2・3 面の図は小さくなります（A4 縦のプロファイルを使うと読みやすくなります）');
-        if (!loc) notes.push('4 面の見取図は空欄です（申請図面の「見取図」で工事場所を決めると貼られます）');
-        else if (!loc.mapOk) notes.push(`4 面の見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
-        else notes.push(...loc.notes);
-        if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}（出力後に手で直してください）`);
-        setMsg(notes.join('。'));
-      } else if (what === 'haebaruSewer') {
-        // 南風原町の排水設備計画確認申請書: 4 面（申請書・平面図及び縦断面図・配管立図・見取図）＋ 実寸の平面図（A3）と縦断面図（A4）
-        const [{ haebaruSewerSheets }, { sheetsToPdf }, font, { buildLocationSheet }] = await Promise.all([import('../forms/haebaruSewer'), import('../export/sheet'), fontBytes(), import('../import/locationMap')]);
-        const tv = drawingTitleValues(vals, contractor.name, meta?.address);
-        const ds = drainageSheetsFor(doc, profile, siteName, date, tv, { extra: true });
-        const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || meta?.address || '', date });
-        const notes: string[] = [];
-        if (!ds.plan) notes.push('排水の配管が無いため、2・3 面の図は空欄です');
-        else if (!ds.profile) notes.push('公共マスまでつながっていないため、縦断面図と配管立図は空欄です（平面図だけ入れています）');
-        if (!loc) notes.push('4 面の見取図は空欄です（申請図面の「見取図」で工事場所を決めると入ります）');
-        else if (!loc.mapOk) notes.push(`4 面の見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
-        const sheets = [...haebaruSewerSheets(vals, contractor, { plan: ds.plan, profile: ds.profileOnly ?? ds.profile, iso: ds.iso, map: loc?.mapOk ? loc.sheet : undefined }), ...(ds.plan ? [ds.plan] : []), ...(ds.profile ? [ds.profile] : [])];
-        const missing = new Set<string>();
-        downloadBytes(await sheetsToPdf(sheets, font, { missing }), `${base}_排水設備計画確認申請書.pdf`, 'application/pdf');
-        if (ds.plan) notes.push('5 枚目に平面図（A3）、6 枚目に立面図・縦断面図（A4）を付けています');
-        if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}`);
-        setMsg(notes.join('。'));
-      } else if (what === 'nanbu' || what === 'nanbuProducts') {
-        const [{ nanbuSheets }, { fixtureProducts, renderNanbuProductSheets, PRODUCT_MEMORY_KEY }, { sheetsToPdf }, font] = await Promise.all([import('../forms/nanbuSheets'), import('../forms/fixtureProducts'), import('../export/sheet'), fontBytes()]);
-        const memory = (await repo.getSetting<import('../forms/fixtureProducts').ProductMemory>(PRODUCT_MEMORY_KEY).catch(() => undefined)) ?? {};
-        const products = renderNanbuProductSheets(fixtureProducts(doc, vals, memory), { date: localDate(vals.date) }, contractor);
-        const missing = new Set<string>();
-        if (what === 'nanbuProducts') {
-          downloadBytes(await sheetsToPdf(products, font, { missing }), `${base}_給水装置使用製品一覧表.pdf`, 'application/pdf');
-        } else {
-          const notes: string[] = [];
-          const { buildLocationSheet } = await import('../import/locationMap');
-          const loc = await buildLocationSheet(doc.site?.application, { siteName, address: (vals as ApplicationValues).siteAddress || meta?.address || '', date });
-          if (!loc) notes.push('見取図は空欄です（申請図面の「見取図」で工事場所を決めると入ります）');
-          else if (!loc.mapOk) notes.push(`見取図は空欄です（${loc.notes[0] ?? '地図を取得できませんでした'}）`);
-          const rv = roadValues(doc, { name: siteName, address: meta?.address }, contractor, {});
-          let roadSection: Sheet | undefined;
-          if (rv['road.water'] === 'する') {
-            const [{ renderRoadSection }, { roadTakeoffs }] = await Promise.all([import('../road/drawSheets'), import('../road/model')]);
-            roadSection = renderRoadSection(rv, roadTakeoffs(rv), { siteName, address: meta?.address ?? '', date });
-          } else notes.push('横断面図は空欄です（道路の手続きで「水道の取出し」を「する」にすると入ります）');
-          const iso = waterSheetFor(doc, profile, siteName, date);
-          if (!iso) notes.push('給水の配管が無いため、立面図は入っていません');
-          const sheets = [...nanbuSheets(vals, contractor, { siteName, date, products: [], map: loc?.mapOk ? loc.sheet : undefined, roadSection }), ...(iso ? [iso] : []), ...products];
-          downloadBytes(await sheetsToPdf(sheets, font, { missing }), `${base}_給水申請書類一式.pdf`, 'application/pdf');
-          notes.push('平面図・水理計算書（所要水頭計算書）は申請図面の「まとめてPDF」から出せます');
-          setMsg(notes.join('。'));
-        }
-        if (missing.size) setMsg((m) => `${m ? `${m}。` : ''}フォントに無い文字を置き換えました: ${[...missing].join(' ')}`);
-      } else {
-        const [{ productRows, renderProductListSheets }, { sheetsToPdf }, font] = await Promise.all([import('../forms/productList'), import('../export/sheet'), fontBytes()]);
-        const missing = new Set<string>();
-        downloadBytes(await sheetsToPdf(renderProductListSheets(productRows(doc), { siteName, date }, contractor), font, { missing }), `${base}_給水装置使用製品一覧表.pdf`, 'application/pdf');
-        if (missing.size) setMsg(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}`);
-      }
+      const [{ downloadBytes }, { produceForm }, { PRODUCT_MEMORY_KEY }] = await Promise.all([import('../export/download'), import('../forms/produce'), import('../forms/fixtureProducts')]);
+      const out = await produceForm(what, {
+        doc, profile, siteName, date, address: meta?.address, values, contractor,
+        planEl: document.querySelector<SVGSVGElement>('[data-testid="plan"]'),
+        fontBytes, formBytes, productMemory: () => repo.getSetting<ProductMemory>(PRODUCT_MEMORY_KEY),
+      });
+      downloadBytes(out.bytes, out.filename, out.mime);
+      setMsg(out.notes.join('。'));
     } catch (e) {
       setErr(`出力できませんでした: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setBusy(''); }

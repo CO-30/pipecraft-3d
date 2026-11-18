@@ -51,16 +51,10 @@ export function RoadPermitPanel({ contractor, siteName, date }: { contractor: Co
   const make = async () => {
     setBusy(true); setErr(''); setMsg('');
     try {
-      const [{ roadSheets }, { sheetsToPdf }, { downloadBytes, safeName }, { dateStamp }, { buildLocationSheet }, font] = await Promise.all([import('../road/drawSheets'), import('../export/sheet'), import('../export/download'), import('../export/report'), import('../import/locationMap'), fontBytes()]);
-      const m = { siteName, address: values['road.place'] || address, date };
-      const sheets = roadSheets(values, m);
-      const notes: string[] = [];
-      const loc = await buildLocationSheet(doc.site?.application, { siteName, address: m.address, date }).catch(() => null);
-      if (loc?.mapOk) sheets.splice(2, 0, loc.sheet);
-      else notes.push(loc ? `位置図は入れていません（${loc.notes[0] ?? '地図を取得できませんでした'}）` : '位置図は入れていません（申請図面の「見取図」で工事場所を決めると 3 枚目に入ります）');
-      const missing = new Set<string>();
-      downloadBytes(await sheetsToPdf(sheets, font, { missing }), `${safeName(siteName)}_${dateStamp(new Date())}_道路の申請書類.pdf`, 'application/pdf');
-      if (missing.size) notes.push(`フォントに無い文字を置き換えました: ${[...missing].join(' ')}（出力後に手で直してください）`);
+      const [{ produceRoad }, { downloadBytes }] = await Promise.all([import('../forms/produce'), import('../export/download')]);
+      const out = await produceRoad({ doc, siteName, date, address, values, fontBytes });
+      downloadBytes(out.bytes, out.filename, out.mime);
+      const notes = [...out.notes];
       // 提出先をこの町で覚える（次の工事から自動で入る）
       const city = cityOf(address);
       if (city && (values['road.roadAdmin'] || values['road.police'])) {

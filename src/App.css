@@ -497,6 +497,10 @@ header .lbl { margin-left: 2px; }
 .bundle-list li.warn { border-color: #fde68a; background: #fffbeb; }
 .bundle-list li.ng { background: #f8fafc; color: #64748b; }
 /* 一覧が長くても「PDF にする」がいつも見える（スマホ） */
+.doc-center .doc-reasons, .doc-center .doc-notes { margin: 2px 0 0; padding-left: 18px; list-style: disc; }
+.doc-center .bundle-list .doc-reasons li { display: list-item; padding: 0; border: 0; border-radius: 0; background: none; }
+.doc-center .doc-row-btns { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 4px; justify-items: end; }
+.doc-center .doc-row-btns button { grid-column: auto; grid-row: auto; min-height: 36px; }
 .modal.bundle .modal-btns { position: sticky; bottom: -16px; margin: 0 -16px -16px; padding: 10px 16px 16px; background: #fff; border-top: 1px solid #e5e7eb; }
 
 /* 積算の要確認: 単価の未登録のまとめ（配管・部品の確かめる所と色を分ける） */
