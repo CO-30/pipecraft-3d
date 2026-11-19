@@ -8,12 +8,15 @@ import type { MunicipalityProfile } from '../model/municipality';
 import { dateJa } from './report';
 import { drawFrame, drawHeaderBlock, drawSymbol, drawTitleBlock, GRAY, INK, paperSize, sheetToSvg, titleWidth, type Sheet } from './sheet';
 import type { SheetMeta } from './profileSheet';
-import { alongLine, around, LabelPlacer, type LabelLine } from './labelLayout';
+import { alongLine, anywhere, around, LabelPlacer, type LabelLine } from './labelLayout';
 import { groupRuns } from '../model/drainRuns';
 
 export type IsoMeta = SheetMeta & { title: string };
 export type Box = { x: number; y: number; w: number; h: number };
 const HOT = '#1d4ed8';
+const NEAR = 16 * 7; // around() の候補のうち 30mm 以内のもの（16 方向 × 距離 7 段）。
+// 線にかかる減点の合計は softCap まで。文字どうしの重なり（hardCost）より必ず軽くする
+const TALL = 1.5; // 給水の図を縦に伸ばす上限（倍）
 const HEADER_HALF = 1.2 * 2.5 + 0.3; // ヘッダー記号（drawSymbol('header')、r=1.2 → 横幅 r×5）の半分＋余白(mm)
 
 /** 枠 box に収まるように縮めて描く。戻り値は使った縮尺（mm/mm） */
@@ -22,14 +25,16 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
   const w = Math.max(1, bounds.maxX - bounds.minX), h = Math.max(1, bounds.maxY - bounds.minY);
   const pad = 14; // ラベルの余白(mm)
   const k = Math.max(0.001, Math.min((box.w - pad * 2) / w, (box.h - pad * 2) / h));
-  const ox = box.x + pad + ((box.w - pad * 2) - w * k) / 2, oy = box.y + pad + ((box.h - pad * 2) - h * k) / 2;
-  const X = (x: number) => ox + (x - bounds.minX) * k, Y = (y: number) => oy + (y - bounds.minY) * k;
+  // 給水の図は、縦に余った用紙を使って縦方向だけ伸ばす（NO SCALE。最大 TALL 倍。立ち上がりが長くなり文字を置きやすい）
+  const ky = iso.kind === 'water' ? Math.max(k, Math.min(k * TALL, (box.h - pad * 2) / h)) : k;
+  const ox = box.x + pad + ((box.w - pad * 2) - w * k) / 2, oy = box.y + pad + ((box.h - pad * 2) - h * ky) / 2;
+  const X = (x: number) => ox + (x - bounds.minX) * k, Y = (y: number) => oy + (y - bounds.minY) * ky;
   const colors = profile.colors;
   const lineColor = (l: IsoModel['lines'][number]) => (l.existing ? colors.existing : iso.kind === 'water' && l.system === 'hotWater' ? HOT : colors.newWork);
   // 文字は「線・記号を全部描いてから」空いている場所に置く（重なり回避。labelLayout.ts）
   // 給水の図は文字が多いので、引出線が配管・ほかの引出線をまたがない置き方を優先する
   const water = iso.kind === 'water';
-  const placer = new LabelPlacer(sheet, { x1: box.x, y1: box.y, x2: box.x + box.w, y2: box.y + box.h }, water ? { leaderCross: 45 } : {});
+  const placer = new LabelPlacer(sheet, { x1: box.x, y1: box.y, x2: box.x + box.w, y2: box.y + box.h }, water ? { leaderCross: 45, textOnSeg: 150, softCap: 20000, hardCost: 100000 } : {});
   const lines = iso.lines.map((l) => ({ l, x1: X(l.x1), y1: Y(l.y1), x2: X(l.x2), y2: Y(l.y2), c: lineColor(l) }));
   for (const q of lines) {
     sheet.ops.push({ t: 'line', x1: q.x1, y1: q.y1, x2: q.x2, y2: q.y2, w: 0.5, color: q.c });
@@ -88,8 +93,9 @@ export function drawIsometric(sheet: Sheet, iso: IsoModel, profile: Municipality
     const mx = (q.x1 + q.x2) / 2, my = (q.y1 + q.y2) / 2;
     placer.place([
       ...alongLine(q.x1, q.y1, q.x2, q.y2, label),
-      ...around(mx, my, [label], { gap: 2.5, prefer: [-90, 90, -45, 45], leaderAlways: true }).map((c) => ({ ...c, penalty: c.penalty + 100 })),
-    ], { ignoreSeg: q.l.segId });
+      // 給水の図は引出線をなるべく遠くまで伸ばさない（遠い文字はどの管のものか追えない）。30mm より先は、近くに置けないときだけ
+      ...around(mx, my, [label], { gap: 2.5, prefer: [-90, 90, -45, 45], leaderAlways: true }).map((c, i) => ({ ...c, penalty: c.penalty + 100 + (water && i >= NEAR ? 200 : 0) })),
+    ], { ignoreSeg: q.l.segId, ...(water ? { fallback: () => anywhere(mx, my, label, { x1: box.x, y1: box.y, x2: box.x + box.w, y2: box.y + box.h }) } : {}) });
   }
   return k;
 }
