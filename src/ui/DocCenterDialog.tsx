@@ -19,6 +19,10 @@ import type { ProductMemory } from '../forms/fixtureProducts';
 import { BUNDLE_KINDS, KIND_LABEL, type ShinseiBuild } from './shinseiBuild';
 import { rowStatus } from './ShinseiBundleDialog';
 import { answersOf, confirmQuestions } from '../model/confirmQuestions';
+import { inspect } from './inspection';
+import { calcSupply } from '../model/hydraulics/calc';
+import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
+import { readSuiriSettings } from '../model/hydraulics/settings';
 import { checkSummary, docRows, statusText, type DocId, type DocRow } from './docCenter';
 
 type BKind = (typeof BUNDLE_KINDS)[number];
@@ -37,6 +41,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
 }) {
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
+  const drainIssues = useStore((s) => s.drainIssues);
   const updateSite = useStore((s) => s.updateSite);
   const set = FORM_SETS[profile.id];
   const [contractor, setContractor] = useState<Contractor | null>(null);
@@ -81,15 +86,22 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
     setAnswers({}); setEditQ(false); setOpenQ({});
   };
   const drawings = useMemo(() => BUNDLE_KINDS.map((k) => { const b = buildFor(k); const st = rowStatus(b); return { b, state: { label: KIND_LABEL[k], ready: st.ready, picked: st.preChecked, warnings: b.warnings.length, text: st.text } }; }), [buildFor]);
+  // 検査の結果（排水の注意・水圧・つなぎ忘れ）。水理計算は申請図面の「水理計算書」と同じ規定・設定で
+  const inspection = useMemo(() => {
+    const hasSupply = Object.values(doc.network.segments).some((s) => SUPPLY.has(s.system));
+    const supply = hasSupply ? calcSupply(doc, resolveSupplyRules({ profileName: profile.id === 'standard' ? undefined : profile.name, address }), readSuiriSettings(doc.site?.application)) : null;
+    return inspect(doc, drainIssues, supply);
+  }, [doc, drainIssues, profile.id, profile.name, address]);
   const rows = useMemo(() => {
     const segs = Object.values(doc.network.segments);
     return docRows({
+      inspection,
       set, profileName: profile.name, values, contractor: contractor ?? EMPTY_CONTRACTOR,
       hasSupply: segs.some((s) => SUPPLY.has(s.system)), hasDrain: segs.some((s) => DRAIN.has(s.system)),
       openQuestions: unanswered.length, roadCount: roadTakeoffs(road).length, roadWarnings: [...(road['road.roadAdmin'] || road['road.roadKind'] === '私道' ? [] : ['道路管理者（占用の提出先）が未入力です']), ...(road['road.police'] ? [] : ['警察署（道路使用の提出先）が未入力です']), ...roadWarnings(road)],
       productCount: isNanbu(set) ? fixtureProducts(doc, values, {}).length : productRows(doc).length, roadConfirmed: ['road.water', 'road.sewer'].some((k) => k in (doc.site?.application ?? {})), formWarnings: isNanbu(set) ? nanbuWarnings(values) : [], drawings: drawings.map((d) => d.state),
     });
-  }, [doc, set, profile.name, values, contractor, road, drawings, unanswered.length]);
+  }, [doc, set, profile.name, values, contractor, road, drawings, unanswered.length, inspection]);
 
   const loading = drawings.some((d) => rowStatus(d.b).loading);
   const on = (r: DocRow) => r.status !== 'blocked' && (picked[r.id] ?? true);
