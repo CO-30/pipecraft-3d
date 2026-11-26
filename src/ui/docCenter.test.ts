@@ -92,4 +92,29 @@ describe('提出書類の一覧（書類センター）', () => {
     expect(row(rows, 'nanbuProducts').reasons).toEqual([expect.stringContaining('工事店の情報')]);
     expect(row(rows, 'road').reasons).toEqual([expect.stringContaining('工事店の情報')]);
   });
+
+  it('検査の結果: 排水の注意は下水道の申請書と申請図面に、給水の注意は給水の申請書と申請図面に出す', () => {
+    const inspection = { drain: ['排水の検査で注意が 1 件あります'], supply: ['水圧が足りません'] };
+    const h = docRows(base({ inspection }));
+    expect(row(h, 'haebaruSewer').status).toBe('check');
+    expect(row(h, 'haebaruSewer').reasons).toContain('排水の検査で注意が 1 件あります');
+    expect(row(h, 'haebaruSewer').reasons).not.toContain('水圧が足りません');
+    expect(row(h, 'nanbu').reasons).toContain('水圧が足りません');
+    expect(row(h, 'nanbu').reasons).not.toContain('排水の検査で注意が 1 件あります');
+    expect(row(h, 'nanbuProducts').status).toBe('ready');
+    expect(row(h, 'drawings').status).toBe('check');
+    expect(row(h, 'drawings').reasons).toEqual(expect.arrayContaining(['排水の検査で注意が 1 件あります', '水圧が足りません']));
+    const o = docRows(base({ set: Object.values(FORM_SETS).find((x) => x.water !== 'nanbu')!, profileName: '沖縄市', inspection }));
+    expect(row(o, 'water').reasons).toContain('水圧が足りません');
+    expect(row(o, 'sewer').reasons).toContain('排水の検査で注意が 1 件あります');
+    expect(row(o, 'products').status).toBe('ready');
+  });
+
+  it('検査の結果: 配管が無くても、つなぎ忘れの器具は理由に出す。検査の結果が空なら今までどおり', () => {
+    const inspection = { drain: ['排水がつながっていない器具・マスが 1 か所あります: トイレの汚水'], supply: [] };
+    const r = docRows(base({ hasDrain: false, inspection }));
+    expect(row(r, 'haebaruSewer').reasons.join('|')).toContain('排水の配管');
+    expect(row(r, 'haebaruSewer').reasons.join('|')).toContain('トイレの汚水');
+    expect(docRows(base({ inspection: { drain: [], supply: [] } }))).toEqual(docRows(base()));
+  });
 });

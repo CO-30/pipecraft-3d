@@ -33,6 +33,8 @@ export type DocCenterInput = {
   /** 様式ごとの注意（南部水道企業団の nanbuWarnings など） */
   formWarnings: string[];
   drawings: DrawingState[];
+  /** 検査の結果（排水の勾配不足・水圧不足・つなぎ忘れ。src/ui/inspection.ts）。関係する書類の理由に並べる */
+  inspection?: { drain: string[]; supply: string[] };
 };
 
 /** 必須の項目: 様式にその項目があるときだけ調べる（どれかが入っていればよい） */
@@ -66,16 +68,18 @@ export function docRows(i: DocCenterInput): DocRow[] {
   const rows: DocRow[] = [];
   const common = commonReasons(i);
   const set = i.set;
+  const drainChk = i.inspection?.drain ?? [];
+  const supplyChk = i.inspection?.supply ?? [];
   const products = [...(i.contractor.name.trim() ? [] : [NO_CONTRACTOR]), ...(i.productCount > 0 ? [] : [NO_PRODUCTS])];
   if (!set) {
     rows.push({ id: 'unregistered', label: '給水・下水道の申請書', format: 'PDF', status: 'blocked', reasons: [`「${i.profileName}」の申請書の様式はまだ登録していません。窓口の様式を使ってください（図面と道路の書類は作れます）`] });
   } else if (set.water === 'nanbu') {
-    rows.push(form('nanbu', '給水申請書類一式', 'PDF', [...common, ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY])]));
+    rows.push(form('nanbu', '給水申請書類一式', 'PDF', [...common, ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY]), ...supplyChk]));
     rows.push(form('nanbuProducts', '給水装置使用製品一覧表', 'PDF', products));
-    if (set.sewer === 'haebaru') rows.push(form('haebaruSewer', '排水設備計画確認申請書', 'PDF', [...common, ...(i.hasDrain ? [] : [NO_DRAIN])]));
+    if (set.sewer === 'haebaru') rows.push(form('haebaruSewer', '排水設備計画確認申請書', 'PDF', [...common, ...(i.hasDrain ? [] : [NO_DRAIN]), ...drainChk]));
   } else {
-    rows.push(form('water', '給水装置申込及び工事申請書', 'Excel', [...common, ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY])]));
-    rows.push(form('sewer', '下水道排水設備計画確認申請書', 'PDF', [...common, ...(i.hasDrain ? [] : [NO_DRAIN])]));
+    rows.push(form('water', '給水装置申込及び工事申請書', 'Excel', [...common, ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY]), ...supplyChk]));
+    rows.push(form('sewer', '下水道排水設備計画確認申請書', 'PDF', [...common, ...(i.hasDrain ? [] : [NO_DRAIN]), ...drainChk]));
     rows.push(form('products', '給水装置使用製品一覧表', 'PDF', products));
   }
   if (i.roadCount > 0) {
@@ -88,7 +92,7 @@ export function docRows(i: DocCenterInput): DocRow[] {
   }
 
   const picked = i.drawings.filter((d) => d.ready && d.picked);
-  const reasons = i.drawings.filter((d) => !d.ready || !d.picked || d.warnings > 0).map((d) => `${d.label}: ${d.text}`);
+  const reasons = i.drawings.filter((d) => !d.ready || !d.picked || d.warnings > 0).map((d) => `${d.label}: ${d.text}`).concat(drainChk, supplyChk);
   rows.push({ id: 'drawings', label: `申請図面一式（${picked.length} 種類）`, format: 'PDF', status: picked.length === 0 ? 'blocked' : reasons.length ? 'check' : 'ready', reasons, fixAt: 'drawings' });
   return rows;
 }

@@ -7,6 +7,7 @@ import { ShinseiScreen } from './ShinseiScreen';
 import { repo } from '../storage/instance';
 import { CONTRACTOR_KEY } from '../forms/formSets';
 import { EMPTY_CONTRACTOR } from '../forms/types';
+import { placeFixture } from '../model/fixtures';
 
 const s = () => useStore.getState();
 const open = async () => {
@@ -83,5 +84,21 @@ describe('提出書類一式（書類センター）', () => {
     fireEvent.click(within(screen.getByTestId('doc-q-supplyType')).getByRole('radio', { name: /受水槽/ }));
     fireEvent.click(screen.getByTestId('doc-q-save'));
     expect(s().doc.site!.application!.supplyType).toBe('受水槽');
+  });
+
+  it('検査の結果: 排水の注意・つなぎ忘れの器具が、下水道の申請書の理由に出る（「出力できます」にしない）', async () => {
+    await repo.setSetting(CONTRACTOR_KEY, { ...EMPTY_CONTRACTOR, name: 'テスト設備' });
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト工事', createdAt: 1 });
+    s().updateSite({ municipalityProfileId: 'haebaru' });
+    const d = s().doc;
+    const p = placeFixture(d, d.building.floors[0]?.id ?? '', 'toilet', { x: 0, y: 0 });
+    expect(p.fixtureId).toBeTruthy();
+    useStore.setState({ doc: p.doc });
+    useStore.setState({ drainIssues: [{ kind: 'minSlope', level: 'error', target: { kind: 'segment', id: 'x' }, message: '区間 A の勾配が足りません', fixes: [] }] });
+    await open();
+    const row = await screen.findByTestId('doc-row-haebaruSewer');
+    await waitFor(() => expect(row.textContent).toContain('排水の検査で注意が 1 件'));
+    expect(row.textContent).toContain('区間 A の勾配が足りません');
+    expect(row.textContent).toContain('トイレの汚水');
   });
 });
