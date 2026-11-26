@@ -965,7 +965,7 @@ export const useStore = create<State>((set, get) => {
       // 分岐でつなげない所があれば質問（いまの図に対して。図が変わったら答えても実行しない）
       set({ question: r.questions[0] ?? null, questionDoc: r.questions.length ? get().doc : null });
       const issues = get().drainIssues.length;
-      set({ notice: [...r.summary, verdict, issues ? `排水の注意が ${issues} 件あります（積算の「要確認」から場所へ移動できます）` : '', '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].filter(Boolean).join('。') });
+      set({ notice: [...r.summary, verdict, issues ? `排水の注意が ${issues} 件あります（申請の「📂 提出書類一式」で、場所へ移動・直し方を選べます）` : '', '元に戻す 1 回で全部戻せます。3D で確かめて、合わない所は直してください'].filter(Boolean).join('。') });
       return added.length;
     },
     placeFixtureAt: (p) => {

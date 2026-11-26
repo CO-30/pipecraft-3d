@@ -501,6 +501,14 @@ header .lbl { margin-left: 2px; }
 .doc-center .bundle-list .doc-reasons li { display: list-item; padding: 0; border: 0; border-radius: 0; background: none; }
 .doc-center .doc-row-btns { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 4px; justify-items: end; }
 .doc-center .doc-row-btns button { grid-column: auto; grid-row: auto; min-height: 36px; }
+/* 排水の注意（書類センター）: 1 件ずつ、図面で見る・直すボタン。色に頼らず ⚠ と文字で */
+.doc-drain { border: 1px dashed #b45309; background: #fffbeb; border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+.doc-drain h3 { margin: 0; font-size: 15px; }
+.doc-drain p { margin: 0; }
+.doc-drain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.doc-drain-list li { display: grid; gap: 6px; border-top: 1px solid #fde68a; padding-top: 6px; overflow-wrap: anywhere; }
+.doc-center .doc-drain-list .doc-row-btns { grid-column: auto; grid-row: auto; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.doc-drain-list button { min-height: 44px; min-width: 44px; }
 .doc-questions { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; }
 .doc-questions h3 { margin: 0; font-size: 15px; }
 .doc-questions p { margin: 0; }

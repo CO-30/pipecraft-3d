@@ -343,7 +343,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
       </div>}
       {showProfiles && <ProfileSettingsDialog onClose={() => setShowProfiles(false)} />}
       {docsOpen && <DocCenterDialog profile={profile} siteName={siteName} date={date} buildFor={buildFor} asBuilt={asBuilt.on}
-        onFix={(at) => { setDocsOpen(false); if (at === 'drawings') setBundleOpen(true); else setKind('forms'); }} onClose={() => setDocsOpen(false)} />}
+        onFix={(at) => { setDocsOpen(false); if (at === 'drawings') setBundleOpen(true); else setKind('forms'); }} onLocate={() => { setDocsOpen(false); onClose(); }} onClose={() => setDocsOpen(false)} />}
       {bundleOpen && <ShinseiBundleDialog buildFor={buildFor} busy={busy === 'bundle'} asBuilt={asBuilt.on} error={bundleErr} onPdf={(b) => void downloadBundle(b)}
         onShow={(k) => { setBundleOpen(false); setKind(k); }} onClose={() => { setBundleOpen(false); setBundleErr(''); }} />}
     </div>

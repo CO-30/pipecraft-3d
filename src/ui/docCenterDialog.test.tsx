@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createBuildingFromDims } from '../model/building';
+import { emptyNetwork } from '../model/network';
 import { emptyDoc, useStore } from '../state/store';
 import { ShinseiScreen } from './ShinseiScreen';
 import { repo } from '../storage/instance';
@@ -100,5 +102,63 @@ describe('提出書類一式（書類センター）', () => {
     await waitFor(() => expect(row.textContent).toContain('排水の検査で注意が 1 件'));
     expect(row.textContent).toContain('区間 A の勾配が足りません');
     expect(row.textContent).toContain('トイレの汚水');
+  });
+
+  const withPipe = async () => {
+    await repo.setSetting(CONTRACTOR_KEY, { ...EMPTY_CONTRACTOR, name: 'テスト設備' });
+    const b = createBuildingFromDims({ width: 8000, depth: 6000, floors: 2, floorHeight: 2900, wallThickness: 150, slabThickness: 200 });
+    s().newDoc({ building: { ...b, foundation: { slabTop: -550 } }, network: emptyNetwork(), fixtures: {}, site: { designGL: -600, municipalityProfileId: 'haebaru' } }, { id: 'p', name: 'テスト工事', createdAt: 1 });
+    s().setActiveFloor(b.floors[1].id);
+    s().setDrawAttrs({ system: 'sewage', diameter: 100 });
+    s().drawPolyline([{ x: 4000, y: 3000, z: -300 }, { x: 300, y: 3000, z: -300 }]);
+    s().setActiveFloor(b.floors[0].id);
+    const seg = Object.values(s().doc.network.segments)[0];
+    useStore.setState({ drainIssues: [
+      { kind: 'unverifiedRule', level: 'info', target: { kind: 'site', id: '' }, message: 'お知らせ', fixes: [] },
+      { kind: 'minSlope', level: 'error', target: { kind: 'segment', id: seg.id }, message: '区間 A の勾配が足りません', fixes: [{ label: '管径を φ150 に上げる', apply: (d) => ({ ...d, network: { ...d.network, segments: { ...d.network.segments, [seg.id]: { ...d.network.segments[seg.id], diameter: 150 } } } }) }] },
+      { kind: 'noPublic', level: 'warn', target: { kind: 'site', id: '' }, message: '敷地の注意', fixes: [] },
+    ] });
+    return { seg, floor: s().doc.network.nodes[seg.a].floorId };
+  };
+
+  it('排水の注意の一覧: 「図面で見る」でその配管を選んで図面へ戻る（お知らせは並べない）', async () => {
+    const { seg, floor } = await withPipe();
+    const closed = vi.fn();
+    render(<ShinseiScreen onClose={closed} />);
+    fireEvent.click(await screen.findByTestId('shinsei-docs'));
+    const list = await screen.findByTestId('doc-drain-issues');
+    expect(list.textContent).toContain('区間 A の勾配が足りません');
+    expect(list.textContent).toContain('敷地の注意');
+    expect(list.textContent).not.toContain('お知らせ');
+    // 敷地全体の注意には移動先がないので「図面で見る」は 1 つだけ
+    const go = within(list).getAllByTestId('doc-drain-go');
+    expect(go).toHaveLength(1);
+    fireEvent.click(go[0]);
+    expect(closed).toHaveBeenCalled();
+    expect(s().selection).toEqual({ kind: 'segment', id: seg.id });
+    expect(s().activeFloorId).toBe(floor);
+    expect(s().tool).toBe('select');
+  });
+
+  it('排水の注意の一覧: 直し方のボタンで直すと、計算し直した結果に変わる（元に戻すで戻せる）', async () => {
+    const { seg } = await withPipe();
+    await open();
+    const list = await screen.findByTestId('doc-drain-issues');
+    fireEvent.click(within(list).getByRole('button', { name: '区間 A の勾配が足りません: 管径を φ150 に上げる' }));
+    expect(s().doc.network.segments[seg.id].diameter).toBe(150);
+    await waitFor(() => expect(screen.queryByText('区間 A の勾配が足りません')).toBeNull());
+    s().undo();
+    expect(s().doc.network.segments[seg.id].diameter).toBe(100);
+  });
+
+  it('排水の注意が 7 件以上: 6 件まで並べ、「ほか N 件も見る」で全部出る', async () => {
+    await withPipe();
+    useStore.setState({ drainIssues: Array.from({ length: 8 }, (_, k) => ({ kind: 'noPublic' as const, level: 'warn' as const, target: { kind: 'site' as const, id: '' }, message: `注意 ${k + 1}`, fixes: [] })) });
+    await open();
+    const list = await screen.findByTestId('doc-drain-issues');
+    expect(within(list).getAllByTestId('doc-drain-row')).toHaveLength(6);
+    fireEvent.click(within(list).getByTestId('doc-drain-all'));
+    expect(within(list).getAllByTestId('doc-drain-row')).toHaveLength(8);
+    expect(within(list).queryByTestId('doc-drain-all')).toBeNull();
   });
 });
