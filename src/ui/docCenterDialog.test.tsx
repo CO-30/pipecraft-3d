@@ -144,10 +144,21 @@ describe('提出書類一式（書類センター）', () => {
     const { seg } = await withPipe();
     await open();
     const list = await screen.findByTestId('doc-drain-issues');
-    fireEvent.click(within(list).getByRole('button', { name: '管径を φ150 に上げる' }));
+    fireEvent.click(within(list).getByRole('button', { name: '区間 A の勾配が足りません: 管径を φ150 に上げる' }));
     expect(s().doc.network.segments[seg.id].diameter).toBe(150);
     await waitFor(() => expect(screen.queryByText('区間 A の勾配が足りません')).toBeNull());
     s().undo();
     expect(s().doc.network.segments[seg.id].diameter).toBe(100);
+  });
+
+  it('排水の注意が 7 件以上: 6 件まで並べ、「ほか N 件も見る」で全部出る', async () => {
+    await withPipe();
+    useStore.setState({ drainIssues: Array.from({ length: 8 }, (_, k) => ({ kind: 'noPublic' as const, level: 'warn' as const, target: { kind: 'site' as const, id: '' }, message: `注意 ${k + 1}`, fixes: [] })) });
+    await open();
+    const list = await screen.findByTestId('doc-drain-issues');
+    expect(within(list).getAllByTestId('doc-drain-row')).toHaveLength(6);
+    fireEvent.click(within(list).getByTestId('doc-drain-all'));
+    expect(within(list).getAllByTestId('doc-drain-row')).toHaveLength(8);
+    expect(within(list).queryByTestId('doc-drain-all')).toBeNull();
   });
 });

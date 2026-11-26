@@ -315,12 +315,14 @@ test.describe('申請図面: 提出書類一式', () => {
     await expect(list).toBeVisible();
     await list.scrollIntoViewIfNeeded();
     await page.screenshot({ path: evidence('doc-center-03-drain-issues') });
-    const row = list.getByTestId('doc-drain-row').filter({ hasText: '勾配' }).first();
+    // 勾配を 1/500（0.2/100）にした配管の行
+    const row = list.getByTestId('doc-drain-row').filter({ hasText: '勾配 0.2/100' });
+    await expect(row).toHaveCount(1);
     await row.getByTestId('doc-drain-go').click();
     await expect(page.getByTestId('doc-center')).toHaveCount(0);
     await expect(page.getByTestId('close-shinsei')).toHaveCount(0);
     const sel = await page.evaluate(() => (window as any).__pc.getState().selection);
-    expect(sel?.kind).toBe('segment');
+    expect(sel).toEqual({ kind: 'segment', id: segId });
     await page.screenshot({ path: evidence('doc-center-04-drain-located') });
   });
 });

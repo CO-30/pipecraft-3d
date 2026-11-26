@@ -109,6 +109,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
   // 排水の注意（1 件ずつ、場所へ移動・直し方のボタン）。直すとストアが計算し直し、一覧も変わる
   const drainList = useMemo(() => drainRows(drainIssues).map((r) => ({ ...r, at: locateTarget(doc, r.issue.target) })), [drainIssues, doc]);
   const applyDrainFix = useStore((s) => s.applyDrainFix);
+  const [drainAll, setDrainAll] = useState(false);
   const locate = (at: NonNullable<(typeof drainList)[number]['at']>) => {
     const st = useStore.getState();
     if (at.floorId) st.setActiveFloor(at.floorId);
@@ -227,17 +228,17 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
             <h3>⚠ 排水の注意 {drainList.length} 件</h3>
             <p className="small muted">「図面で見る」でその配管・マスを選んだ状態で図面に戻ります。直し方の候補があるものはボタンで直せます（元に戻す 1 回で戻せます）。</p>
             <ul className="doc-drain-list">
-              {drainList.slice(0, MAX_DRAIN_ROWS).map(({ index, issue, at }) => (
+              {(drainAll ? drainList : drainList.slice(0, MAX_DRAIN_ROWS)).map(({ index, issue, at }) => (
                 <li key={index} data-testid="doc-drain-row">
                   <span className="small">⚠ {issue.message}</span>
                   <span className="doc-row-btns">
-                    {at && onLocate && <button type="button" className="small" data-testid="doc-drain-go" onClick={() => locate(at)}>図面で見る ›</button>}
-                    {issue.fixes.map((f, j) => <button key={j} type="button" className="small" data-testid="doc-drain-fix" disabled={!!busy} onClick={() => applyDrainFix(index, j)}>{f.label}</button>)}
+                    {at && onLocate && <button type="button" className="small" data-testid="doc-drain-go" disabled={!!busy} aria-label={`${issue.message}: 図面で見る`} onClick={() => locate(at)}>図面で見る ›</button>}
+                    {issue.fixes.map((f, j) => <button key={j} type="button" className="small" data-testid="doc-drain-fix" disabled={!!busy} aria-label={`${issue.message}: ${f.label}`} onClick={() => applyDrainFix(index, j)}>{f.label}</button>)}
                   </span>
                 </li>
               ))}
             </ul>
-            {drainList.length > MAX_DRAIN_ROWS && <p className="small muted">ほか {drainList.length - MAX_DRAIN_ROWS} 件（上を直すと、残りが並びます）</p>}
+            {drainList.length > MAX_DRAIN_ROWS && !drainAll && <button type="button" className="linkish small" data-testid="doc-drain-all" onClick={() => setDrainAll(true)}>ほか {drainList.length - MAX_DRAIN_ROWS} 件も見る ›</button>}
           </section>
         )}
         {roadTakeoffs(road).length === 0 && <p className="small muted">道路の書類（道路占用・道路使用許可）は、取出しを「しない」にしているので入れていません。</p>}
