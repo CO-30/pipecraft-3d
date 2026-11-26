@@ -14,8 +14,8 @@ export type Inspection = { drain: string[]; supply: string[] };
 /** 理由に並べる件数の上限（多いときは「ほか N 件」にまとめる。スマホで読み切れる長さに） */
 export const MAX_LINES = 4;
 
-const DRAIN_FIX = '図面の「積算」→「要確認」から場所へ移動して直せます';
-const SUPPLY_FIX = '申請図面の「水理計算書」で、おすすめの口径に直せます';
+const DRAIN_FIX = '平面図でその配管をタップすると、勾配・高さを確かめて直せます';
+const SUPPLY_FIX = '申請図面の「水理計算書」で口径の提案を確かめてください';
 const PLUMBING = new Set(['water', 'hotWater', 'sewage', 'drain']);
 const DRAIN_SYS = new Set(['sewage', 'drain']);
 
@@ -67,5 +67,7 @@ export function inspect(doc: Doc, drainIssues: DrainIssue[], supply: SupplyCalc 
     const over = supply.rows.filter((r) => r.over).length;
     if (over) supplyLines.push(`流速が上限を超える区間が ${over} か所あります。${SUPPLY_FIX}`);
   }
+  // 自治体の値が分からず一般値で計算したもの（合っていても、確かめるまでは「出力できます」にしない）
+  if (supply && !('error' in supply)) for (const u of supply.unverified) supplyLines.push(`${u}が未確認です。水道局で確かめて、申請図面の「水理計算書」で入れてください`);
   return { drain, supply: supplyLines };
 }

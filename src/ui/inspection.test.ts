@@ -7,9 +7,12 @@ import type { SupplyCalc } from '../model/hydraulics/calc';
 import { calcSupply } from '../model/hydraulics/calc';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { readSuiriSettings } from '../model/hydraulics/settings';
+import { supplyHouse } from '../model/testSupplyHouse';
+import { autoConnect } from '../model/autoConnect';
+import { placeFixture } from '../model/fixtures';
 
 const issue = (message: string, level: DrainIssue['level'] = 'error'): DrainIssue => ({ kind: 'minSlope', level, target: { kind: 'segment', id: 's' }, message, fixes: [] });
-const fakeCalc = (over: Partial<SupplyCalc>): SupplyCalc => ({ ok: true, required: 20, available: 30, rows: [], ...over } as SupplyCalc);
+const fakeCalc = (over: Partial<SupplyCalc>): SupplyCalc => ({ ok: true, required: 20, available: 30, rows: [], unverified: [], ...over } as SupplyCalc);
 
 describe('書類の状態に出す検査の結果', () => {
   it('何も無ければ空（書類は「出力できます」のまま）', () => {
@@ -21,7 +24,7 @@ describe('書類の状態に出す検査の結果', () => {
     const { doc } = newDoc();
     const r = inspect(doc, [issue('区間 A の勾配が 1/100 で、最小 2/100 に足りません'), issue('土かぶりが足りません', 'warn'), issue('規定は一般値です', 'info')], null);
     expect(r.drain[0]).toContain('注意が 2 件');
-    expect(r.drain[0]).toContain('要確認');
+    expect(r.drain[0]).toContain('平面図でその配管をタップ');
     expect(r.drain).toContain('区間 A の勾配が 1/100 で、最小 2/100 に足りません');
     expect(r.drain.join('|')).not.toContain('一般値');
     expect(r.supply).toEqual([]);
@@ -39,6 +42,7 @@ describe('書類の状態に出す検査の結果', () => {
     const low = inspect(doc, [], fakeCalc({ ok: false, required: 35.5, available: 30 }));
     expect(low.supply[0]).toContain('水圧が足りません（必要 35.50m・使える 30.00m）');
     expect(low.supply[0]).toContain('水理計算書');
+    expect(low.supply[0]).not.toContain('おすすめの口径に直せます');
     const fast = inspect(doc, [], fakeCalc({ ok: false, rows: [{ over: true }, { over: false }] as SupplyCalc['rows'] }));
     expect(fast.supply).toEqual([expect.stringContaining('流速が上限を超える区間が 1 か所')]);
     expect(inspect(doc, [], { error: 'メーターがありません' }).supply).toEqual(['給水の水理計算ができません（メーターがありません）']);
@@ -68,5 +72,20 @@ describe('書類の状態に出す検査の結果', () => {
     const r = inspect(doc, [], c);
     expect(r.supply[0]).toBe('給水・給湯がつながっていない器具が 3 か所あります: キッチンの給湯・洗面台の給湯・給湯器の給湯');
     expect(r.supply.join('|')).not.toContain('の給水');
+  });
+
+  it('「自動でつなぐ」を押した家（ヘッダーあり・なし）では、つなぎ忘れを出さない（普段の工事で余計な注意を出さない）', () => {
+    for (const header of [false, true]) {
+      const h = supplyHouse({ header });
+      const p = placeFixture(h.doc, h.floorId, 'publicSewage', { x: -3000, y: 1000 }, 0, { invertZ: -1300 });
+      const r = autoConnect(p.doc);
+      expect(unconnectedPorts(r.doc).map((x) => `${x.label}:${x.port}`)).toEqual([]);
+    }
+  });
+
+  it('設計水圧が未確認（一般値）のときは、計算が合っていても確認を促す', () => {
+    const { doc } = newDoc();
+    const r = inspect(doc, [], fakeCalc({ ok: true, unverified: ['設計水圧 0.2MPa（一般値）'] }));
+    expect(r.supply).toEqual([expect.stringContaining('設計水圧 0.2MPa（一般値）が未確認です')]);
   });
 });
