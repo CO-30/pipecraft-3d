@@ -298,4 +298,29 @@ test.describe('申請図面: 提出書類一式', () => {
       await page.screenshot({ path: evidence('doc-center-02-done') });
     }
   });
+
+  test('排水の注意の一覧: 勾配が足りない配管を「図面で見る」で選んで図面へ戻れる', async ({ page }) => {
+    await openSample(page);
+    // 汚水の配管 1 本の勾配を緩く固定して、勾配不足を作る
+    const segId = await page.evaluate(() => {
+      const st = (window as any).__pc.getState();
+      const seg = Object.values(st.doc.network.segments as Record<string, any>).find((s) => { const a = st.doc.network.nodes[s.a].pos, b = st.doc.network.nodes[s.b].pos; return s.system === 'sewage' && Math.hypot(a.x - b.x, a.y - b.y) > 500; });
+      st.setSegmentSlope(seg.id, 500);
+      return seg.id as string;
+    });
+    expect(await page.evaluate((id) => (window as any).__pc.getState().drainIssues.some((i: any) => i.level !== 'info' && i.target.id === id), segId)).toBe(true);
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-docs').click();
+    const list = page.getByTestId('doc-drain-issues');
+    await expect(list).toBeVisible();
+    await list.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: evidence('doc-center-03-drain-issues') });
+    const row = list.getByTestId('doc-drain-row').filter({ hasText: '勾配' }).first();
+    await row.getByTestId('doc-drain-go').click();
+    await expect(page.getByTestId('doc-center')).toHaveCount(0);
+    await expect(page.getByTestId('close-shinsei')).toHaveCount(0);
+    const sel = await page.evaluate(() => (window as any).__pc.getState().selection);
+    expect(sel?.kind).toBe('segment');
+    await page.screenshot({ path: evidence('doc-center-04-drain-located') });
+  });
 });

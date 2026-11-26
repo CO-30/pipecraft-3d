@@ -24,7 +24,7 @@ describe('書類の状態に出す検査の結果', () => {
     const { doc } = newDoc();
     const r = inspect(doc, [issue('区間 A の勾配が 1/100 で、最小 2/100 に足りません'), issue('土かぶりが足りません', 'warn'), issue('規定は一般値です', 'info')], null);
     expect(r.drain[0]).toContain('注意が 2 件');
-    expect(r.drain[0]).toContain('平面図でその配管をタップ');
+    expect(r.drain[0]).toContain('下の「排水の注意」から場所へ移動して直せます');
     expect(r.drain).toContain('区間 A の勾配が 1/100 で、最小 2/100 に足りません');
     expect(r.drain.join('|')).not.toContain('一般値');
     expect(r.supply).toEqual([]);

@@ -23,6 +23,7 @@ import { inspect } from './inspection';
 import { calcSupply } from '../model/hydraulics/calc';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 import { readSuiriSettings } from '../model/hydraulics/settings';
+import { drainRows, locateTarget, MAX_DRAIN_ROWS } from './drainLocate';
 import { checkSummary, docRows, statusText, type DocId, type DocRow } from './docCenter';
 
 type BKind = (typeof BUNDLE_KINDS)[number];
@@ -31,12 +32,14 @@ const formBytes = (path: string) => fetch(`${import.meta.env.BASE_URL}forms/${pa
 const SUPPLY = new Set(['water', 'hotWater']);
 const DRAIN = new Set(['sewage', 'drain']);
 
-export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, onFix, onClose }: {
+export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, onFix, onLocate, onClose }: {
   profile: MunicipalityProfile; siteName: string; date: Date;
   buildFor: (k: BKind) => ShinseiBuild;
   asBuilt: boolean;
   /** 直す場所へ（申請書タブ・まとめてPDF の一覧） */
   onFix: (at: NonNullable<DocRow['fixAt']>) => void;
+  /** 「図面で見る」: 選んだ配管・マスを図面で見せる（申請画面ごと閉じる）。無ければ「図面で見る」は出さない */
+  onLocate?: () => void;
   onClose: () => void;
 }) {
   const doc = useStore((s) => s.doc);
@@ -102,6 +105,17 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
       productCount: isNanbu(set) ? fixtureProducts(doc, values, {}).length : productRows(doc).length, roadConfirmed: ['road.water', 'road.sewer'].some((k) => k in (doc.site?.application ?? {})), formWarnings: isNanbu(set) ? nanbuWarnings(values) : [], drawings: drawings.map((d) => d.state),
     });
   }, [doc, set, profile.name, values, contractor, road, drawings, unanswered.length, inspection]);
+
+  // 排水の注意（1 件ずつ、場所へ移動・直し方のボタン）。直すとストアが計算し直し、一覧も変わる
+  const drainList = useMemo(() => drainRows(drainIssues).map((r) => ({ ...r, at: locateTarget(doc, r.issue.target) })), [drainIssues, doc]);
+  const applyDrainFix = useStore((s) => s.applyDrainFix);
+  const locate = (at: NonNullable<(typeof drainList)[number]['at']>) => {
+    const st = useStore.getState();
+    if (at.floorId) st.setActiveFloor(at.floorId);
+    st.setTool('select');
+    st.select(at.selection);
+    onLocate?.();
+  };
 
   const loading = drawings.some((d) => rowStatus(d.b).loading);
   const on = (r: DocRow) => r.status !== 'blocked' && (picked[r.id] ?? true);
@@ -208,6 +222,24 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
             </li>
           ))}
         </ul>
+        {drainList.length > 0 && (
+          <section className="doc-drain" data-testid="doc-drain-issues" aria-label="排水の注意">
+            <h3>⚠ 排水の注意 {drainList.length} 件</h3>
+            <p className="small muted">「図面で見る」でその配管・マスを選んだ状態で図面に戻ります。直し方の候補があるものはボタンで直せます（元に戻す 1 回で戻せます）。</p>
+            <ul className="doc-drain-list">
+              {drainList.slice(0, MAX_DRAIN_ROWS).map(({ index, issue, at }) => (
+                <li key={index} data-testid="doc-drain-row">
+                  <span className="small">⚠ {issue.message}</span>
+                  <span className="doc-row-btns">
+                    {at && onLocate && <button type="button" className="small" data-testid="doc-drain-go" onClick={() => locate(at)}>図面で見る ›</button>}
+                    {issue.fixes.map((f, j) => <button key={j} type="button" className="small" data-testid="doc-drain-fix" disabled={!!busy} onClick={() => applyDrainFix(index, j)}>{f.label}</button>)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {drainList.length > MAX_DRAIN_ROWS && <p className="small muted">ほか {drainList.length - MAX_DRAIN_ROWS} 件（上を直すと、残りが並びます）</p>}
+          </section>
+        )}
         {roadTakeoffs(road).length === 0 && <p className="small muted">道路の書類（道路占用・道路使用許可）は、取出しを「しない」にしているので入れていません。</p>}
         {loading && <p className="small muted">見取図の地図を読み込んでいます…（終わると出力できます）</p>}
         {!busy && notes.length === 0 && checkSummary(chosen) && <p className="small warn" data-testid="doc-check-summary">⚠ {checkSummary(chosen)}</p>}
