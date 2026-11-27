@@ -1,0 +1,3 @@
+[297/297] [mobile-android-emu] › e2e/underfloor.spec.ts:112:1 › 床下: 排水を描くと床下から出る所（土間）を起点に器具の方へ 2/100 の勾配が自動でつき、レベルバンドで支持する
+  15 skipped
+  282 passed (15.8m)

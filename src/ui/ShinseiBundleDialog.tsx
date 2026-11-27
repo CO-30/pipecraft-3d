@@ -4,6 +4,7 @@
  * 中身は各タブの PDF と同じ作図（buildFor）を使う。
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { BUNDLE_KINDS, KIND_LABEL, type Kind, type ShinseiBuild } from './shinseiBuild';
 
 type BKind = (typeof BUNDLE_KINDS)[number];
@@ -32,6 +33,7 @@ export function ShinseiBundleDialog({ buildFor, busy, asBuilt, error, onPdf, onS
   onShow: (k: Kind) => void;
   onClose: () => void;
 }) {
+  const dlgRef = useDialogFocus();
   const rows = useMemo(() => BUNDLE_KINDS.map((k) => { const b = buildFor(k); return { k, b, st: rowStatus(b) }; }), [buildFor]);
   /** 使う人が変えたチェック（変えていない図面は「作れるならチェック」） */
   const [picked, setPicked] = useState<Partial<Record<BKind, boolean>>>({});
@@ -46,7 +48,7 @@ export function ShinseiBundleDialog({ buildFor, busy, asBuilt, error, onPdf, onS
   }, [onClose]);
 
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="申請図面をまとめてPDF" data-testid="shinsei-bundle-dialog" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-back" ref={dlgRef} role="dialog" aria-modal="true" aria-label="申請図面をまとめてPDF" data-testid="shinsei-bundle-dialog" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal bundle">
         <h2>申請図面をまとめて PDF にする{asBuilt ? '（竣工図）' : ''}</h2>
         <p className="small muted">チェックした図面を 1 つの PDF に入れます。下流端・起点・分岐の選び方は各タブで選んだとおりです。</p>

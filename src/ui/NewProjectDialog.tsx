@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 
 export type NewProjectInput = {
   name: string;
@@ -29,6 +30,7 @@ const MODES: { id: 'sketch' | 'dims' | 'photo' | 'auto' | 'facade'; icon: string
 ];
 
 export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void; onSubmit: (v: NewProjectInput) => void }) {
+  const dlgRef = useDialogFocus();
   const [v, setV] = useState<NewProjectInput>({
     name: '', address: '', mode: 'sketch', width: 8000, depth: 6000, floors: 1, floorHeight: 2900, wallThickness: 150, slabThickness: 200,
   });
@@ -41,7 +43,7 @@ export function NewProjectDialog({ onCancel, onSubmit }: { onCancel: () => void;
   const ok = v.name.trim() !== '' && (v.mode === 'blank' || invalid.length === 0) && (v.mode !== 'auto' || files.length > 0);
 
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="新しい工事">
+    <div className="modal-back" ref={dlgRef} role="dialog" aria-modal="true" aria-label="新しい工事">
       <form className="modal" onSubmit={(e) => { e.preventDefault(); if (ok) onSubmit({ ...v, name: v.name.trim(), address: v.address.trim(), file: v.mode === 'photo' ? v.file : undefined, files: v.mode === 'auto' ? files : undefined }); }}>
         <h2>新しい工事</h2>
         <label className="field">工事名<input data-testid="np-name" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="例: 山田様邸 給排水" /></label>

@@ -6,6 +6,7 @@ import { unconfirmedWallCount } from '../model/sketch';
 import { fittingContext, penetrationsOf } from '../model/obstacles';
 import type { Doc } from '../model/doc';
 import { useEffect, useMemo, useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { useStore } from '../state/store';
 import {
   computeEstimate, defaultEstimate, roundYen, defaultSaleUnit, fittingSpec, formatLength, pipeSpec, priceLineName, roundTo, saleUnitLabel,
@@ -56,6 +57,7 @@ export function EstimateBar({ onOpen, onIssues }: { onOpen: () => void; onIssues
 }
 
 export function EstimateScreen({ onClose, initialTab = 'qty' }: { onClose: () => void; initialTab?: Tab }) {
+  const dlgRef = useDialogFocus();
   const est = useEstimate();
   const [tab, setTab] = useState<Tab>(initialTab);
   const unit = usePrefs((s) => s.lengthUnit);
@@ -72,7 +74,7 @@ export function EstimateScreen({ onClose, initialTab = 'qty' }: { onClose: () =>
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="estimate" data-testid="estimate-screen" role="dialog" aria-label="積算・見積">
+    <div className="estimate" data-testid="estimate-screen" ref={dlgRef} role="dialog" aria-label="積算・見積">
       <header>
         <button className="back" data-testid="close-estimate" onClick={onClose}>‹ 図面へ</button>
         <strong>積算・見積</strong>

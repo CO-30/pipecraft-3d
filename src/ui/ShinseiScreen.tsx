@@ -4,6 +4,7 @@
  * 表示はすべて doc から計算する（保存しない）。
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { useStore } from '../state/store';
 import { FIXTURE_CATALOG, isManhole, MANHOLE_TYPES } from '../model/fixtures';
 import { isDrain } from '../model/slope';
@@ -80,6 +81,7 @@ export function ShinseiScreen({ onClose, initialDocs = false }: {
   /** 開いたらすぐ「提出書類一式」を出す（手順ガイドの「質問に答える」「書類を出す」から） */
   initialDocs?: boolean;
 }) {
+  const dlgRef = useDialogFocus();
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
   const updateSite = useStore((s) => s.updateSite);
@@ -248,7 +250,7 @@ export function ShinseiScreen({ onClose, initialDocs = false }: {
 
   const gl = doc.site?.designGL;
   return (
-    <div className="estimate shinsei" data-testid="shinsei-screen" role="dialog" aria-label="申請図面">
+    <div className="estimate shinsei" data-testid="shinsei-screen" ref={dlgRef} role="dialog" aria-label="申請図面">
       <header>
         <button className="back" data-testid="close-shinsei" onClick={onClose}>‹ 図面へ</button>
         <strong>申請図面</strong>

@@ -39,6 +39,8 @@ input, select { min-height: 40px; font-size: 16px; padding: 0 8px; border: 1px s
 .pmeta { font-size: 12px; color: #6b7280; }
 .pbtns { display: flex; gap: 6px; justify-content: flex-end; }
 .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: grid; place-items: end center; z-index: 50; }
+/* 開いた窓そのものへ移したフォーカスの枠は出さない（中のボタン・入力欄の枠はそのまま） */
+[role="dialog"][tabindex="-1"]:focus { outline: none; }
 .modal { background: #fff; width: min(560px, 100%); max-height: 92dvh; overflow: auto; border-radius: 16px 16px 0 0; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 @media (min-width: 600px) { .modal-back { place-items: center; } .modal { border-radius: 16px; } }
 .modal h2 { margin: 0; font-size: 18px; }

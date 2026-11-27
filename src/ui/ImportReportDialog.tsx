@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { FIXTURE_CATALOG } from '../model/fixtures';
 import type { ImportReport, PlacedCandidate } from '../model/planRead/assemble';
 import { checkItems } from '../model/planRead/confidence';
@@ -16,6 +17,7 @@ export function ImportReportDialog({ report, fixtures, floorNames, learnedCount 
   learnedCount?: number; onForget?: () => void;
   onClose: (place: LearnedCandidate[]) => void;
 }) {
+  const dlgRef = useDialogFocus();
   const [on, setOn] = useState(() => fixtures.map(() => true));
   const picked = fixtures.filter((_, i) => on[i]);
   const multiFloor = new Set(fixtures.map((f) => f.floorId)).size > 1;
@@ -24,7 +26,7 @@ export function ImportReportDialog({ report, fixtures, floorNames, learnedCount 
   const rough = fixtures.filter((f) => !f.near).length;
   const ICON = { low: '❗', mid: '⚠', info: 'ℹ' } as const;
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="図面の読み取り結果">
+    <div className="modal-back" ref={dlgRef} role="dialog" aria-modal="true" aria-label="図面の読み取り結果">
       <div className="modal import-report" data-testid="import-report">
         <h2>図面を読み取りました</h2>
         {(checks.count.low > 0 || checks.count.mid > 0 || rough > 0) && (
