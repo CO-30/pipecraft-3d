@@ -43,3 +43,51 @@ export function guideSteps(doc: Doc): GuideStep[] {
 export function currentStep(steps: GuideStep[]): GuideStep {
   return steps.find((s) => !s.done && !s.optional) ?? steps.find((s) => s.id === 'quantities')!;
 }
+
+/**
+ * 申請の手順（2026-11-26）: 図面を入れる → 器具を置く → 自動でつなぐ → 確認の質問 → 書類を出す。
+ * 見積の手順（guideSteps）とは別の並び。つなぎ忘れ・質問の数は画面側で数えて渡す（この関数は数えない）。
+ */
+export type ShinseiStepId = 'sDrawing' | 'sFixtures' | 'sConnect' | 'sQuestions' | 'sDocs';
+export type ShinseiStep = { id: ShinseiStepId; no: number; title: string; hint: string; done: boolean; progress?: string };
+export type ShinseiCtx = {
+  /** つながっていない器具の口（給水・給湯・排水）の数 */
+  openPorts: number;
+  /** 答えていない確認の質問の数 */
+  openQuestions: number;
+  /** 提出先の自治体を選んである */
+  municipality: boolean;
+};
+
+const SDEF: { id: ShinseiStepId; title: string; hint: string }[] = [
+  { id: 'sDrawing', title: '図面を入れる', hint: '建築図面（PDF・写真・Jw_cad）を取り込みます。壁を指でなぞって描いてもかまいません' },
+  { id: 'sFixtures', title: '器具を置く', hint: 'トイレ・洗面台などの器具と、水道メーター・公共汚水ますを置きます' },
+  { id: 'sConnect', title: '自動でつなぐ', hint: '汚水・水・お湯をまとめて自動でつなぎます（床下へ下ろす深さは標準の 300mm。元に戻す 1 回で全部戻せます）' },
+  { id: 'sQuestions', title: '確認の質問に答える', hint: '新設か・道路を掘るかなど、図面からは決められないことを数タップで答えます' },
+  { id: 'sDocs', title: '書類を出す', hint: '申請書・申請図面・道路の書類を、状態を確かめてまとめて保存します' },
+];
+
+export function shinseiSteps(doc: Doc, ctx: ShinseiCtx): ShinseiStep[] {
+  const hasPipes = Object.keys(doc.network.segments).length > 0;
+  const types = new Set(Object.values(doc.fixtures).map((f) => f.type));
+  const missing = [...(types.has('waterMeter') ? [] : ['水道メーター']), ...(types.has('publicSewage') ? [] : ['公共汚水ます'])];
+  const done: Record<ShinseiStepId, boolean> = {
+    sDrawing: Object.keys(doc.underlays ?? {}).length > 0 || Object.keys(doc.building.walls).length > 0 || hasPipes,
+    sFixtures: types.size > 0 || hasPipes,
+    sConnect: hasPipes && ctx.openPorts === 0,
+    sQuestions: ctx.municipality && ctx.openQuestions === 0,
+    // 書類は出したかどうかを工事データに残していないので、いつも最後の工程として残す
+    sDocs: false,
+  };
+  const progress: Partial<Record<ShinseiStepId, string>> = {
+    ...(types.size > 0 && missing.length ? { sFixtures: `${missing.join('・')}がまだです` } : {}),
+    ...(hasPipes && ctx.openPorts > 0 ? { sConnect: `つながっていない口が ${ctx.openPorts} か所` } : {}),
+    ...(!ctx.municipality ? { sQuestions: '提出先の自治体がまだです' } : ctx.openQuestions > 0 ? { sQuestions: `あと ${ctx.openQuestions} 件` } : {}),
+  };
+  return SDEF.map((d, i) => ({ id: d.id, no: i + 1, title: d.title, hint: d.hint, done: done[d.id], ...(progress[d.id] ? { progress: progress[d.id] } : {}) }));
+}
+
+/** 次にやる工程: 最初の未完了の工程（書類はいつも未完了なので、最後はそこに止まる） */
+export function currentShinseiStep(steps: ShinseiStep[]): ShinseiStep {
+  return steps.find((s) => !s.done) ?? steps[steps.length - 1];
+}

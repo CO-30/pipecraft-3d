@@ -3,7 +3,7 @@ import { addFloor, addWall, emptyBuilding } from './building';
 import type { Doc } from './doc';
 import { addPolyline, emptyNetwork } from './network';
 import { placeFixture } from './fixtures';
-import { currentStep, guideSteps } from './guide';
+import { currentShinseiStep, currentStep, guideSteps, shinseiSteps } from './guide';
 
 const empty = (): Doc => ({ building: addFloor(emptyBuilding(), { height: 3000 }).b, network: emptyNetwork(), fixtures: {} });
 const withWalls = (): Doc => {
@@ -58,5 +58,48 @@ describe('レビュー対応', () => {
     const d = empty();
     const net = addPolyline(d.network, [{ x: 0, y: 0, z: 100 }, { x: 1000, y: 0, z: 100 }], { system: 'water', diameter: 20 }).net;
     expect(currentStep(guideSteps({ ...d, network: net })).id).toBe('quantities');
+  });
+});
+
+describe('申請の手順（図面を入れる→器具→自動でつなぐ→質問→書類）', () => {
+  const ctx = { openPorts: 0, openQuestions: 0, municipality: true };
+  it('5 工程を順番どおりに返す', () => {
+    expect(shinseiSteps(empty(), ctx).map((s) => [s.id, s.no])).toEqual([['sDrawing', 1], ['sFixtures', 2], ['sConnect', 3], ['sQuestions', 4], ['sDocs', 5]]);
+  });
+  it('空の工事は「図面を入れる」から。壁を描いていれば図面が無くても次へ', () => {
+    expect(currentShinseiStep(shinseiSteps(empty(), ctx)).id).toBe('sDrawing');
+    expect(currentShinseiStep(shinseiSteps(withWalls(), ctx)).id).toBe('sFixtures');
+  });
+  it('器具を置くと「自動でつなぐ」。メーター・公共ますが無ければ、そのことを添える', () => {
+    const d = withWalls();
+    const f = placeFixture(d, d.building.floors[0].id, 'toilet', { x: 1000, y: 1000 }).doc;
+    const s = shinseiSteps(f, { ...ctx, openPorts: 1 });
+    expect(currentShinseiStep(s).id).toBe('sConnect');
+    expect(s[1].progress).toBe('水道メーター・公共汚水ますがまだです');
+    const m = placeFixture(f, d.building.floors[0].id, 'waterMeter', { x: 200, y: 200 }).doc;
+    expect(shinseiSteps(m, ctx)[1].progress).toBe('公共汚水ますがまだです');
+  });
+  it('配管があってもつなぎ忘れがあれば「自動でつなぐ」のまま（か所数を出す）', () => {
+    const d = withWalls();
+    const f = placeFixture(d, d.building.floors[0].id, 'toilet', { x: 1000, y: 1000 }).doc;
+    const p = { ...f, network: addPolyline(f.network, [{ x: 0, y: 0, z: 0 }, { x: 1000, y: 0, z: 0 }], { system: 'sewage', diameter: 100 }).net };
+    const s = shinseiSteps(p, { ...ctx, openPorts: 2 });
+    expect(currentShinseiStep(s).id).toBe('sConnect');
+    expect(s[2].progress).toBe('つながっていない口が 2 か所');
+    expect(currentShinseiStep(shinseiSteps(p, { ...ctx, openPorts: 0, openQuestions: 1 })).id).toBe('sQuestions');
+  });
+  it('質問が残っている・自治体が未選択なら「質問」。全部済めば「書類を出す」（書類は最後の工程で、済みにはしない）', () => {
+    const d = withWalls();
+    const f = placeFixture(d, d.building.floors[0].id, 'toilet', { x: 1000, y: 1000 }).doc;
+    const p = { ...f, network: addPolyline(f.network, [{ x: 0, y: 0, z: 0 }, { x: 1000, y: 0, z: 0 }], { system: 'sewage', diameter: 100 }).net };
+    const q = shinseiSteps(p, { ...ctx, openQuestions: 3 });
+    expect(currentShinseiStep(q).id).toBe('sQuestions');
+    expect(q[3].progress).toBe('あと 3 件');
+    const m = shinseiSteps(p, { ...ctx, municipality: false });
+    expect(currentShinseiStep(m).id).toBe('sQuestions');
+    expect(m[3].progress).toBe('提出先の自治体がまだです');
+    const all = shinseiSteps(p, ctx);
+    expect(currentShinseiStep(all).id).toBe('sDocs');
+    expect(all[4].done).toBe(false);
   });
 });
