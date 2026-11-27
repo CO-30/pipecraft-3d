@@ -189,6 +189,23 @@ test.describe('Phase 3 配管・配線', () => {
     await expect(page.getByTestId('seg-count')).toHaveText('2');
   });
 
+  test('配管の道具で、点の少し横をタップしただけでは配管を描かない（離した所を足して小さな管ができないこと）', async ({ page }) => {
+    await createProject(page, 'タップテスト', { blank: true });
+    await show(page, '2D');
+    await page.getByTestId('tool-pipe').click();
+    const pts = await page.evaluate(() => [[0, 0], [3000, 0]].map(([x, y]) => (window as any).__plan.toScreen(x, y)));
+    const send = (seq: [string, { x: number; y: number }][]) => page.evaluate((sq) => {
+      const el = document.querySelector('[data-testid="plan"]')!;
+      for (const [type, q] of sq) el.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: q.x, clientY: q.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: type === 'pointerup' ? 0 : 1 }));
+    }, seq);
+    await send([['pointerdown', pts[0]], ...Array.from({ length: 10 }, (_, k) => ['pointermove', { x: pts[0].x + ((pts[1].x - pts[0].x) * (k + 1)) / 10, y: pts[0].y }] as [string, { x: number; y: number }]), ['pointerup', pts[1]]]);
+    await expect(page.getByTestId('seg-count')).toHaveText('1');
+    // 端の点から 15px 横をタップ（押した所と離した所は同じ。動かしていない）
+    const tapAt = { x: pts[1].x + 15, y: pts[1].y };
+    await send([['pointerdown', tapAt], ['pointerup', tapAt]]);
+    await expect(page.getByTestId('seg-count')).toHaveText('1');
+  });
+
   test('3D で器具・配管・立て管が表示され、保存→再読み込みで復元', async ({ page }) => {
     await createProject(page, '3D表示テスト', { floors: 2 });
     await show(page, '2D');

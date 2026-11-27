@@ -231,11 +231,8 @@ export function ElevationView() {
     gesture.current = null;
     const s = useStore.getState();
     if (g?.kind === 'dragNode') { if (cancel) s.cancelDrag(); else s.endDrag(); }
-    // 離した所も最後の点に入れる（最後の動きが届く前に離れたときのため。同じ所なら足さない）
-    const cur = strokeRef.current;
-    const upQ = cur ? toUV(local(e)) : null;
-    const last = cur?.[cur.length - 1];
-    const pts = cur && upQ && last && Math.hypot(upQ.u - last.u, upQ.v - last.v) * vw.scale >= 0.5 ? [...cur, upQ] : cur;
+    // 描いた時点の stroke ではなく、いま持っている点（strokeRef）で仕上げる（最後の動きを落とさない）
+    const pts = strokeRef.current;
     if (!cancel && g?.kind === 'stroke' && pts && pts.length >= 2) finish(g, pts);
     if (!cancel && g?.kind === 'shape' && pts) {
       const sh = classify(pts, vw.scale);

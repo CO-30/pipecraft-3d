@@ -503,14 +503,8 @@ export function PlanView() {
     if (g?.kind.startsWith('drag')) st.endDrag();
     if (g?.kind === 'room' && roomPreview) st.addRoom(roomPreview.a, roomPreview.b);
     if (g?.kind === 'split' && splitPreview) finishSplit(splitPreview.a, splitPreview.b);
-    if (g?.kind === 'stroke' && strokeRef.current) {
-      // 離した所も最後の点に入れる（最後の動きが届く前に離れたときのため。同じ所なら足さない）
-      const cur = strokeRef.current;
-      const up = toWorld(local(e));
-      const last = cur[cur.length - 1];
-      const pts = Math.hypot(up.x - last.x, up.y - last.y) * vw.scale >= 0.5 ? [...cur, up] : cur;
-      if (pts.length >= 2) finishStroke(g, pts);
-    }
+    // 描いた時点の stroke ではなく、いま持っている点（strokeRef）で仕上げる（最後の動きを落とさない）
+    if (g?.kind === 'stroke' && strokeRef.current && strokeRef.current.length >= 2) finishStroke(g, strokeRef.current);
     setStroke(null);
     setRoomPreview(null);
     setSplitPreview(null);
