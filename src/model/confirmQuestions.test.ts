@@ -78,6 +78,10 @@ describe('答えた後に図面が変わったら聞き直す', () => {
     expect(same.find((x) => x.id === 'sewerConnection')!.answered).toBe(true);
     const agree = confirmQuestions(set, { sewerConnection: '公共ます' }, v({ sewerConnection: '公共ます' }), road, { drawn: { sewerConnection: '公共ます' }, basis: { sewerConnection: 'ます設置(新規)' } });
     expect(agree.find((x) => x.id === 'sewerConnection')!.changed).toBeUndefined();
+    expect(agree.find((x) => x.id === 'sewerConnection')!.answered).toBe(true);
+    // かっこの全角・半角だけの違いは「変わった」にしない
+    const width = confirmQuestions(FORM_SETS['okinawa-city'], { sewerConnection: '私設置ます' }, { sewerConnection: '私設置ます' }, road, { drawn: { sewerConnection: 'ます設置(新規)' }, basis: { sewerConnection: 'ます設置（新規）' } });
+    expect(width.find((x) => x.id === 'sewerConnection')!.answered).toBe(true);
   });
 
   it('前の版で答えた工事（答えたときの記録が無い）は聞き直さない。道路の質問は図面と関係ないので聞き直さない', () => {
@@ -85,6 +89,14 @@ describe('答えた後に図面が変わったら聞き直す', () => {
     const qs = confirmQuestions(set, stored, v(stored), road, { drawn: { sewerConnection: '公共ます', 'road.water': 'しない' }, basis: { 'road.water': 'する' } });
     expect(qs.find((x) => x.id === 'sewerConnection')!.answered).toBe(true);
     expect(qs.find((x) => x.id === 'road.water')!.answered).toBe(true);
+  });
+
+  it('おすすめが無いときに選んだ答え（記録は空）: 後で図面からおすすめが出て、それと違えば聞き直す（同じなら聞かない）', () => {
+    const stored = { drainTo: '浄化槽' };
+    const qs = confirmQuestions(FORM_SETS.yaese, stored, { workKind: '新設', tempSupply: '有り', ...stored }, road, { drawn: { drainTo: '公共下水道' }, basis: { drainTo: '' } });
+    expect(qs.find((x) => x.id === 'drainTo')!.changed).toEqual({ before: '', now: '公共下水道' });
+    const ok = confirmQuestions(FORM_SETS.yaese, { drainTo: '公共下水道' }, { workKind: '新設', drainTo: '公共下水道' }, road, { drawn: { drainTo: '公共下水道' }, basis: { drainTo: '' } });
+    expect(ok.find((x) => x.id === 'drainTo')!.answered).toBe(true);
   });
 
   it('basisOf: 決めた質問の、そのときの図面からのおすすめを覚える（道路は覚えない。おすすめが無いときは空で覚える）', () => {

@@ -1002,6 +1002,14 @@ export const useStore = create<State>((set, get) => {
     updateSite: (patch) => {
       const doc = get().doc;
       let next: Doc = { ...doc, site: { ...doc.site, ...patch } };
+      // 確認の質問の答えを他の画面（申請書の入力・道路・確認申請書の読み込み）で手で変えたら、その項目の
+      // 「答えたときの図面からのおすすめ」を消す（手で決めた答えを、図面が変わったからと聞き直さない）
+      const basis = doc.site?.confirmBasis;
+      if (patch.application && !('confirmBasis' in patch) && basis) {
+        const old = doc.site?.application ?? {};
+        const kept = Object.fromEntries(Object.entries(basis).filter(([k]) => (patch.application![k] ?? '') === (old[k] ?? '')));
+        if (Object.keys(kept).length !== Object.keys(basis).length) next = { ...next, site: { ...next.site, confirmBasis: kept } };
+      }
       // 設計GL が変わると、管底高が既定（GL−600）のマスの接続口が動く。固定勾配の区間も追従させる
       if ('designGL' in patch && patch.designGL !== doc.site?.designGL) {
         next = syncAllFixturePorts(next);
