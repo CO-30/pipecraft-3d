@@ -33,6 +33,8 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
   const [showEst, setShowEst] = useState<EstTab | null>(null);
   const [help, setHelp] = useState(false);
   const [showShinsei, setShowShinsei] = useState(false);
+  /** 申請図面の画面を「提出書類一式」を開いた状態で開く（手順ガイドの「質問」「書類」から） */
+  const [shinseiDocs, setShinseiDocs] = useState(false);
   // 要望欄の記録: 作業画面の中の画面（積算・申請図面・使い方・立面）を開いたとき
   useEffect(() => { if (showEst) fbLog('画面: 積算'); }, [showEst]);
   useEffect(() => { if (showShinsei) fbLog('画面: 申請図面'); }, [showShinsei]);
@@ -70,7 +72,7 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
         <button data-testid="open-help-editor" aria-label="使い方" onClick={() => setHelp(true)}>？</button>
         <span className="sum">総延長 <b data-testid="total-length">{unit === 'm' ? (totalLength(net) / 1000).toFixed(2) : Math.round(totalLength(net))}</b>{unit}／<b data-testid="seg-count">{Object.keys(net.segments).length}</b>区間</span>
       </header>
-      <GuideBar onEstimate={openEst} onPlan={() => { if (eff === '3d') setLayout(isWide ? 'split' : '2d'); }} />
+      <GuideBar onEstimate={openEst} onPlan={() => { if (eff === '3d') setLayout(isWide ? 'split' : '2d'); }} onShinsei={() => { setShinseiDocs(true); setShowShinsei(true); }} />
 
       <div className="body">
         {isWide && (
@@ -112,7 +114,7 @@ export function Editor({ save, onBack, startFacade, onFacadeStarted }: { save: S
       <QuestionCard />
       <Toolbar />
       {showEst && <EstimateScreen initialTab={showEst} onClose={() => setShowEst(null)} />}
-      {showShinsei && <ShinseiScreen onClose={() => setShowShinsei(false)} />}
+      {showShinsei && <ShinseiScreen initialDocs={shinseiDocs} onClose={() => { setShowShinsei(false); setShinseiDocs(false); }} />}
       {help && <HelpDialog onClose={() => setHelp(false)} />}
     </div>
   );

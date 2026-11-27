@@ -326,3 +326,34 @@ test.describe('申請図面: 提出書類一式', () => {
     await page.screenshot({ path: evidence('doc-center-04-drain-located') });
   });
 });
+
+test.describe('手順ガイド: 申請の書類までの手順', () => {
+  test.beforeEach(async ({ page }) => freshApp(page));
+
+  test('サンプル工事: 申請の手順に切り替え →「自動でつなぐ」→「書類を出す」で提出書類一式が開く', async ({ page }) => {
+    await openSample(page);
+    await page.evaluate(() => (window as any).__pc.getState().updateSite({ municipalityProfileId: 'haebaru' }));
+    await page.getByTestId('guide-toggle').click();
+    await page.getByTestId('guide-mode-shinsei').click();
+    const cur = page.getByTestId('guide-current');
+    await expect(cur).toContainText('申請');
+    await expect(cur).toHaveAttribute('data-step', 'sConnect'); // サンプルには、つながっていない器具がある
+    await expect(cur).toContainText('つながっていない口が');
+    await page.screenshot({ path: evidence('guide-shinsei-01-connect') });
+    const before = Object.keys((await doc(page)).network.segments).length;
+    await page.getByTestId('guide-do').click();
+    await expect.poll(async () => Object.keys((await doc(page)).network.segments).length).toBeGreaterThan(before);
+    // つないだ後は「確認の質問」へ（南風原町の質問が残っている）
+    await expect(cur).toHaveAttribute('data-step', 'sQuestions');
+    await page.screenshot({ path: evidence('guide-shinsei-02-questions') });
+    await page.getByTestId('guide-do').click();
+    await expect(page.getByTestId('doc-center')).toBeVisible();
+    await expect(page.getByTestId('doc-questions')).toBeVisible();
+    await page.screenshot({ path: evidence('guide-shinsei-03-doc-center') });
+    // 閉じても選んだ手順は残る（この端末に覚えておく）
+    await page.getByTestId('doc-center').getByRole('button', { name: '閉じる' }).click();
+    await page.getByTestId('close-shinsei').click();
+    await expect(page.getByTestId('guide-current')).toContainText('申請');
+    expect(await page.evaluate(() => localStorage.getItem('pipecraft3d.guideMode'))).toBe('shinsei');
+  });
+});

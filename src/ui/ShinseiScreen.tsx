@@ -75,7 +75,11 @@ function branchDescription(doc: ReturnType<typeof useStore.getState>['doc'], fro
   return names.size ? [...names].join('・') + ' の側' : nodeLabel(next) + ' の側';
 }
 
-export function ShinseiScreen({ onClose }: { onClose: () => void }) {
+export function ShinseiScreen({ onClose, initialDocs = false }: {
+  onClose: () => void;
+  /** 開いたらすぐ「提出書類一式」を出す（手順ガイドの「質問に答える」「書類を出す」から） */
+  initialDocs?: boolean;
+}) {
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
   const updateSite = useStore((s) => s.updateSite);
@@ -90,7 +94,7 @@ export function ShinseiScreen({ onClose }: { onClose: () => void }) {
   /** 「まとめてPDF」の一覧を開いている */
   const [bundleOpen, setBundleOpen] = useState(false);
   /** 「提出書類一式」の一覧を開いている */
-  const [docsOpen, setDocsOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(initialDocs);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   /** 図面の作成日（画面を開いたとき） */
