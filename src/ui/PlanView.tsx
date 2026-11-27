@@ -109,7 +109,11 @@ export function PlanView() {
   const justPlaced = useRef(false);
   const [view, setView] = useState<ViewT | null>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
-  const [stroke, setStroke] = useState<Vec2[] | null>(null);
+  const [stroke, setStrokeState] = useState<Vec2[] | null>(null);
+  // なぞっている点はすぐ参照できる所にも持つ。動きと指を離すのが同じ処理の中で続けて届くと（重い端末）、
+  // 離したときの関数から見える stroke（描いた時点の値）に最後の点が入っていないことがある（2026-11-27）
+  const strokeRef = useRef<Vec2[] | null>(null);
+  const setStroke = (v: Vec2[] | null) => { strokeRef.current = v; setStrokeState(v); };
   const [roomPreview, setRoomPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const [splitPreview, setSplitPreview] = useState<{ a: Vec2; b: Vec2 } | null>(null);
   const underlays = useStore((s) => s.doc.underlays);
@@ -415,7 +419,7 @@ export function PlanView() {
       g.last = p;
     } else if (g.kind === 'stroke') {
       const w = toWorld(p);
-      setStroke((s) => (s ? [...s, w] : s));
+      setStroke(strokeRef.current ? [...strokeRef.current, w] : null);
     } else if (g.kind === 'room') {
       setRoomPreview({ a: g.start, b: snapGrid(toWorld(p)) });
     } else if (g.kind === 'split') {
@@ -499,7 +503,8 @@ export function PlanView() {
     if (g?.kind.startsWith('drag')) st.endDrag();
     if (g?.kind === 'room' && roomPreview) st.addRoom(roomPreview.a, roomPreview.b);
     if (g?.kind === 'split' && splitPreview) finishSplit(splitPreview.a, splitPreview.b);
-    if (g?.kind === 'stroke' && stroke && stroke.length >= 2) finishStroke(g, stroke);
+    // 描いた時点の stroke ではなく、いま持っている点（strokeRef）で仕上げる（最後の動きを落とさない）
+    if (g?.kind === 'stroke' && strokeRef.current && strokeRef.current.length >= 2) finishStroke(g, strokeRef.current);
     setStroke(null);
     setRoomPreview(null);
     setSplitPreview(null);

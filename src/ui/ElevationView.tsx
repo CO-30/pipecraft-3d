@@ -102,7 +102,10 @@ export function ElevationView() {
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<ViewT | null>(null);
-  const [stroke, setStroke] = useState<UV[] | null>(null);
+  const [stroke, setStrokeState] = useState<UV[] | null>(null);
+  // なぞっている点はすぐ参照できる所にも持つ（動きと指を離すのが続けて届くと、最後の点を落とすため。平面図と同じ）
+  const strokeRef = useRef<UV[] | null>(null);
+  const setStroke = (v: UV[] | null) => { strokeRef.current = v; setStrokeState(v); };
   const [photoOpen, setPhotoOpen] = useState(false);
   /** 立面の横幅・高さを変える（写真は縦横比が変わるので外す） */
   const resize = (patch: { width?: number; height?: number }) => {
@@ -212,7 +215,7 @@ export function ElevationView() {
       g.last = p;
     } else if (g.kind === 'stroke' || g.kind === 'shape') {
       const q = toUV(p);
-      setStroke((s) => (s ? [...s, q] : s));
+      setStroke(strokeRef.current ? [...strokeRef.current, q] : null);
     } else if (g.kind === 'dragNode') {
       const q = toUV(p);
       const s = useStore.getState();
@@ -228,9 +231,11 @@ export function ElevationView() {
     gesture.current = null;
     const s = useStore.getState();
     if (g?.kind === 'dragNode') { if (cancel) s.cancelDrag(); else s.endDrag(); }
-    if (!cancel && g?.kind === 'stroke' && stroke && stroke.length >= 2) finish(g, stroke);
-    if (!cancel && g?.kind === 'shape' && stroke) {
-      const sh = classify(stroke, vw.scale);
+    // 描いた時点の stroke ではなく、いま持っている点（strokeRef）で仕上げる（最後の動きを落とさない）
+    const pts = strokeRef.current;
+    if (!cancel && g?.kind === 'stroke' && pts && pts.length >= 2) finish(g, pts);
+    if (!cancel && g?.kind === 'shape' && pts) {
+      const sh = classify(pts, vw.scale);
       setShape(sh);
       if (!sh) setMsg('もう少し大きく描いてください（四角＝窓・ドア・梁など、斜め線＝階段）');
     }
