@@ -189,4 +189,17 @@ describe('提出書類一式（書類センター）', () => {
     expect(s().doc.site!.confirmBasis!.sewerConnection).toBe('公共ます');
     expect(await screen.findByTestId('doc-q-done')).toBeTruthy();
   });
+  it('開くと窓の中へフォーカスが移り、閉じると「提出書類一式」のボタンへ戻る', async () => {
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト工事', createdAt: 1 });
+    s().updateSite({ municipalityProfileId: 'haebaru' });
+    render(<ShinseiScreen onClose={() => {}} />);
+    const btn = await screen.findByTestId('shinsei-docs');
+    btn.focus();
+    fireEvent.click(btn);
+    const dlg = await screen.findByTestId('doc-center');
+    expect(dlg.contains(document.activeElement)).toBe(true);
+    fireEvent.click(within(dlg).getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(screen.queryByTestId('doc-center')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByTestId('shinsei-docs'));
+  });
 });

@@ -3,6 +3,7 @@
  * 同梱分は読み取り専用（複製して編集）。ユーザー分は IndexedDB に保存。
  */
 import { useEffect, useRef, useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { FIXTURE_CATALOG, FIXTURE_TYPES } from '../model/fixtures';
 import {
   duplicateProfile, isBuiltinProfile, municipalityProfileSchema, parseProfileJson, PROFILE_ROW_KEYS, PROFILE_ROW_LABEL, SYMBOL_IDS, SYMBOL_LABEL,
@@ -11,6 +12,7 @@ import {
 import { useProfiles } from './useProfiles';
 
 export function ProfileSettingsDialog({ onClose }: { onClose: () => void }) {
+  const dlgRef = useDialogFocus();
   const profiles = useProfiles();
   const [editing, setEditing] = useState<MunicipalityProfile | null>(null);
   const [msg, setMsg] = useState('');
@@ -52,7 +54,7 @@ export function ProfileSettingsDialog({ onClose }: { onClose: () => void }) {
   }
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label="自治体プロファイル" data-testid="profile-dialog" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" ref={dlgRef} role="dialog" aria-label="自治体プロファイル" data-testid="profile-dialog" onClick={(e) => e.stopPropagation()}>
         <h2>自治体プロファイル</h2>
         <p className="small muted">縦断図・立面図の体裁（表の行・勾配の書き方・縮尺・最小勾配・土被り・記号・用紙）を自治体ごとに持ちます。同梱分は複製して編集してください。確認できていない項目は「要確認」として図面に出ます。</p>
         {msg && <p className="small" role="status" data-testid="profile-msg">{msg}</p>}
@@ -78,6 +80,7 @@ export function ProfileSettingsDialog({ onClose }: { onClose: () => void }) {
 
 /** 項目ごとのフォーム。保存時に Zod で検証する */
 function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfile; onSave: (p: MunicipalityProfile) => void; onCancel: () => void }) {
+  const dlgRef = useDialogFocus();
   const [p, setP] = useState<MunicipalityProfile>(() => structuredClone(profile));
   const [err, setErr] = useState('');
   const pt = p.profileTable;
@@ -108,7 +111,7 @@ function ProfileForm({ profile, onSave, onCancel }: { profile: MunicipalityProfi
   const symbolTypes = FIXTURE_TYPES.filter((t) => FIXTURE_CATALOG[t].ports.some((x) => x.system === 'water' || x.system === 'hotWater' || x.system === 'sewage' || x.system === 'drain'));
   return (
     <div className="modal-back" onClick={onCancel}>
-      <div className="modal" role="dialog" aria-label="プロファイルの編集" data-testid="profile-form" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" ref={dlgRef} role="dialog" aria-label="プロファイルの編集" data-testid="profile-form" onClick={(e) => e.stopPropagation()}>
         <h2>プロファイルの編集</h2>
         {err && <p className="warn small" role="alert" data-testid="profile-form-error">{err}</p>}
         <label className="field">名前 <input data-testid="pf-name" value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} /></label>

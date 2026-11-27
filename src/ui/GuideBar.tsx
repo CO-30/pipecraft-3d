@@ -3,6 +3,7 @@
  * タップで8工程の一覧を開き、どの工程へも移れる（経験者は自由に操作できる）。
  */
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { useStore } from '../state/store';
 import { currentShinseiStep, currentStep, guideSteps, shinseiSteps, type GuideStepId, type ShinseiCtx, type ShinseiStep, type ShinseiStepId } from '../model/guide';
 import { usePrefs } from './prefs';
@@ -214,6 +215,7 @@ function EstimateGuide({ onEstimate, onPlan }: { onEstimate: (tab: EstimateTab) 
 }
 
 function InfoDialog({ onClose }: { onClose: () => void }) {
+  const dlgRef = useDialogFocus();
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
@@ -223,7 +225,7 @@ function InfoDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState(meta?.name ?? '');
   const [address, setAddress] = useState(meta?.address ?? '');
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="工事名・現場情報">
+    <div className="modal-back" ref={dlgRef} role="dialog" aria-modal="true" aria-label="工事名・現場情報">
       <form className="modal" onSubmit={(e) => { e.preventDefault(); if (name.trim()) { useStore.getState().renameProject(name.trim(), address.trim() || undefined); onClose(); } }}>
         <h2>工事名・現場情報</h2>
         <label className="field">工事名<input data-testid="info-name" autoFocus required value={name} onChange={(e) => setName(e.target.value)} /></label>

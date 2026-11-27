@@ -1,5 +1,6 @@
 /** 使い方（8つの工程・基本操作・用語）。ホームと作業画面の「？」から開く */
 import { useEffect } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { FeedbackBox } from '../feedback/FeedbackBox';
 
 const STEPS: [string, string][] = [
@@ -36,6 +37,7 @@ const TERMS: [string, string][] = [
 ];
 
 export function HelpDialog({ onClose }: { onClose: () => void }) {
+  const dlgRef = useDialogFocus();
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       // 要望を書いている途中（入力欄・日本語の変換の取り消し）の Esc では閉じない
@@ -47,7 +49,7 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', k);
   }, [onClose]);
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="使い方" data-testid="help-dialog" onClick={onClose}>
+    <div className="modal-back" ref={dlgRef} role="dialog" aria-modal="true" aria-label="使い方" data-testid="help-dialog" onClick={onClose}>
       <div className="modal help" onClick={(e) => e.stopPropagation()}>
         <div className="help-head"><h2>使い方</h2><button className="big" data-testid="help-close" onClick={onClose}>閉じる</button></div>
         <h3>作業の流れ</h3>

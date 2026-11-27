@@ -4,6 +4,7 @@
  * 中身は申請書タブ・道路の手続き・「まとめてPDF」と同じ作り方（src/forms/produce.ts・buildFor）。
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useDialogFocus } from './useDialogFocus';
 import { useStore } from '../state/store';
 import { repo } from '../storage/instance';
 import type { MunicipalityProfile } from '../model/municipality';
@@ -42,6 +43,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
   onLocate?: () => void;
   onClose: () => void;
 }) {
+  const dlgRef = useDialogFocus();
   const doc = useStore((s) => s.doc);
   const meta = useStore((s) => s.meta);
   const drainIssues = useStore((s) => s.drainIssues);
@@ -168,7 +170,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
   };
 
   return (
-    <div className="modal-back" role="dialog" aria-modal="true" aria-label="提出書類一式" data-testid="doc-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-back" ref={dlgRef} role="dialog" aria-modal="true" aria-label="提出書類一式" data-testid="doc-center" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal bundle doc-center">
         <h2>提出書類一式{asBuilt ? '（竣工図）' : ''}</h2>
         <p className="small muted">「{profile.name}」でこの工事に出す書類です。入力は 1 回だけで、全部の書類に入ります。</p>
