@@ -2,9 +2,9 @@
  * 作業手順ガイド（図面の上の1行）。いまの工程・次にやること・その作業を始めるボタン。
  * タップで8工程の一覧を開き、どの工程へも移れる（経験者は自由に操作できる）。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../state/store';
-import { currentShinseiStep, currentStep, guideSteps, shinseiSteps, type GuideStepId, type ShinseiCtx, type ShinseiStepId } from '../model/guide';
+import { currentShinseiStep, currentStep, guideSteps, shinseiSteps, type GuideStepId, type ShinseiCtx, type ShinseiStep, type ShinseiStepId } from '../model/guide';
 import { usePrefs } from './prefs';
 import { runAutoConnect } from './autoConnectRun';
 import { unconnectedPorts } from './inspection';
@@ -49,11 +49,18 @@ function goTool(onPlan: () => void, tool: Parameters<ReturnType<typeof useStore.
 }
 
 /** 申請の工程の作業を始める */
-function runShinsei(id: ShinseiStepId, onPlan: () => void, onShinsei: () => void) {
-  switch (id) {
+function runShinsei(step: ShinseiStep, onPlan: () => void, onShinsei: () => void) {
+  switch (step.id) {
     case 'sDrawing': goTool(onPlan, 'underlay', '「画像・PDFを追加」から建築図面を選びます（壁を指でなぞって描いてもかまいません）'); return;
     case 'sFixtures': goTool(onPlan, 'fixture', '下の一覧から器具を選び、図面の置きたい所をタップ。水道メーター・公共汚水ますも置いてください'); return;
-    case 'sConnect': goTool(onPlan, 'select'); runAutoConnect(); return;
+    case 'sConnect': {
+      // 器具が無ければつなぐ物が無い。済んでいれば押し直してもつなぎ直さない（元に戻す が増えないように）
+      if (!Object.keys(useStore.getState().doc.fixtures).length) { goTool(onPlan, 'fixture', '先に器具を置いてください（下の一覧から器具を選び、図面の置きたい所をタップ）'); return; }
+      if (step.done) { goTool(onPlan, 'select', 'もうつながっています。直すときは配管をタップしてください'); return; }
+      goTool(onPlan, 'select');
+      runAutoConnect();
+      return;
+    }
     case 'sQuestions': case 'sDocs': onShinsei(); return;
   }
 }
@@ -119,14 +126,15 @@ function ModeSwitch() {
 }
 
 function ShinseiGuide({ onPlan, onShinsei }: { onPlan: () => void; onShinsei: () => void }) {
-  const doc = useStore((s) => s.doc);
+  // 数えるのは少し重いので、ドラッグ中などは後回しにする（表示が少し遅れても操作は止めない）
+  const doc = useDeferredValue(useStore((s) => s.doc));
   const meta = useStore((s) => s.meta);
   const user = useProfiles((s) => s.user);
   const steps = useMemo(() => shinseiSteps(doc, shinseiCtx(doc, meta, user)), [doc, meta, user]);
   const cur = currentShinseiStep(steps);
   const [open, setOpen] = useState(false);
   const setHidden = usePrefs((s) => s.setGuideHidden);
-  const run = (id: ShinseiStepId) => { setOpen(false); runShinsei(id, onPlan, onShinsei); };
+  const run = (st: ShinseiStep) => { setOpen(false); runShinsei(st, onPlan, onShinsei); };
   return (
     <div className="guide" data-testid="guide-bar" data-mode="shinsei">
       <div className="guide-row">
@@ -138,7 +146,7 @@ function ShinseiGuide({ onPlan, onShinsei }: { onPlan: () => void; onShinsei: ()
           </span>
           <span className="guide-caret" aria-hidden>{open ? '▴' : '▾'}</span>
         </button>
-        <button className="primary guide-do" data-testid="guide-do" onClick={() => run(cur.id)}>{S_DO_LABEL[cur.id]} ›</button>
+        <button className="primary guide-do" data-testid="guide-do" onClick={() => run(cur)}>{S_DO_LABEL[cur.id]} ›</button>
       </div>
       {open && (
         <div className="guide-list" data-testid="guide-list">
@@ -146,7 +154,7 @@ function ShinseiGuide({ onPlan, onShinsei }: { onPlan: () => void; onShinsei: ()
           <ol>
             {steps.map((s) => (
               <li key={s.id} className={s.id === cur.id ? 'cur' : ''}>
-                <button data-testid={`guide-step-${s.id}`} onClick={() => run(s.id)}>
+                <button data-testid={`guide-step-${s.id}`} onClick={() => run(s)}>
                   <span className={`gmark ${s.done ? 'done' : ''}`}>{s.done ? '✓' : s.no}</span>
                   <span className="gtitle">{s.title}{s.progress && <small className="gprog"> {s.progress}</small>}</span>
                   <span className="gdesc">{s.hint}</span>
@@ -167,9 +175,7 @@ function EstimateGuide({ onEstimate, onPlan }: { onEstimate: (tab: EstimateTab) 
   const cur = currentStep(steps);
   const [open, setOpen] = useState(false);
   const [info, setInfo] = useState(false);
-  const hidden = usePrefs((s) => s.guideHidden);
   const setHidden = usePrefs((s) => s.setGuideHidden);
-  if (hidden) return null;
   const run = (id: GuideStepId) => { setOpen(false); runStep(id, onEstimate, () => setInfo(true), onPlan); };
   return (
     <div className="guide" data-testid="guide-bar">

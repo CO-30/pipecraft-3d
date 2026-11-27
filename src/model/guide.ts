@@ -62,7 +62,7 @@ export type ShinseiCtx = {
 const SDEF: { id: ShinseiStepId; title: string; hint: string }[] = [
   { id: 'sDrawing', title: '図面を入れる', hint: '建築図面（PDF・写真・Jw_cad）を取り込みます。壁を指でなぞって描いてもかまいません' },
   { id: 'sFixtures', title: '器具を置く', hint: 'トイレ・洗面台などの器具と、水道メーター・公共汚水ますを置きます' },
-  { id: 'sConnect', title: '自動でつなぐ', hint: '汚水・水・お湯をまとめて自動でつなぎます（元に戻す 1 回で全部戻せます）' },
+  { id: 'sConnect', title: '自動でつなぐ', hint: '汚水・水・お湯をまとめて自動でつなぎます（床下へ下ろす深さは標準の 300mm。元に戻す 1 回で全部戻せます）' },
   { id: 'sQuestions', title: '確認の質問に答える', hint: '新設か・道路を掘るかなど、図面からは決められないことを数タップで答えます' },
   { id: 'sDocs', title: '書類を出す', hint: '申請書・申請図面・道路の書類を、状態を確かめてまとめて保存します' },
 ];

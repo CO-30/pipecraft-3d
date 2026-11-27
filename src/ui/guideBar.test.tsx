@@ -4,7 +4,7 @@ import 'fake-indexeddb/auto';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyDoc, useStore } from '../state/store';
-import { GuideBar } from './GuideBar';
+import { GuideBar, shinseiCtx } from './GuideBar';
 import { usePrefs } from './prefs';
 import { createBuildingFromDims } from '../model/building';
 import { emptyNetwork } from '../model/network';
@@ -49,5 +49,29 @@ describe('作業手順ガイド: 申請の手順', () => {
     await waitFor(() => expect(step()).toBe('sQuestions'));
     fireEvent.click(screen.getByTestId('guide-do'));
     expect(onShinsei).toHaveBeenCalled();
+  });
+
+  it('器具が無いうちに「自動でつなぐ」を押しても、つながずに器具を置く道具へ案内する。済んだ後に押しても、つなぎ直さない', async () => {
+    usePrefs.getState().setGuideMode('shinsei');
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト', createdAt: 1 });
+    render(<GuideBar onEstimate={() => {}} onPlan={() => {}} onShinsei={() => {}} />);
+    fireEvent.click(screen.getByTestId('guide-toggle'));
+    fireEvent.click(screen.getByTestId('guide-step-sConnect'));
+    expect(s().tool).toBe('fixture');
+    expect(s().notice).toContain('先に器具');
+    const rev = s().revision;
+    await new Promise((r) => setTimeout(r, 60));
+    expect(s().revision).toBe(rev);
+  });
+
+  it('数え方: 自治体が未選択なら質問は済みにしない。南風原町を選ぶと、答えていない質問を数える', () => {
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト', createdAt: 1 });
+    expect(shinseiCtx(s().doc, s().meta, []).municipality).toBe(false);
+    s().updateSite({ municipalityProfileId: 'haebaru' });
+    const c = shinseiCtx(s().doc, s().meta, []);
+    expect(c.municipality).toBe(true);
+    expect(c.openQuestions).toBeGreaterThan(0);
+    s().updateSite({ application: { ...(s().doc.site?.application ?? {}), workKind: '新設' } });
+    expect(shinseiCtx(s().doc, s().meta, []).openQuestions).toBe(c.openQuestions - 1);
   });
 });

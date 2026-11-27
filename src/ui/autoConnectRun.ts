@@ -7,11 +7,16 @@ import { minSlopeFor, resolveProfile } from '../model/municipality';
 import { useProfiles } from './useProfiles';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
 
+/** 計算を待っている間（2 回続けて押しても 1 回だけつなぐ） */
+let pending = false;
+
 /** dropDepth: 床下へ落とす深さ（mm）。無ければ既定の深さ */
 export function runAutoConnect(dropDepth?: number): void {
+  if (pending) return;
   const st = useStore.getState();
   const p = resolveProfile(st.doc.site?.municipalityProfileId, useProfiles.getState().user);
   const supply = resolveSupplyRules({ profileName: p.id === 'standard' ? undefined : p.name, address: st.meta?.address });
+  pending = true;
   useStore.setState({ notice: '汚水・水・湯をまとめてつないでいます…' });
   // お知らせを先に描いてから計算する（長くかかっても止まって見えないように）
   setTimeout(() => {
@@ -19,6 +24,8 @@ export function runAutoConnect(dropDepth?: number): void {
       useStore.getState().autoConnectAll({ drainRules: { cover: p.profileTable.minCover, slopeFor: (d) => minSlopeFor(p, d) }, supply, dropDepth });
     } catch (e) {
       useStore.setState({ notice: `つなげませんでした: ${(e as Error).message}。1 つずつのボタンで試してください` });
+    } finally {
+      pending = false;
     }
   }, 30);
 }
