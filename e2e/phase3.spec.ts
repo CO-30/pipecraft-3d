@@ -167,6 +167,28 @@ test.describe('Phase 3 配管・配線', () => {
     expect(Object.keys(d.segs)).toHaveLength(1);
   });
 
+  test('なぞり終わりの点を落とさない: 最後の動きと指を離すのが同時（重いとき）でも、配管は離した所まで', async ({ page }) => {
+    await createProject(page, '終点テスト', { blank: true });
+    await show(page, '2D');
+    await page.getByTestId('tool-pipe').click();
+    const pts = await page.evaluate(() => [[0, 0], [3000, 0], [3000, 3000]].map(([x, y]) => (window as any).__plan.toScreen(x, y)));
+    // 動き → 離す、を 1 回の処理の中で続けて送る（画面の更新を待たない。重い端末でまとめて届くときと同じ）
+    await page.evaluate((p: { x: number; y: number }[]) => {
+      const el = document.querySelector('[data-testid="plan"]')!;
+      // pointerId 1（マウス）はいつも有効なので、作ったイベントでも指の捕まえ（setPointerCapture）が通る
+      const ev = (type: string, q: { x: number; y: number }) => new PointerEvent(type, { bubbles: true, clientX: q.x, clientY: q.y, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: type === 'pointerup' ? 0 : 1 });
+      el.dispatchEvent(ev('pointerdown', p[0]));
+      const steps: { x: number; y: number }[] = [];
+      for (let i = 1; i < p.length; i++) for (let k = 1; k <= 10; k++) steps.push({ x: p[i - 1].x + ((p[i].x - p[i - 1].x) * k) / 10, y: p[i - 1].y + ((p[i].y - p[i - 1].y) * k) / 10 });
+      for (const q of steps) el.dispatchEvent(ev('pointermove', q));
+      el.dispatchEvent(ev('pointerup', p[p.length - 1]));
+    }, pts);
+    const d = await full(page);
+    const ends = Object.values(d.nodes).map((n) => n.pos);
+    expect(ends.some((q) => Math.hypot(q.x - 3000, q.y - 3000) < 60)).toBe(true);
+    await expect(page.getByTestId('seg-count')).toHaveText('2');
+  });
+
   test('3D で器具・配管・立て管が表示され、保存→再読み込みで復元', async ({ page }) => {
     await createProject(page, '3D表示テスト', { floors: 2 });
     await show(page, '2D');
