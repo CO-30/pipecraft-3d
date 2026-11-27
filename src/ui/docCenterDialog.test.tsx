@@ -161,4 +161,32 @@ describe('提出書類一式（書類センター）', () => {
     expect(within(list).getAllByTestId('doc-drain-row')).toHaveLength(8);
     expect(within(list).queryByTestId('doc-drain-all')).toBeNull();
   });
+
+  it('質問に答えた後に公共ますを置くと、接続先をもう一度聞く（前の答えとおすすめを見せる）', async () => {
+    await repo.setSetting(CONTRACTOR_KEY, { ...EMPTY_CONTRACTOR, name: 'テスト設備' });
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト工事', createdAt: 1 });
+    s().updateSite({ municipalityProfileId: 'haebaru' });
+    await open();
+    // 公共ますが無いので、流し先はおすすめが無い（選んでもらう）
+    fireEvent.click(within(screen.getByTestId('doc-q-drainTo')).getByRole('radio', { name: /^公共下水道/ }));
+    fireEvent.click(within(screen.getByTestId('doc-q-road.water')).getByRole('radio', { name: /^しない/ }));
+    fireEvent.click(within(screen.getByTestId('doc-q-road.sewer')).getByRole('radio', { name: /^しない/ }));
+    fireEvent.click(screen.getByTestId('doc-q-save'));
+    expect(s().doc.site!.application!.sewerConnection).toBe('ます設置(新規)');
+    expect(s().doc.site!.confirmBasis!.sewerConnection).toBe('ます設置(新規)');
+    expect(await screen.findByTestId('doc-q-done')).toBeTruthy();
+    cleanup();
+    // 後から公共ますを置く
+    const d = s().doc;
+    useStore.setState({ doc: placeFixture(d, d.building.floors[0]?.id ?? '', 'publicSewage', { x: 0, y: 0 }).doc });
+    await open();
+    const q = await screen.findByTestId('doc-q-sewerConnection');
+    expect(q.textContent).toContain('図面が変わりました');
+    expect(q.textContent).toContain('ます設置(新規)');
+    expect(screen.getByTestId('doc-questions').textContent).toContain('1 件');
+    fireEvent.click(screen.getByTestId('doc-q-save'));
+    expect(s().doc.site!.application!.sewerConnection).toBe('公共ます');
+    expect(s().doc.site!.confirmBasis!.sewerConnection).toBe('公共ます');
+    expect(await screen.findByTestId('doc-q-done')).toBeTruthy();
+  });
 });

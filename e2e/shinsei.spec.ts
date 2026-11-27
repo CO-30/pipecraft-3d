@@ -325,6 +325,22 @@ test.describe('申請図面: 提出書類一式', () => {
     expect(sel).toEqual({ kind: 'segment', id: segId });
     await page.screenshot({ path: evidence('doc-center-04-drain-located') });
   });
+  test('質問に答えた後に図面が変わったら聞き直す: 公共ますが無いときの答えのまま公共ますを置いた工事', async ({ page }) => {
+    await openSample(page);
+    // サンプルには公共汚水ますがある。「公共ますが無かったときに ます設置 と答えた」工事にする
+    await page.evaluate(() => (window as any).__pc.getState().updateSite({ municipalityProfileId: 'haebaru', application: { sewerConnection: 'ます設置(新規)' }, confirmBasis: { sewerConnection: 'ます設置(新規)' } }));
+    await page.getByTestId('open-shinsei').click();
+    await page.getByTestId('shinsei-docs').click();
+    const changed = page.getByTestId('doc-q-changed-sewerConnection');
+    await expect(changed).toBeVisible();
+    await expect(changed).toContainText('図面が変わりました');
+    await expect(page.getByTestId('doc-q-sewerConnection').getByRole('radio', { name: /^公共ます/ })).toBeChecked();
+    await changed.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: evidence('doc-center-05-requestion') });
+    await page.getByTestId('doc-q-save').click();
+    expect(await page.evaluate(() => (window as any).__pc.getState().doc.site.application.sewerConnection)).toBe('公共ます');
+    await expect(changed).toHaveCount(0);
+  });
 });
 
 test.describe('手順ガイド: 申請の書類までの手順', () => {

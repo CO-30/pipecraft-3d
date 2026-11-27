@@ -34,7 +34,8 @@ export function shinseiCtx(doc: Doc, meta: { name: string; address?: string } | 
   const set = FORM_SETS[profile.id];
   const m = { name: meta?.name ?? '', address: meta?.address };
   const values = set ? withDefaults(set, doc, m) : (doc.site?.application ?? {});
-  const qs = confirmQuestions(set, doc.site?.application, values, roadValues(doc, m, EMPTY_CONTRACTOR, {}));
+  const drawn = set ? set.defaults(doc, m) : {};
+  const qs = confirmQuestions(set, doc.site?.application, values, roadValues(doc, m, EMPTY_CONTRACTOR, {}), { drawn, basis: doc.site?.confirmBasis });
   return { openPorts: unconnectedPorts(doc).length, openQuestions: qs.filter((q) => !q.answered).length, municipality: !!id && profile.id !== 'standard' };
 }
 

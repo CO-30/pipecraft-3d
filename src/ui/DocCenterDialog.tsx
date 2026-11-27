@@ -18,7 +18,7 @@ import type { FormWhat, Produced } from '../forms/produce';
 import type { ProductMemory } from '../forms/fixtureProducts';
 import { BUNDLE_KINDS, KIND_LABEL, type ShinseiBuild } from './shinseiBuild';
 import { rowStatus } from './ShinseiBundleDialog';
-import { answersOf, confirmQuestions } from '../model/confirmQuestions';
+import { answersOf, basisOf, confirmQuestions } from '../model/confirmQuestions';
 import { inspect } from './inspection';
 import { calcSupply } from '../model/hydraulics/calc';
 import { resolveSupplyRules } from '../model/hydraulics/supplyRules';
@@ -72,7 +72,10 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
   const address = meta?.address;
   const values = useMemo(() => (set ? withDefaults(set, doc, { name: siteName, address }) : (doc.site?.application ?? {})), [set, doc, siteName, address]);
   const road = useMemo(() => roadValues(doc, { name: siteName, address }, contractor ?? EMPTY_CONTRACTOR, offices), [doc, siteName, address, contractor, offices]);
-  const questions = useMemo(() => confirmQuestions(set, doc.site?.application, values, road), [set, doc.site?.application, values, road]);
+  // いまの図面から出した初期値（答えを混ぜない）。答えた後に図面が変わったら聞き直すのに使う
+  const drawn = useMemo(() => (set ? set.defaults(doc, { name: siteName, address }) : {}), [set, doc, siteName, address]);
+  const basis = doc.site?.confirmBasis;
+  const questions = useMemo(() => confirmQuestions(set, doc.site?.application, values, road, { drawn, basis }), [set, doc.site?.application, values, road, drawn, basis]);
   const unanswered = questions.filter((q) => !q.answered);
   /** 質問で選んだ答え（まだ保存していない） */
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -85,7 +88,8 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
   const undecided = shown.filter((q) => !pickedOf(q)).length;
   const saveAnswers = () => {
     const a = answersOf(shown, answers);
-    if (Object.keys(a).length) updateSite({ application: { ...(useStore.getState().doc.site?.application ?? {}), ...a } });
+    const site = useStore.getState().doc.site;
+    if (Object.keys(a).length) updateSite({ application: { ...(site?.application ?? {}), ...a }, confirmBasis: { ...(site?.confirmBasis ?? {}), ...basisOf(shown, drawn, a) } });
     setAnswers({}); setEditQ(false); setOpenQ({});
   };
   const drawings = useMemo(() => BUNDLE_KINDS.map((k) => { const b = buildFor(k); const st = rowStatus(b); return { b, state: { label: KIND_LABEL[k], ready: st.ready, picked: st.preChecked, warnings: b.warnings.length, text: st.text } }; }), [buildFor]);
@@ -176,7 +180,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
               const v = pickedOf(q);
               // おすすめがある質問は 1 行にたたむ（合っていれば読むだけ）。「変える」で選択肢を開く
               // （選んでもらう質問は、選んだ後も開いたまま。押したとたんに形が変わらないように）
-              if (v && (q.answered ? q.current : q.recommended) && !openQ[q.id]) return (
+              if (v && !q.changed && (q.answered ? q.current : q.recommended) && !openQ[q.id]) return (
                 <div key={q.id} className="doc-q folded" data-testid={`doc-q-${q.id}`}>
                   <span>{q.title}</span>
                   <b data-testid={`doc-q-value-${q.id}`}>{v}</b>
@@ -186,6 +190,7 @@ export function DocCenterDialog({ profile, siteName, date, buildFor, asBuilt, on
               return (
                 <fieldset key={q.id} className="doc-q" data-testid={`doc-q-${q.id}`}>
                   <legend>{q.title}</legend>
+                  {q.changed && <p className="small warn" data-testid={`doc-q-changed-${q.id}`}>⚠ 答えた後に図面が変わりました。前の答えは「{doc.site?.application?.[q.id]}」です。いまの図面からは「{q.changed.now}」をおすすめします（前の答えのままでよければ、それを選んでください）</p>}
                   <p className="small muted">{q.why}</p>
                   <div className="doc-q-opts">
                     {q.options.map((o) => (

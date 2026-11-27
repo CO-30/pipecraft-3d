@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answersOf, confirmQuestions } from './confirmQuestions';
+import { answersOf, basisOf, confirmQuestions } from './confirmQuestions';
 import { FORM_SETS } from '../forms/formSets';
 
 const road = { 'road.water': 'する', 'road.sewer': 'しない' };
@@ -52,5 +52,43 @@ describe('確認の質問（人が決めることだけを、推奨つきで）'
     const qs = confirmQuestions(FORM_SETS.yaese, { drainTo: '浄化槽' }, { drainTo: '浄化槽' }, road);
     expect(qs.map((q) => q.id)).not.toContain('road.sewer');
     expect(qs.map((q) => q.id)).toContain('road.water');
+  });
+});
+
+describe('答えた後に図面が変わったら聞き直す', () => {
+  const set = FORM_SETS.haebaru;
+  const v = (x: Record<string, string>) => ({ workKind: '新設', drainTo: '公共下水道', tempSupply: '有り', ...x });
+
+  it('公共ますが無い図面で「ます設置」と答えた後に公共ますを置くと、接続先をもう一度聞く（おすすめは図面から、前の答えも見せる）', () => {
+    const stored = { sewerConnection: 'ます設置(新規)' };
+    const before = { sewerConnection: 'ます設置(新規)' };
+    const qs = confirmQuestions(set, stored, v(stored), road, { drawn: { sewerConnection: '公共ます' }, basis: before });
+    const q = qs.find((x) => x.id === 'sewerConnection')!;
+    expect(q.answered).toBe(false);
+    expect(q.changed).toEqual({ before: 'ます設置(新規)', now: '公共ます' });
+    expect(q.recommended).toBe('公共ます');
+    expect(answersOf(qs, {}).sewerConnection).toBe('公共ます');
+    // 前の答えを選び直せば、その答えのまま
+    expect(answersOf(qs, { sewerConnection: 'ます設置(新規)' }).sewerConnection).toBe('ます設置(新規)');
+  });
+
+  it('図面が変わっていなければ聞き直さない。答えがもう図面のおすすめと同じでも聞き直さない', () => {
+    const stored = { sewerConnection: '私設置ます' };
+    const same = confirmQuestions(set, stored, v(stored), road, { drawn: { sewerConnection: '公共ます' }, basis: { sewerConnection: '公共ます' } });
+    expect(same.find((x) => x.id === 'sewerConnection')!.answered).toBe(true);
+    const agree = confirmQuestions(set, { sewerConnection: '公共ます' }, v({ sewerConnection: '公共ます' }), road, { drawn: { sewerConnection: '公共ます' }, basis: { sewerConnection: 'ます設置(新規)' } });
+    expect(agree.find((x) => x.id === 'sewerConnection')!.changed).toBeUndefined();
+  });
+
+  it('前の版で答えた工事（答えたときの記録が無い）は聞き直さない。道路の質問は図面と関係ないので聞き直さない', () => {
+    const stored = { sewerConnection: 'ます設置(新規)', 'road.water': 'する' };
+    const qs = confirmQuestions(set, stored, v(stored), road, { drawn: { sewerConnection: '公共ます', 'road.water': 'しない' }, basis: { 'road.water': 'する' } });
+    expect(qs.find((x) => x.id === 'sewerConnection')!.answered).toBe(true);
+    expect(qs.find((x) => x.id === 'road.water')!.answered).toBe(true);
+  });
+
+  it('basisOf: 決めた質問の、そのときの図面からのおすすめを覚える（道路は覚えない。おすすめが無いときは空で覚える）', () => {
+    const qs = confirmQuestions(set, {}, v({ sewerConnection: '' }), road, { drawn: {} });
+    expect(basisOf(qs, { workKind: '新設', drainTo: '' }, { sewerConnection: 'ます設置(新規)', 'road.water': 'する' })).toEqual({ sewerConnection: '' });
   });
 });

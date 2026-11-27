@@ -13,6 +13,16 @@ export type ConfirmQuestion = Question & {
   answered: boolean;
   /** いまの値（答え、無ければ推奨） */
   current: string;
+  /** 答えた後に図面が変わって、図面からのおすすめが変わった（聞き直す）。before: 答えたときのおすすめ、now: いまのおすすめ */
+  changed?: { before: string; now: string };
+};
+
+/** 答えた後の図面の変化を見るための値 */
+export type RecheckOpts = {
+  /** いまの図面から出した初期値（使う人の答えを混ぜない。様式の defaults） */
+  drawn?: ApplicationValues;
+  /** 答えたときの、図面からのおすすめ（doc.site.confirmBasis） */
+  basis?: Record<string, string>;
 };
 
 type Def = { title: string; why: string; hints?: Record<string, string>; options?: string[]; /** 図面から導けないので、おすすめを付けない */ noRecommend?: boolean };
@@ -63,7 +73,7 @@ const DEFS: [string, Def][] = [
  * @param values 初期値と合わせた申請書の値（withDefaults）
  * @param road 道路の値（roadValues）
  */
-export function confirmQuestions(set: FormSet | undefined, stored: ApplicationValues | undefined, values: ApplicationValues, road: ApplicationValues): ConfirmQuestion[] {
+export function confirmQuestions(set: FormSet | undefined, stored: ApplicationValues | undefined, values: ApplicationValues, road: ApplicationValues, opts: RecheckOpts = {}): ConfirmQuestion[] {
   const out: ConfirmQuestion[] = [];
   for (const [id, def] of DEFS) {
     const isRoad = id.startsWith('road.');
@@ -72,19 +82,25 @@ export function confirmQuestions(set: FormSet | undefined, stored: ApplicationVa
     if (!options?.length || (!isRoad && !field)) continue;
     // 浄化槽へ流すなら下水の取付管は無い
     if (id === 'road.sewer' && values.drainTo === '浄化槽') continue;
-    const answered = !!stored && !!stored[id];
     const raw = (isRoad ? road[id] : values[id]) ?? '';
     // かっこの全角・半角などの違いは同じ答えとして扱う
     const value = options.find((o) => norm(o) === norm(raw)) ?? raw;
     const known = options.includes(value);
+    // 答えた後に図面が変わった: 答えたときのおすすめと、いまのおすすめが違い、答えもいまのおすすめと違う（道路の質問は図面と関係ない）
+    const before = opts.basis?.[id];
+    const nowRaw = opts.drawn?.[id] ?? '';
+    const now = options.find((o) => norm(o) === norm(nowRaw)) ?? '';
+    const changed = !isRoad && !def.noRecommend && !!stored?.[id] && before !== undefined && !!now && norm(before) !== norm(now) && norm(now) !== norm(stored[id]);
+    const answered = !!stored && !!stored[id] && !changed;
     out.push({
       id, title: def.title, why: def.why, answered,
-      recommended: !answered && known && !def.noRecommend ? value : '',
-      current: answered || (known && !def.noRecommend) ? value : '',
+      ...(changed ? { changed: { before, now } } : {}),
+      recommended: changed ? now : !answered && known && !def.noRecommend ? value : '',
+      current: changed ? now : answered || (known && !def.noRecommend) ? value : '',
       options: [
         ...options.map((o) => ({ value: o, label: o, hint: def.hints?.[o] ?? '' })),
         // 選択肢に無い値が入っている工事（前の版・手入力）: 消さずに「いまの値」として見せる
-        ...(answered && !known ? [{ value, label: value, hint: '前に入れた値です' }] : []),
+        ...((answered || changed) && !known ? [{ value, label: value, hint: '前に入れた値です' }] : []),
       ],
     });
   }
@@ -98,6 +114,19 @@ export function answersOf(qs: ConfirmQuestion[], picked: Record<string, string>)
   for (const q of qs) {
     const v = picked[q.id] ?? (q.answered ? '' : q.recommended);
     if (v) out[q.id] = v;
+  }
+  return out;
+}
+
+/**
+ * 決めた答えを保存するときに一緒に覚える「そのときの図面からのおすすめ」（doc.site.confirmBasis に入れる）。
+ * 後で図面が変わったら、これと比べて聞き直す。道路の質問・おすすめを付けない質問は覚えない。
+ */
+export function basisOf(qs: ConfirmQuestion[], drawn: ApplicationValues, saved: ApplicationValues): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const q of qs) {
+    if (!(q.id in saved) || q.id.startsWith('road.')) continue;
+    out[q.id] = drawn[q.id] ?? '';
   }
   return out;
 }

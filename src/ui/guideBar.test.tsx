@@ -74,4 +74,13 @@ describe('作業手順ガイド: 申請の手順', () => {
     s().updateSite({ application: { ...(s().doc.site?.application ?? {}), workKind: '新設' } });
     expect(shinseiCtx(s().doc, s().meta, []).openQuestions).toBe(c.openQuestions - 1);
   });
+
+  it('数え方: 答えた後に公共ますを置くと、聞き直す質問を 1 件として数える（書類センターと同じ）', () => {
+    s().newDoc(emptyDoc(), { id: 'p', name: 'テスト', createdAt: 1 });
+    s().updateSite({ municipalityProfileId: 'haebaru', application: { sewerConnection: 'ます設置(新規)' }, confirmBasis: { sewerConnection: 'ます設置(新規)' } });
+    const before = shinseiCtx(s().doc, s().meta, []).openQuestions;
+    const d = s().doc;
+    useStore.setState({ doc: placeFixture(d, d.building.floors[0]?.id ?? '', 'publicSewage', { x: 0, y: 0 }).doc });
+    expect(shinseiCtx(s().doc, s().meta, []).openQuestions).toBe(before + 1);
+  });
 });
