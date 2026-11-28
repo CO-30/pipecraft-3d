@@ -3,6 +3,7 @@
  * 「出力できます」と言うのは、必須の項目が入り、注意が 1 件も無いときだけ。未確認の値・未登録の様式を正しいものとして扱わない。
  */
 import type { ApplicationValues, Contractor, FormSet } from '../forms/types';
+import { formRequiredReasons, type RequiredDoc } from '../forms/required';
 
 export type DocId = 'water' | 'sewer' | 'products' | 'nanbu' | 'nanbuProducts' | 'haebaruSewer' | 'road' | 'drawings' | 'unregistered';
 export type DocStatus = 'ready' | 'check' | 'blocked';
@@ -68,18 +69,19 @@ export function docRows(i: DocCenterInput): DocRow[] {
   const rows: DocRow[] = [];
   const common = commonReasons(i);
   const set = i.set;
+  const need = (d: RequiredDoc) => (set ? formRequiredReasons(d, set, i.values) : []);
   const drainChk = i.inspection?.drain ?? [];
   const supplyChk = i.inspection?.supply ?? [];
   const products = [...(i.contractor.name.trim() ? [] : [NO_CONTRACTOR]), ...(i.productCount > 0 ? [] : [NO_PRODUCTS])];
   if (!set) {
     rows.push({ id: 'unregistered', label: '給水・下水道の申請書', format: 'PDF', status: 'blocked', reasons: [`「${i.profileName}」の申請書の様式はまだ登録していません。窓口の様式を使ってください（図面と道路の書類は作れます）`] });
   } else if (set.water === 'nanbu') {
-    rows.push(form('nanbu', '給水申請書類一式', 'PDF', [...common, ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY]), ...supplyChk]));
+    rows.push(form('nanbu', '給水申請書類一式', 'PDF', [...common, ...need('nanbu'), ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY]), ...supplyChk]));
     rows.push(form('nanbuProducts', '給水装置使用製品一覧表', 'PDF', products));
-    if (set.sewer === 'haebaru') rows.push(form('haebaruSewer', '排水設備計画確認申請書', 'PDF', [...common, ...(i.hasDrain ? [] : [NO_DRAIN]), ...drainChk]));
+    if (set.sewer === 'haebaru') rows.push(form('haebaruSewer', '排水設備計画確認申請書', 'PDF', [...common, ...need('sewer'), ...(i.hasDrain ? [] : [NO_DRAIN]), ...drainChk]));
   } else {
-    rows.push(form('water', '給水装置申込及び工事申請書', 'Excel', [...common, ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY]), ...supplyChk]));
-    rows.push(form('sewer', '下水道排水設備計画確認申請書', 'PDF', [...common, ...(i.hasDrain ? [] : [NO_DRAIN]), ...drainChk]));
+    rows.push(form('water', '給水装置申込及び工事申請書', 'Excel', [...common, ...need('water'), ...i.formWarnings, ...(i.hasSupply ? [] : [NO_SUPPLY]), ...supplyChk]));
+    rows.push(form('sewer', '下水道排水設備計画確認申請書', 'PDF', [...common, ...need('sewer'), ...(i.hasDrain ? [] : [NO_DRAIN]), ...drainChk]));
     rows.push(form('products', '給水装置使用製品一覧表', 'PDF', products));
   }
   if (i.roadCount > 0) {

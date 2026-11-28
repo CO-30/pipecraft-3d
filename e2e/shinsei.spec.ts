@@ -279,6 +279,12 @@ test.describe('申請図面: 提出書類一式', () => {
     await expect(page.getByTestId('doc-q-done')).toBeVisible();
     await expect(page.getByTestId('doc-row-nanbu')).not.toContainText('確認の質問が');
     expect(await page.evaluate(() => (window as any).__pc.getState().doc.site.application['road.water'])).toBe('する');
+    // 様式ごとの必須の欄: 工事予定期間が空なら、下水道の申請書にだけ「空欄のまま印刷されます」と出す
+    await expect(page.getByTestId('doc-row-haebaruSewer')).toContainText('工事予定期間');
+    await expect(page.getByTestId('doc-row-haebaruSewer')).toContainText('空欄のまま印刷されます');
+    await expect(page.getByTestId('doc-row-nanbu')).not.toContainText('工事予定期間');
+    await page.getByTestId('doc-row-haebaruSewer').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: evidence('doc-center-06-required') });
     const zip = page.getByTestId('doc-zip');
     await expect(zip).toBeEnabled();
     await zip.scrollIntoViewIfNeeded();
