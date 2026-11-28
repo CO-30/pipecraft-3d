@@ -3,9 +3,11 @@ import { checkSummary, docRows, statusText, type DocCenterInput } from './docCen
 import { FORM_SETS } from '../forms/formSets';
 import { EMPTY_CONTRACTOR } from '../forms/types';
 
+// 様式ごとの必須の欄（src/forms/required.ts）が入った状態。画面では既定値（withDefaults）と確認申請書で入る
+const FILLED = { workKind: '新設', supplyKind: '専用給水', useKind: '一般用', buildingUse: '住宅', drainTo: '公共下水道', diameter: '20', tempSupply: '有り', tempUntil: '2027-03-31', userSame: '同じ', waterWorkKind: '新設', useType: '一般家庭用（一般住宅）', supplyType: '直結', purpose: '一般用', sewerConnection: '公共ます', sewerWorkKind: '新築', waterSource: '水道水', sewerBuildingUse: '一般家庭', people: '4', sewerHouseholds: '1', households: '1', workFrom: '2026-12-01', workTo: '2026-12-20', lending: '無し', pretreatment: '無し' };
 const base = (over: Partial<DocCenterInput> = {}): DocCenterInput => ({
   set: FORM_SETS.haebaru, profileName: '南風原町',
-  values: { siteAddress: '南風原町字兼城100-1', applicantName: '眞境名 太郎', applicantAddress: '南風原町字兼城1', ownerName: '眞境名 太郎', ownerAddress: '南風原町字兼城1' },
+  values: { siteAddress: '南風原町字兼城100-1', applicantName: '眞境名 太郎', applicantAddress: '南風原町字兼城1', ownerName: '眞境名 太郎', ownerAddress: '南風原町字兼城1', ...FILLED },
   contractor: { ...EMPTY_CONTRACTOR, name: 'テスト設備' },
   hasSupply: true, hasDrain: true, roadCount: 0, roadConfirmed: false, roadWarnings: [], productCount: 3, formWarnings: [],
   drawings: [{ label: '排水平面図', ready: true, picked: true, warnings: 0, text: '✓ 作れます' }, { label: '見取図', ready: false, picked: false, warnings: 0, text: '作れません: 工事場所が未設定' }],
@@ -116,5 +118,20 @@ describe('提出書類の一覧（書類センター）', () => {
     expect(row(r, 'haebaruSewer').reasons.join('|')).toContain('排水の配管');
     expect(row(r, 'haebaruSewer').reasons.join('|')).toContain('トイレの汚水');
     expect(docRows(base({ inspection: { drain: [], supply: [] } }))).toEqual(docRows(base()));
+  });
+
+  it('様式ごとの必須の欄: 下水道の欄は下水道の申請書だけ、給水の欄は給水の申請書だけに出す', () => {
+    const v = { ...base().values, people: '', workFrom: '', diameter: '' };
+    const h = docRows(base({ values: v }));
+    expect(row(h, 'haebaruSewer').status).toBe('check');
+    expect(row(h, 'haebaruSewer').reasons.join('|')).toContain('人員・工事予定期間の「自」が未入力です（空欄のまま印刷されます');
+    expect(row(h, 'haebaruSewer').reasons.join('|')).not.toContain('メーター口径');
+    expect(row(h, 'nanbu').reasons.join('|')).toContain('メーター口径が未入力です');
+    expect(row(h, 'nanbu').reasons.join('|')).not.toContain('人員');
+    expect(row(h, 'nanbuProducts').status).toBe('ready');
+    const o = docRows(base({ set: FORM_SETS['okinawa-city'], profileName: '沖縄市', values: { ...v, workTo: '2026-11-01', workFrom: '2026-12-01' } }));
+    expect(row(o, 'water').reasons.join('|')).toContain('口径が未入力です');
+    expect(row(o, 'sewer').reasons.join('|')).toContain('「至」が「自」より前');
+    expect(row(o, 'sewer').reasons.join('|')).not.toContain('口径');
   });
 });
