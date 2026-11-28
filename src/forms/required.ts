@@ -34,10 +34,10 @@ const RULES: Record<RequiredDoc, Rule[]> = {
   ],
   // 南部水道企業団の給水申込書・工事申請書・誓約書
   nanbu: [
-    { ids: ['workKind'], label: '工事' },
-    { ids: ['supplyKind'], label: '種別' },
-    { ids: ['useKind'], label: '用途' },
-    { ids: ['buildingUse'], label: '建物' },
+    { ids: ['workKind'], label: '工事の区分（新設など）' },
+    { ids: ['supplyKind'], label: '給水の種別（専用給水など）' },
+    { ids: ['useKind'], label: '用途（一般用など）' },
+    { ids: ['buildingUse'], label: '建物の種類（住宅など）' },
     { ids: ['drainTo'], label: '排水放流先' },
     { ids: ['diameter'], label: 'メーター口径' },
     { ids: ['tempUntil'], label: '臨時給水の使用期限', when: (v) => (v.tempSupply ?? '有り').trim() === '有り' },
@@ -52,12 +52,16 @@ const RULES: Record<RequiredDoc, Rule[]> = {
     { ids: ['waterSourceOther'], label: '使用水の種別「その他」の内容', when: is('waterSource', 'その他') },
     { ids: ['sewerBuildingUse'], label: '建物の用途' },
     { ids: ['sewerBuildingUseOther'], label: '建物の用途「その他」の内容', when: is('sewerBuildingUse', 'その他') },
-    { ids: ['sewerBuildingUseNote'], label: '使途（一般家庭・アパート以外のとき）', when: (v) => !blank(v, 'sewerBuildingUse') && !is('sewerBuildingUse', '一般家庭', 'アパート')(v) },
+    { ids: ['sewerBuildingUseNote'], label: '建物の使途（一般家庭・アパート以外のとき）', when: (v) => !blank(v, 'sewerBuildingUse') && !is('sewerBuildingUse', '一般家庭', 'アパート')(v) },
+    // 世帯数・人員: 印刷は アパートなら「アパートの欄 || 一般の欄」、それ以外は一般の欄（sewerPdf.ts・haebaruSewer.ts と同じ）
+    { ids: ['sewerHouseholds', 'households'], label: '世帯数', when: is('sewerBuildingUse', '一般家庭') },
     { ids: ['people'], label: '人員', when: is('sewerBuildingUse', '一般家庭') },
-    { ids: ['apartmentHouseholds'], label: 'アパートの世帯数', when: is('sewerBuildingUse', 'アパート') },
-    { ids: ['apartmentPeople'], label: 'アパートの人員', when: is('sewerBuildingUse', 'アパート') },
+    { ids: ['apartmentHouseholds', 'sewerHouseholds', 'households'], label: 'アパートの世帯数', when: is('sewerBuildingUse', 'アパート') },
+    { ids: ['apartmentPeople', 'people'], label: 'アパートの人員', when: is('sewerBuildingUse', 'アパート') },
     { ids: ['workFrom'], label: '工事予定期間の「自」' },
     { ids: ['workTo'], label: '工事予定期間の「至」' },
+    { ids: ['lending'], label: '貸付状況（有り・無し）' },
+    { ids: ['pretreatment'], label: '除害施設の有無' },
     { ids: ['pretreatmentNote'], label: '除害施設の内容', when: is('pretreatment', '有り') },
   ],
 };
@@ -65,10 +69,10 @@ const RULES: Record<RequiredDoc, Rule[]> = {
 /** 書類 1 種類の、空欄のまま印刷される欄と、日付の前後の逆転（無ければ空） */
 export function formRequiredReasons(doc: RequiredDoc, set: FormSet, v: ApplicationValues): string[] {
   const has = new Set(set.fields.map((f) => f.id));
-  // 項目が様式にあるときだけ調べる。ids が複数なら、どれかが入っていればよい
+  // 様式にある項目だけ調べる。ids が複数なら、どれかが入っていればよい（印刷で補う元を含む）
   const missing: string[] = [];
   for (const r of RULES[doc]) {
-    if (!has.has(r.ids[0])) continue;
+    if (!r.ids.some((id) => has.has(id))) continue;
     if (r.when && !r.when(v)) continue;
     if (r.ids.every((id) => blank(v, id))) missing.push(r.label);
   }

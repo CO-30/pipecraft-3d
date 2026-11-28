@@ -43,7 +43,10 @@ describe('様式ごとの必須項目（空欄のまま印刷される欄）', (
     expect(j(r)).toContain('使途');
     expect(j(r)).toContain('除害施設の内容');
     expect(formRequiredReasons('sewer', ok, { ...full(ok), waterSource: 'その他', waterSourceOther: '雨水再利用', sewerBuildingUse: 'アパート', apartmentHouseholds: '6', apartmentPeople: '12', pretreatment: '無し' })).toEqual([]);
-    expect(j(formRequiredReasons('sewer', ok, { ...full(ok), sewerBuildingUse: 'アパート' }))).toContain('アパートの世帯数・アパートの人員');
+    // アパートの欄が空でも、一般の世帯数・人員が印刷される（印刷と同じ補い方）
+    expect(formRequiredReasons('sewer', ok, { ...full(ok), sewerBuildingUse: 'アパート' })).toEqual([]);
+    expect(j(formRequiredReasons('sewer', ok, { ...full(ok), sewerBuildingUse: 'アパート', households: '', people: '' }))).toContain('アパートの世帯数・アパートの人員');
+    expect(j(formRequiredReasons('sewer', hae, { ...full(hae), sewerBuildingUse: 'アパート', sewerHouseholds: '', people: '' }))).toContain('アパートの世帯数・アパートの人員');
   });
 
   it('工事予定期間の「至」が「自」より前なら出す（同じ日は出さない）', () => {
@@ -65,5 +68,13 @@ describe('様式ごとの必須項目（空欄のまま印刷される欄）', (
 
   it('様式に無い項目は調べない（南部の給水に下水道の欄は無い → 八重瀬町は下水道の理由を出さない）', () => {
     expect(formRequiredReasons('sewer', FORM_SETS.yaese, full(FORM_SETS.yaese, { people: '' }))).toEqual([]);
+  });
+
+  it('世帯数（南風原は sewerHouseholds、沖縄市は households）・貸付状況・除害施設の有無が空なら出す', () => {
+    expect(j(formRequiredReasons('sewer', hae, { ...full(hae), sewerHouseholds: '' }))).toContain('世帯数');
+    expect(j(formRequiredReasons('sewer', ok, { ...full(ok), households: '' }))).toContain('世帯数');
+    const r = j(formRequiredReasons('sewer', ok, { ...full(ok), lending: '', pretreatment: '' }));
+    expect(r).toContain('貸付状況');
+    expect(r).toContain('除害施設の有無');
   });
 });

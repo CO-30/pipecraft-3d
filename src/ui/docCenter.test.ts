@@ -4,7 +4,7 @@ import { FORM_SETS } from '../forms/formSets';
 import { EMPTY_CONTRACTOR } from '../forms/types';
 
 // 様式ごとの必須の欄（src/forms/required.ts）が入った状態。画面では既定値（withDefaults）と確認申請書で入る
-const FILLED = { workKind: '新設', supplyKind: '専用給水', useKind: '一般用', buildingUse: '住宅', drainTo: '公共下水道', diameter: '20', tempSupply: '有り', tempUntil: '2027-03-31', userSame: '同じ', waterWorkKind: '新設', useType: '一般家庭用（一般住宅）', supplyType: '直結', purpose: '一般用', sewerConnection: '公共ます', sewerWorkKind: '新築', waterSource: '水道水', sewerBuildingUse: '一般家庭', people: '4', workFrom: '2026-12-01', workTo: '2026-12-20', pretreatment: '無し' };
+const FILLED = { workKind: '新設', supplyKind: '専用給水', useKind: '一般用', buildingUse: '住宅', drainTo: '公共下水道', diameter: '20', tempSupply: '有り', tempUntil: '2027-03-31', userSame: '同じ', waterWorkKind: '新設', useType: '一般家庭用（一般住宅）', supplyType: '直結', purpose: '一般用', sewerConnection: '公共ます', sewerWorkKind: '新築', waterSource: '水道水', sewerBuildingUse: '一般家庭', people: '4', sewerHouseholds: '1', households: '1', workFrom: '2026-12-01', workTo: '2026-12-20', lending: '無し', pretreatment: '無し' };
 const base = (over: Partial<DocCenterInput> = {}): DocCenterInput => ({
   set: FORM_SETS.haebaru, profileName: '南風原町',
   values: { siteAddress: '南風原町字兼城100-1', applicantName: '眞境名 太郎', applicantAddress: '南風原町字兼城1', ownerName: '眞境名 太郎', ownerAddress: '南風原町字兼城1', ...FILLED },
